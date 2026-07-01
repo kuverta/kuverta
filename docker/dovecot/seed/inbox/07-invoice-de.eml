@@ -1,9 +1,9 @@
 Return-Path: <rechnung@hosting.example.de>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Message-ID: <inv-4471182@hosting.example.de>
 Date: Mon, 07 Sep 2026 03:00:00 +0200
 From: Hosting AG <rechnung@hosting.example.de>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: Ihre Rechnung 4471182 fuer September 2026
 MIME-Version: 1.0
 Content-Type: text/plain; charset=utf-8

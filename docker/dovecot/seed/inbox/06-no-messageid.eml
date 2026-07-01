@@ -1,8 +1,8 @@
 Return-Path: <noreply@legacy-system.example.org>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Date: Fri, 04 Sep 2026 22:31:07 +0000
 From: Legacy Cron <noreply@legacy-system.example.org>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: nightly backup completed
 MIME-Version: 1.0
 Content-Type: text/plain; charset=us-ascii

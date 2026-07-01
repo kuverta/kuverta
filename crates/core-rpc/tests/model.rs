@@ -1,7 +1,7 @@
 //! The model pass: after sync, beside the rules, never shown.
 //!
 //! Against a real store and a stand-in Ollama on loopback. The properties that
-//! matter are not whether the model is right — that is `fuckmail eval`'s job —
+//! matter are not whether the model is right — that is `kuverta eval`'s job —
 //! but that its verdicts land where they can be compared and nowhere else.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -17,7 +17,7 @@ struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn new(name: &str) -> Self {
         let path =
-            std::env::temp_dir().join(format!("fuckmail-model-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("kuverta-model-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -32,16 +32,16 @@ impl Drop for TempDir {
 
 fn core_with(name: &str, count: usize) -> (Core, AccountId, TempDir) {
     let dir = TempDir::new(name);
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     let blobs = Blobs::new(dir.0.join("blobs"));
     let account = store
         .add_account(&NewAccount {
             label: "Dev".into(),
-            email: "dev@fuckmail.test".into(),
+            email: "dev@kuverta.test".into(),
             imap_host: "127.0.0.1".into(),
             imap_port: 993,
             imap_security: ImapSecurity::Tls,
-            username: "dev@fuckmail.test".into(),
+            username: "dev@kuverta.test".into(),
             auth_method: "app_password".into(),
             ..Default::default()
         })

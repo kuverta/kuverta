@@ -140,7 +140,7 @@ impl Server {
         json!({
             "protocolVersion": version,
             "capabilities": { "tools": { "listChanged": false } },
-            "serverInfo": { "name": "fuckmail", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": "kuverta", "version": env!("CARGO_PKG_VERSION") },
             "instructions": instructions(&self.config),
         })
     }
@@ -187,7 +187,7 @@ fn error(id: Value, code: i64, message: &str) -> Value {
 
 fn instructions(config: &Config) -> String {
     let mut text = String::from(
-        "fuckmail: a local client for mail and for scanned post. Mail is filed into six \
+        "kuverta: a local client for mail and for scanned post. Mail is filed into six \
          categories — personal, newsletter, marketing, transactional, notification, \
          unknown — and post from Paperless-ngx reads like mail. ",
     );

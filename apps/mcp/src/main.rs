@@ -1,7 +1,7 @@
-//! `fuckmail-mcp` — the mailbox over MCP, on stdio.
+//! `kuverta-mcp` — the mailbox over MCP, on stdio.
 //!
-//!     fuckmail-mcp                   # read-only
-//!     fuckmail-mcp --allow-writes    # also file, archive, trash, mark read
+//!     kuverta-mcp                   # read-only
+//!     kuverta-mcp --allow-writes    # also file, archive, trash, mark read
 //!
 //! Stdout is the protocol and nothing else. Every log line goes to stderr,
 //! because a single stray `println!` would be a malformed message to the client
@@ -11,17 +11,17 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use fuckmail_mcp::{Config, Server};
+use kuverta_mcp::{Config, Server};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 #[derive(Parser)]
 #[command(
-    name = "fuckmail-mcp",
-    about = "The fuckmail mailbox as an MCP server on stdio"
+    name = "kuverta-mcp",
+    about = "The kuverta mailbox as an MCP server on stdio"
 )]
 struct Args {
     /// The store to open. The same one the window uses, unless told otherwise.
-    #[arg(long, env = "FUCKMAIL_DATA_DIR")]
+    #[arg(long, env = "KUVERTA_DATA_DIR")]
     data_dir: Option<PathBuf>,
 
     /// Offer the tools that change anything. Off by default.

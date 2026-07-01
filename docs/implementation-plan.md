@@ -1,4 +1,4 @@
-# fuckmail — Implementation Plan
+# kuverta — Implementation Plan
 
 Working title. Solo project, ~10h/week. Revised 2026-09-10 after decision review.
 Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
@@ -17,7 +17,7 @@ Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
 | 6 | Classification | Local Ollama model from the start | User's call, against the heuristics-first recommendation. Mitigated by logging a rules baseline alongside (§4). |
 | 7 | Paper half | `scannerd` + Paperless-ngx | Saves ~4 months. You write capture only; OCR, tagging, archive and search already exist. Cost: a Docker container on the Pi/NAS. |
 | 8 | Licence | Private now, AGPL-3.0 at publish | Sole copyright holder can always dual-license, so AGPL costs nothing and protects the SaaS option. |
-| 9 | Name | `fuckmail` as working title | Private repo. Keep it renameable: never in crate names, bundle ID, or schema. |
+| 9 | Name | `kuverta` as working title | Private repo. Keep it renameable: never in crate names, bundle ID, or schema. |
 
 **Deferred, not decided:** SaaS/multi-device sync, OpenPGP, mobile app, distribution. Revisit at month 9.
 
@@ -25,7 +25,7 @@ Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
 
 ## 1. What v1 actually is
 
-fuckmail syncs your mail over IMAP, classifies everything, and gives you one triage surface you can act from: read, reply, send, and file. Scanned paper lands in the same surface.
+kuverta syncs your mail over IMAP, classifies everything, and gives you one triage surface you can act from: read, reply, send, and file. Scanned paper lands in the same surface.
 
 **Still non-goals:** HTML mail *composition*, OpenPGP, multi-user, mobile, anything signed or distributable. Rendering received HTML, threading UI and attachments are now in scope, but late — they are UI work, not core work.
 
@@ -38,7 +38,7 @@ Decision 2 changed after month 4. Splitting write into two stages keeps most of 
 | Stage | What it is | What it costs | Safety |
 |---|---|---|---|
 | **Send** | Compose, reply, forward, SMTP submission, `APPEND` to Sent | Contained: a new crate, a schema migration, no change to the sync path | IMAP stays `EXAMINE`-only. Purely additive — a bug can misdeliver a message it was asked to send, but cannot touch stored mail |
-| **Mailbox mutation** | Archive, delete, move, mark-read from inside fuckmail | The expensive half: `SELECT`+`STORE`+`MOVE`, a durable operation queue, conflict resolution against server-side changes, and an undo window | Gives up the structural guarantee, and earns back what it can: intent is recorded before the server is touched, no UID is acted on without proving it still holds the expected message, and **delete means move-to-Trash** — nothing here destroys mail permanently |
+| **Mailbox mutation** | Archive, delete, move, mark-read from inside kuverta | The expensive half: `SELECT`+`STORE`+`MOVE`, a durable operation queue, conflict resolution against server-side changes, and an undo window | Gives up the structural guarantee, and earns back what it can: intent is recorded before the server is touched, no UID is acted on without proving it still holds the expected message, and **delete means move-to-Trash** — nothing here destroys mail permanently |
 
 Send ships and gets dogfooded before mutation starts. The point of the ordering is that if motivation or time runs out mid-write, it runs out with the safe half done rather than the dangerous half half-done.
 
@@ -49,7 +49,7 @@ Both stages have landed. What replaced the structural guarantee, and what the te
 - **Nothing is destroyed.** There is no expunge operation: delete moves to Trash. A bare `EXPUNGE` is never sent even as part of a move fallback, because it would remove every `\Deleted` message in the folder including ones another client marked.
 - **The local store is never guessed at.** The executor changes nothing locally; the sync pass observes the server afterwards, using the same code that reconciles changes made from any other client.
 
-The remaining risk is honest and unshrinkable: fuckmail can now move your mail, and a bug in the queue can move it somewhere you did not ask for. It cannot delete it.
+The remaining risk is honest and unshrinkable: kuverta can now move your mail, and a bug in the queue can move it somewhere you did not ask for. It cannot delete it.
 
 ---
 
@@ -107,7 +107,7 @@ The remaining risk is honest and unshrinkable: fuckmail can now move your mail, 
 | **3** | Auth trait. Gmail app password + label dedup verified. M365 Azure app + device flow. | All three accounts sync |
 | **4** | `core-rpc`. Triage UI in Tauri: list, filter, categorise, keyboard-first. `core-rules` baseline. | You open it daily |
 | **5** | `core-ai` → Ollama. Correction logging. Measure model vs. baseline. | **SHIPPABLE — daily driver** |
-| **5–6** | `core-smtp`: compose, reply, SMTP submission, `APPEND` to Sent (§1a stage 1). | You reply from fuckmail |
+| **5–6** | `core-smtp`: compose, reply, SMTP submission, `APPEND` to Sent (§1a stage 1). | You reply from kuverta |
 | **6** | Mailbox mutation: operation queue, `STORE`/`MOVE`, conflict resolution, undo (§1a stage 2). | Apple Mail stays closed |
 | **6–7** | Paperless-ngx in Docker. `scannerd` on the Pi: page detect → capture → deskew → crop → upload with offline spooling. | Paper is searchable |
 | **8** | Unified inbox: documents and mail as one item type in one triage surface. | **The actual product** |
@@ -155,10 +155,10 @@ arrives — has a baseline to be measured against across the whole mailbox rathe
 than from the day it is switched on. On the seeded fixtures it is 8/8 correct,
 with confidence that tracks how clear-cut the evidence was. Corrections feed
 back in: a sender or list you have filed is filed that way next time,
-overriding the heuristics outright. `fuckmail triage` shows the result.
+overriding the heuristics outright. `kuverta triage` shows the result.
 
 Stage 1 of the write capability (§1a) is in: `core-smtp` composes RFC 5322
-messages and submits them over SMTP, and `fuckmail send` sends, replies and
+messages and submits them over SMTP, and `kuverta send` sends, replies and
 forwards from the command line, filing a copy in Sent via `APPEND`. `make e2e`
 now runs that loop end to end against the dev stack — sync, send, and the sent
 copy coming back on the next sync.
@@ -181,11 +181,11 @@ real TLS account — a path no test reaches, because the dev server is plaintext
 Every TLS config now names its provider, with a server-free regression test on
 each.
 
-Stage 2 landed too. `fuckmail archive`, `delete`, `move`, `read` and `unread`
-queue a change rather than performing one; `fuckmail sync` sends everything
+Stage 2 landed too. `kuverta archive`, `delete`, `move`, `read` and `unread`
+queue a change rather than performing one; `kuverta sync` sends everything
 whose undo window has elapsed and then reconciles, so one command does both.
-`fuckmail undo` cancels the last change that has not left the machine, and
-`fuckmail queue` shows what is waiting.
+`kuverta undo` cancels the last change that has not left the machine, and
+`kuverta queue` shows what is waiting.
 
 The executor is where the care went, and §1a lists what it guarantees. Nine
 integration tests against Dovecot cover the move, the flag change, both
@@ -220,7 +220,7 @@ everything above had only ever met Dovecot and nine synthetic fixtures:
   certificate verification as the implicit-TLS path. Tested against the dev
   server, which advertises STARTTLS with a self-signed certificate — so the test
   proves both that the upgrade happens and that the certificate is rejected.
-- **`fuckmail check`** reports what a server actually offers before anything
+- **`kuverta check`** reports what a server actually offers before anything
   depends on it: extensions, folder layout, where sent/archived/deleted mail
   will go, and with `--measure` how much a first sync will download.
 
@@ -241,7 +241,7 @@ That last one is the store's load-bearing invariant in its native habitat.
 Folders can be excluded from sync, by name or by special-use attribute. Gmail
 is the reason: its All Mail holds a copy of every message, so a mailbox whose
 mail averages two labels crosses the wire twice over. Deduplication keeps one
-row and one body, but it cannot give the bytes back. `fuckmail check` measures
+row and one body, but it cannot give the bytes back. `kuverta check` measures
 the difference and names the command; excluding costs visibility of archived
 mail, which lives only there, and says so.
 
@@ -356,7 +356,7 @@ a settings sheet with the account list beside the form it edits, IMAP and SMTP
 endpoints, the auth method, the excluded folders, and a **Verify** button that
 connects without changing anything and reports what it found — credentials,
 extensions, where mail will be filed, and what a first sync would fetch. That
-is the same answer `fuckmail check` gives, as a structure rather than as
+is the same answer `kuverta check` gives, as a structure rather than as
 printed lines, so neither has to be learned separately.
 
 Two rules live in the core rather than the form. A password goes one way: it

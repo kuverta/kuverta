@@ -29,7 +29,7 @@ pub enum StoreError {
 
     #[error(
         "database schema is version {found}, but this build only understands {supported}; \
-         it was written by a newer version of fuckmail"
+         it was written by a newer version of kuverta"
     )]
     SchemaTooNew { found: usize, supported: usize },
 
@@ -1152,7 +1152,7 @@ impl Store {
 
     /// Marks a letter read or unread here.
     ///
-    /// Unread is the absence of a row: a letter nobody has opened in fuckmail
+    /// Unread is the absence of a row: a letter nobody has opened in kuverta
     /// is unread, however long it has been in Paperless — which is what a
     /// freshly scanned letter should be.
     pub fn set_paper_read(&self, base_url: &str, document_id: i64, read: bool) -> Result<()> {

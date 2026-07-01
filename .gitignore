@@ -10,7 +10,7 @@
 .DS_Store
 /.devdata
 
-# The shared triage surface, copied in from the fuckbird repository by
+# The shared triage surface, copied in from the kuverta-bird repository by
 # `make triage-ui`. Generated, so it is not source here — keeping a second
 # copy of those files in this history would rot.
-/apps/desktop/ui/fuckbird
+/apps/desktop/ui/kuverta-bird

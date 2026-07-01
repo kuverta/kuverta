@@ -6,7 +6,7 @@
 //! listing and each document — rather than on what happens to be stored.
 //!
 //! Start the stack with `make dev-up`. Skips when Paperless is not answering;
-//! `FUCKMAIL_REQUIRE_DEV_SERVER=1` makes that a failure.
+//! `KUVERTA_REQUIRE_DEV_SERVER=1` makes that a failure.
 
 use core_paper::{PaperError, Paperless, Selector};
 
@@ -19,7 +19,7 @@ fn available() -> bool {
     )
     .is_ok();
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev Paperless on {BASE} is required but not reachable");
         }
         eprintln!("skipping: dev Paperless not running (`make dev-up`)");
