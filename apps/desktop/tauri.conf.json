@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "fuckmail",
+  "productName": "kuverta",
   "version": "0.1.0",
   "identifier": "local.triage.desktop",
   "build": {
@@ -9,7 +9,7 @@
   "app": {
     "windows": [
       {
-        "title": "fuckmail",
+        "title": "kuverta",
         "width": 1200,
         "height": 800
       }

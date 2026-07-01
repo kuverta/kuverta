@@ -95,8 +95,8 @@ pub struct PaperRow {
     pub added_utc: Option<i64>,
     pub from: String,
     pub subject: String,
-    /// Until it is opened in fuckmail. Paperless keeps no read state, so this
-    /// is fuckmail's own, which is what a freshly scanned letter should be.
+    /// Until it is opened in kuverta. Paperless keeps no read state, so this
+    /// is kuverta's own, which is what a freshly scanned letter should be.
     pub unread: bool,
     /// The vision model whose transcript the row was read from, if any.
     pub transcribed_by: Option<String>,
@@ -249,9 +249,9 @@ impl Core {
         })
     }
 
-    /// Marks a letter read or unread in fuckmail.
+    /// Marks a letter read or unread in kuverta.
     ///
-    /// Paperless keeps no read state, so this is fuckmail's own — kept per
+    /// Paperless keeps no read state, so this is kuverta's own — kept per
     /// instance, so a letter read under one address is read under any other
     /// that shows it.
     pub fn set_paper_read(&self, mailbox_id: i64, document_id: i64, read: bool) -> Result<()> {
@@ -429,7 +429,7 @@ pub struct PaperSession {
     /// Documents the user filed by hand, and where. A person's filing of one
     /// letter is not evidence to weigh against the rules — it is the answer.
     overrides: HashMap<i64, core_rules::Category>,
-    /// Letters opened in fuckmail.
+    /// Letters opened in kuverta.
     read: HashSet<i64>,
     /// Transcripts kept for this instance, by document.
     transcripts: HashMap<i64, Transcript>,
@@ -449,7 +449,7 @@ impl PaperSession {
     /// One window of the address's post, newest first by the letter's date or
     /// by when it was scanned, and within one category when one is given.
     ///
-    /// A category is fuckmail's, not Paperless's, so it cannot be a filter in
+    /// A category is kuverta's, not Paperless's, so it cannot be a filter in
     /// the request: the letters are classified here and the window taken from
     /// those in the category. That means fetching them all, which for a
     /// household's post is a few requests.
@@ -527,7 +527,7 @@ impl PaperSession {
         Ok(counts)
     }
 
-    /// How many of the address's letters have not been opened in fuckmail.
+    /// How many of the address's letters have not been opened in kuverta.
     pub async fn unread_count(&self) -> Result<usize> {
         let ids = self
             .client

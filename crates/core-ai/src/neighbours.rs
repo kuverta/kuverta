@@ -164,7 +164,7 @@ pub struct Hybrid {
 
 /// The measured default: a similarity of 0.85 and a four-in-five agreement.
 ///
-/// From `fuckmail eval`'s sweep on the generated corpus (decisions §16). On
+/// From `kuverta eval`'s sweep on the generated corpus (decisions §16). On
 /// senders never filed, accuracy fell below the model's from 0.75 down and
 /// matched it from 0.80 up; on senders filed before, every threshold to 0.90
 /// answered everything from the filings. 0.80 is exactly where the curve

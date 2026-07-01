@@ -11,14 +11,14 @@ use std::process::{Command, Stdio};
 use core_rpc::Core;
 use core_store::model::*;
 use core_store::{Blobs, Store};
-use fuckmail_mcp::{Config, Server, SUPPORTED_VERSIONS};
+use kuverta_mcp::{Config, Server, SUPPORTED_VERSIONS};
 use serde_json::{json, Value};
 
 struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("fuckmail-mcp-{}-{name}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kuverta-mcp-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -34,17 +34,17 @@ impl Drop for TempDir {
 /// A store with one account, INBOX, Archive and Trash, and `count` messages.
 fn server(name: &str, count: usize, config: Config) -> (Server, i64, TempDir) {
     let dir = TempDir::new(name);
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     let blobs = Blobs::new(dir.0.join("blobs"));
 
     let account = store
         .add_account(&NewAccount {
             label: "Dev".into(),
-            email: "dev@fuckmail.test".into(),
+            email: "dev@kuverta.test".into(),
             imap_host: "127.0.0.1".into(),
             imap_port: 993,
             imap_security: ImapSecurity::Tls,
-            username: "dev@fuckmail.test".into(),
+            username: "dev@kuverta.test".into(),
             auth_method: "app_password".into(),
             ..Default::default()
         })
@@ -425,8 +425,8 @@ async fn an_assistants_filing_is_shown_and_not_learned_from() {
 fn over_stdio_stdout_carries_the_protocol_and_nothing_else() {
     // A single stray log line on stdout is a malformed message to the client.
     let dir = TempDir::new("stdio");
-    let mut child = Command::new(env!("CARGO_BIN_EXE_fuckmail-mcp"))
-        .env("FUCKMAIL_DATA_DIR", &dir.0)
+    let mut child = Command::new(env!("CARGO_BIN_EXE_kuverta-mcp"))
+        .env("KUVERTA_DATA_DIR", &dir.0)
         .env("RUST_LOG", "debug")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

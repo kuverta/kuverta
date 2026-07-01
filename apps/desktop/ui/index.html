@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>fuckmail</title>
+  <title>kuverta</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
-    <strong>fuckmail</strong>
+    <strong>kuverta</strong>
     <span id="status">starting…</span>
     <input id="search" type="search" placeholder="/ to search" spellcheck="false">
     <!--
       The shared triage surface, which this app and the Thunderbird extension
       both mount over their own adapter. Installed by `make triage-ui`, so the
-      link is dead until that has been run — see docs or the fuckbird repo.
+      link is dead until that has been run — see docs or the kuverta-bird repo.
     -->
-    <a id="triage-link" href="fuckbird/hosts/fuckmail/ui/triage.html">triage</a>
+    <a id="triage-link" href="kuverta-bird/hosts/kuverta/ui/triage.html">triage</a>
   </header>
 
   <!-- Accounts, their folders, and the classifier's categories. The one place
@@ -160,7 +160,7 @@
               <label>Client id<input name="oauth_client_id" spellcheck="false"></label>
               <label>Tenant<input name="oauth_tenant" placeholder="common" spellcheck="false"></label>
             </div>
-            <p class="hint">Authorise with <code>fuckmail login --email …</code>; the browser step needs a terminal.</p>
+            <p class="hint">Authorise with <code>kuverta login --email …</code>; the browser step needs a terminal.</p>
           </div>
 
           <div id="password-fields">
@@ -226,7 +226,7 @@
           <datalist id="vision-models"></datalist>
           <p class="hint ai-note" data-note="vision"></p>
 
-          <div class="form-heading">Sorting mail <span class="hint">fuckmail classify — any chat model</span></div>
+          <div class="form-heading">Sorting mail <span class="hint">kuverta classify — any chat model</span></div>
           <div class="row3">
             <label>Provider<select name="chat_provider"></select></label>
             <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>

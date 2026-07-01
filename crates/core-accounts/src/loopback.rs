@@ -312,7 +312,7 @@ async fn read_request_target(socket: &mut tokio::net::TcpStream) -> Option<Strin
 async fn respond(socket: &mut tokio::net::TcpStream, message: &str) {
     let body = format!(
         "<!doctype html><meta charset=\"utf-8\">\
-         <title>fuckmail</title>\
+         <title>kuverta</title>\
          <body style=\"font:16px system-ui;margin:4rem auto;max-width:30rem\">\
          <p>{message}</p>"
     );

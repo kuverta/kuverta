@@ -7,12 +7,12 @@ than edited into the reasoning, and recorded in [decisions.md](decisions.md).
 
 > **Since (2026-09-11):** this brief assumes a new repository, and there was one
 > for a day. It has been merged back: the triage surface and the classifier live
-> in [`fuckbird/`](../fuckbird/) alongside the Rust client, because they are one
+> in [`kuverta-bird/`](../kuverta-bird/) alongside the Rust client, because they are one
 > product with two hosts rather than two projects. See
 > [decisions.md](decisions.md) §4 and §10.
 
 This is the starting brief for building the same idea as
-`fuckmail` on top of Thunderbird instead of from scratch. The
+`kuverta` on top of Thunderbird instead of from scratch. The
 motivation is the add-on ecosystem: Thunderbird extensions need Gecko, Gecko
 cannot be embedded outside Mozilla's own applications, and so running them means
 *being* a Thunderbird rather than talking to one.
@@ -55,7 +55,7 @@ list. Most of what follows is an add-on.
 
 ## 2. What Thunderbird already gives you
 
-Do not rebuild these. Every one of them exists in `fuckmail` and every one is
+Do not rebuild these. Every one of them exists in `kuverta` and every one is
 redundant here:
 
 - IMAP sync, including CONDSTORE/QRESYNC and IDLE
@@ -65,7 +65,7 @@ redundant here:
 - Address book, filters, tagging, threading, HTML rendering, attachments
 - The add-on ecosystem, which is the entire point
 
-In `fuckmail` terms that is `core-proto`, `core-store`, `core-smtp`,
+In `kuverta` terms that is `core-proto`, `core-store`, `core-smtp`,
 `core-accounts` and most of `core-rpc` — around 11,000 of 15,500 lines. Deleting
 them is the price of admission and it is the right trade *if* the add-ons are
 worth it.
@@ -96,7 +96,7 @@ primary axis rather than folders.
 
 > **Since (2026-09-11):** built, and built once for two hosts rather than for
 > Thunderbird alone — the surface is `core/view/triage.js`, driven by
-> `core/triage.js`, over the port in `core/host.js`. Thunderbird and `fuckmail`
+> `core/triage.js`, over the port in `core/host.js`. Thunderbird and `kuverta`
 > are both adapters behind it. See [decisions.md](decisions.md) §4.
 
 ### 3.2 The deterministic classifier
@@ -124,7 +124,7 @@ notification 61, personal 33, marketing 18. Note that bulk marketing carrying
 weakness, and a good first target for the model.
 
 > **Since (2026-09-11):** these counts are exactly right, and they describe one
-> mailbox rather than the generator. That mailbox is still in `fuckmail`'s
+> mailbox rather than the generator. That mailbox is still in `kuverta`'s
 > scratch store — 251 messages, 77/62/61/33/18 — and it is `fill-mailbox.py`
 > output from an earlier run plus one real message from the provider. A fresh
 > `--dump 250` gives 79/62/59/32/18 instead, because the draw differs; every
@@ -136,7 +136,7 @@ weakness, and a good first target for the model.
 
 ### 3.3 The local model, and how to avoid fooling yourself about it
 
-The plan in `fuckmail` never got to this, and its design should survive intact:
+The plan in `kuverta` never got to this, and its design should survive intact:
 
 1. **Log both verdicts, always.** Run the rules baseline alongside the model and
    record where they disagree and which was right. Without this you never find
@@ -300,12 +300,12 @@ add-on genuinely cannot do.
 3. **Embeddings or prompting** for classification — spike both, briefly. (§3.3)
 4. **Licence**, once §5 has been checked properly.
 5. **Name**, needed before stage 4.
-6. ~~**What to do with `fuckmail`.** It syncs, sends, triages and has 171
+6. ~~**What to do with `kuverta`.** It syncs, sends, triages and has 171
    passing tests. Options: archive it as a reference, keep it as the
    native-messaging backend, or keep running it alongside — it and Thunderbird
    coexist on the same IMAP account today.~~
    **Closed 2026-09-11: neither.** There was a fourth answer the list missed.
-   `fuckmail` is a *host*, and so is Thunderbird; the product is the triage
+   `kuverta` is a *host*, and so is Thunderbird; the product is the triage
    surface and the classifier, which now run on both from one core behind a
    tested contract. That also takes the weight out of decision 1 above: whether
    the fork happens stops being load-bearing when the thing that matters runs

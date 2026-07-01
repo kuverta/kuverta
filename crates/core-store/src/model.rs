@@ -372,7 +372,7 @@ pub struct Operation {
 /// special-use attribute, anything else against its name. The attribute form
 /// is the more robust of the two — `\All` means Gmail's All Mail whatever
 /// Google decides to call it — but the name form is what someone reading
-/// `fuckmail check` can copy.
+/// `kuverta check` can copy.
 ///
 /// Matching is case-insensitive, because IMAP folder names are compared that
 /// way in every other part of this codebase and a skip that silently did not

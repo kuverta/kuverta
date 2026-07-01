@@ -210,10 +210,10 @@ mod tests {
 
     fn message() -> BuiltMessage {
         BuiltMessage {
-            message_id: "test@fuckmail.test".into(),
+            message_id: "test@kuverta.test".into(),
             rfc822: b"Subject: hi\r\n\r\nhi".to_vec(),
             recipients: vec!["jane@example.com".into()],
-            sender: "erika@fuckmail.test".into(),
+            sender: "erika@kuverta.test".into(),
         }
     }
 
@@ -235,7 +235,7 @@ mod tests {
             port: 25,
             security: SmtpSecurity::Plaintext,
         };
-        let auth = EnvPassword::new("FUCKMAIL_TEST_UNSET");
+        let auth = EnvPassword::new("KUVERTA_TEST_UNSET");
         let result = submit(&config, "me@example.com", &auth, &message()).await;
 
         assert!(
@@ -254,8 +254,8 @@ mod tests {
             port: 1025,
             security: SmtpSecurity::Plaintext,
         };
-        let auth = EnvPassword::new("FUCKMAIL_TEST_UNSET");
-        let result = submit(&config, "dev@fuckmail.test", &auth, &message()).await;
+        let auth = EnvPassword::new("KUVERTA_TEST_UNSET");
+        let result = submit(&config, "dev@kuverta.test", &auth, &message()).await;
 
         assert!(
             matches!(result, Err(SubmitError::Auth(_))),

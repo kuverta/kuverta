@@ -17,7 +17,7 @@ impl TempDir {
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!("fuckmail-it-{}-{n}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kuverta-it-{}-{n}", std::process::id()));
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
     }

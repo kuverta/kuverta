@@ -31,7 +31,7 @@ fn server_available() -> bool {
     .is_ok();
 
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("Gmail-shaped server on {HOST}:{PORT} is required but not reachable");
         }
         eprintln!("skipping: Gmail-shaped dev server not running (`make dev-up`)");
@@ -42,8 +42,8 @@ fn server_available() -> bool {
 fn auth() -> EnvPassword {
     // SAFETY: set before any thread reads it; the value is the dev password
     // from docker-compose.yml, not a real credential.
-    unsafe { std::env::set_var("FUCKMAIL_GMAIL_PASSWORD", "devpass") };
-    EnvPassword::new("FUCKMAIL_GMAIL_PASSWORD")
+    unsafe { std::env::set_var("KUVERTA_GMAIL_PASSWORD", "devpass") };
+    EnvPassword::new("KUVERTA_GMAIL_PASSWORD")
 }
 
 /// Test-only write access, for putting mail where the test needs it.

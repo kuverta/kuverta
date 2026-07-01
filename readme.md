@@ -1,4 +1,4 @@
-# fuckmail
+# kuverta
 
 Working title. A **mail client** built around triage: it syncs your IMAP
 accounts into a local store, classifies everything, and gives you one
@@ -22,7 +22,7 @@ they are not the same thing wearing two hats:
 
 - **The Rust half** — `crates/` and `apps/` — is a mail client. IMAP, SMTP, the
   store, accounts, the deterministic classifier.
-- **The JavaScript half** — [`fuckbird/`](fuckbird/) — is the triage surface and
+- **The JavaScript half** — [`kuverta-bird/`](kuverta-bird/) — is the triage surface and
   the classifier ported to run wherever the mail is. It mounts over this client
   *and* over Thunderbird as an extension, from the same code, behind a contract
   each host implements.
@@ -110,12 +110,12 @@ Either from the window — `./run.sh`, then `,` for settings, fill in the form
 and press **Verify** before saving — or from the CLI:
 
 ```sh
-cargo run -p fuckmail-cli -- add-account \
+cargo run -p kuverta-cli -- add-account \
     --email you@example.de --host imap.example.de --port 993 \
     --smtp-host smtp.example.de --smtp-port 587 --smtp-security starttls
-cargo run -p fuckmail-cli -- set-password --email you@example.de   # reads stdin
-cargo run -p fuckmail-cli -- check --measure   # connect, report, download nothing
-cargo run -p fuckmail-cli -- sync
+cargo run -p kuverta-cli -- set-password --email you@example.de   # reads stdin
+cargo run -p kuverta-cli -- check --measure   # connect, report, download nothing
+cargo run -p kuverta-cli -- sync
 ```
 
 `check` is worth running first on any account you have not synced before: it
@@ -149,10 +149,10 @@ Against that, or any existing instance:
 
 ```sh
 export PAPERLESS_TOKEN=...          # Paperless: settings → users → create token
-fuckmail paper --check              # what is there, before anything depends on it
-fuckmail paper                      # list it, classified, like `fuckmail list`
-fuckmail paper --tag home           # one address of several in one instance
-fuckmail paper --query rechnung     # full-text, over the OCR'd text
+kuverta paper --check              # what is there, before anything depends on it
+kuverta paper                      # list it, classified, like `kuverta list`
+kuverta paper --tag home           # one address of several in one instance
+kuverta paper --query rechnung     # full-text, over the OCR'd text
 ```
 
 `--tag`, `--correspondent` and `--storage-path` are how one Paperless serves
@@ -196,12 +196,12 @@ own say-so. Its verdicts are recorded beside the rules' and compared; they never
 change what the list shows.
 
 ```sh
-fuckmail classify --email you@example.com   # after a sync, never during one
-fuckmail disagreements                      # where it and the rules differ
+kuverta classify --email you@example.com   # after a sync, never during one
+kuverta disagreements                      # where it and the rules differ
 
-python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl
-fuckmail eval labelled.jsonl                # rules vs prompting vs embeddings
-fuckmail eval labelled.jsonl --split sender # the same, on senders never filed
+python3 docker/fill-mailbox.py --dump 250 | node kuverta-bird/tools/dump-facts.js > labelled.jsonl
+kuverta eval labelled.jsonl                # rules vs prompting vs embeddings
+kuverta eval labelled.jsonl --split sender # the same, on senders never filed
 ```
 
 Which model sorts mail, and which reads scanned post, is chosen in the desktop
@@ -227,7 +227,7 @@ agree, the model otherwise — at every threshold. At the default of 0.85 that i
 
 ## For an assistant
 
-[`fuckmail-mcp`](apps/mcp/) serves the mailbox — mail and scanned post — over
+[`kuverta-mcp`](apps/mcp/) serves the mailbox — mail and scanned post — over
 MCP on stdio. Read-only unless started with `--allow-writes`, and even then it
 cannot send, cannot delete, and holds every change for five minutes before it
 may reach the server, cancellable the whole time. An assistant's filing shows in
@@ -249,8 +249,8 @@ the list but does not teach the classifier; only yours do.
 | `apps/scannerd` | Pi capture daemon: page detect → capture → spool → upload |
 | `apps/mcp` | The mailbox as an MCP server, for an assistant |
 | `crates/core-paper` | Paperless-ngx read as a mailbox: post, in the shape mail has |
-| `fuckbird/core` | The shared triage surface and the classifier, in JavaScript |
-| `fuckbird/hosts` | One adapter per host: this client, and Thunderbird |
+| `kuverta-bird/core` | The shared triage surface and the classifier, in JavaScript |
+| `kuverta-bird/hosts` | One adapter per host: this client, and Thunderbird |
 | `docker/` | Dev stack: Dovecot, an SMTP sink, a Gmail shape, Ollama, Paperless |
 | `docs/` | Plan, evaluation, briefs, and the decisions log |
 

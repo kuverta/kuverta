@@ -53,7 +53,7 @@ jobs:
       - name: Test
         run: cargo test --workspace
         env:
-          FUCKMAIL_REQUIRE_DEV_SERVER: "1"
+          KUVERTA_REQUIRE_DEV_SERVER: "1"
 
       - name: Dump server logs on failure
         if: failure()

@@ -1349,62 +1349,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42703706b716c37f96a77aea830392ad231f44c9e9a67872fa5548707e11b11c"
 
 [[package]]
-name = "fuckmail-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "core-accounts",
- "core-ai",
- "core-paper",
- "core-proto",
- "core-rpc",
- "core-rules",
- "core-smtp",
- "core-store",
- "futures",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fuckmail-desktop"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "core-proto",
- "core-rpc",
- "core-store",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "fuckmail-mcp"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "core-rpc",
- "core-rules",
- "core-store",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "futures"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2424,6 +2368,62 @@ dependencies = [
  "security-framework 3.7.0",
  "windows-sys 0.60.2",
  "zeroize",
+]
+
+[[package]]
+name = "kuverta-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "core-accounts",
+ "core-ai",
+ "core-paper",
+ "core-proto",
+ "core-rpc",
+ "core-rules",
+ "core-smtp",
+ "core-store",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "kuverta-desktop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "core-proto",
+ "core-rpc",
+ "core-store",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "kuverta-mcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "core-rpc",
+ "core-rules",
+ "core-store",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

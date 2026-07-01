@@ -24,7 +24,7 @@ use crate::{AuthError, AuthProvider, Credential, Result};
 /// Refresh a little before expiry so a token cannot lapse mid-sync.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(120);
 
-const KEYRING_SERVICE: &str = "fuckmail-oauth";
+const KEYRING_SERVICE: &str = "kuverta-oauth";
 
 /// Endpoints and client identity for one provider.
 #[derive(Debug, Clone)]
