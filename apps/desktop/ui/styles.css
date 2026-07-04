@@ -1,35 +1,55 @@
-/* Apple Mail is the reference. What that means concretely: three panes side by
-   side rather than stacked; a recessed sidebar with rounded selection pills
-   and icons; list rows of three lines — sender, subject, preview — rather than
-   a dense table; separators inset from the left so they read as dividers
-   between rows and not as a grid. */
+/* Apple Mail is the reference for the layout: three panes side by side rather
+   than stacked; a recessed sidebar with rounded selection pills and icons;
+   list rows of three lines — sender, subject, preview — rather than a dense
+   table; separators inset from the left so they read as dividers between rows
+   and not as a grid.
+
+   The colours are kuverta's own (assets/brand/): petrol for the accent, paper
+   for surfaces, amber only where something is asking to be dealt with. */
 
 :root {
   --row-height: 74px;
 
   --bg: #ffffff;
   /* The sidebar is recessed, not the same sheet as the content. */
-  --sidebar-bg: #f2f1f6;
-  --fg: #1d1d1f;
-  --muted: #86868b;
-  --line: #e3e3e6;
-  --accent: #0a6cff;
+  --sidebar-bg: #f3f2ef;
+  --raised: #ffffff;
+  --fg: #1c2526;
+  --muted: #7c8586;
+  --line: #e2e0db;
+  --line-strong: #cfccc5;
+  --accent: #1d6b6f;
+  --accent-hover: #185b5e;
+  --accent-soft: #dcebea;
   --accent-fg: #ffffff;
-  --selected: #d9d9de;
-  --error: #d0342c;
+  --amber: #e9a23b;
+  --amber-fg: #3a2606;
+  --selected: #e2e0db;
+  --error: #c2362c;
+  --ok: #2e8b57;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
+  --radius: 8px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #1e1e1e;
-    --sidebar-bg: #1a1a1c;
-    --fg: #e8e8ea;
-    --muted: #8e8e93;
-    --line: #323236;
-    --accent: #3f8cff;
+    --bg: #1b1f20;
+    --sidebar-bg: #161a1b;
+    --raised: #22282a;
+    --fg: #e7eaea;
+    --muted: #8c9596;
+    --line: #2d3436;
+    --line-strong: #3d4648;
+    --accent: #2a7f7c;
+    --accent-hover: #31908c;
+    --accent-soft: #1f3a3a;
     --accent-fg: #ffffff;
-    --selected: #333338;
-    --error: #ff6961;
+    --amber: #eaa843;
+    --amber-fg: #2b1c03;
+    --selected: #2b3234;
+    --error: #ff6b61;
+    --ok: #5cc98a;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
   }
 }
 
@@ -45,12 +65,58 @@ html, body {
   overflow: hidden;
 }
 
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* One button look everywhere, so a new dialog does not need its own. */
+button {
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--fg);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button:hover:not(:disabled) { border-color: var(--muted); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+button.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+button.danger { color: var(--error); border-color: color-mix(in srgb, var(--error) 55%, transparent); }
+button.danger-fill { background: var(--error); border-color: var(--error); color: #fff; }
+button.danger-fill:hover:not(:disabled) { background: color-mix(in srgb, var(--error) 88%, black); border-color: transparent; }
+
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--fg);
+  min-width: 0;
+}
+
+input[type="checkbox"] { accent-color: var(--accent); }
+
+.spacer { flex: 1; }
+.hint { color: var(--muted); font-size: 11.5px; }
+.hint.warn { color: var(--error); }
+
 /* Toolbar across the top; below it the three panes, side by side. Each pane
    scrolls on its own, so anything containing a scroller needs `min-height: 0`
    — without it a long message stretches the row instead of scrolling. */
 body {
   display: grid;
-  grid-template-columns: 232px minmax(300px, 380px) 1fr;
+  grid-template-columns: 236px minmax(300px, 390px) 1fr;
   grid-template-rows: auto 1fr auto;
   height: 100vh;
 }
@@ -59,14 +125,68 @@ header {
   grid-column: 1 / -1;
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 14px;
+  gap: 10px;
+  padding: 8px 12px 8px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--sidebar-bg);
 }
 
-header strong { letter-spacing: -0.01em; }
-header #status { color: var(--muted); flex: 1; }
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg);
+}
+
+.brand strong { letter-spacing: -0.01em; font-size: 14px; }
+.brand-mark { width: 18px; height: 18px; flex: none; }
+.brand-mark .brand-flap { fill: var(--amber); }
+
+header #status {
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Header controls: quiet until hovered, except the one that starts something. */
+.tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  text-decoration: none;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.tool:hover { background: var(--selected); border-color: transparent; }
+.tool .icon { width: 15px; height: 15px; flex: none; }
+.tool.icon-only { padding: 4px 6px; }
+.tool.primary { background: var(--accent); color: var(--accent-fg); }
+.tool.primary:hover { background: var(--accent-hover); }
+
+/* What needs doing, in the one colour that means it. */
+.badge {
+  min-width: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--amber);
+  color: var(--amber-fg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.badge[hidden] { display: none; }
 
 footer {
   grid-column: 1 / -1;
@@ -77,16 +197,15 @@ footer {
   background: var(--sidebar-bg);
   color: var(--muted);
   font-size: 11.5px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 #search {
-  width: 240px;
-  padding: 4px 9px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+  width: 220px;
+  padding: 4px 10px;
+  border-radius: 7px;
   background: var(--bg);
-  color: var(--fg);
-  font: inherit;
 }
 
 /* -- sidebar ------------------------------------------------------------- */
@@ -106,6 +225,29 @@ footer {
   font-weight: 600;
 }
 
+.sidebar-heading.with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.heading-action {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 20px;
+  opacity: 0;
+}
+
+.sidebar-heading:hover .heading-action,
+.heading-action:focus-visible { opacity: 1; }
+.heading-action:hover { background: var(--selected); color: var(--fg); }
+
 /* A rounded pill inset from the edges, not a full-bleed bar. That is most of
    what makes a sidebar look like this one rather than a table of contents. */
 .nav-item {
@@ -124,7 +266,7 @@ footer {
   cursor: pointer;
 }
 
-.nav-item:hover { background: var(--selected); }
+.nav-item:hover { background: var(--selected); border-color: transparent; }
 
 .nav-item.active {
   background: var(--accent);
@@ -154,7 +296,8 @@ footer {
   font-size: 12px;
 }
 
-.nav-item .count.unread { font-weight: 600; }
+.nav-item .count.unread { font-weight: 600; color: var(--fg); }
+.nav-item.active .count.unread { color: var(--accent-fg); }
 
 #accounts:not(:empty) {
   border-bottom: 1px solid var(--line);
@@ -171,6 +314,8 @@ footer {
   padding-bottom: 6px;
   margin-bottom: 6px;
 }
+
+#outbox-nav:not(:empty) { margin-top: 6px; }
 
 /* A postbox has no folders or categories. The hidden attribute says so, and
    must win over any display rule a nav picks up. */
@@ -193,6 +338,7 @@ footer {
   border-bottom: 1px solid var(--line);
   color: var(--muted);
   font-size: 11.5px;
+  min-height: 33px;
 }
 
 #scope button {
@@ -204,6 +350,8 @@ footer {
   font: inherit;
   cursor: pointer;
 }
+
+#scope .scope-name { color: var(--fg); font-weight: 600; }
 
 #viewport {
   position: relative;
@@ -313,10 +461,34 @@ footer {
 }
 
 #reading {
-  padding: 18px 24px;
+  padding: 14px 24px 18px;
   overflow-y: auto;
   min-height: 0;
 }
+
+.reading-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -8px 14px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--line);
+}
+
+.reading-actions button { font-size: 12px; padding: 3px 11px; }
+.reading-actions[hidden] { display: none !important; }
+
+.security-note {
+  margin: -6px 0 14px;
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+
+.security-note.bad { background: color-mix(in srgb, var(--error) 14%, transparent); color: var(--error); }
+.security-note[hidden] { display: none !important; }
+.security-note button { margin-left: 8px; font-size: 11.5px; padding: 1px 8px; }
 
 /* Post: its OCR text or the scan itself, as two tabs. */
 .tabs {
@@ -326,14 +498,10 @@ footer {
 }
 
 .tabs button {
-  font: inherit;
   font-size: 12px;
   padding: 3px 14px;
   border: 1px solid var(--line);
-  border-radius: 6px;
   background: transparent;
-  color: var(--fg);
-  cursor: pointer;
 }
 
 .tabs button.active {
@@ -377,14 +545,12 @@ footer {
 
 #reading-post button,
 #scope .order button {
-  font: inherit;
   font-size: 12px;
   padding: 2px 10px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: transparent;
   color: var(--fg);
-  cursor: pointer;
 }
 
 /* Post's two dates, at the right of the list's header. */
@@ -424,12 +590,12 @@ footer {
 
 #reading h2 {
   margin: 0 0 6px;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-#reading p {
+#reading p#reading-meta {
   margin: 0 0 16px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line);
@@ -441,7 +607,7 @@ footer {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font: 13px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif,
+  font: 13.5px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif,
     system-ui, sans-serif;
 }
 
@@ -451,8 +617,9 @@ footer {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 60vh;
+  max-height: 64vh;
   overflow-y: auto;
+  background: var(--bg);
 }
 
 .compose-head {
@@ -463,18 +630,24 @@ footer {
 
 .compose-head span { color: var(--muted); font-size: 11.5px; }
 
-#compose input,
+#compose input:not([type="checkbox"]),
 #compose textarea {
   width: 100%;
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
   background: var(--bg);
-  color: var(--fg);
-  font: inherit;
 }
 
-#compose textarea { resize: vertical; }
+#compose textarea { resize: vertical; line-height: 1.55; }
+
+.compose-security {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12.5px;
+}
+
+.compose-security label { display: inline-flex; gap: 5px; align-items: center; }
+.compose-security[hidden] { display: none !important; }
+.compose-security .hint.warn { color: var(--error); }
 
 .compose-actions {
   display: flex;
@@ -482,40 +655,64 @@ footer {
   gap: 8px;
 }
 
-.compose-actions button {
-  padding: 4px 14px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+.compose-actions .hint { margin-left: auto; }
+
+/* -- the send-later popover ---------------------------------------------- */
+
+.split { position: relative; }
+
+.popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 20;
+  width: 300px;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.popover[hidden] { display: none !important; }
+.popover-title { font-weight: 600; }
+.popover-field { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 11.5px; }
+.popover-actions { display: flex; justify-content: flex-end; gap: 6px; }
+
+.preset-list { display: flex; flex-direction: column; gap: 2px; }
+
+.preset-list button {
+  display: flex;
+  justify-content: space-between;
+  border: 0;
   background: transparent;
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
+  text-align: left;
+  padding: 5px 8px;
 }
 
-#compose-send {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-}
-
-#compose-send:disabled { opacity: 0.5; cursor: default; }
-.compose-actions .hint { color: var(--muted); font-size: 11.5px; }
+.preset-list button:hover { background: var(--selected); }
+.preset-list .when { color: var(--muted); font-size: 11.5px; }
 
 .toast {
   position: fixed;
   bottom: 38px;
   left: 50%;
   transform: translateX(-50%);
-  padding: 7px 14px;
-  border-radius: 8px;
+  z-index: 40;
+  max-width: min(640px, 90vw);
+  padding: 8px 14px;
+  border-radius: 9px;
   border: 1px solid var(--line);
-  background: var(--bg);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  background: var(--raised);
+  box-shadow: var(--shadow);
 }
 
 .toast.error { color: var(--error); border-color: var(--error); }
 
-/* -- settings ------------------------------------------------------------ */
+/* -- sheets and dialogs -------------------------------------------------- */
 
 /* A sheet over the window rather than a replacement for the panes, so leaving
    it puts you back exactly where you were. */
@@ -524,17 +721,18 @@ footer {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgb(0 0 0 / 0.35);
+  background: rgb(0 0 0 / 0.32);
   z-index: 10;
 }
 
+.sheet.dialog { z-index: 30; }
 .sheet[hidden] { display: none !important; }
 
 .sheet-panel {
   display: grid;
   grid-template-rows: auto 1fr;
-  width: min(860px, 92vw);
-  height: min(680px, 88vh);
+  width: min(920px, 94vw);
+  height: min(700px, 90vh);
   background: var(--bg);
   border-radius: 12px;
   box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
@@ -552,114 +750,323 @@ footer {
 
 .sheet-head strong { flex: 1; }
 
-.sheet-head button,
-.form-actions button {
-  padding: 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
+.dialog-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(520px, 92vw);
+  max-height: 86vh;
   background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-}
-
-#settings-close,
-#settings-save,
-#paper-save {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-}
-
-.form-actions .danger { color: var(--error); border-color: var(--error); }
-
-/* The account list beside the form it edits, the same shape as the sidebar. */
-.sheet-body {
-  display: grid;
-  grid-template-columns: 200px 1fr;
-  min-height: 0;
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
   overflow: hidden;
 }
 
-#settings-list {
-  border-right: 1px solid var(--line);
-  background: var(--sidebar-bg);
-  padding: 8px;
-  overflow-y: auto;
-}
+.dialog-panel.wide { width: min(720px, 94vw); }
 
-#settings-form,
-#paper-form,
-#ai-form,
-#provider-form {
-  padding: 16px 20px;
+.dialog-head { padding: 18px 20px 6px; }
+.dialog-head h2 { margin: 0 0 4px; font-size: 16px; }
+.dialog-head p { margin: 0; }
+
+.dialog-body {
+  padding: 10px 20px 14px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   min-height: 0;
-}
-
-#settings-form label,
-#paper-form label,
-#ai-form label,
-#provider-form label {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 10px;
+}
+
+.dialog-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar-bg);
+}
+
+.field { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 11.5px; }
+.field input, .field select { color: var(--fg); font-size: 13px; }
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--fg);
+  font-size: 12.5px;
+}
+
+label.check.hint { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
+/* A list of things to tick: similar messages, smart mailboxes to import. */
+.pick-list {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.pick {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 2px 10px;
+  align-items: baseline;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.pick:last-child { border-bottom: 0; }
+.pick input { grid-row: span 2; align-self: center; }
+.pick .who { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick .when { color: var(--muted); font-size: 11.5px; }
+.pick .what { grid-column: 2 / -1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.pick .why { grid-column: 2 / -1; color: var(--muted); font-size: 11px; }
+
+/* The smart mailbox editor's rules: field, comparison, value, remove. */
+.match-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+
+.rules { display: flex; flex-direction: column; gap: 6px; }
+
+.rule {
+  display: grid;
+  grid-template-columns: 170px 150px 1fr 28px;
+  gap: 6px;
+  align-items: center;
+}
+
+.value-slot { display: flex; min-width: 0; }
+.value-slot > * { flex: 1; min-width: 0; }
+
+.rule .remove {
+  padding: 0;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.rule .remove:hover { color: var(--error); }
+
+.link-button {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+}
+
+.preview-box {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--sidebar-bg);
+  overflow: hidden;
+}
+
+.preview-head { padding: 7px 12px; font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--line); }
+.preview-rows { max-height: 180px; overflow-y: auto; }
+
+.preview-row {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  gap: 10px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.preview-row:last-child { border-bottom: 0; }
+.preview-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.preview-row .when { color: var(--muted); }
+
+/* A folder's own menu. */
+.context-menu {
+  position: fixed;
+  z-index: 50;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  background: var(--raised);
+  box-shadow: var(--shadow);
+}
+
+.context-menu[hidden] { display: none; }
+
+.context-menu button {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 5px 10px;
+}
+
+.context-menu button:hover:not(:disabled) { background: var(--accent); color: var(--accent-fg); }
+.context-menu button.danger { color: var(--error); }
+.context-menu button.danger:hover:not(:disabled) { background: var(--error); color: #fff; }
+.context-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+
+/* -- settings ------------------------------------------------------------ */
+
+.settings-panel {
+  grid-template-rows: 1fr;
+  grid-template-columns: 220px 1fr;
+}
+
+#settings-nav {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--line);
+}
+
+.settings-title {
+  padding: 18px 16px 6px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+#settings-list {
+  flex: 1;
+  padding: 4px 8px 8px;
+  overflow-y: auto;
+}
+
+#settings-list .sidebar-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* The add buttons sit in their section's heading. */
+#settings-list .sidebar-heading button,
+.settings-hidden-actions button {
+  padding: 0 7px;
+  height: 20px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+#settings-list .sidebar-heading button:hover { background: var(--selected); }
+#settings-list > button.nav-item { font-weight: 400; color: var(--fg); font-size: 13px; height: auto; padding: 4px 8px; }
+#settings-list > button.nav-item.active { color: var(--accent-fg); }
+
+.settings-nav-foot {
+  padding: 10px 16px 14px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.settings-main {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  min-width: 0;
+}
+
+.settings-page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 24px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-page-head > div { flex: 1; min-width: 0; }
+.settings-page-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+.settings-page-head p { margin: 3px 0 0; }
+.settings-page-head p:empty { display: none; }
+
+.settings-scroll {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 18px 24px 24px;
+  background: var(--sidebar-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .settings-scroll { background: var(--bg); }
+}
+
+.settings-hidden-actions { display: none; }
+
+.settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+}
+
+.settings-page .lead { margin: 0; color: var(--muted); }
+
+/* A group of settings, as a rounded box — the way System Settings groups them. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.card h3 .hint { font-weight: 400; margin-left: 4px; }
+.card p { margin: 0; }
+.card.grow { flex: 1; }
+
+.card label:not(.check) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   color: var(--muted);
   font-size: 11.5px;
 }
 
-#settings-form input,
-#settings-form select,
-#settings-form textarea,
-#paper-form input,
-#paper-form select,
-#ai-form input,
-#ai-form select,
-#provider-form input,
-#provider-form select {
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: 13px/1.45 inherit;
-}
+.card label:not(.check) > input,
+.card label:not(.check) > select,
+.card textarea { color: var(--fg); font-size: 13px; }
 
-#settings-form textarea { resize: vertical; font-family: ui-monospace, Menlo, monospace; }
+.card textarea { resize: vertical; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+
+.card-actions { display: flex; align-items: center; gap: 8px; }
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .row3 {
   display: grid;
   grid-template-columns: 2fr 1fr 1.2fr;
+  gap: 10px;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  padding-top: 2px;
 }
 
-.form-heading {
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.form-heading .hint { font-weight: 400; }
-.hint { color: var(--muted); font-size: 11.5px; }
-#settings-form p.hint,
-#paper-form p.hint,
-#ai-form p.hint,
-#provider-form p.hint { margin: 2px 0 0; }
-
-/* The two forms take turns in one place, and `display: flex` above would beat
-   the hidden attribute's own `display: none` — leaving both on screen at once,
-   the account form under the address form, with nothing to say which a Save
-   button belonged to. The same for the name field that "all documents" hides. */
-#settings-form[hidden],
-#paper-form[hidden],
+/* One form at a time. `display: flex` above would beat the hidden
+   attribute's own `display: none` — leaving two forms on screen at once, with
+   nothing to say which a Save button belonged to. The same for the name field
+   that "all documents" hides. */
+.settings-page[hidden],
 #paper-form label[hidden],
-#ai-form[hidden],
-#provider-form[hidden],
-#provider-form label[hidden] { display: none !important; }
+#provider-form label[hidden],
+#oauth-fields[hidden],
+#password-fields[hidden] { display: none !important; }
 
 /* Two fields, not three: the kind of selector and the name it takes. */
 #paper-form .row3,
@@ -680,31 +1087,86 @@ footer {
 }
 #provider-models th,
 #provider-models td {
-  padding: 3px 16px 3px 0;
+  padding: 4px 16px 4px 0;
   border-bottom: 1px solid var(--line);
 }
 
-.form-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
 #settings-report {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding: 12px 20px;
-  border-top: 1px solid var(--line);
-  background: var(--sidebar-bg);
-  max-height: 240px;
+  margin: 16px 0 0;
+  max-width: 640px;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--raised);
+  max-height: 280px;
   overflow: auto;
   white-space: pre-wrap;
   font: 12px/1.5 ui-monospace, Menlo, monospace;
 }
 
 #settings-report[hidden] { display: none !important; }
+
+/* Rows in a card: smart mailboxes, keys, scheduled messages. */
+.item-list { display: flex; flex-direction: column; }
+.item-list:empty::before { content: attr(data-empty); color: var(--muted); font-size: 12px; }
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.item:last-child { border-bottom: 0; }
+.item .grow { flex: 1; min-width: 0; }
+.item .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item .sub { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; }
+.item .sub.bad { color: var(--error); }
+.item button { font-size: 12px; padding: 2px 10px; }
+.item input[type="checkbox"] { flex: none; }
+
+.chip {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--selected);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 17px;
+  vertical-align: 1px;
+}
+
+.chip.ok { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.chip.bad { background: color-mix(in srgb, var(--error) 16%, transparent); color: var(--error); }
+.chip.accent { background: var(--accent-soft); color: var(--accent); }
+
+.file-button span {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--raised);
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--fg);
+}
+
+.item input[type="password"] { width: 160px; }
+
+.log-view {
+  margin: 0;
+  height: 300px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar-bg);
+  font: 11px/1.5 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 
 /* -- the setup assistant ------------------------------------------------- */
 
@@ -766,31 +1228,10 @@ footer {
 
 .check-line { display: flex; gap: 8px; align-items: baseline; margin: 3px 0; }
 .check-line .mark { width: 1.2em; flex: none; text-align: center; font-weight: 700; }
-.check-line.ok .mark { color: #2e9e5b; }
+.check-line.ok .mark { color: var(--ok); }
 .check-line.bad .mark { color: var(--error); }
 .check-line.wait .mark { color: var(--muted); }
 .check-line .grow { flex: 1; }
-
-.setup-page button,
-.setup-foot button {
-  padding: 4px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: inherit;
-  cursor: pointer;
-}
-
-.setup-page button:disabled,
-.setup-foot button:disabled { opacity: 0.5; cursor: default; }
-
-.setup-page button.primary,
-.setup-foot button.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-fg);
-}
 
 .setup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
 
@@ -831,21 +1272,14 @@ footer {
 .setup-inline label { flex: 1; }
 
 .setup-page input,
-.setup-page select {
-  padding: 5px 9px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--bg);
-  color: var(--fg);
-  font: 13px/1.45 inherit;
-}
+.setup-page select { color: var(--fg); }
 
 .setup-page details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
 .setup-result:empty { display: none; }
 .setup-result.bad { color: var(--error); }
-.setup-result.ok { color: #2e9e5b; }
+.setup-result.ok { color: var(--ok); }
 
-progress { width: 140px; height: 8px; }
+progress { width: 140px; height: 8px; accent-color: var(--accent); }
 header #sync-progress { width: 90px; flex: none; }
 
 #paper-install-log {
@@ -879,7 +1313,7 @@ header #sync-progress { width: 90px; flex: none; }
 .import-account .status:empty { display: none; }
 .import-account .status { margin: 6px 0 0 24px; font-size: 12px; }
 .import-account .status.bad { color: var(--error); }
-.import-account .status.ok { color: #2e9e5b; }
+.import-account .status.ok { color: var(--ok); }
 
 .setup-summary { padding-left: 0; list-style: none; }
 
@@ -917,8 +1351,6 @@ header #sync-progress { width: 90px; flex: none; }
   border-radius: 5px;
   background: transparent;
   color: inherit;
-  font: inherit;
-  cursor: pointer;
 }
 
 #update-banner #update-download { background: var(--accent-fg); color: var(--accent); }

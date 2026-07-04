@@ -55,6 +55,16 @@ in its header.
   for Gmail, which does not accept the device grant
 - **A rules classifier** — six categories, German and English, corrections
   override the heuristics
+- **Send later** — schedule from compose ("tomorrow 8pm" works), sent by the
+  app while it runs; a send interrupted by closing is never retried on a guess
+- **Mailboxes and smart mailboxes** — create and delete folders (only empty
+  ones, never the account's own); saved searches with a live preview, imported
+  from Thunderbird and Apple Mail
+- **Cleanup** — a count of bulk mail in the Inbox, unsubscribing (RFC 8058 one
+  click, by mail to the sender's own domain, or a page opened in the browser),
+  and an offer to delete a message's look-alikes with it
+- **OpenPGP** — sign, encrypt, decrypt and verify PGP/MIME and inline PGP
+- **Diagnostics** — a log file, detailed logging switched on live, and export
 - **A Docker dev stack** — a seeded Dovecot, an SMTP sink, and a second Dovecot
   wearing Gmail's folder layout, so none of it needs a real mailbox
 
@@ -64,6 +74,7 @@ rendering, and the Paperless half.
 ## Installing
 
 Everything is on the [latest release](https://github.com/kuverta/kuverta/releases/latest).
+The website, with the user guide, is at [kuverta.github.io/kuverta](https://kuverta.github.io/kuverta/).
 
 **macOS** (Apple Silicon or Intel, macOS 11 or later): download the `.dmg`, open
 it and drag **kuverta** into **Applications**. If macOS says it "cannot be
@@ -332,6 +343,12 @@ Anything that does not line up is refused with a reason. See
 serialised message and the SMTP envelope together and by hand, because
 mail-send's own conversion puts Bcc in both. It is the one mistake here that
 cannot be walked back.
+
+**Encrypted mail cannot have Bcc.** An OpenPGP message names every key it
+is encrypted to, so encrypting to a blind recipient would tell the others who
+was blind-copied. `core-pgp` refuses the combination rather than weakening
+either. Its keyring is files in `<data_dir>/pgp/` and passphrases in the
+keychain — never the store — and passphrases go one way, like passwords.
 
 **Dedup is per account, never global.** The same message on two of your
 accounts really is two copies. See `core-store/src/dedup.rs`.

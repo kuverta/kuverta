@@ -180,6 +180,15 @@ pub struct NewMessage {
     pub body_path: Option<String>,
     /// Plain-text body used for full-text search. Not persisted as a column.
     pub search_text: Option<String>,
+    /// To and Cc addresses, lowercased and comma-separated, for smart
+    /// mailboxes that ask who a message was sent to.
+    pub recipients: Option<String>,
+    /// `List-Unsubscribe`, as sent: one or more `<…>` URIs.
+    pub list_unsubscribe: Option<String>,
+    /// `List-Unsubscribe-Post` (RFC 8058). Present when the sender accepts a
+    /// one-click unsubscribe, which is the only kind that can be automated
+    /// safely.
+    pub list_unsubscribe_post: Option<String>,
 }
 
 /// A stored message, with enough to find its raw blob again.
@@ -403,6 +412,8 @@ pub struct ListFilter {
     /// Oldest first instead of newest first — for reading a folder forwards,
     /// or reaching the start of a long one without scrolling to the end.
     pub oldest_first: bool,
+    /// A smart mailbox's rules, combined with the rest like any filter.
+    pub smart: Option<crate::smart::SmartQuery>,
 }
 
 /// Names a client might have given the folder behind each RFC 6154 attribute.
