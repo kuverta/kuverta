@@ -1,7 +1,7 @@
 //! Smart mailboxes, the outbox, and what the Cleanup view asks for.
 
 use core_store::model::*;
-use core_store::{SmartField, SmartOp, SmartQuery, SmartRule, Store};
+use core_store::{SmartField, SmartOp, SmartQuery, SmartRule, Store, Urgency};
 
 fn store_with_account() -> (Store, AccountId) {
     let store = Store::open_in_memory().expect("open store");
@@ -419,4 +419,152 @@ fn headers_are_read_back_once_for_mail_synced_before_they_were_kept() {
         .unwrap()
         .is_empty());
     assert_eq!(store.unsubscribe_senders(account).unwrap().len(), 3);
+}
+
+// -- conversations and urgency ------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+fn sent_by_me(
+    store: &Store,
+    account: AccountId,
+    sent: FolderId,
+    uid: u32,
+    to: &str,
+    subject: &str,
+    days_ago: i64,
+    reply_to: Option<&str>,
+) -> MessageId {
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some(format!("me-{uid}@x")),
+                subject: Some(subject.into()),
+                from_addr: Some("Dev@Kuverta.test".into()),
+                recipients: Some(format!("{to}, cc@example.org")),
+                date_utc: Some(now() - days_ago * 86_400),
+                in_reply_to: reply_to.map(Into::into),
+                snippet: Some("my words".into()),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: sent,
+                uid,
+                flags: "\\Seen".into(),
+            }),
+        )
+        .unwrap();
+    id
+}
+
+#[test]
+fn conversations_pair_what_came_with_what_went() {
+    let (store, account, _, _) = mailbox();
+    let sent = store
+        .upsert_folder(account, "Sent", Some("\\Sent"))
+        .unwrap();
+    sent_by_me(
+        &store,
+        account,
+        sent,
+        1,
+        "erika@example.de",
+        "Re: Rechnung für Mai",
+        0,
+        Some("4@x"),
+    );
+
+    let page = store
+        .conversations(account, "dev@kuverta.test", &[], false, None, 0, 50)
+        .unwrap();
+    // Erika (one from her, one to her); the shop and the list are bulk.
+    assert_eq!(page.total, 1);
+    let erika = &page.conversations[0];
+    assert_eq!(erika.key, "erika@example.de");
+    assert_eq!(erika.messages, 2);
+    assert_eq!(erika.unread, 1);
+    assert!(erika.last_from_me);
+
+    let with_bulk = store
+        .conversations(account, "dev@kuverta.test", &[], true, None, 0, 50)
+        .unwrap();
+    assert_eq!(with_bulk.total, 3);
+    let found = store
+        .conversations(account, "dev@kuverta.test", &[], true, Some("SHOP"), 0, 50)
+        .unwrap();
+    assert_eq!(found.conversations[0].key, "news@shop.example");
+
+    let messages = store
+        .conversation(account, "dev@kuverta.test", "erika@example.de", &[], 50)
+        .unwrap();
+    assert_eq!(messages.len(), 2);
+    assert!(!messages[0].from_me, "oldest first");
+    assert!(messages[1].from_me);
+}
+
+#[test]
+fn urgency_is_asked_once_and_ranks_the_view() {
+    let (store, account, _, _) = mailbox();
+    let sent = store
+        .upsert_folder(account, "Sent", Some("\\Sent"))
+        .unwrap();
+    // Only Erika's mail is not bulk, and it is recent.
+    let candidates = store
+        .urgency_candidates(account, "dev@kuverta.test", now() - 30 * 86_400, false, 50)
+        .unwrap();
+    assert_eq!(candidates.len(), 1);
+    let erika = candidates[0].id;
+    assert!(!store
+        .has_replied(account, "dev@kuverta.test", "4@x")
+        .unwrap());
+
+    store
+        .record_urgency(
+            erika,
+            &Urgency {
+                score: 2,
+                reason: "a person is waiting".into(),
+                action: Some("reply".into()),
+                deadline: None,
+                source: "rules".into(),
+                model: None,
+            },
+        )
+        .unwrap();
+    assert!(store
+        .urgency_candidates(account, "dev@kuverta.test", 0, false, 50)
+        .unwrap()
+        .is_empty());
+    // A model is still wanted where only the rules have spoken.
+    assert_eq!(
+        store
+            .urgency_candidates(account, "dev@kuverta.test", 0, true, 50)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    let urgent = store.urgent_messages(account, 2, 50).unwrap();
+    assert_eq!(urgent.len(), 1);
+    assert_eq!(urgent[0].urgency.action.as_deref(), Some("reply"));
+
+    sent_by_me(
+        &store,
+        account,
+        sent,
+        2,
+        "erika@example.de",
+        "Re: Rechnung für Mai",
+        0,
+        Some("4@x"),
+    );
+    assert!(store
+        .has_replied(account, "dev@kuverta.test", "4@x")
+        .unwrap());
+    assert_eq!(
+        store
+            .times_written_to(account, "dev@kuverta.test", "erika@example.de")
+            .unwrap(),
+        1
+    );
 }

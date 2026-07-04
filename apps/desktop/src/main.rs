@@ -1288,6 +1288,148 @@ fn similar(app: State<'_, App>, account: i64, id: i64) -> Result<core_rpc::Simil
     core.similar(account, id, trash.as_deref()).map_err(fail)
 }
 
+// -- what needs attention -----------------------------------------------------
+
+/// How far the urgency agent has got, for the window to show.
+#[derive(Clone, serde::Serialize)]
+struct UrgencyProgress {
+    done: usize,
+    total: usize,
+    subject: String,
+}
+
+/// What an urgency pass did.
+#[derive(serde::Serialize)]
+struct UrgencyPass {
+    /// Messages the rules judged for the first time.
+    by_rules: usize,
+    /// Messages the model judged.
+    by_model: usize,
+    model: Option<String>,
+    /// Whether the model runs on this computer; a hosted one was sent mail.
+    local: bool,
+    /// Why the model stopped, when it did.
+    stopped: Option<String>,
+}
+
+/// Runs the urgency agent over recent Inbox mail: the rules first, for every
+/// message at once, then — with `use_model` — the model chosen for sorting
+/// mail, one message at a time and with no store lock held while it thinks.
+/// Stops after three failures in a row rather than grinding on against a
+/// model that is not there.
+#[tauri::command]
+async fn find_urgent(
+    app: State<'_, App>,
+    account: i64,
+    use_model: bool,
+    on_progress: tauri::ipc::Channel<UrgencyProgress>,
+) -> Result<UrgencyPass, String> {
+    let by_rules = app
+        .core
+        .lock()
+        .unwrap()
+        .judge_by_rules(account)
+        .map_err(fail)?;
+    let mut pass = UrgencyPass {
+        by_rules,
+        by_model: 0,
+        model: None,
+        local: true,
+        stopped: None,
+    };
+    if !use_model {
+        return Ok(pass);
+    }
+    let choice = ai_choice(&app, core_rpc::Task::Chat)?;
+    pass.model = Some(choice.model.clone());
+    pass.local = choice.local;
+    let jobs = app
+        .core
+        .lock()
+        .unwrap()
+        .urgency_jobs(account, true, 150)
+        .map_err(fail)?;
+    let total = jobs.len();
+    let mut failures = 0;
+    for (done, job) in jobs.into_iter().enumerate() {
+        let _ = on_progress.send(UrgencyProgress {
+            done,
+            total,
+            subject: job.subject.clone(),
+        });
+        match core_rpc::urgency::ask_model(&choice.provider, &choice.model, &job).await {
+            Ok(urgency) => {
+                failures = 0;
+                app.core
+                    .lock()
+                    .unwrap()
+                    .record_urgency(job.id, &urgency)
+                    .map_err(fail)?;
+                pass.by_model += 1;
+            }
+            Err(err) => {
+                tracing::warn!(message = job.id, %err, "the model could not judge urgency");
+                failures += 1;
+                if failures >= 3 {
+                    pass.stopped = Some(err);
+                    break;
+                }
+            }
+        }
+    }
+    let _ = on_progress.send(UrgencyProgress {
+        done: total,
+        total,
+        subject: String::new(),
+    });
+    Ok(pass)
+}
+
+#[tauri::command]
+fn urgent_messages(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::UrgentRow>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .urgent(account, 2, 300)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn urgency_of(app: State<'_, App>, id: i64) -> Result<Option<core_rpc::UrgencyView>, String> {
+    app.core.lock().unwrap().urgency_of(id).map_err(fail)
+}
+
+// -- conversations ---------------------------------------------------------------
+
+#[tauri::command]
+fn conversations(
+    app: State<'_, App>,
+    account: i64,
+    offset: usize,
+    limit: usize,
+    include_bulk: bool,
+    query: Option<String>,
+) -> Result<core_rpc::ConversationPage, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .conversations(account, include_bulk, query.as_deref(), offset, limit)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn conversation(
+    app: State<'_, App>,
+    account: i64,
+    key: String,
+) -> Result<core_rpc::Thread, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .conversation(account, &key)
+        .map_err(fail)
+}
+
 // -- the log ------------------------------------------------------------------
 
 #[tauri::command]
@@ -1505,6 +1647,11 @@ fn main() {
             log_tail,
             export_log,
             log_ui,
+            find_urgent,
+            urgent_messages,
+            urgency_of,
+            conversations,
+            conversation,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");
