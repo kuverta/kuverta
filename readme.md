@@ -64,6 +64,11 @@ in its header.
   click, by mail to the sender's own domain, or a page opened in the browser),
   and an offer to delete a message's look-alikes with it
 - **OpenPGP** — sign, encrypt, decrypt and verify PGP/MIME and inline PGP
+- **Needs attention** — an urgency agent ranks the Inbox by how soon each
+  message needs you: facts it checks (have you answered, do you write to them,
+  deadlines), then the sorting model's judgement, anchored by named deadlines
+- **People** — mail as conversations: one row per person, the exchange in
+  bubbles with quotes taken off, and a reply box underneath
 - **Diagnostics** — a log file, detailed logging switched on live, and export
 - **A Docker dev stack** — a seeded Dovecot, an SMTP sink, and a second Dovecot
   wearing Gmail's folder layout, so none of it needs a real mailbox

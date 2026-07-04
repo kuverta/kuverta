@@ -385,6 +385,9 @@ footer {
   overflow: hidden;
 }
 
+/* Pool rows past the end of a short list are hidden, and `display: grid`
+   would otherwise beat the attribute and leave the last list's rows showing. */
+.row[hidden] { display: none; }
 .row.selected { background: var(--accent); color: var(--accent-fg); }
 .row.pending { opacity: 0.4; }
 
@@ -1360,3 +1363,113 @@ header #sync-progress { width: 90px; flex: none; }
 .row.picked { background: var(--selected); }
 .row.picked.selected { background: var(--accent); }
 #scope .picked-count { font-weight: 600; }
+
+/* -- needs attention ------------------------------------------------------ */
+
+.urgency-note {
+  margin: -6px 0 14px;
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  font-size: 12px;
+}
+
+.urgency-note[hidden] { display: none !important; }
+#scope .view-toggle { margin-left: auto; }
+#scope .view-toggle + .order { margin-left: 4px; }
+
+/* -- a conversation, as a messenger shows it -------------------------------- */
+
+#conversation {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  min-height: 0;
+}
+
+#conversation[hidden] { display: none !important; }
+
+.conversation-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--line);
+}
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+  font-size: 13px;
+  flex: none;
+}
+
+.conversation-name { font-weight: 600; font-size: 14px; }
+
+.bubbles {
+  overflow-y: auto;
+  min-height: 0;
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bubble-day {
+  align-self: center;
+  margin: 10px 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.bubble-row { display: flex; }
+.bubble-row.mine { justify-content: flex-end; }
+
+.bubble {
+  max-width: min(72%, 560px);
+  padding: 8px 12px 6px;
+  border-radius: 18px;
+  background: var(--selected);
+  color: var(--fg);
+  line-height: 1.45;
+  cursor: default;
+}
+
+.bubble-row.theirs .bubble { border-bottom-left-radius: 6px; }
+
+.bubble-row.mine .bubble {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-bottom-right-radius: 6px;
+}
+
+.bubble.unread { box-shadow: 0 0 0 2px var(--amber); }
+.bubble-subject { font-size: 11.5px; font-weight: 600; opacity: 0.75; margin-bottom: 2px; }
+.bubble-text { white-space: pre-wrap; word-break: break-word; }
+.bubble-time { font-size: 10.5px; opacity: 0.6; text-align: right; margin-top: 2px; }
+
+.conversation-compose {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 16px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.conversation-compose textarea {
+  flex: 1;
+  resize: none;
+  border-radius: 18px;
+  padding: 8px 14px;
+  background: var(--bg);
+  max-height: 160px;
+}
+
+.conversation-compose button { border-radius: 16px; }
+.conversation-hint { padding: 2px 20px 10px; }
