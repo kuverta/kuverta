@@ -26,7 +26,8 @@ use std::path::{Path, PathBuf};
 use core_accounts::loopback::{LoopbackConfig, OAuth2Loopback};
 use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
-use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
+use core_pgp::{Keyring, Protection};
+use core_smtp::{BuiltMessage, Draft, Mailbox, ReplyMode, ReplySource};
 use core_store::model::{Account, AccountId, MessageId};
 use core_store::{Blobs, Store};
 use serde::{Deserialize, Serialize};
@@ -36,6 +37,18 @@ use crate::{Result, RpcError};
 impl From<core_proto::ProtoError> for RpcError {
     fn from(err: core_proto::ProtoError) -> Self {
         RpcError::Network(err.to_string())
+    }
+}
+
+/// A refusal from the keyring is a sentence for the person composing — "no
+/// usable key for …", "no passphrase is stored for …" — so it reaches them
+/// as one.
+impl From<core_pgp::PgpError> for RpcError {
+    fn from(err: core_pgp::PgpError) -> Self {
+        match err {
+            core_pgp::PgpError::Io(err) => RpcError::Io(err),
+            other => RpcError::Rejected(other.to_string()),
+        }
     }
 }
 
@@ -139,6 +152,17 @@ pub struct DraftInput {
     pub reply_all: bool,
     /// Forward this stored message, by row id.
     pub forward: Option<MessageId>,
+    /// Sign with the account's OpenPGP key, as PGP/MIME.
+    #[serde(default)]
+    pub sign: bool,
+    /// Encrypt with OpenPGP to every To and Cc recipient and to the sender,
+    /// so the copy in Sent stays readable. Refused with Bcc recipients, whom
+    /// the encrypted message would name to everyone else.
+    ///
+    /// A saved draft is encrypted to the sender alone and not signed: it is
+    /// not the message that goes out, only kept safe until it does.
+    #[serde(default)]
+    pub encrypt: bool,
 }
 
 /// What a draft will look like, without sending it.
@@ -157,7 +181,17 @@ pub struct DraftPreview {
     /// Not what a compose window draws, but what a dry run is for: the
     /// threading headers, the encoding, and the absence of a Bcc line are all
     /// only visible here.
+    ///
+    /// Signed or encrypted as it would be sent, so a preview does not show
+    /// plain text for a message that will not go out as plain text. Each
+    /// preview encrypts afresh, so the ciphertext differs from the one sent.
     pub rfc822: String,
+    /// Whether the message is signed, as built.
+    #[serde(default)]
+    pub signed: bool,
+    /// Whether the message is encrypted, as built.
+    #[serde(default)]
+    pub encrypted: bool,
 }
 
 /// A draft that was saved rather than sent.
@@ -228,6 +262,10 @@ pub struct Session {
     /// For the dev server and CI, where a keychain read would raise a GUI
     /// prompt and block a test run on a dialog nobody is watching.
     password_env: Option<String>,
+    /// The OpenPGP keyring, when not the data directory's own with its
+    /// passphrases in the keychain — for tests, which must not ask the
+    /// keychain anything.
+    keyring: Option<Keyring>,
 }
 
 impl Session {
@@ -235,12 +273,70 @@ impl Session {
         Self {
             data_dir: data_dir.as_ref().to_path_buf(),
             password_env: None,
+            keyring: None,
         }
     }
 
     pub fn with_password_env(mut self, var: Option<String>) -> Self {
         self.password_env = var;
         self
+    }
+
+    /// The store, on a connection of this session's own, for the other
+    /// modules that touch the network.
+    pub(crate) fn open_store(&self) -> Result<(Store, Blobs)> {
+        self.open()
+    }
+
+    pub(crate) fn password_env(&self) -> Option<&str> {
+        self.password_env.as_deref()
+    }
+
+    pub fn with_keyring(mut self, keyring: Keyring) -> Self {
+        self.keyring = Some(keyring);
+        self
+    }
+
+    fn keyring(&self) -> Keyring {
+        self.keyring
+            .clone()
+            .unwrap_or_else(|| Keyring::in_data_dir(&self.data_dir))
+    }
+
+    /// Signs and encrypts a built message as the draft asks.
+    ///
+    /// After [`Draft::build`], and only ever wrapping its output: who the
+    /// message goes to is decided there, and this changes the bytes and
+    /// nothing else — the envelope, Bcc included, passes through untouched.
+    fn seal(
+        &self,
+        draft: &Draft,
+        built: BuiltMessage,
+        protection: Protection,
+    ) -> Result<BuiltMessage> {
+        if !protection.any() {
+            return Ok(built);
+        }
+        let visible: Vec<String> = draft
+            .to
+            .iter()
+            .chain(&draft.cc)
+            .map(|mailbox| mailbox.address.clone())
+            .collect();
+        let blind: Vec<String> = draft
+            .bcc
+            .iter()
+            .map(|mailbox| mailbox.address.clone())
+            .collect();
+        let rfc822 = core_pgp::protect(
+            &self.keyring(),
+            &built.rfc822,
+            &built.sender,
+            &visible,
+            &blind,
+            protection,
+        )?;
+        Ok(BuiltMessage { rfc822, ..built })
     }
 
     /// Opens a connection of this session's own. See the module note.
@@ -482,6 +578,8 @@ impl Session {
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
+        let protection = protection(input);
+        let built = self.seal(&draft, built, protection)?;
 
         Ok(DraftPreview {
             from: built.sender,
@@ -489,6 +587,8 @@ impl Session {
             subject: draft.subject.clone(),
             body: draft.body.clone(),
             rfc822: String::from_utf8_lossy(&built.rfc822).into_owned(),
+            signed: protection.sign,
+            encrypted: protection.encrypt,
         })
     }
 
@@ -521,6 +621,24 @@ impl Session {
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
+        // Encrypted to the sender alone, and never signed: see `DraftInput`.
+        let protection = Protection {
+            sign: false,
+            encrypt: input.encrypt,
+        };
+        let built = if protection.encrypt {
+            let rfc822 = core_pgp::protect(
+                &self.keyring(),
+                &built.rfc822,
+                &built.sender,
+                &[],
+                &[],
+                protection,
+            )?;
+            BuiltMessage { rfc822, ..built }
+        } else {
+            built
+        };
 
         let auth = provider_for(&account, self.password_env.as_deref())?;
         let folder = file_in_drafts(&account, auth.as_ref(), &built.rfc822).await?;
@@ -533,6 +651,8 @@ impl Session {
                 subject: draft.subject.clone(),
                 body: draft.body.clone(),
                 rfc822: String::from_utf8_lossy(&built.rfc822).into_owned(),
+                signed: protection.sign,
+                encrypted: protection.encrypt,
             },
         })
     }
@@ -567,6 +687,9 @@ impl Session {
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
+        // Before anything is submitted: a missing key or a Bcc refusal must
+        // stop the message, not follow it.
+        let built = self.seal(&draft, built, protection(input))?;
 
         let auth = provider_for(&account, self.password_env.as_deref())?;
         core_smtp::submit(&smtp, &account.username, auth.as_ref(), &built)
@@ -616,6 +739,13 @@ impl Session {
             );
         }
         results
+    }
+}
+
+fn protection(input: &DraftInput) -> Protection {
+    Protection {
+        sign: input.sign,
+        encrypt: input.encrypt,
     }
 }
 

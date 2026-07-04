@@ -20,15 +20,31 @@
 //! docs/spike-tauri-list.md.
 
 pub mod ai;
+pub mod cleanup;
+pub mod mailboxes;
+pub mod outbox;
 pub mod paper;
+pub mod pgp;
 pub mod session;
 pub mod settings;
 pub mod setup;
+pub mod smart;
 pub mod update;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
+pub use cleanup::{
+    CleanupCounts, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
+    UnsubscribeResult, UnsubscribeSenderView,
+};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};
 pub use core_paper::PaperReport;
+pub use core_pgp::{
+    ImportReport, ImportedKey, KeyView, Keyring, RecipientKey, RecipientKeys, SecurityView,
+    SignatureState, SignatureView,
+};
+pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
+pub use mailboxes::CreatedFolder;
+pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
 };
@@ -37,6 +53,9 @@ pub use session::{
     VerifiedFolder, VerifyReport,
 };
 pub use settings::{AccountInput, AccountSettings};
+pub use smart::{
+    FoundSmartMailbox, SmartImportScan, SmartMailboxInput, SmartMailboxView, SmartPreview,
+};
 
 use std::path::Path;
 
@@ -169,7 +188,17 @@ pub struct MessageDetail {
     /// and sending bytes it would only have to decode wastes the bridge the
     /// whole list design is built around conserving. An HTML-only message
     /// yields `None` here — rendering that is a UI question, and a later one.
+    ///
+    /// For OpenPGP mail this is what the protection held: the decrypted
+    /// text, or the signed part alone. For an encrypted message that could
+    /// not be decrypted it is `None`, and `security.error` says why.
     pub body_text: Option<String>,
+    /// OpenPGP protection, when the message had any; `None` for ordinary
+    /// mail.
+    pub security: Option<SecurityView>,
+    /// The message carries a public key (`application/pgp-keys`), which
+    /// [`Core::pgp_import_from_message`] can add to the keyring.
+    pub pgp_keys_attached: bool,
 }
 
 /// What a model pass did.
@@ -270,6 +299,10 @@ pub struct QueuedChange {
 pub struct Core {
     store: Store,
     blobs: Blobs,
+    /// The OpenPGP keyring, which lives beside the store in the data
+    /// directory. `None` for a core built from a store alone, which then
+    /// reports encrypted mail as undecryptable and manages no keys.
+    keyring: Option<Keyring>,
 }
 
 impl Core {
@@ -282,12 +315,24 @@ impl Core {
         Ok(Self {
             store: Store::open(dir.join("kuverta.db"))?,
             blobs: Blobs::new(dir.join("blobs")),
+            keyring: Some(Keyring::in_data_dir(dir)),
         })
     }
 
     /// For callers that already have a store open, and for tests.
     pub fn new(store: Store, blobs: Blobs) -> Self {
-        Self { store, blobs }
+        Self {
+            store,
+            blobs,
+            keyring: None,
+        }
+    }
+
+    /// Uses this keyring for OpenPGP — for tests, whose passphrases must not
+    /// come from the keychain.
+    pub fn with_keyring(mut self, keyring: Keyring) -> Self {
+        self.keyring = Some(keyring);
+        self
     }
 
     pub fn store(&self) -> &Store {
@@ -444,6 +489,25 @@ impl Core {
             .and_then(|bytes| core_proto::parse::parse_message(bytes, None))
             .map(|parsed| FactsView::from(&parsed.facts.as_message_facts()));
 
+        // Decrypting is a session-key operation and a symmetric pass over one
+        // message: local CPU work, well within what opening a message may
+        // cost, and nothing decrypted is kept.
+        let opened = parsed
+            .as_ref()
+            .map(|p| core_pgp::open_parsed(p, self.keyring.as_ref()))
+            .unwrap_or_default();
+        let body_text = match &opened.security {
+            // An encrypted message's own text is the "this is an encrypted
+            // message" preamble at best; what it holds, or nothing.
+            Some(security) if security.encrypted => opened.body_text,
+            _ => opened.body_text.or_else(|| {
+                parsed
+                    .as_ref()
+                    .and_then(|p| p.body_text(0))
+                    .map(|text| text.into_owned())
+            }),
+        };
+
         Ok(MessageDetail {
             facts,
             id: stored.id,
@@ -460,10 +524,9 @@ impl Core {
                 .map(|p| addresses(p.cc()))
                 .unwrap_or_default(),
             folders,
-            body_text: parsed
-                .as_ref()
-                .and_then(|p| p.body_text(0))
-                .map(|text| text.into_owned()),
+            body_text,
+            security: opened.security,
+            pgp_keys_attached: !opened.pgp_keys.is_empty(),
         })
     }
 
@@ -823,7 +886,7 @@ impl Core {
     }
 }
 
-fn now_utc() -> i64 {
+pub(crate) fn now_utc() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

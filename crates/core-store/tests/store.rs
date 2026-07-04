@@ -1677,7 +1677,15 @@ fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(
-            "DROP TABLE ai_task;
+            "DROP TABLE unsubscription;
+             DROP TABLE smart_mailbox;
+             DROP TABLE outbox;
+             DROP INDEX message_unread_headers;
+             ALTER TABLE message DROP COLUMN headers_read;
+             ALTER TABLE message DROP COLUMN list_unsubscribe_post;
+             ALTER TABLE message DROP COLUMN list_unsubscribe;
+             ALTER TABLE message DROP COLUMN recipients;
+             DROP TABLE ai_task;
              DROP TABLE ai_provider;
              DROP TABLE paper_read;
              DROP TABLE paper_transcript;

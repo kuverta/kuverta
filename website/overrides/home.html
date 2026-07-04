@@ -1,0 +1,163 @@
+{#-
+  The landing page. index.md selects it with `template: home.html`; its own
+  Markdown is not shown here, only used for the page title and search.
+
+  Images carry #only-light / #only-dark, which Material's stylesheet uses to
+  show the one that matches the colour scheme.
+-#}
+{% extends "main.html" %}
+
+{% block tabs %}
+  {{ super() }}
+  <section class="ku-hero">
+    <div class="md-grid ku-hero__inner">
+      <div class="ku-hero__text">
+        <img class="ku-hero__logo" src="{{ 'assets/brand/kuverta-logo.svg' | url }}#only-light" alt="kuverta" width="268" height="64">
+        <img class="ku-hero__logo" src="{{ 'assets/brand/kuverta-logo-dark.svg' | url }}#only-dark" alt="kuverta" width="268" height="64">
+        <h1>Your email and your paper post, in one list, sorted — and it says why.</h1>
+        <p class="ku-hero__lead">
+          kuverta is a keyboard-first desktop mail client for macOS, Linux and Windows.
+          It keeps your mail on your computer, reads scanned letters from Paperless-ngx
+          beside it, and runs its models locally unless you choose otherwise.
+        </p>
+        <div class="ku-hero__actions">
+          <a class="md-button md-button--primary" href="{{ config.extra.download_url }}">Download kuverta</a>
+          <a class="md-button" href="{{ 'user-guide/' | url }}">Read the guide</a>
+        </div>
+        <p class="ku-hero__small">
+          Free software under the AGPL-3.0 · <a href="{{ 'install/' | url }}">Install notes</a> ·
+          Usable, not finished: see <a href="{{ 'user-guide/faq/' | url }}">what is not there yet</a>.
+        </p>
+      </div>
+      <div class="ku-hero__shot">
+        <img src="{{ 'assets/screens/main-light.webp' | url }}#only-light" alt="The kuverta window: mailboxes and categories on the left, the message list, and a message open on the right" width="1320" height="820">
+        <img src="{{ 'assets/screens/main-dark.webp' | url }}#only-dark" alt="The kuverta window in dark mode" width="1320" height="820">
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block content %}
+  <section class="ku-features">
+    <h2>What makes it different</h2>
+    <div class="ku-grid">
+      <article class="ku-card">
+        <h3>Mail and paper post in one place</h3>
+        <p>
+          A postal address is set up like an account, with
+          <a href="https://docs.paperless-ngx.com/">Paperless-ngx</a> as its server. Letters
+          read like mail — the sender, the subject, the text — and are sorted by the same rules.
+          A small Raspberry Pi scanner can photograph them as they are put down.
+        </p>
+        <a href="{{ 'user-guide/paper/' | url }}">Paper post →</a>
+      </article>
+      <article class="ku-card">
+        <h3>Sorting that explains itself</h3>
+        <p>
+          Every message is filed as <em>personal</em>, <em>newsletter</em>, <em>marketing</em>,
+          <em>transactional</em>, <em>notification</em> or <em>unknown</em>, from headers you can
+          check. "Unknown" is a real answer, not a guess. File a sender once and the next one follows.
+        </p>
+        <a href="{{ 'user-guide/reading/' | url }}">Reading and sorting →</a>
+      </article>
+      <article class="ku-card">
+        <h3>Cleanup and Unsubscribe</h3>
+        <p>
+          The header counts the newsletters, marketing and notifications still in your Inbox.
+          Cleanup deals with a whole kind of mail at once, and lists every sender you can
+          unsubscribe from — one click, by mail, or on their page.
+        </p>
+        <a href="{{ 'user-guide/cleanup/' | url }}">Cleanup →</a>
+      </article>
+      <article class="ku-card">
+        <h3>Models on your computer first</h3>
+        <p>
+          Reading scanned letters and sorting mail can use models run by Ollama on this computer.
+          A hosted service is your choice, per job, and the settings say plainly what it would send.
+        </p>
+        <a href="{{ 'user-guide/models/' | url }}">Models →</a>
+      </article>
+      <article class="ku-card">
+        <h3>Keyboard-first, never keyboard-only</h3>
+        <p>
+          <kbd>j</kbd> <kbd>k</kbd> to move, <kbd>e</kbd> to archive, <kbd>z</kbd> to undo —
+          and a button for everything that matters, so a reply never depends on knowing that
+          <kbd>R</kbd> is reply.
+        </p>
+        <a href="{{ 'user-guide/shortcuts/' | url }}">Keyboard shortcuts →</a>
+      </article>
+      <article class="ku-card">
+        <h3>Careful with your mail</h3>
+        <p>
+          Delete means move to Trash, and every change waits in an undo window before it
+          reaches the server. Messages are shown as text, so nothing in them is loaded from
+          the internet. OpenPGP signing and encryption are built in — no GnuPG needed.
+        </p>
+        <a href="{{ 'user-guide/encryption/' | url }}">Encryption →</a> ·
+        <a href="{{ 'user-guide/privacy/' | url }}">Privacy →</a>
+      </article>
+    </div>
+  </section>
+
+  <section class="ku-shots">
+    <h2>A closer look</h2>
+    <div class="ku-shots__grid">
+      <figure>
+        <a href="{{ 'user-guide/cleanup/' | url }}"><img src="{{ 'assets/screens/unsubscribe.webp' | url }}" alt="Unsubscribe: senders grouped by list, with how each can be unsubscribed" loading="lazy" width="1320" height="820"></a>
+        <figcaption>Unsubscribe from several senders at once.</figcaption>
+      </figure>
+      <figure>
+        <a href="{{ 'user-guide/writing/' | url }}"><img src="{{ 'assets/screens/send-later.webp' | url }}" alt="Send later: presets, a field that understands 'tomorrow 8pm', and the time read back in full" loading="lazy" width="1320" height="820"></a>
+        <figcaption>Send later, with the time read back before it is scheduled.</figcaption>
+      </figure>
+      <figure>
+        <a href="{{ 'user-guide/similar/' | url }}"><img src="{{ 'assets/screens/similar.webp' | url }}" alt="After a delete: three more messages like it, each ticked" loading="lazy" width="1320" height="820"></a>
+        <figcaption>Delete one, and see the look-alikes.</figcaption>
+      </figure>
+      <figure>
+        <a href="{{ 'user-guide/smart-mailboxes/' | url }}"><img src="{{ 'assets/screens/smart-editor.webp' | url }}" alt="The smart mailbox editor with three rules and a live preview" loading="lazy" width="1320" height="820"></a>
+        <figcaption>Smart mailboxes, with a live preview while you write the rules.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="ku-cta">
+    <div>
+      <h2>Try it</h2>
+      <p>
+        Installers for macOS 11 or later (Apple Silicon and Intel), Linux (AppImage, .deb, .rpm)
+        and Windows 10 or later. A setup assistant opens on the first run and can bring your
+        accounts over from Thunderbird and Apple Mail.
+      </p>
+    </div>
+    <div class="ku-cta__actions">
+      <a class="md-button md-button--primary" href="{{ config.extra.download_url }}">Download the latest release</a>
+      <a class="md-button" href="{{ 'install/' | url }}">How to install</a>
+    </div>
+  </section>
+
+  <section class="ku-dev">
+    <h2>For developers</h2>
+    <div class="ku-dev__grid">
+      <div>
+        <p>
+          kuverta is Rust and Tauri, with a JavaScript triage surface that runs both inside the app
+          and as a Thunderbird extension. A Docker stack gives you an IMAP server, an SMTP sink and a
+          Paperless-ngx to develop against, so none of it needs your real mailbox.
+        </p>
+        <ul>
+          <li><a href="{{ 'developers/' | url }}">Build from source</a> and run the tests</li>
+          <li><a href="{{ 'developers/cli/' | url }}">The <code>kuverta</code> command line</a></li>
+          <li><a href="{{ 'developers/mcp/' | url }}">An MCP server</a> that lets an assistant read and file mail, and never send it</li>
+          <li><a href="{{ 'developers/scanner/' | url }}"><code>scannerd</code></a>, the Raspberry Pi letter scanner</li>
+          <li><a href="{{ 'developers/architecture/' | url }}">Architecture</a> and the design decisions behind it</li>
+        </ul>
+      </div>
+      <div class="highlight"><pre><code>git clone https://github.com/kuverta/kuverta
+cd kuverta
+make dev-up     # Dovecot, an SMTP sink, Paperless-ngx
+make e2e        # register the dev account and sync it
+make triage     # open the window on the scratch store</code></pre></div>
+    </div>
+  </section>
+{% endblock %}

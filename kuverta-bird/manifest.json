@@ -31,7 +31,7 @@
   },
 
   "browser_action": {
-    "default_title": "kuverta-bird triage",
+    "default_title": "kuverta-bird cleanup",
     "default_icon": "hosts/thunderbird/icon.svg"
   },
 

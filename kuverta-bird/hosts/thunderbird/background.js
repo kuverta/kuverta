@@ -152,7 +152,7 @@ async function buildMenus() {
 
   messenger.menus.create({
     id: 'kuverta-bird-open-triage',
-    title: 'kuverta-bird: open triage',
+    title: 'kuverta-bird: open Cleanup',
     contexts: ['folder_pane', 'message_list'],
   });
 }
