@@ -1639,6 +1639,13 @@ body.assistant-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minm
 
 .chat-msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-bottom-right-radius: 5px; }
 .chat-msg.assistant { align-self: flex-start; background: var(--raised); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.chat-msg.assistant { white-space: normal; }
+.chat-msg.assistant p { margin: 0 0 6px; }
+.chat-msg.assistant p:last-child { margin-bottom: 0; }
+.chat-msg.assistant h4 { margin: 8px 0 4px; font-size: 13px; }
+.chat-msg.assistant ul, .chat-msg.assistant ol { margin: 2px 0 8px; padding-left: 20px; }
+.chat-msg.assistant li { margin: 2px 0; }
+.chat-msg.assistant code { font-size: 11.5px; padding: 0 3px; border-radius: 3px; background: var(--sidebar-bg); }
 .chat-msg.error { align-self: stretch; color: var(--error); background: color-mix(in srgb, var(--error) 10%, transparent); }
 
 .chat-activity { align-self: flex-start; color: var(--muted); font-size: 11.5px; padding-left: 4px; }

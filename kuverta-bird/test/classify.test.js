@@ -187,3 +187,90 @@ test('ties are broken the same way on every run', () => {
   }
   assert.deepEqual([...verdicts], [Category.Marketing]);
 });
+
+// -- people or organisations (rules version 2) ------------------------------
+
+test('an organisation named after its domain is not a person', () => {
+  const f = facts({
+    fromAddr: 'k.meier@sparkasse-musterstadt.example',
+    fromName: 'Sparkasse Musterstadt',
+    subject: 'Neue Nachricht im Postfach',
+    recipientCount: 1,
+  });
+  // The bank's name is its domain's: the bank speaking, not Frau Meier.
+  assert.notEqual(classify(f)[0], Category.Personal);
+});
+
+test('a role address is not a person', () => {
+  const f = facts({
+    fromAddr: 'kundenbetreuung@telefon.example',
+    fromName: 'Erika Mustermann',
+    subject: 'Ihr Anliegen',
+    recipientCount: 1,
+  });
+  // Signed with a name, sent from a department.
+  assert.notEqual(classify(f)[0], Category.Personal);
+});
+
+test('an address that is the company is not a person', () => {
+  const f = facts({
+    fromAddr: 'uber@uber.example',
+    fromName: 'Uber Receipts',
+    subject: 'Your Tuesday trip',
+    recipientCount: 1,
+  });
+  assert.notEqual(classify(f)[0], Category.Personal);
+});
+
+test('a bulk-sending subdomain is marketing', () => {
+  const f = facts({
+    fromAddr: 'email@news.broker.example',
+    fromName: 'Broker Team',
+    subject: 'Was diese Woche wichtig war',
+    recipientCount: 1,
+  });
+  assert.equal(classify(f)[0], Category.Marketing);
+});
+
+test('a person relayed by a platform is personal', () => {
+  const f = facts({
+    fromAddr: 'x7-4f2a@mail.kleinanzeigen.example',
+    fromName: 'Anna über Kleinanzeigen',
+    subject: 'Ist das Fahrrad noch zu haben?',
+    recipientCount: 1,
+  });
+  // Named after the platform's domain, but relayed: a person wrote it.
+  assert.equal(classify(f)[0], Category.Personal);
+});
+
+test('a person at their own domain is personal', () => {
+  const f = facts({
+    fromAddr: 'anna@weber.example',
+    fromName: 'Anna Weber',
+    subject: 'Fotos vom Wochenende',
+    recipientCount: 1,
+  });
+  assert.equal(classify(f)[0], Category.Personal);
+});
+
+test('an unattended address inside a longer one is a notification', () => {
+  const f = facts({
+    fromAddr: 'nicht.antworten@kundenservice.telefon.example',
+    fromName: 'Telefon Kundenservice',
+    subject: 'Ihr Tarif',
+    recipientCount: 1,
+  });
+  assert.equal(classify(f)[0], Category.Notification);
+});
+
+test('a bill sent through a mailing system is still the bill', () => {
+  const f = facts({
+    fromAddr: 'rechnung@strom.example',
+    fromName: 'Strom GmbH',
+    subject: 'Ihre Rechnung für August',
+    listId: 'kunden.strom.example',
+    listUnsubscribe: '<https://strom.example/u>',
+    recipientCount: 1,
+  });
+  assert.equal(classify(f)[0], Category.Transactional);
+});
