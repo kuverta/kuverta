@@ -391,6 +391,63 @@ CREATE TABLE urgency (
 CREATE INDEX urgency_by_score ON urgency (score);
 CREATE INDEX message_by_reply ON message (account_id, in_reply_to);
 "#,
+    // v14 — profiles: private, one company, another. Accounts and postal
+    // addresses point at one or at none; the window shows one profile at a
+    // time, or all. Nothing else changes with them.
+    r#"
+CREATE TABLE profile (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+    position   INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+ALTER TABLE account ADD COLUMN profile_id INTEGER REFERENCES profile(id) ON DELETE SET NULL;
+ALTER TABLE paper_mailbox ADD COLUMN profile_id INTEGER REFERENCES profile(id) ON DELETE SET NULL;
+"#,
+    // v15 — tasks: standing jobs the assistant does to mail. A task is a smart
+    // mailbox's rules and an action (JSON; core-rpc owns its shape).
+    // `task_seen` is what each has dealt with, so it deals with it once.
+    // `task_proposal` is what a task or the assistant would do and is waiting
+    // for a person's yes — for tasks that ask first, and anything that sends.
+    r#"
+CREATE TABLE task (
+    id           INTEGER PRIMARY KEY,
+    account_id   INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    name         TEXT    NOT NULL,
+    match_all    INTEGER NOT NULL DEFAULT 1,
+    rules        TEXT    NOT NULL,
+    action       TEXT    NOT NULL,
+    review       INTEGER NOT NULL DEFAULT 0,
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at   INTEGER NOT NULL,
+    last_run_at  INTEGER,
+    last_summary TEXT
+);
+
+CREATE TABLE task_seen (
+    task_id    INTEGER NOT NULL REFERENCES task(id) ON DELETE CASCADE,
+    message_id INTEGER NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+    PRIMARY KEY (task_id, message_id)
+);
+
+CREATE TABLE task_proposal (
+    id         INTEGER PRIMARY KEY,
+    -- NULL for what the assistant proposed in the chat.
+    task_id    INTEGER REFERENCES task(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    message_id INTEGER REFERENCES message(id) ON DELETE CASCADE,
+    -- 'move' | 'archive' | 'trash' | 'mark_read' | 'file' | 'reply'
+    kind       TEXT    NOT NULL,
+    target     TEXT,
+    body       TEXT,
+    reason     TEXT,
+    -- 'pending' | 'done' | 'rejected' | 'failed'
+    state      TEXT    NOT NULL,
+    detail     TEXT,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX task_proposal_pending ON task_proposal (account_id, state);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

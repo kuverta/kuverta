@@ -20,20 +20,26 @@
 //! docs/spike-tauri-list.md.
 
 pub mod ai;
+pub mod assistant;
+pub mod attachments;
 pub mod cleanup;
 pub mod conversations;
 pub mod mailboxes;
 pub mod outbox;
 pub mod paper;
 pub mod pgp;
+pub mod profiles;
 pub mod session;
 pub mod settings;
 pub mod setup;
 pub mod smart;
+pub mod tasks;
 pub mod update;
 pub mod urgency;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
+pub use assistant::{AssistantEvent, AssistantTurn};
+pub use attachments::{Attachment, AttachmentView};
 pub use cleanup::{
     CleanupCounts, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
     UnsubscribeResult, UnsubscribeSenderView,
@@ -51,6 +57,7 @@ pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
 };
+pub use profiles::ProfileView;
 pub use session::{
     DraftInput, DraftPreview, SavedDraft, SentSummary, Session, SyncProgress, SyncSummary,
     VerifiedFolder, VerifyReport,
@@ -59,6 +66,7 @@ pub use settings::{AccountInput, AccountSettings};
 pub use smart::{
     FoundSmartMailbox, SmartImportScan, SmartMailboxInput, SmartMailboxView, SmartPreview,
 };
+pub use tasks::{ProposalView, TaskAction, TaskInput, TaskRun, TaskView};
 pub use urgency::{UrgencyJob, UrgencyView, UrgentRow};
 
 use std::path::Path;
@@ -106,6 +114,8 @@ pub struct AccountView {
     /// False when no submission endpoint is configured, which the UI needs in
     /// order to grey out compose rather than fail at send time.
     pub can_send: bool,
+    /// The profile it is in — private, a company — when it is in one.
+    pub profile_id: Option<i64>,
 }
 
 /// A row as the list renders it.
@@ -203,6 +213,10 @@ pub struct MessageDetail {
     /// The message carries a public key (`application/pgp-keys`), which
     /// [`Core::pgp_import_from_message`] can add to the keyring.
     pub pgp_keys_attached: bool,
+    /// What the message carries besides its text — for encrypted mail, what
+    /// the encryption held. [`Core::attachment`] fetches one.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentView>,
 }
 
 /// What a model pass did.
@@ -348,11 +362,14 @@ impl Core {
     }
 
     pub fn accounts(&self) -> Result<Vec<AccountView>> {
+        let profiles: std::collections::HashMap<i64, Option<i64>> =
+            self.store.account_profiles()?.into_iter().collect();
         Ok(self
             .store
             .accounts()?
             .into_iter()
             .map(|account| AccountView {
+                profile_id: profiles.get(&account.id).copied().flatten(),
                 id: account.id,
                 email: account.email,
                 label: account.label,
@@ -409,28 +426,22 @@ impl Core {
     /// FTS5 ranks by relevance, so a search result is a different ordering of
     /// a different set — folding it into the list window would mean pretending
     /// two unrelated orderings were one.
+    /// The search box: the words typed, each as the start of a word and in
+    /// its other spellings, or an exact phrase in double quotes.
     pub fn search(&self, account: AccountId, query: &str, limit: usize) -> Result<Vec<MessageRow>> {
-        Ok(self
-            .store
-            .search(account, query, limit)?
-            .into_iter()
-            .map(|summary| MessageRow {
-                id: summary.id,
-                date_utc: summary.date_utc,
-                from: summary
-                    .from_name
-                    .or(summary.from_addr)
-                    .unwrap_or_else(|| "(unknown)".into()),
-                subject: summary.subject.unwrap_or_else(|| "(no subject)".into()),
-                // Not carried by the search index; the list window is where
-                // these are answered.
-                unread: false,
-                has_attachments: summary.has_attachments,
-                list_id: summary.list_id,
-                category: None,
-                snippet: summary.snippet,
-            })
-            .collect())
+        Ok(search_rows(self.store.search_typed(account, query, limit)?))
+    }
+
+    /// A forgiving search: mail matching any of `terms`, each word as the
+    /// start of a word and in its other spellings. See
+    /// [`core_store::Store::search_terms`].
+    pub fn search_terms(
+        &self,
+        account: AccountId,
+        terms: &[String],
+        limit: usize,
+    ) -> Result<Vec<MessageRow>> {
+        Ok(search_rows(self.store.search_terms(account, terms, limit)?))
     }
 
     pub fn message(&self, account: AccountId, id: MessageId) -> Result<MessageDetail> {
@@ -500,6 +511,10 @@ impl Core {
             .as_ref()
             .map(|p| core_pgp::open_parsed(p, self.keyring.as_ref()))
             .unwrap_or_default();
+        let attachments = parsed
+            .as_ref()
+            .map(|p| attachments::list_opened(p, &opened))
+            .unwrap_or_default();
         let body_text = match &opened.security {
             // An encrypted message's own text is the "this is an encrypted
             // message" preamble at best; what it holds, or nothing.
@@ -531,6 +546,7 @@ impl Core {
             body_text,
             security: opened.security,
             pgp_keys_attached: !opened.pgp_keys.is_empty(),
+            attachments,
         })
     }
 
@@ -895,4 +911,27 @@ pub(crate) fn now_utc() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+/// Search results as list rows.
+fn search_rows(found: Vec<core_store::MessageSummary>) -> Vec<MessageRow> {
+    found
+        .into_iter()
+        .map(|summary| MessageRow {
+            id: summary.id,
+            date_utc: summary.date_utc,
+            from: summary
+                .from_name
+                .or(summary.from_addr)
+                .unwrap_or_else(|| "(unknown)".into()),
+            subject: summary.subject.unwrap_or_else(|| "(no subject)".into()),
+            // Not carried by the search index; the list window is where
+            // these are answered.
+            unread: false,
+            has_attachments: summary.has_attachments,
+            list_id: summary.list_id,
+            category: None,
+            snippet: summary.snippet,
+        })
+        .collect()
 }

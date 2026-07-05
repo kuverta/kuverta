@@ -103,6 +103,14 @@ impl SmartRule {
                     return Err(format!("a number of days, not {value:?}"));
                 }
             }
+            SmartField::Category => {
+                if !CATEGORIES.contains(&value.to_ascii_lowercase().as_str()) {
+                    return Err(format!(
+                        "{value:?} is not a category; the categories are {}",
+                        CATEGORIES.join(", ")
+                    ));
+                }
+            }
             SmartField::Body => {
                 if !matches!(self.op, SmartOp::Contains | SmartOp::NotContains) {
                     return Err("the text of a message can only be searched for words".into());
@@ -120,6 +128,16 @@ impl SmartRule {
         Ok(())
     }
 }
+
+/// The categories a rule can name — the classifier's six.
+const CATEGORIES: &[&str] = &[
+    "personal",
+    "newsletter",
+    "marketing",
+    "transactional",
+    "notification",
+    "unknown",
+];
 
 fn parse_bool(value: &str) -> Option<bool> {
     match value.to_ascii_lowercase().as_str() {

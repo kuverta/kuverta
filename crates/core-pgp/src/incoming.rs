@@ -89,6 +89,10 @@ pub struct OpenedMessage {
     /// Armored public keys attached to the message (`application/pgp-keys`),
     /// including ones inside the encryption.
     pub pgp_keys: Vec<String>,
+    /// The MIME entity that was encrypted, once decrypted: where an encrypted
+    /// message's attachments are. Kept in memory for the one open and never
+    /// written anywhere.
+    pub decrypted: Option<Vec<u8>>,
 }
 
 struct Context<'a> {
@@ -164,6 +168,7 @@ pub fn open_parsed(parsed: &MimeMessage<'_>, keyring: Option<&Keyring>) -> Opene
                 security: Some(security),
                 body_text: text,
                 pgp_keys: keys,
+                decrypted: None,
             };
         }
     }
@@ -174,6 +179,7 @@ pub fn open_parsed(parsed: &MimeMessage<'_>, keyring: Option<&Keyring>) -> Opene
                 security: Some(security),
                 body_text: Some(text),
                 pgp_keys: keys,
+                decrypted: None,
             };
         }
     }
@@ -182,6 +188,7 @@ pub fn open_parsed(parsed: &MimeMessage<'_>, keyring: Option<&Keyring>) -> Opene
         security: None,
         body_text: None,
         pgp_keys: keys,
+        decrypted: None,
     }
 }
 
@@ -232,6 +239,7 @@ fn open_encrypted(
             security: Some(security),
             body_text: Some(String::from_utf8_lossy(&unwrapped.data).into_owned()),
             pgp_keys: Vec::new(),
+            decrypted: None,
         };
     };
     let pgp_keys = attached_keys(&inner);
@@ -258,14 +266,17 @@ fn open_encrypted(
                 security: Some(security),
                 body_text: text,
                 pgp_keys,
+                decrypted: Some(unwrapped.data.to_vec()),
             };
         }
     }
 
+    let body_text = inner.body_text(0).map(|text| text.into_owned());
     OpenedMessage {
         security: Some(security),
-        body_text: inner.body_text(0).map(|text| text.into_owned()),
+        body_text,
         pgp_keys,
+        decrypted: Some(unwrapped.data.to_vec()),
     }
 }
 

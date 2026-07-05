@@ -25,6 +25,9 @@ the settings button. A notice appears here when a newer kuverta is out.
 
 **The sidebar** on the left is the only place you choose what the list shows:
 
+- the **profile** switcher — All, Private, a company — once you have
+  [profiles](profiles.md);
+- **Needs attention** — your Inbox [ranked by how soon it needs you](attention.md);
 - your **accounts**, when there is more than one (or when you also have post);
 - **Post** — each postal address, whose scanned letters come from
   [Paperless-ngx](paper.md);

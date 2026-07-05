@@ -288,6 +288,10 @@ impl Session {
         self.open()
     }
 
+    pub(crate) fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
     pub(crate) fn password_env(&self) -> Option<&str> {
         self.password_env.as_deref()
     }

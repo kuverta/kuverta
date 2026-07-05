@@ -403,7 +403,7 @@ impl Ollama {
         })
     }
 
-    async fn post(&self, path: &str, body: &Value) -> Result<Value, AiError> {
+    pub(crate) async fn post(&self, path: &str, body: &Value) -> Result<Value, AiError> {
         let response = self
             .http
             .post(format!("{}{path}", self.base))
