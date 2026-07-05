@@ -63,6 +63,8 @@ pub struct PaperMailboxView {
     pub selector_value: Option<String>,
     /// Whether a token is stored. The token itself never crosses this boundary.
     pub has_token: bool,
+    /// The profile it is in, when it is in one.
+    pub profile_id: Option<i64>,
 }
 
 /// A physical address, as configured.
@@ -142,11 +144,14 @@ pub struct PaperDetail {
 
 impl Core {
     pub fn paper_mailboxes(&self) -> Result<Vec<PaperMailboxView>> {
+        let profiles: std::collections::HashMap<i64, Option<i64>> =
+            self.store.paper_profiles()?.into_iter().collect();
         Ok(self
             .store
             .paper_mailboxes()?
             .into_iter()
             .map(|stored| PaperMailboxView {
+                profile_id: profiles.get(&stored.id).copied().flatten(),
                 has_token: stored_token(&stored).ok().flatten().is_some(),
                 id: stored.id,
                 label: stored.label,

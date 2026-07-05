@@ -16,8 +16,10 @@ pub mod hygiene;
 pub mod model;
 pub mod outbox;
 pub mod people;
+pub mod profiles;
 mod schema;
 pub mod smart;
+pub mod tasks;
 
 pub use blobs::Blobs;
 pub use dedup::{dedup_key, normalize_message_id};
@@ -30,7 +32,9 @@ pub use outbox::OutboxEntry;
 pub use people::{
     Conversation, ConversationMessage, ConversationWindow, Urgency, UrgencyCandidate, UrgentMessage,
 };
+pub use profiles::Profile;
 pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};
+pub use tasks::{NewProposal, Proposal, StoredTask};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -1049,6 +1053,60 @@ impl Store {
             .map_err(Into::into)
     }
 
+    /// What a search box searches for: the words typed, forgivingly, as
+    /// [`Store::search_terms`] matches them — or, in double quotes, that exact
+    /// phrase.
+    pub fn search_typed(
+        &self,
+        account_id: AccountId,
+        query: &str,
+        limit: usize,
+    ) -> Result<Vec<MessageSummary>> {
+        let trimmed = query.trim();
+        match trimmed
+            .strip_prefix('"')
+            .and_then(|rest| rest.strip_suffix('"'))
+        {
+            Some(phrase) if !phrase.trim().is_empty() => self.search(account_id, phrase, limit),
+            _ => self.search_terms(account_id, &[trimmed.to_string()], limit),
+        }
+    }
+
+    /// A forgiving search, for looking for something rather than for an exact
+    /// phrase: mail matching any of `terms`, where a term matches when each of
+    /// its words begins a word in the message — in any order, and in the
+    /// spellings [`word_variants`] adds. "esim aktivierung" finds "Ihre eSIM:
+    /// Aktivierungscode"; "e-SIM" finds "eSIM".
+    ///
+    /// Each word becomes a quoted FTS5 phrase with a prefix star, so nothing a
+    /// caller passes — a model, say — can become query syntax.
+    pub fn search_terms(
+        &self,
+        account_id: AccountId,
+        terms: &[String],
+        limit: usize,
+    ) -> Result<Vec<MessageSummary>> {
+        let expression = fts_terms(terms);
+        if expression.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, m.snippet
+             FROM message_fts f
+             JOIN message m ON m.id = f.rowid
+             WHERE message_fts MATCH ?1 AND m.account_id = ?2
+             ORDER BY rank
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(
+            params![expression, account_id, limit as i64],
+            row_to_summary,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     // -- postal addresses --------------------------------------------------
 
     // -- where models run ----------------------------------------------------
@@ -1760,6 +1818,75 @@ fn register_functions(conn: &Connection) -> Result<()> {
         },
     )?;
     Ok(())
+}
+
+/// The spellings a word is also looked for in: joined up when it has a hyphen
+/// ("e-SIM" → "eSIM"), split where the case changes inside it ("eSIM" →
+/// "e SIM", which as a phrase also matches "e-SIM").
+pub fn word_variants(word: &str) -> Vec<String> {
+    let mut variants = vec![word.to_string()];
+    let joined: String = word.chars().filter(|c| c.is_alphanumeric()).collect();
+    if joined != word && !joined.is_empty() {
+        variants.push(joined);
+    }
+    let mut split = String::new();
+    let mut previous: Option<char> = None;
+    for c in word.chars() {
+        if previous.is_some_and(char::is_lowercase) && c.is_uppercase() {
+            split.push(' ');
+        }
+        split.push(c);
+        previous = Some(c);
+    }
+    if split != word {
+        variants.push(split);
+    }
+    // e- and i- words are written every way: esim, eSIM, e-SIM; email, E-Mail.
+    let mut chars = word.chars();
+    if let (Some(first), Some(second)) = (chars.next(), chars.next()) {
+        if matches!(first, 'e' | 'E' | 'i' | 'I')
+            && second.is_alphabetic()
+            && word.chars().count() >= 4
+        {
+            variants.push(format!("{first} {}", &word[first.len_utf8()..]));
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    variants.retain(|v| seen.insert(v.to_lowercase()));
+    variants
+}
+
+/// An FTS5 expression for [`Store::search_terms`]: terms or'ed, a term's words
+/// and'ed, a word's variants or'ed, each variant a quoted prefix phrase of its
+/// letters and digits only.
+fn fts_terms(terms: &[String]) -> String {
+    let phrase = |variant: &str| -> Option<String> {
+        let tokens: Vec<String> = variant
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|t| !t.is_empty())
+            .map(str::to_lowercase)
+            .collect();
+        // One letter as a prefix matches nearly every message.
+        let letters: usize = tokens.iter().map(|t| t.chars().count()).sum();
+        (letters >= 2).then(|| format!("\"{}\"*", tokens.join(" ")))
+    };
+    terms
+        .iter()
+        .filter_map(|term| {
+            let words: Vec<String> = term
+                .split_whitespace()
+                .filter_map(|word| {
+                    let variants: Vec<String> = word_variants(word)
+                        .iter()
+                        .filter_map(|v| phrase(v))
+                        .collect();
+                    (!variants.is_empty()).then(|| format!("({})", variants.join(" OR ")))
+                })
+                .collect();
+            (!words.is_empty()).then(|| format!("({})", words.join(" AND ")))
+        })
+        .collect::<Vec<_>>()
+        .join(" OR ")
 }
 
 /// Fails loudly at open time rather than at the first search: a build without

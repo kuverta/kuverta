@@ -233,6 +233,22 @@ enum Command {
         #[arg(long)]
         email: Option<String>,
     },
+    /// Ask the assistant something about an account's mail, or to do something
+    /// with it — the same assistant as the window's, with the same tools.
+    Ask {
+        #[arg(long)]
+        email: Option<String>,
+        /// What to ask.
+        message: String,
+    },
+    /// Run the account's tasks now: those that need no model, and with
+    /// --model those that ask the model too.
+    RunTasks {
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        model: bool,
+    },
     /// Inbox mail that needs you soonest, as kuverta's urgency agent sees it.
     ///
     /// The rules judge every recent message at once; with --model the model
@@ -248,6 +264,21 @@ enum Command {
         /// Show everything down to this urgency (0–3).
         #[arg(long, default_value_t = 2)]
         min: i64,
+    },
+    /// A message's attachments: listed, or one saved with --save.
+    Attachments {
+        /// The message, by its id in the store (`kuverta list` shows them).
+        #[arg(long)]
+        id: i64,
+        #[arg(long)]
+        email: Option<String>,
+        /// Save this attachment (its number in the list).
+        #[arg(long)]
+        save: Option<usize>,
+        /// Where to save it. Defaults to the current directory; an existing
+        /// file is never overwritten.
+        #[arg(long)]
+        out: Option<PathBuf>,
     },
     /// Messages that look like one — what the window offers to delete with it.
     ///
@@ -688,6 +719,79 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
+        Command::Ask { email, message } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let session = core_rpc::Session::new(&data_dir);
+            let turn = session
+                .assistant_turn(account, Vec::new(), &message, |event| {
+                    println!("  · {}", describe_event(event));
+                })
+                .await?;
+            println!(
+                "\n{}\n\n({}{})",
+                turn.reply,
+                turn.model,
+                if turn.local { "" } else { ", hosted" }
+            );
+            Ok(())
+        }
+        Command::RunTasks { email, model } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let session = core_rpc::Session::new(&data_dir);
+            let runs = session.run_tasks(account, model, |_, _| {}).await?;
+            for run in &runs {
+                println!("{:<30} {}", truncate(&run.name, 30), run.summary_text());
+            }
+            if runs.is_empty() {
+                println!("no tasks on this account");
+            }
+            Ok(())
+        }
+        Command::Attachments {
+            id,
+            email,
+            save,
+            out,
+        } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let core = core_rpc::Core::new(store, blobs);
+            match save {
+                None => {
+                    let detail = core.message(account, id)?;
+                    if detail.attachments.is_empty() {
+                        println!("no attachments");
+                    }
+                    for a in &detail.attachments {
+                        println!(
+                            "{:>3}  {:<40} {:<28} {:>9}{}",
+                            a.index + 1,
+                            truncate(&a.name, 40),
+                            a.content_type,
+                            a.size,
+                            if a.risky {
+                                "  (could run something)"
+                            } else {
+                                ""
+                            }
+                        );
+                    }
+                }
+                Some(number) => {
+                    let found = core.attachment(account, id, number.saturating_sub(1))?;
+                    let path = out
+                        .unwrap_or_else(|| PathBuf::from("."))
+                        .join(&found.view.name);
+                    let mut file = std::fs::OpenOptions::new()
+                        .write(true)
+                        .create_new(true)
+                        .open(&path)
+                        .with_context(|| format!("cannot create {}", path.display()))?;
+                    std::io::Write::write_all(&mut file, &found.bytes)?;
+                    println!("saved {}", path.display());
+                }
+            }
+            Ok(())
+        }
         Command::Urgent { email, model, min } => {
             let account = resolve_account(&store, email.as_deref())?;
             let core = core_rpc::Core::new(store, blobs);
@@ -1616,7 +1720,7 @@ fn list_messages(store: &Store, email: Option<&str>, limit: usize) -> Result<()>
 
 fn search(store: &Store, query: &str, email: Option<&str>, limit: usize) -> Result<()> {
     let account = resolve_account(store, email)?;
-    let hits = store.search(account, query, limit)?;
+    let hits = store.search_typed(account, query, limit)?;
     if hits.is_empty() {
         println!("no matches for {query:?}");
     }
@@ -1845,6 +1949,48 @@ fn list_disagreements(store: &Store, email: Option<&str>) -> Result<()> {
     }
     println!("\n{} message(s)", rows.len());
     Ok(())
+}
+
+fn describe_event(event: &core_rpc::AssistantEvent) -> String {
+    use core_rpc::AssistantEvent as E;
+    match event {
+        E::Looked { what } | E::Failed { what } => what.clone(),
+        E::Changed { what, .. } => format!("{what} (queued, undoable)"),
+        E::Draft {
+            to, subject, body, ..
+        } => format!("drafted a reply to {to}: {subject}\n{body}"),
+        E::TaskCreated {
+            name,
+            what,
+            rules,
+            matching,
+            ..
+        } => format!(
+            "created the task {name}: {what} — for mail where {rules} ({matching} match now)"
+        ),
+        E::Message {
+            id,
+            subject,
+            from,
+            attachments,
+            note,
+            ..
+        } => {
+            let mut line = format!("found message {id}: {subject} — {from}");
+            if let Some(note) = note {
+                line.push_str(&format!("\n    {note}"));
+            }
+            for a in attachments {
+                line.push_str(&format!(
+                    "\n    attachment {}: {} (kuverta attachments --id {id} --save {})",
+                    a.index + 1,
+                    a.name,
+                    a.index + 1
+                ));
+            }
+            line
+        }
+    }
 }
 
 fn list_unsubscribable(

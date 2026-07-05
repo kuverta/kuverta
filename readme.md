@@ -50,6 +50,10 @@ in its header.
 - **A desktop window** — three panes, a sidebar of accounts and folders,
   virtualized list (200k rows at 59.8 fps —
   [findings](docs/spike-tauri-list.md)), compose, search, and settings
+- **Search and attachments** — search that forgives how things are written
+  (word starts, any order, *eSIM* = *e-SIM*; quotes for a phrase); attachments
+  listed on each message, pictures, PDFs and text shown in the window, saved to
+  Downloads or opened in another app — never a file that could run something
 - **Auth** — app passwords in the OS keychain, the OAuth2 device flow
   (RFC 8628) for Microsoft 365, and the loopback flow (RFC 8252, with PKCE)
   for Gmail, which does not accept the device grant
@@ -67,6 +71,13 @@ in its header.
 - **Needs attention** — an urgency agent ranks the Inbox by how soon each
   message needs you: facts it checks (have you answered, do you write to them,
   deadlines), then the sorting model's judgement, anchored by named deadlines
+- **Assistant and tasks** — a chat panel with a tool-using model that searches,
+  reads and acts on mail (every change undoable, never sends), finds the one
+  message you mean and hands it over with its attachments, and standing
+  tasks — rules plus an action, or a model's instruction — that run after each
+  sync, asking first where told to and always for replies
+- **Profiles** — accounts and postal addresses grouped (private, one company,
+  another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in
   bubbles with quotes taken off, and a reply box underneath
 - **Diagnostics** — a log file, detailed logging switched on live, and export
