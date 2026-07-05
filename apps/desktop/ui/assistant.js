@@ -154,6 +154,67 @@ function appendChat(className, text) {
   return item;
 }
 
+/// The model's answer, with the Markdown it writes in — bold, italics, code,
+/// headings and lists — shown as such. Built from text nodes, never as HTML:
+/// the answer quotes mail, and mail is written by strangers.
+function markdown(text) {
+  const out = document.createDocumentFragment();
+  let list = null;
+  for (const line of text.split("\n")) {
+    const item = line.match(/^(\s*)([-*•]|\d+[.)])\s+(.*)$/);
+    if (item) {
+      const ordered = /\d/.test(item[2]);
+      const nested = item[1].length >= 2 && list;
+      const tag = ordered ? "OL" : "UL";
+      let target = list;
+      if (nested) {
+        const parent = list.lastElementChild;
+        target = parent.querySelector(":scope > ul, :scope > ol");
+        if (!target) {
+          target = document.createElement(tag.toLowerCase());
+          parent.append(target);
+        }
+      } else if (!list || list.tagName !== tag) {
+        list = document.createElement(tag.toLowerCase());
+        if (ordered) list.start = Number.parseInt(item[2], 10) || 1;
+        out.append(list);
+        target = list;
+      }
+      const li = document.createElement("li");
+      li.append(...inline(item[3]));
+      target.append(li);
+      continue;
+    }
+    if (!line.trim()) {
+      list = null;
+      continue;
+    }
+    list = null;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    const block = document.createElement(heading ? "h4" : "p");
+    block.append(...inline(heading ? heading[1] : line));
+    out.append(block);
+  }
+  return out;
+}
+
+/// **bold**, *italic* or _italic_, and `code`, as nodes.
+function inline(text) {
+  const nodes = [];
+  const pattern = /\*\*(.+?)\*\*|`([^`]+)`|\*([^*\s][^*]*?)\*|(?<![\w])_([^_]+)_(?![\w])/g;
+  let at = 0;
+  for (const match of text.matchAll(pattern)) {
+    if (match.index > at) nodes.push(document.createTextNode(text.slice(at, match.index)));
+    const [, bold, code, italic, underscored] = match;
+    const node = document.createElement(bold ? "strong" : code ? "code" : "em");
+    node.append(...(bold ? inline(bold) : [document.createTextNode(code ?? italic ?? underscored)]));
+    nodes.push(node);
+    at = match.index + match[0].length;
+  }
+  if (at < text.length) nodes.push(document.createTextNode(text.slice(at)));
+  return nodes;
+}
+
 async function sendToAssistant() {
   const text = assistant.input.value.trim();
   if (!text || assistant.busy) return;
@@ -183,7 +244,8 @@ async function sendToAssistant() {
     });
     thinking.remove();
     if (assistant.account === account) assistant.turns = result.turns;
-    appendChat("chat-msg assistant", result.reply.trim() || "(no answer)");
+    appendChat("chat-msg assistant", "").replaceChildren(markdown(result.reply.trim() || "(no answer)"));
+    assistant.log.scrollTop = assistant.log.scrollHeight;
     showAssistantModel(result);
     if (result.events.some((e) => e.kind === "changed" || e.kind === "task_created")) {
       await reload({ keepPosition: true });

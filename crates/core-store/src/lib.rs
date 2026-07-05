@@ -1449,6 +1449,85 @@ impl Store {
         Ok(())
     }
 
+    /// Records what the rules, at `version`, make of a message. When the
+    /// verdict is what the rules said before, the existing row is stamped
+    /// with the version instead of a duplicate added; either way the message
+    /// is no longer behind. Returns the category the rules said before, when
+    /// it was a different one.
+    pub fn record_rules_verdict(
+        &self,
+        message_id: MessageId,
+        category: &str,
+        confidence: f64,
+        version: i64,
+    ) -> Result<Option<String>> {
+        let latest: Option<(i64, String)> = self
+            .conn
+            .query_row(
+                "SELECT id, category FROM classification
+                 WHERE message_id = ?1 AND source = 'rules'
+                 ORDER BY id DESC LIMIT 1",
+                params![message_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        match latest {
+            Some((id, previous)) if previous == category => {
+                self.conn.execute(
+                    "UPDATE classification SET rules_version = ?2, confidence = ?3 WHERE id = ?1",
+                    params![id, version, confidence],
+                )?;
+                Ok(None)
+            }
+            previous => {
+                self.conn.execute(
+                    "INSERT INTO classification
+                         (message_id, category, confidence, source, latency_ms, created_at, rules_version)
+                     VALUES (?1, ?2, ?3, 'rules', 0, ?4, ?5)",
+                    params![message_id, category, confidence, now(), version],
+                )?;
+                Ok(previous.map(|(_, category)| category))
+            }
+        }
+    }
+
+    /// What the rules last said of a message.
+    pub fn rules_category(&self, message_id: MessageId) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT category FROM classification
+                 WHERE message_id = ?1 AND source = 'rules' ORDER BY id DESC LIMIT 1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Messages whose rules verdict is older than `version` (or missing),
+    /// oldest id first, after `after`: the ones to decide again.
+    pub fn messages_behind_rules(
+        &self,
+        account_id: AccountId,
+        version: i64,
+        after: MessageId,
+        limit: usize,
+    ) -> Result<Vec<(MessageId, Option<String>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.body_path FROM message m
+             WHERE m.account_id = ?1 AND m.id > ?3
+               AND COALESCE((SELECT c.rules_version FROM classification c
+                             WHERE c.message_id = m.id AND c.source = 'rules'
+                             ORDER BY c.id DESC LIMIT 1), 0) < ?2
+             ORDER BY m.id LIMIT ?4",
+        )?;
+        let rows = stmt.query_map(params![account_id, version, after, limit as i64], |row| {
+            Ok((row.get(0)?, row.get(1)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     /// The category a message is currently shown under, if any.
     ///
     /// The same preference `CURRENT_CATEGORY_JOIN` applies, expressed for one

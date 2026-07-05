@@ -1677,7 +1677,8 @@ fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(
-            "DROP TABLE task_proposal;
+            "ALTER TABLE classification DROP COLUMN rules_version;
+             DROP TABLE task_proposal;
              DROP TABLE task_seen;
              DROP TABLE task;
              ALTER TABLE account DROP COLUMN profile_id;
