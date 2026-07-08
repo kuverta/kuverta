@@ -1581,12 +1581,14 @@ async fn assistant_ask(
     account: i64,
     turns: Vec<core_ai::Turn>,
     message: String,
+    // The messages the person has open, which the question is about.
+    about: Vec<i64>,
     on_event: tauri::ipc::Channel<core_rpc::AssistantEvent>,
 ) -> Result<core_rpc::AssistantTurn, String> {
     let data_dir = app.data_dir.clone();
     on_own_thread("assistant", move || async move {
         core_rpc::Session::new(data_dir)
-            .assistant_turn(account, turns, &message, |event| {
+            .assistant_turn(account, turns, &message, &about, |event| {
                 let _ = on_event.send(event.clone());
             })
             .await

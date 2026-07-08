@@ -104,6 +104,7 @@
         <button type="button" data-act="reply" title="Reply (R)">Reply</button>
         <button type="button" data-act="reply-all" title="Reply all (A)">Reply all</button>
         <button type="button" data-act="forward" title="Forward (f)">Forward</button>
+        <button type="button" data-act="ask" title="Ask the assistant about this message (Shift+I)">Ask the assistant</button>
         <span class="spacer"></span>
         <button type="button" data-act="archive" title="Archive (e)">Archive</button>
         <button type="button" data-act="trash" class="danger" title="Move to Trash (⌫)">Delete</button>
@@ -213,6 +214,9 @@
     </div>
     <div id="assistant-chat" class="assistant-pane">
       <div id="chat-log" class="chat-log"></div>
+      <!-- The messages the question is about: what was open or picked when
+           the assistant was asked about them. -->
+      <div id="chat-about" class="chat-about" hidden></div>
       <div class="chat-compose">
         <textarea id="chat-input" rows="2" placeholder="Ask about your mail, or say what to do with it…" spellcheck="true"></textarea>
         <button type="button" id="chat-send" class="primary">Send</button>
@@ -249,6 +253,7 @@
     <span>v text/pdf</span>
     <span>/ search</span>
     <span>i assistant</span>
+    <span>I ask about this</span>
     <span>, settings</span>
   </footer>
 

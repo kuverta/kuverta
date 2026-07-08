@@ -238,6 +238,10 @@ enum Command {
     Ask {
         #[arg(long)]
         email: Option<String>,
+        /// Message ids the question is about, as if they were open in the
+        /// window: `--about 42 --about 43`.
+        #[arg(long)]
+        about: Vec<i64>,
         /// What to ask.
         message: String,
     },
@@ -729,11 +733,15 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
-        Command::Ask { email, message } => {
+        Command::Ask {
+            email,
+            about,
+            message,
+        } => {
             let account = resolve_account(&store, email.as_deref())?;
             let session = core_rpc::Session::new(&data_dir);
             let turn = session
-                .assistant_turn(account, Vec::new(), &message, |event| {
+                .assistant_turn(account, Vec::new(), &message, &about, |event| {
                     println!("  · {}", describe_event(event));
                 })
                 .await?;

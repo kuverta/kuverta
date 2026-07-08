@@ -475,6 +475,9 @@ footer {
 
 .reading-actions {
   display: flex;
+  /* Wraps rather than clipping: with the assistant open the pane is narrow,
+     and a button whose label is cut in half is a button nobody presses. */
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin: 0 -8px 14px;
@@ -482,7 +485,8 @@ footer {
   border-bottom: 1px solid var(--line);
 }
 
-.reading-actions button { font-size: 12px; padding: 3px 11px; }
+.reading-actions button { flex: 0 0 auto; font-size: 12px; padding: 3px 11px; }
+.reading-actions .spacer { min-width: 0; }
 .reading-actions[hidden] { display: none !important; }
 
 .security-note {
@@ -1639,6 +1643,32 @@ body.assistant-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minm
 
 .chat-msg.user { align-self: flex-end; background: var(--accent); color: var(--accent-fg); border-bottom-right-radius: 5px; }
 .chat-msg.assistant { align-self: flex-start; background: var(--raised); border: 1px solid var(--line); border-bottom-left-radius: 5px; }
+.chat-about {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 0;
+}
+
+.chat-about[hidden] { display: none !important; }
+
+.about-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  font-size: 11.5px;
+}
+
+.about-chip .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.about-chip .remove { padding: 0 4px; border: 0; background: transparent; line-height: 1; font-size: 13px; }
+.about-chip .remove:hover { color: var(--error); }
+
 .chat-msg.assistant { white-space: normal; }
 .chat-msg.assistant p { margin: 0 0 6px; }
 .chat-msg.assistant p:last-child { margin-bottom: 0; }
