@@ -52,6 +52,8 @@ picks one more.
 | --- | --- |
 | <kbd>v</kbd> | switch a letter between its text and the scan |
 | <kbd>i</kbd> | open or close the [assistant](assistant.md) |
+| <kbd>Shift</kbd>+<kbd>I</kbd> | hand the message under the cursor — or the ones picked — to the assistant |
+| Ask the assistant about the message under the cursor, or the ones picked |
 | <kbd>,</kbd> | settings |
 | <kbd>Esc</kbd> | close settings, a dialog or a menu |
 
