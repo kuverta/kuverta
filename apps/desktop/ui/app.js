@@ -1652,7 +1652,7 @@ for (const field of [compose.to, compose.cc, compose.bcc]) {
 /// The button is disabled while it runs rather than queueing a second pass:
 /// two syncs of one account racing each other is a way to discover locking
 /// behaviour, not a feature.
-async function sync(account = null) {
+async function sync(account = null, { background = false } = {}) {
   // From the sidebar: that account, wherever the window happens to be.
   // From the keyboard: whatever is open.
   const email = account?.email ?? state.email;
@@ -1682,26 +1682,64 @@ async function sync(account = null) {
     if (s.changes_refused) parts.push(`${s.changes_refused} refused`);
     if (s.inserted) parts.push(`${s.inserted} new`);
     if (s.expunged) parts.push(`${s.expunged} gone`);
+    // A sync nobody asked for says something only when it brought something:
+    // "nothing new" every few minutes is noise, and noise is what makes a
+    // status line stop being read.
     const what = parts.length ? parts.join(", ") : "nothing new";
-    say(mine ? what : `${email}: ${what}`);
-    // The list is showing something else, so there is nothing to redraw in
-    // it; the sidebar still is, and its tooltip has just changed.
+    if (!background) say(mine ? what : `${email}: ${what}`);
+    else if (s.inserted) say(`${email}: ${s.inserted} new`);
+    failedSyncs.delete(email);
+    // When mail last arrived has just changed, and that is what the row's
+    // tooltip says — so the accounts are read again whichever one this was.
+    state.accounts = await invoke("accounts");
+    // The list is showing another account or a postbox, so there is nothing
+    // to redraw in it; the sidebar is showing this one either way.
     if (mine) await reload({ keepPosition: true });
-    else {
-      state.accounts = await invoke("accounts");
-      await refreshSidebar();
-    }
+    else await refreshSidebar();
     // New mail gets its urgency judged and the tasks run, in the background.
     judgeUrgency();
     runTasks();
   } catch (err) {
-    say(`${email}: ${err}`, true);
+    // A background sync that fails says so once. A laptop that is asleep,
+    // away from the network or behind a captive portal would otherwise put
+    // the same red line up every few minutes, for something nobody asked for
+    // and nothing anyone can do about from here.
+    if (!background || !failedSyncs.has(email)) say(`${email}: ${err}`, true);
+    if (background) failedSyncs.add(email);
   } finally {
     state.syncing = false;
     syncProgress.hidden = true;
     statusBar.textContent = state.postbox ? state.postbox.label : state.email;
   }
 }
+
+/// Accounts whose last background sync failed, so the next failure in a row
+/// is not said again. Cleared by a sync that works.
+const failedSyncs = new Set();
+
+/// How often mail is fetched without being asked. Post is polled every twenty
+/// seconds because Paperless tells nobody when a letter arrives; mail is the
+/// same problem at a slower pace — IMAP IDLE would tell us, and until there is
+/// one, this is what keeps an account from sitting still for a day because
+/// nobody pressed r.
+const SYNC_EVERY_MS = window.__kuvertaSyncEveryMs ?? 5 * 60 * 1000;
+
+/// Every account in turn, quietly.
+///
+/// In turn rather than at once: two syncs writing to one store only wait on
+/// each other, and `sync` refuses a second anyway. Skipped while a sync is
+/// already running — a first sync downloads a whole mailbox and can outlast
+/// several of these — and while the computer says it has no network, where
+/// every account would fail in the same way for the same reason.
+async function syncEverything() {
+  if (state.syncing || navigator.onLine === false) return;
+  for (const account of state.accounts) {
+    if (state.syncing) return;
+    await sync(account, { background: true });
+  }
+}
+
+setInterval(syncEverything, SYNC_EVERY_MS);
 
 /// Shows where the sync is, or hides the bar when passed nothing.
 ///
@@ -1953,6 +1991,10 @@ async function start() {
   // waiting for shows on the Assistant button.
   judgeUrgency();
   refreshAssistantBadge();
+
+  // Opening kuverta is asking for your mail. It runs behind the window, which
+  // is already showing what was downloaded last time.
+  syncEverything();
 
   const pending = await invoke("queue", { account: state.account });
   if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);

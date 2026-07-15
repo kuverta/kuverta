@@ -99,6 +99,10 @@ async function open({ count = 0, paper = false, seen = true, width = 1200, heigh
             );
             return (await bridge)(command, args);
           },
+          // As the real bridge has: the window makes one for every sync.
+          Channel: class {
+            onmessage = null;
+          },
         },
       };
     },
