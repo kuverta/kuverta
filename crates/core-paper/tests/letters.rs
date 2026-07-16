@@ -57,6 +57,60 @@ fn a_din_letter_skips_the_return_line_the_address_block_and_the_date() {
 }
 
 #[test]
+fn a_postal_address_is_only_claimed_where_it_cannot_be_the_recipients() {
+    // The return line on the letterhead, which is what DIN 5008 puts there.
+    let return_line = letter(
+        "scan-0003",
+        None,
+        Some(
+            "Stadtwerke Musterstadt GmbH · Postfach 1234 · 80000 München\n\
+             Erika Mustermann\n\
+             Hauptstraße 12\n\
+             80331 München\n\
+             München, 01.09.2026\n\
+             Ihre Stromrechnung für August\n",
+        ),
+    );
+    assert_eq!(
+        return_line.postal_address().as_deref(),
+        Some("Postfach 1234, 80000 München")
+    );
+
+    // Two blocks: the sender's under the letterhead, the recipient's below.
+    let two_blocks = letter(
+        "scan-0004",
+        None,
+        Some(
+            "Stadtwerke Musterstadt GmbH\n\
+             Musterstraße 1\n\
+             80331 München\n\
+             \n\
+             Erika Mustermann\n\
+             Hauptstraße 12\n\
+             80331 München\n\
+             \n\
+             Ihre Stromrechnung für August\n",
+        ),
+    );
+    assert_eq!(
+        two_blocks.postal_address().as_deref(),
+        Some("Musterstraße 1\n80331 München")
+    );
+
+    // The common scan: one name, then an address block that is the reader's
+    // own. Saying that is the sender's would be worse than saying nothing.
+    assert_eq!(
+        letter("Post 1789400000-1", None, Some(STADTWERKE)).postal_address(),
+        None
+    );
+    assert_eq!(
+        letter("Post 1789400060-2", None, Some(FINANZAMT)).postal_address(),
+        None
+    );
+    assert_eq!(letter("scan-0005", None, None).postal_address(), None);
+}
+
+#[test]
 fn what_paperless_was_told_always_wins() {
     let document = letter(
         "Abschlag März",
