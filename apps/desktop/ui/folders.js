@@ -68,15 +68,15 @@ window.addEventListener("blur", () => (contextMenu.hidden = true));
 function showFolderMenu(event, folder) {
   const essential = isEssential(folder);
   showMenu(event, [
-    [`New mailbox inside “${folder.label}”…`, () => openFolderDialog(folder.name)],
+    [t("New mailbox inside “{name}”…", { name: folder.label }), () => openFolderDialog(folder.name)],
     null,
     [
-      `Delete “${folder.label}”…`,
+      t("Delete “{name}”…", { name: folder.label }),
       () => deleteFolder(folder),
       {
         danger: true,
         disabled: essential,
-        title: essential ? "The account keeps its mail of this kind here" : "",
+        title: essential ? t("The account keeps its mail of this kind here") : "",
       },
     ],
   ]);
@@ -84,14 +84,14 @@ function showFolderMenu(event, folder) {
 
 function openFolderDialog(parent = null) {
   if (state.postbox || !state.email) {
-    say("choose a mail account first", true);
+    say(t("choose a mail account first"), true);
     return;
   }
   folderForm.reset();
-  el("folder-form-account").textContent = `On ${state.email}`;
+  el("folder-form-account").textContent = t("On {email}", { email: state.email });
   const select = folderForm.parent;
   select.textContent = "";
-  select.append(new Option("Nowhere — at the top", ""));
+  select.append(new Option(t("Nowhere — at the top"), ""));
   for (const folder of state.folders) select.append(new Option(folder.name, folder.name));
   select.value = parent ?? "";
   folderSheet.hidden = false;
@@ -107,7 +107,7 @@ folderForm.addEventListener("submit", async (event) => {
   try {
     const created = await invoke("create_folder", { email: state.email, name, parent });
     closeDialog(folderSheet);
-    say(`created ${created.name}`);
+    say(t("created {name}", { name: created.name }));
     await refreshSidebar();
   } catch (err) {
     say(String(err), true);
@@ -121,14 +121,19 @@ el("folder-add").onclick = () => openFolderDialog(null);
 
 async function deleteFolder(folder) {
   if (folder.total > 0) {
-    say(`${folder.label} still has ${folder.total} message${folder.total === 1 ? "" : "s"} — move them out first`, true);
+    say(
+      folder.total === 1
+        ? t("{name} still has one message — move them out first", { name: folder.label })
+        : t("{name} still has {count} messages — move them out first", { name: folder.label, count: folder.total }),
+      true,
+    );
     return;
   }
-  if (!confirm(`Delete the mailbox “${folder.name}” from the server?`)) return;
+  if (!confirm(t("Delete the mailbox “{name}” from the server?", { name: folder.name }))) return;
   try {
     await invoke("delete_folder", { email: state.email, folder: folder.id });
     if (state.filter.folder === folder.id) state.filter = { ...state.filter, folder: null };
-    say(`deleted ${folder.name}`);
+    say(t("deleted {name}", { name: folder.name }));
     await reload();
   } catch (err) {
     say(String(err), true);

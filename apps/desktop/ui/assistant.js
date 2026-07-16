@@ -27,18 +27,18 @@ const assistant = {
 
 /// What to do with the messages you handed it, offered as a starting point.
 const ABOUT_SUGGESTIONS = [
-  "Reply and confirm.",
-  "What does this need from me?",
-  "Summarise this for me.",
-  "Write a summary of this I can send to someone.",
+  t("Reply and confirm."),
+  t("What does this need from me?"),
+  t("Summarise this for me."),
+  t("Write a summary of this I can send to someone."),
 ];
 
 const SUGGESTIONS = [
-  "What needs my attention today?",
-  "Summarise my unread mail from people.",
-  "Find my invoices from this month.",
-  "From now on, move invoices into a folder called Rechnungen.",
-  "Draft replies to the support requests from this week — I'll check them.",
+  t("What needs my attention today?"),
+  t("Summarise my unread mail from people."),
+  t("Find my invoices from this month."),
+  t("From now on, move invoices into a folder called Rechnungen."),
+  t("Draft replies to the support requests from this week — I'll check them."),
 ];
 
 /// A channel for a command to report on as it goes. Outside the app — in the
@@ -105,14 +105,14 @@ el("assistant-new").onclick = () => {
 /// for "answer this and confirm the appointment".
 async function askAboutMessages(rows) {
   if (state.account === null || state.postbox) {
-    say("the assistant works on mail accounts", true);
+    say(t("the assistant works on mail accounts"), true);
     return;
   }
   if (!rows.length) return;
   ensureConversation();
   assistant.about = rows.map((row) => ({
     id: row.id,
-    label: row.subject || "(no subject)",
+    label: row.subject || t("(no subject)"),
     from: row.from ?? "",
   }));
   if (!assistantOpen()) setAssistantOpen(true);
@@ -131,7 +131,7 @@ function showAbout() {
   }
   const head = document.createElement("span");
   head.className = "hint";
-  head.textContent = assistant.about.length === 1 ? "About:" : `About ${assistant.about.length} messages:`;
+  head.textContent = assistant.about.length === 1 ? t("About:") : t("About {count} messages:", { count: assistant.about.length });
   bar.append(head);
   for (const message of assistant.about) {
     const chip = document.createElement("span");
@@ -145,8 +145,8 @@ function showAbout() {
     off.type = "button";
     off.className = "remove";
     off.textContent = "×";
-    off.title = "Leave this one out";
-    off.setAttribute("aria-label", `Leave out ${message.label}`);
+    off.title = t("Leave this one out");
+    off.setAttribute("aria-label", t("Leave out {subject}", { subject: message.label }));
     off.onclick = () => {
       assistant.about = assistant.about.filter((m) => m.id !== message.id);
       showAbout();
@@ -179,8 +179,11 @@ function showSuggestionsInto(suggestions) {
     const hint = document.createElement("div");
     hint.className = "hint";
     hint.textContent = state.email
-      ? `Ask about the mail on ${state.email}, or say what to do with it. Everything it changes can be undone, and it never sends mail itself.`
-      : "Choose a mail account first.";
+      ? t(
+          "Ask about the mail on {email}, or say what to do with it. Everything it changes can be undone, and it never sends mail itself.",
+          { email: state.email },
+        )
+      : t("Choose a mail account first.");
     box.append(hint);
     for (const text of suggestions) {
       const button = document.createElement("button");
@@ -221,8 +224,11 @@ async function showAssistantModel(reply = null) {
   }
   if (!model) return;
   note.textContent = local
-    ? `${model}, on this computer. A small model may miss things; a larger one (Settings → Models → Assistant) does better.`
-    : `${model}, hosted: what the assistant reads is sent to that service.`;
+    ? t(
+        "{model}, on this computer. A small model may miss things; a larger one (Settings → Models → Assistant) does better.",
+        { model },
+      )
+    : t("{model}, hosted: what the assistant reads is sent to that service.", { model });
   note.classList.toggle("warn", !local);
 }
 
@@ -301,7 +307,7 @@ async function sendToAssistant() {
   const text = assistant.input.value.trim();
   if (!text || assistant.busy) return;
   if (state.account === null || state.postbox) {
-    say("choose a mail account first", true);
+    say(t("choose a mail account first"), true);
     return;
   }
   ensureConversation();
@@ -315,9 +321,9 @@ async function sendToAssistant() {
   showAbout();
   appendChat("chat-msg user", text);
   if (about.length) {
-    appendChat("chat-activity", `about ${about.map((m) => `“${m.label}”`).join(", ")}`);
+    appendChat("chat-activity", t("about {messages}", { messages: about.map((m) => `“${m.label}”`).join(", ") }));
   }
-  const thinking = appendChat("chat-thinking", "Thinking…");
+  const thinking = appendChat("chat-thinking", t("Thinking…"));
 
   const channel = progressChannel((event) => {
     showEvent(event);
@@ -335,7 +341,7 @@ async function sendToAssistant() {
     });
     thinking.remove();
     if (assistant.account === account) assistant.turns = result.turns;
-    appendChat("chat-msg assistant", "").replaceChildren(markdown(result.reply.trim() || "(no answer)"));
+    appendChat("chat-msg assistant", "").replaceChildren(markdown(result.reply.trim() || t("(no answer)")));
     assistant.log.scrollTop = assistant.log.scrollHeight;
     showAssistantModel(result);
     if (result.events.some((e) => e.kind === "changed" || e.kind === "task_created")) {
@@ -415,12 +421,14 @@ function cardButton(actions, label, action, className = "") {
 }
 
 function changeCard(event) {
-  const { box, actions } = card(event.what, event.changes.length ? "Queued — it reaches the server at the next sync." : "");
+  const { box, actions } = card(event.what, event.changes.length ? t("Queued — it reaches the server at the next sync.") : "");
   if (event.changes.length) {
-    cardButton(actions, "Undo", async (button) => {
+    cardButton(actions, t("Undo"), async (button) => {
       const cancelled = await invoke("cancel_changes", { ids: event.changes });
       box.classList.add("done");
-      button.textContent = cancelled ? `Undone (${cancelled})` : "Already sent — undo it in the mailbox";
+      button.textContent = cancelled
+        ? t("Undone ({count})", { count: cancelled })
+        : t("Already sent — undo it in the mailbox");
       await reload({ keepPosition: true });
     });
   }
@@ -430,14 +438,14 @@ function changeCard(event) {
 function draftCard(event) {
   const reply = event.message_id != null;
   const { box, actions } = card(
-    reply ? `Reply to ${event.to}` : `New message to ${event.to}`,
+    reply ? t("Reply to {to}", { to: event.to }) : t("New message to {to}", { to: event.to }),
     event.subject,
   );
   const body = document.createElement("textarea");
   body.value = event.body;
   box.insertBefore(body, actions);
-  cardButton(actions, "Send", async (button) => {
-    if (!confirm(`Send this to ${event.to}?`)) {
+  cardButton(actions, t("Send"), async (button) => {
+    if (!confirm(t("Send this to {to}?", { to: event.to }))) {
       button.disabled = false;
       return;
     }
@@ -447,9 +455,9 @@ function draftCard(event) {
       await sendNew(event.to, event.subject, body.value);
     }
     box.classList.add("done");
-    button.textContent = "Sent";
+    button.textContent = t("Sent");
   }, "primary");
-  cardButton(actions, "Open in compose", async () => {
+  cardButton(actions, t("Open in compose"), async () => {
     if (reply) {
       await openReplyInCompose(event.message_id, body.value);
       return;
@@ -464,7 +472,7 @@ function draftCard(event) {
       reply_all: false,
       forward: null,
     });
-    compose.what.textContent = "New message";
+    compose.what.textContent = t("New message");
   });
   return box;
 }
@@ -491,7 +499,7 @@ function messageCard(event) {
     for (const attachment of own) files.append(attachmentChip(account, event.id, attachment));
     box.insertBefore(files, actions);
   }
-  cardButton(actions, "Open message", async (button) => {
+  cardButton(actions, t("Open message"), async (button) => {
     button.disabled = false;
     await openWholeMessage(event.id);
   }, "primary");
@@ -500,17 +508,23 @@ function messageCard(event) {
 
 function taskCard(event) {
   const { box, actions } = card(
-    `New task: ${event.name}`,
-    `For mail where ${event.rules}: ${event.what}. ${event.matching} message${event.matching === 1 ? "" : "s"} match now.`,
+    t("New task: {name}", { name: event.name }),
+    event.matching === 1
+      ? t("For mail where {rules}: {what}. One message matches now.", { rules: event.rules, what: event.what })
+      : t("For mail where {rules}: {what}. {count} messages match now.", {
+          rules: event.rules,
+          what: event.what,
+          count: event.matching,
+        }),
   );
-  cardButton(actions, "Check it in Tasks", async (button) => {
+  cardButton(actions, t("Check it in Tasks"), async (button) => {
     button.disabled = false;
     showAssistantTab("tasks");
   });
-  cardButton(actions, "Delete it", async (button) => {
+  cardButton(actions, t("Delete it"), async (button) => {
     await invoke("delete_task", { id: event.id });
     box.classList.add("done");
-    button.textContent = "Deleted";
+    button.textContent = t("Deleted");
   }, "danger");
   return box;
 }
@@ -533,7 +547,11 @@ async function sendNew(to, subject, body) {
       encrypt: false,
     },
   });
-  say(sent.filing_error ? `sent — but not filed: ${sent.filing_error}` : `sent to ${sent.recipients.join(", ")}`);
+  say(
+    sent.filing_error
+      ? t("sent — but not filed: {error}", { error: sent.filing_error })
+      : t("sent to {recipients}", { recipients: sent.recipients.join(", ") }),
+  );
 }
 
 /// Sends a reply the person has read: threaded as a reply to the message,
@@ -554,14 +572,18 @@ async function sendReply(messageId, body) {
       encrypt: false,
     },
   });
-  say(sent.filing_error ? `sent — but not filed: ${sent.filing_error}` : `sent to ${sent.recipients.join(", ")}`);
+  say(
+    sent.filing_error
+      ? t("sent — but not filed: {error}", { error: sent.filing_error })
+      : t("sent to {recipients}", { recipients: sent.recipients.join(", ") }),
+  );
 }
 
 /// Opens compose on a reply with the drafted text in it, for changing first.
 async function openReplyInCompose(messageId, body) {
   closeCompose();
   compose.replyTo = messageId;
-  compose.what.textContent = "Reply";
+  compose.what.textContent = t("Reply");
   try {
     const preview = await invoke("preview", {
       email: state.email,
@@ -603,7 +625,7 @@ async function refreshAssistantBadge() {
     el(id).textContent = String(pending);
     el(id).hidden = pending === 0;
   }
-  el("assistant-badge").title = `${pending} waiting for your approval`;
+  el("assistant-badge").title = t("{count} waiting for your approval", { count: pending });
 }
 
 async function refreshTasks() {
@@ -639,7 +661,7 @@ function taskItem(task) {
   const on = document.createElement("input");
   on.type = "checkbox";
   on.checked = task.enabled;
-  on.title = task.enabled ? "On — runs after every sync" : "Off";
+  on.title = task.enabled ? t("On — runs after every sync") : t("Off");
   on.onchange = async () => {
     await invoke("set_task_enabled", { id: task.id, enabled: on.checked }).catch((err) => say(String(err), true));
     await refreshTasks();
@@ -651,23 +673,25 @@ function taskItem(task) {
   title.textContent = task.name;
   const what = document.createElement("div");
   what.className = "sub";
-  what.textContent = `When ${describeQuery(task.query)}: ${task.action_text}${task.review ? " — asks first" : ""}`;
+  what.textContent = task.review
+    ? t("When {rules}: {what} — asks first", { rules: describeQuery(task.query), what: task.action_text })
+    : t("When {rules}: {what}", { rules: describeQuery(task.query), what: task.action_text });
   text.append(title, what);
   if (task.last_summary) {
     const last = document.createElement("div");
     last.className = "sub";
-    last.textContent = `Last run: ${task.last_summary}`;
+    last.textContent = t("Last run: {summary}", { summary: task.last_summary });
     text.append(last);
   }
   const edit = document.createElement("button");
   edit.type = "button";
-  edit.textContent = "Edit";
+  edit.textContent = t("Edit");
   edit.onclick = () => openTaskEditor(task);
   item.append(on, text);
   if (task.pending) {
     const chip = document.createElement("span");
     chip.className = "chip accent";
-    chip.textContent = `${task.pending} waiting`;
+    chip.textContent = t("{count} waiting", { count: task.pending });
     item.append(chip);
   }
   item.append(edit);
@@ -675,12 +699,12 @@ function taskItem(task) {
 }
 
 const PROPOSAL_WORDS = {
-  move: (p) => `Move to ${p.target}`,
-  archive: () => "Archive",
-  trash: () => "Move to Trash",
-  mark_read: () => "Mark read",
-  file: (p) => `File as ${p.target}`,
-  reply: () => "Send this reply",
+  move: (p) => t("Move to {folder}", { folder: p.target }),
+  archive: () => t("Archive"),
+  trash: () => t("Move to Trash"),
+  mark_read: () => t("Mark read"),
+  file: (p) => t("File as {category}", { category: p.target }),
+  reply: () => t("Send this reply"),
 };
 
 function proposalItem(proposal) {
@@ -693,7 +717,11 @@ function proposalItem(proposal) {
   title.textContent = (PROPOSAL_WORDS[proposal.kind] ?? (() => proposal.kind))(proposal);
   const about = document.createElement("div");
   about.className = "sub";
-  about.textContent = [proposal.subject ? `“${proposal.subject}”` : "", proposal.from ? `from ${proposal.from}` : "", proposal.task_name ? `· ${proposal.task_name}` : ""]
+  about.textContent = [
+    proposal.subject ? `“${proposal.subject}”` : "",
+    proposal.from ? t("from {sender}", { sender: proposal.from }) : "",
+    proposal.task_name ? `· ${proposal.task_name}` : "",
+  ]
     .filter(Boolean)
     .join(" ");
   text.append(title, about);
@@ -732,21 +760,22 @@ function proposalItem(proposal) {
     item.append(b);
   };
   if (proposal.kind === "reply") {
-    button("Send", async () => {
-      if (!confirm(`Send this reply${proposal.from ? ` to ${proposal.from}` : ""}?`)) throw new Error("not sent");
+    button(t("Send"), async () => {
+      const ask = proposal.from ? t("Send this reply to {sender}?", { sender: proposal.from }) : t("Send this reply?");
+      if (!confirm(ask)) throw new Error(t("not sent"));
       await sendReply(proposal.message_id, body.value);
       await invoke("settle_proposal", { id: proposal.id, state: "done", detail: "sent" });
     }, "primary");
-    button("Edit in compose", async () => {
+    button(t("Edit in compose"), async () => {
       await openReplyInCompose(proposal.message_id, body.value);
       await invoke("settle_proposal", { id: proposal.id, state: "done", detail: "opened in compose" });
     });
   } else {
-    button("Approve", async () => {
+    button(t("Approve"), async () => {
       await invoke("approve_proposal", { account: state.account, id: proposal.id });
     }, "primary");
   }
-  button("Reject", async () => {
+  button(t("Reject"), async () => {
     await invoke("settle_proposal", { id: proposal.id, state: "rejected", detail: null });
   });
   return item;
@@ -763,7 +792,7 @@ el("proposals-approve-all").onclick = async () => {
       say(String(err), true);
     }
   }
-  say(`approved ${done} — each can be undone from the list with z`);
+  say(t("approved {count} — each can be undone from the list with z", { count: done }));
   await refreshTasks();
   await reload({ keepPosition: true });
 };
@@ -773,9 +802,9 @@ async function runTasks({ loud = false } = {}) {
   if (state.account === null || state.postbox) return;
   const status = el("tasks-status");
   const channel = progressChannel(([done, total]) => {
-    status.textContent = total ? `asking the model: ${done} of ${total}` : "";
+    status.textContent = total ? t("asking the model: {done} of {total}", { done, total }) : "";
   });
-  status.textContent = "running…";
+  status.textContent = t("running…");
   try {
     const runs = await invoke("run_tasks", {
       account: state.account,
@@ -784,9 +813,13 @@ async function runTasks({ loud = false } = {}) {
     });
     const done = runs.reduce((n, r) => n + r.done, 0);
     const proposed = runs.reduce((n, r) => n + r.proposed, 0);
-    status.textContent = runs.length ? `${done} done, ${proposed} waiting for you` : "";
+    status.textContent = runs.length ? t("{done} done, {waiting} waiting for you", { done, waiting: proposed }) : "";
     if (done || proposed || loud) {
-      say(runs.length ? `tasks: ${done} done, ${proposed} waiting for you` : "there are no tasks yet");
+      say(
+        runs.length
+          ? t("tasks: {done} done, {waiting} waiting for you", { done, waiting: proposed })
+          : t("there are no tasks yet"),
+      );
       await reload({ keepPosition: true });
     }
   } catch (err) {
@@ -809,7 +842,7 @@ const taskEditing = { id: null };
 function openTaskEditor(task = null) {
   if (state.account === null) return;
   taskEditing.id = task?.id ?? null;
-  el("task-form-title").textContent = task ? `Edit “${task.name}”` : "New task";
+  el("task-form-title").textContent = task ? t("Edit “{name}”", { name: task.name }) : t("New task");
   el("task-delete").hidden = !task;
   taskForm.name.value = task?.name ?? "";
   taskForm.match_all.value = task?.query?.match_all === false ? "any" : "all";
@@ -844,9 +877,9 @@ function syncTaskAction() {
   if (reply) taskForm.review.checked = true;
   el("task-note").textContent =
     reply
-      ? "Replies always wait for you: nothing a model writes is sent without you reading it."
+      ? t("Replies always wait for you: nothing a model writes is sent without you reading it.")
       : kind === "decide"
-        ? "The model reads each message and picks move, archive, trash, mark read, file or a reply — or leaves it."
+        ? t("The model reads each message and picks move, archive, trash, mark read, file or a reply — or leaves it.")
         : "";
 }
 
@@ -866,7 +899,10 @@ function taskPreviewSoon() {
     }
     try {
       const preview = await invoke("preview_smart", { account: state.account, query });
-      out.textContent = `${preview.total} message${preview.total === 1 ? "" : "s"} match these rules now.`;
+      out.textContent =
+        preview.total === 1
+          ? t("One message matches these rules now.")
+          : t("{count} messages match these rules now.", { count: preview.total });
     } catch (err) {
       out.textContent = String(err);
     }
@@ -910,7 +946,7 @@ taskForm.addEventListener("submit", async (event) => {
       },
     });
     closeDialog(taskSheet);
-    say("task saved — it runs after every sync");
+    say(t("task saved — it runs after every sync"));
     await refreshTasks();
   } catch (err) {
     say(String(err), true);
@@ -919,7 +955,7 @@ taskForm.addEventListener("submit", async (event) => {
 
 el("task-cancel").onclick = () => closeDialog(taskSheet);
 el("task-delete").onclick = async () => {
-  if (!confirm("Delete this task? What it did stays done.")) return;
+  if (!confirm(t("Delete this task? What it did stays done."))) return;
   await invoke("delete_task", { id: taskEditing.id });
   closeDialog(taskSheet);
   await refreshTasks();
