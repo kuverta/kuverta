@@ -84,7 +84,11 @@ async function renderSmartMailboxes() {
       icon: "smart",
       count: mailbox.total,
       unread: mailbox.unread,
-      title: `${describeQuery(mailbox.query)} — ${mailbox.unread} unread of ${mailbox.total}`,
+      title: t("{rules} — {unread} unread of {total}", {
+        rules: describeQuery(mailbox.query),
+        unread: mailbox.unread,
+        total: mailbox.total,
+      }),
       active: state.view === "mail" && state.filter.smart === mailbox.id,
       onClick: async () => {
         const next = state.filter.smart === mailbox.id ? null : mailbox.id;
@@ -96,9 +100,9 @@ async function renderSmartMailboxes() {
     item.addEventListener("contextmenu", (event) => {
       event.preventDefault();
       showMenu(event, [
-        ["Edit…", () => openSmartEditor(mailbox)],
+        [t("Edit…"), () => openSmartEditor(mailbox)],
         null,
-        [`Delete “${mailbox.name}”`, () => deleteSmart(mailbox), { danger: true }],
+        [t("Delete “{name}”", { name: mailbox.name }), () => deleteSmart(mailbox), { danger: true }],
       ]);
     });
     nav.append(item);
@@ -108,23 +112,28 @@ async function renderSmartMailboxes() {
 /// The rules in a line, for a tooltip: "Sender ends with @shop.example and
 /// Unread is yes".
 function describeQuery(query) {
-  const joiner = query.match_all ? " and " : " or ";
+  const joiner = query.match_all ? ` ${t("and")} ` : ` ${t("or")} `;
   return query.rules
     .map((rule) => {
       const field = SMART_FIELDS.find(([key]) => key === rule.field);
       const ops = SMART_OPS[field?.[2] ?? "text"];
       const op = ops.find(([key]) => key === rule.op)?.[1] ?? rule.op;
-      return `${field?.[1] ?? rule.field} ${op} ${rule.value}`;
+      return t("{field} {op} {value}", { field: t(field?.[1] ?? rule.field), op: t(op), value: rule.value });
     })
     .join(joiner);
 }
 
 async function deleteSmart(mailbox) {
-  if (!confirm(`Delete the smart mailbox “${mailbox.name}”? No mail is deleted — it only stops gathering it.`)) return;
+  if (
+    !confirm(
+      t("Delete the smart mailbox “{name}”? No mail is deleted — it only stops gathering it.", { name: mailbox.name }),
+    )
+  )
+    return;
   try {
     await invoke("delete_smart_mailbox", { id: mailbox.id });
     if (state.filter.smart === mailbox.id) state.filter = { ...state.filter, smart: null };
-    say(`deleted ${mailbox.name}`);
+    say(t("deleted {name}", { name: mailbox.name }));
     await reload();
     if (!SETTINGS_PAGES.smart.hidden) fillSmartPage();
   } catch (err) {
@@ -138,12 +147,14 @@ async function deleteSmart(mailbox) {
 /// no id), or nothing for a new one.
 function openSmartEditor(mailbox = null) {
   if (state.account === null) {
-    say("choose a mail account first", true);
+    say(t("choose a mail account first"), true);
     return;
   }
   smartEditing.id = mailbox?.id ?? null;
   smartEditing.account = mailbox?.account_id ?? state.account;
-  el("smart-form-title").textContent = smartEditing.id ? `Edit “${mailbox.name}”` : "New smart mailbox";
+  el("smart-form-title").textContent = smartEditing.id
+    ? t("Edit “{name}”", { name: mailbox.name })
+    : t("New smart mailbox");
   el("smart-delete").hidden = smartEditing.id === null;
   smartForm.name.value = mailbox?.name ?? "";
   smartForm.match_all.value = mailbox?.query?.match_all === false ? "any" : "all";
@@ -163,7 +174,7 @@ function ruleRow(rule) {
 
   const field = document.createElement("select");
   field.name = "field";
-  for (const [key, label] of SMART_FIELDS) field.append(new Option(label, key));
+  for (const [key, label] of SMART_FIELDS) field.append(new Option(t(label), key));
   field.value = rule.field;
 
   const op = document.createElement("select");
@@ -175,7 +186,7 @@ function ruleRow(rule) {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "remove";
-  remove.title = "Remove this rule";
+  remove.title = t("Remove this rule");
   remove.textContent = "×";
   remove.onclick = () => {
     row.remove();
@@ -188,7 +199,7 @@ function ruleRow(rule) {
   const fill = (wanted) => {
     const kind = SMART_FIELDS.find(([key]) => key === field.value)[2];
     op.textContent = "";
-    for (const [key, label] of SMART_OPS[kind]) op.append(new Option(label, key));
+    for (const [key, label] of SMART_OPS[kind]) op.append(new Option(t(label), key));
     op.value = SMART_OPS[kind].some(([key]) => key === wanted.op) ? wanted.op : SMART_OPS[kind][0][0];
     // Kept in the grid when there is nothing to choose, so the columns line up.
     op.style.visibility = kind === "days" ? "hidden" : "";
@@ -197,11 +208,11 @@ function ruleRow(rule) {
     let value;
     if (kind === "category") {
       value = document.createElement("select");
-      for (const name of CATEGORY_NAMES) value.append(new Option(name, name));
+      for (const name of CATEGORY_NAMES) value.append(new Option(t(name), name));
       value.value = CATEGORY_NAMES.includes(wanted.value) ? wanted.value : "newsletter";
     } else if (kind === "yesno") {
       value = document.createElement("select");
-      value.append(new Option("yes", "yes"), new Option("no", "no"));
+      value.append(new Option(t("yes"), "yes"), new Option(t("no"), "no"));
       value.value = ["no", "false", "0"].includes(String(wanted.value).toLowerCase()) ? "no" : "yes";
     } else {
       value = document.createElement("input");
@@ -213,7 +224,7 @@ function ruleRow(rule) {
         value.value = /^\d+$/.test(wanted.value ?? "") ? wanted.value : "";
       } else {
         value.value = wanted.value ?? "";
-        value.placeholder = { from: "anna@example.de", to: "me@example.de", subject: "invoice", body: "unsubscribe", list_id: "news.example", folder: "Archive" }[field.value] ?? "";
+        value.placeholder = { from: "anna@example.de", to: "me@example.de", subject: t("invoice"), body: t("unsubscribe"), list_id: "news.example", folder: t("Archive|a folder's name") }[field.value] ?? "";
         if (kind === "folder") {
           value.setAttribute("list", "smart-folder-names");
         }
@@ -261,7 +272,7 @@ async function previewSmart() {
   const query = smartQuery();
   query.rules = query.rules.filter((rule) => rule.value !== "");
   if (!query.rules.length) {
-    count.textContent = "Add a rule to see what it gathers.";
+    count.textContent = t("Add a rule to see what it gathers.");
     rows.textContent = "";
     return;
   }
@@ -269,8 +280,10 @@ async function previewSmart() {
     const preview = await invoke("preview_smart", { account: smartEditing.account, query });
     count.textContent =
       preview.total === 0
-        ? "Nothing matches these rules yet."
-        : `${preview.total} message${preview.total === 1 ? "" : "s"} match${preview.total === 1 ? "es" : ""}`;
+        ? t("Nothing matches these rules yet.")
+        : preview.total === 1
+          ? t("one message matches")
+          : t("{count} messages match", { count: preview.total });
     rows.textContent = "";
     for (const row of preview.rows) {
       const line = document.createElement("div");
@@ -303,7 +316,7 @@ smartForm.addEventListener("submit", async (event) => {
       },
     });
     closeDialog(smartSheet);
-    say(smartEditing.id ? "saved" : `created ${smartForm.name.value.trim()}`);
+    say(smartEditing.id ? t("saved") : t("created {name}", { name: smartForm.name.value.trim() }));
     if (smartEditing.account === state.account) {
       state.filter = { ...state.filter, smart: id, folder: null, category: null };
       await reload();
@@ -347,8 +360,8 @@ let smartFound = [];
 async function fillSmartPage() {
   const list = el("smart-page-list");
   const account = state.accounts.find((a) => a.id === state.account);
-  el("smart-page-account").textContent = account ? `on ${account.email}` : "";
-  list.dataset.empty = "None yet. Make one here, from the + beside Smart mailboxes in the sidebar, or after deleting a message that has look-alikes.";
+  el("smart-page-account").textContent = account ? t("on {email}", { email: account.email }) : "";
+  list.dataset.empty = t("None yet. Make one here, from the + beside Smart mailboxes in the sidebar, or after deleting a message that has look-alikes.");
   list.textContent = "";
   let mailboxes = [];
   try {
@@ -373,12 +386,12 @@ async function fillSmartPage() {
     count.textContent = `${mailbox.total}`;
     const edit = document.createElement("button");
     edit.type = "button";
-    edit.textContent = "Edit";
+    edit.textContent = t("Edit");
     edit.onclick = () => openSmartEditor(mailbox);
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "danger";
-    remove.textContent = "Delete";
+    remove.textContent = t("Delete");
     remove.onclick = () => deleteSmart(mailbox);
     item.append(text);
     if (mailbox.source) {
@@ -396,7 +409,7 @@ async function scanSmartImports() {
   const list = el("smart-import-list");
   const go = el("smart-import-go");
   list.textContent = "";
-  list.dataset.empty = "Looking…";
+  list.dataset.empty = t("Looking…");
   go.hidden = true;
   let scan;
   try {
@@ -408,7 +421,7 @@ async function scanSmartImports() {
   smartFound = scan.found;
   list.dataset.empty = scan.notes.length
     ? scan.notes.join(" · ")
-    : "Neither Thunderbird nor Apple Mail has smart mailboxes on this computer.";
+    : t("Neither Thunderbird nor Apple Mail has smart mailboxes on this computer.");
   const account = state.accounts.find((a) => a.id === state.account);
 
   smartFound.forEach((found, index) => {
@@ -431,15 +444,15 @@ async function scanSmartImports() {
       : account?.email;
     const parts = [];
     if (found.query.rules.length) parts.push(describeQuery(found.query));
-    else parts.push("none of its rules can be carried over");
-    if (owner) parts.push(`goes to ${owner}`);
-    if (found.exists) parts.push("already imported");
+    else parts.push(t("none of its rules can be carried over"));
+    if (owner) parts.push(t("goes to {email}", { email: owner }));
+    if (found.exists) parts.push(t("already imported"));
     sub.textContent = parts.join(" · ");
     text.append(title, sub);
     if (found.skipped.length) {
       const lost = document.createElement("div");
       lost.className = "sub bad";
-      lost.textContent = `Left out: ${found.skipped.join("; ")}`;
+      lost.textContent = t("Left out: {what}", { what: found.skipped.join("; ") });
       text.append(lost);
     }
     const from = document.createElement("span");
@@ -463,16 +476,16 @@ el("smart-import-go").onclick = async () => {
     (tick) => smartFound[Number(tick.dataset.index)],
   );
   if (!chosen.length) {
-    say("tick the ones to bring over", true);
+    say(t("tick the ones to bring over"), true);
     return;
   }
   if (state.account === null) {
-    say("add a mail account first", true);
+    say(t("add a mail account first"), true);
     return;
   }
   try {
     const added = await invoke("import_smart_mailboxes", { chosen, fallback: state.account });
-    say(`imported ${added} smart mailbox${added === 1 ? "" : "es"}`);
+    say(added === 1 ? t("imported one smart mailbox") : t("imported {count} smart mailboxes", { count: added }));
     await fillSmartPage();
     await scanSmartImports();
     await renderSmartMailboxes();

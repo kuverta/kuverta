@@ -47,9 +47,12 @@ async function offerSimilar(row) {
   similarAccount = account;
 
   const count = report.matches.length;
-  el("similar-title").textContent = `${count} more like “${row.subject}”`;
+  el("similar-title").textContent = t("{count} more like “{subject}”", { count, subject: row.subject });
   const reasons = [...new Set(report.matches.map((m) => m.reason))];
-  el("similar-sub").textContent = `From ${row.from}. They look alike because of: ${reasons.join(", ")}. Untick any to keep.`;
+  el("similar-sub").textContent = t("From {from}. They look alike because of: {reasons}. Untick any to keep.", {
+    from: row.from,
+    reasons: reasons.join(", "),
+  });
 
   similarList.textContent = "";
   for (const match of report.matches) {
@@ -91,7 +94,7 @@ function chosenSimilar() {
 function syncSimilarCount() {
   const chosen = chosenSimilar().length;
   const button = el("similar-trash");
-  button.textContent = chosen ? `Move ${chosen} to Trash` : "Move to Trash";
+  button.textContent = chosen ? t("Move {count} to Trash", { count: chosen }) : t("Move to Trash");
   button.disabled = chosen === 0;
   el("similar-all").checked = chosen === similarReport.matches.length;
   el("similar-all").indeterminate = chosen > 0 && chosen < similarReport.matches.length;
@@ -121,8 +124,8 @@ el("similar-trash").onclick = async () => {
   }
   say(
     failed
-      ? `moved ${moved} to ${state.trash}, then: ${failed}`
-      : `moved ${moved} more to ${state.trash} — z undoes them one at a time`,
+      ? t("moved {count} to {folder}, then: {error}", { count: moved, folder: state.trash, error: failed })
+      : t("moved {count} more to {folder} — z undoes them one at a time", { count: moved, folder: state.trash }),
     Boolean(failed),
   );
   await reload({ keepPosition: true });
@@ -139,7 +142,7 @@ el("similar-keep").onclick = () => closeDialog(similarSheet);
 similarSheet.addEventListener("close", () => {
   if (el("similar-never").checked) {
     setAskAboutSimilar(false);
-    say("won't ask again — it can be turned back on in Settings → General");
+    say(t("won't ask again — it can be turned back on in Settings → General"));
   }
 });
 
