@@ -30,7 +30,8 @@ pub use hygiene::{
 pub use model::*;
 pub use outbox::OutboxEntry;
 pub use people::{
-    Conversation, ConversationMessage, ConversationWindow, Urgency, UrgencyCandidate, UrgentMessage,
+    Conversation, ConversationMessage, ConversationWindow, Correspondent, Urgency,
+    UrgencyCandidate, UrgentMessage,
 };
 pub use profiles::Profile;
 pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};

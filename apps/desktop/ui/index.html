@@ -199,44 +199,55 @@
   </section>
 
   <!--
-    The assistant: a conversation with a model that can look at and act on
-    this account's mail, and the tasks it — or you — set up. Opened with the
-    Assistant button or i. See assistant.js.
+    The right-hand column: who the open message is with, and under it the
+    assistant. One column rather than two, because they are both about the
+    message in front of you and there is only room for one at this width.
   -->
-  <aside id="assistant" hidden>
-    <div class="assistant-head">
-      <div class="assistant-tabs" role="tablist">
-        <button type="button" role="tab" data-tab="chat" class="active">Chat</button>
-        <button type="button" role="tab" data-tab="tasks">Tasks <span id="tasks-badge" class="badge" hidden></span></button>
+  <aside id="aside" hidden>
+    <!-- Who the open message is with. Built by sender.js; the same card is what
+         a list row shows on hover, in #sender-hover below. -->
+    <section id="sender" class="sender-card" hidden></section>
+
+    <!--
+      The assistant: a conversation with a model that can look at and act on
+      this account's mail, and the tasks it — or you — set up. Opened with the
+      Assistant button or i. See assistant.js.
+    -->
+    <section id="assistant" hidden>
+      <div class="assistant-head">
+        <div class="assistant-tabs" role="tablist">
+          <button type="button" role="tab" data-tab="chat" class="active">Chat</button>
+          <button type="button" role="tab" data-tab="tasks">Tasks <span id="tasks-badge" class="badge" hidden></span></button>
+        </div>
+        <span class="spacer"></span>
+        <button type="button" id="assistant-new" class="tool" title="Start a new conversation">New chat</button>
+        <button type="button" id="assistant-close" class="tool icon-only" title="Close (i)" aria-label="Close the assistant">×</button>
       </div>
-      <span class="spacer"></span>
-      <button type="button" id="assistant-new" class="tool" title="Start a new conversation">New chat</button>
-      <button type="button" id="assistant-close" class="tool icon-only" title="Close (i)" aria-label="Close the assistant">×</button>
-    </div>
-    <div id="assistant-chat" class="assistant-pane">
-      <div id="chat-log" class="chat-log"></div>
-      <!-- The messages the question is about: what was open or picked when
-           the assistant was asked about them. -->
-      <div id="chat-about" class="chat-about" hidden></div>
-      <div class="chat-compose">
-        <textarea id="chat-input" rows="2" placeholder="Ask about your mail, or say what to do with it…" spellcheck="true"></textarea>
-        <button type="button" id="chat-send" class="primary">Send</button>
+      <div id="assistant-chat" class="assistant-pane">
+        <div id="chat-log" class="chat-log"></div>
+        <!-- The messages the question is about: what was open or picked when
+             the assistant was asked about them. -->
+        <div id="chat-about" class="chat-about" hidden></div>
+        <div class="chat-compose">
+          <textarea id="chat-input" rows="2" placeholder="Ask about your mail, or say what to do with it…" spellcheck="true"></textarea>
+          <button type="button" id="chat-send" class="primary">Send</button>
+        </div>
+        <div id="chat-model" class="hint chat-model"></div>
       </div>
-      <div id="chat-model" class="hint chat-model"></div>
-    </div>
-    <div id="assistant-tasks" class="assistant-pane" hidden>
-      <div class="assistant-scroll">
-        <section class="assistant-section">
-          <div class="assistant-section-head"><h3>Waiting for you</h3><button type="button" id="proposals-approve-all" hidden>Approve all moves</button></div>
-          <div id="proposal-list" class="item-list" data-empty="Nothing waiting. Tasks that ask first leave what they would do here."></div>
-        </section>
-        <section class="assistant-section">
-          <div class="assistant-section-head"><h3>Tasks</h3><button type="button" id="task-new">New task…</button></div>
-          <div id="task-list" class="item-list" data-empty="No tasks yet. Ask the assistant — “from now on, move invoices to Rechnungen” — or make one here."></div>
-          <div class="card-actions"><button type="button" id="tasks-run">Run all now</button><span id="tasks-status" class="hint"></span></div>
-        </section>
+      <div id="assistant-tasks" class="assistant-pane" hidden>
+        <div class="assistant-scroll">
+          <section class="assistant-section">
+            <div class="assistant-section-head"><h3>Waiting for you</h3><button type="button" id="proposals-approve-all" hidden>Approve all moves</button></div>
+            <div id="proposal-list" class="item-list" data-empty="Nothing waiting. Tasks that ask first leave what they would do here."></div>
+          </section>
+          <section class="assistant-section">
+            <div class="assistant-section-head"><h3>Tasks</h3><button type="button" id="task-new">New task…</button></div>
+            <div id="task-list" class="item-list" data-empty="No tasks yet. Ask the assistant — “from now on, move invoices to Rechnungen” — or make one here."></div>
+            <div class="card-actions"><button type="button" id="tasks-run">Run all now</button><span id="tasks-status" class="hint"></span></div>
+          </section>
+        </div>
       </div>
-    </div>
+    </section>
   </aside>
 
   <footer>
@@ -941,6 +952,11 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <!-- The hover card: the same summary as the column's, shown beside the row
+       under the cursor and never taking the focus. Out here rather than in
+       #aside because it floats against the window. -->
+  <div id="sender-hover" class="sender-card floating" role="tooltip" hidden></div>
+
   <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="setup.js"></script>
@@ -954,6 +970,7 @@
   <script src="encryption.js"></script>
   <script src="attachments.js"></script>
   <script src="people.js"></script>
+  <script src="sender.js"></script>
   <script src="profiles.js"></script>
   <script src="assistant.js"></script>
 </body>

@@ -1693,16 +1693,27 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 
 /* -- the assistant ---------------------------------------------------------- */
 
-body.assistant-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minmax(320px, 400px); }
+/* The fourth column exists when anything is in it: the sender card, the
+   assistant, or both stacked. See `syncAside` in app.js. */
+body.aside-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minmax(320px, 400px); }
 
-#assistant {
+#aside {
   grid-column: 4;
   grid-row: 2;
-  display: grid;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--line);
   background: var(--sidebar-bg);
+}
+
+#aside[hidden] { display: none !important; }
+
+#assistant {
+  flex: 1;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
 }
 
 #assistant[hidden] { display: none !important; }
@@ -1854,3 +1865,111 @@ body.assistant-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minm
   .shelf-row { grid-template-columns: minmax(0, 1fr) auto; }
   .shelf-row .shelf-words { grid-column: 1 / -1; grid-row: 2; }
 }
+
+/* -- who the message is with ------------------------------------------------
+
+   One card, drawn twice: pinned under the sidebar's navigation while a message
+   is open, and floating beside a list row on hover. The floating copy takes no
+   pointer events — it must never come between the cursor and the row that
+   summoned it — so the parts that are there to be clicked are left out of it
+   rather than shown dead. */
+
+.sender-card[hidden] { display: none !important; }
+
+#sender {
+  flex: 0 1 auto;
+  overflow-y: auto;
+  padding: 12px 14px 14px;
+}
+
+/* Sharing the column: the card keeps its natural height up to a point, and
+   the assistant — which is where the typing happens — keeps the rest. */
+#aside.with-assistant #sender {
+  max-height: 45%;
+  border-bottom: 1px solid var(--line);
+}
+
+.sender-card.floating {
+  position: fixed;
+  z-index: 60;
+  width: 330px;
+  max-height: 70vh;
+  overflow: hidden;
+  padding: 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--raised);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.sender-head { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.sender-head .avatar { width: 30px; height: 30px; font-size: 11.5px; }
+.sender-who { min-width: 0; }
+.sender-name { font-weight: 600; }
+.sender-name, .sender-address { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sender-address { color: var(--muted); font-size: 11px; }
+
+/* Counts read as numbers with a word after them, not as a table. */
+.sender-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  margin-top: 9px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.sender-stats b { color: var(--fg); font-weight: 600; }
+
+/* A postal address is two or three printed lines, so it keeps them. */
+.sender-postal {
+  margin-top: 8px;
+  padding: 6px 9px;
+  border-radius: var(--radius);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  white-space: pre-line;
+  font-size: 11.5px;
+}
+
+.sender-lines { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; font-size: 11.5px; }
+.sender-line { display: flex; gap: 6px; min-width: 0; }
+.sender-line .what { color: var(--muted); flex: none; }
+.sender-line .value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.sender-waiting {
+  margin-top: 9px;
+  padding: 6px 9px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--amber) 22%, transparent);
+  font-size: 11.5px;
+}
+
+.sender-recent { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.sender-recent-head { margin-bottom: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+
+.sender-msg {
+  display: grid;
+  grid-template-columns: 11px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: baseline;
+  width: 100%;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  font-size: 11.5px;
+}
+
+button.sender-msg { cursor: pointer; }
+button.sender-msg:hover { background: var(--selected); border-color: transparent; }
+.sender-msg .way { color: var(--muted); }
+.sender-msg .subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sender-msg.unread .subject { font-weight: 600; }
+.sender-msg .when { color: var(--muted); font-size: 11px; }
+
+.sender-actions { display: flex; gap: 6px; margin-top: 9px; }
+.sender-actions button { flex: 1; }
+.sender-empty { margin-top: 8px; color: var(--muted); font-size: 11.5px; }

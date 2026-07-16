@@ -534,6 +534,112 @@ fn conversations_pair_what_came_with_what_went() {
 }
 
 #[test]
+fn a_correspondent_is_summed_up_from_both_directions() {
+    let (store, account, inbox, _) = mailbox();
+    let sent = store
+        .upsert_folder(account, "Sent", Some("\\Sent"))
+        .unwrap();
+    sent_by_me(
+        &store,
+        account,
+        sent,
+        1,
+        "erika@example.de",
+        "Re: Rechnung für Mai",
+        0,
+        Some("4@x"),
+    );
+    // A second letter from her, older and filed away, so the folder counts
+    // have more than one answer.
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+    put(
+        &store,
+        account,
+        9,
+        &Mail {
+            id: "9@x",
+            from: "erika@example.de",
+            subject: "Angebot",
+            days_ago: 30,
+            seen: true,
+            list: None,
+            unsubscribe: None,
+            category: "personal",
+            folder: archive,
+        },
+    );
+
+    let erika = store
+        .correspondent(account, "dev@kuverta.test", "Erika@example.de", &[])
+        .unwrap();
+    assert_eq!(erika.address, "erika@example.de");
+    assert_eq!((erika.received, erika.sent, erika.unread), (2, 1, 1));
+    assert_eq!(erika.usual_category, Some(("personal".into(), 2)));
+    assert_eq!(
+        erika.folders,
+        vec![
+            ("Archive".to_string(), 1),
+            ("INBOX".to_string(), 1),
+            ("Sent".to_string(), 1)
+        ]
+    );
+    // She wrote yesterday; the reply went today.
+    assert!(erika.last_to_them_utc >= erika.last_from_them_utc);
+    assert!(erika.first_utc.unwrap() < erika.last_from_them_utc.unwrap());
+    assert!(erika.waiting.is_none());
+
+    // The shop is bulk, and one-sided: it has never been written to.
+    let shop = store
+        .correspondent(account, "dev@kuverta.test", "news@shop.example", &[])
+        .unwrap();
+    assert_eq!((shop.received, shop.sent), (2, 0));
+    assert_eq!(shop.usual_category, Some(("marketing".into(), 2)));
+
+    // Somebody with no mail at all answers as an empty card, not an error.
+    let stranger = store
+        .correspondent(account, "dev@kuverta.test", "nobody@example.com", &[])
+        .unwrap();
+    assert_eq!((stranger.received, stranger.sent), (0, 0));
+    assert!(stranger.name.is_none() && stranger.folders.is_empty());
+
+    // A verdict on her Inbox letter surfaces on her card.
+    let waiting = store
+        .message_window(account, 0, 50, &ListFilter::default())
+        .unwrap()
+        .messages
+        .into_iter()
+        .find(|m| m.summary.subject.as_deref() == Some("Rechnung für Mai"))
+        .unwrap()
+        .summary
+        .id;
+    store
+        .record_urgency(
+            waiting,
+            &Urgency {
+                score: 3,
+                reason: "an invoice is due".into(),
+                action: Some("pay".into()),
+                deadline: None,
+                source: "rules".into(),
+                model: None,
+            },
+        )
+        .unwrap();
+    let erika = store
+        .correspondent(account, "dev@kuverta.test", "erika@example.de", &[])
+        .unwrap();
+    assert_eq!(erika.waiting.map(|u| u.score), Some(3));
+
+    // The card asked for by message finds the same person from either side:
+    // from her letter by its sender, from the reply by its recipient.
+    let from_her = store
+        .counterpart_of(account, "dev@kuverta.test", waiting)
+        .unwrap();
+    assert_eq!(from_her.as_deref(), Some("erika@example.de"));
+    let _ = inbox;
+}
+
+#[test]
 fn urgency_is_asked_once_and_ranks_the_view() {
     let (store, account, _, _) = mailbox();
     let sent = store
