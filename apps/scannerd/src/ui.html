@@ -110,6 +110,27 @@
   #preview-sheets { display: flex; gap: 6px; flex-wrap: wrap; flex: none; }
   #preview-sheets button { padding: 4px 10px; font-size: .85rem; }
   #preview-sheets button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  /* In preview mode the folders are the thing you act on — one key press
+     each, from across the table — so they are the biggest thing in the
+     column, not chips at the size of the running text beside them. */
+  body.preview #preview-folders { gap: 8px; margin-top: 4px; }
+  body.preview #preview-folders .chip {
+    padding: 9px 16px;
+    font-size: 1.12rem;
+    border-radius: 12px;
+    gap: 9px;
+  }
+  body.preview #preview-folders .chip .key {
+    font-size: 1rem;
+    min-width: 1.3em;
+    padding: 1px 6px;
+    border-radius: 6px;
+    background: rgb(0 0 0 / 0.12);
+    color: inherit;
+  }
+  body.preview #preview-folders .chip.guess { border-width: 2px; font-weight: 700; }
+  body.preview #preview-side h3 { font-size: 1.05rem; }
+
   #preview-text { margin: 0; white-space: pre-wrap; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; flex: 1 1 auto; min-height: 48px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   /* Narrow, or too short to divide up: let it scroll again rather than
      squeezing the page into a strip. */
@@ -944,7 +965,10 @@
       tab.onclick = () => { sheet = name; drawPreview(last); };
       return tab;
     }));
-    const showing = sheet && pages.includes(sheet);
+    // The open letter's pages, or — once it has gone — the pages of the
+    // letter just sent, which the scanner keeps for exactly as long as it
+    // keeps what was read from them.
+    const showing = sheet && names.includes(sheet);
     $('preview-page').src = showing ? `/page/${encodeURIComponent(sheet)}` : '';
     $('preview-page').style.visibility = showing ? 'visible' : 'hidden';
 
