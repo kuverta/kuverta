@@ -157,10 +157,16 @@ impl Web {
         if !is_page_name(name) {
             return not_found();
         }
-        match std::fs::read(self.spool_dir.join("open").join(name)) {
-            Ok(bytes) => typed("image/jpeg", bytes),
-            Err(_) => not_found(),
+        // The open letter's pages, and then the pages of the one just sent:
+        // the setup page shows those beside the text read from them until the
+        // next letter starts, and a page without its picture is half an
+        // answer.
+        for dir in ["open", "sent"] {
+            if let Ok(bytes) = std::fs::read(self.spool_dir.join(dir).join(name)) {
+                return typed("image/jpeg", bytes);
+            }
         }
+        not_found()
     }
 }
 

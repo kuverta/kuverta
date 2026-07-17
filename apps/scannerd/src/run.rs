@@ -915,6 +915,7 @@ impl Scanner {
                                 // said is not this one's.
                                 if self.page_texts.is_empty() {
                                     self.sent_texts.clear();
+                                    spool.clear_sent();
                                 }
                                 if let Some(reader) = &self.reader {
                                     reader.start(&path);

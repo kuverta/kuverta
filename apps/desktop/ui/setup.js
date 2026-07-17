@@ -449,13 +449,26 @@ installForm.addEventListener("submit", async (event) => {
 /// because a word every official letter contains — "Datenschutz", say, which
 /// stands in the footer of all of them — would put every letter in that
 /// folder.
+///
+/// Longer lists than look necessary, on purpose: the words are matched
+/// against what a camera on a stalk and tesseract made of a letter, and that
+/// text is bad. A letter from the Wasserschutzpolizei came out with
+/// "Strafprozessordnung" as "Sraiomzessorsnung" three times over — and was
+/// filed by "Staatsanwaltschaft", which happened to survive on page two. Each
+/// extra spelling of the same idea is another chance that one of them lands.
 const SHELF_SUGGESTIONS = [
-  { name: "Auto", words: "Kfz, Fahrzeug, Fahrzeughalter, Kennzeichen, TÜV, Hauptuntersuchung, Zulassungsstelle, Kfz-Versicherung, Bußgeldbescheid, Verwarnungsgeld" },
-  { name: "Rechnungen", words: "Rechnung, Rechnungsnummer, Rechnungsbetrag, Zahlungserinnerung, Mahnbescheid, Inkasso, Zahlungsziel, Ratenzahlung" },
-  { name: "Versicherungen", words: "Versicherungsschein, Versicherungsnummer, Beitragsrechnung, Haftpflicht, Hausratversicherung, Krankenversicherung, Schadenmeldung" },
-  { name: "Steuern", words: "Finanzamt, Steuernummer, Steuerbescheid, Einkommensteuer, Steuererklärung, Lohnsteuerbescheinigung, Grundsteuer, ELSTER" },
-  { name: "Wohnen", words: "Miete, Mietvertrag, Vermieter, Hausverwaltung, Nebenkostenabrechnung, Betriebskostenabrechnung, Stromrechnung, Zählerstand, Rundfunkbeitrag" },
-  { name: "Werbung", words: "Werbung, Gewinnspiel, Gutschein, Rabatt, Sonderangebot, Prospekt, Katalog, Newsletter" },
+  { name: "Auto", words: "Kfz, Fahrzeug, Fahrzeughalter, Fahrzeugschein, Zulassungsbescheinigung, Kennzeichen, TÜV, Hauptuntersuchung, Zulassungsstelle, Kfz-Versicherung, Kraftfahrzeugsteuer, Bußgeldbescheid, Verwarnungsgeld, Parkverstoß, Werkstattrechnung" },
+  { name: "Rechnungen", words: "Rechnung, Rechnungsnummer, Rechnungsbetrag, Zahlungserinnerung, Zahlungsaufforderung, Zahlungsverzug, Mahnung, Mahnbescheid, Mahngebühr, Inkasso, Inkassobüro, Vollstreckungsbescheid, Gerichtsvollzieher, Zahlungsziel, Ratenzahlung" },
+  { name: "Versicherungen", words: "Versicherungsschein, Versicherungsnummer, Versicherungsvertrag, Beitragsrechnung, Haftpflicht, Hausratversicherung, Krankenversicherung, Rechtsschutzversicherung, Unfallversicherung, Schadenmeldung, Schadennummer, Police" },
+  { name: "Steuern", words: "Finanzamt, Finanzkasse, Steuernummer, Steuerbescheid, Einkommensteuer, Steuererklärung, Lohnsteuer, Lohnsteuerbescheinigung, Umsatzsteuer, Kirchensteuer, Grundsteuer, Steueridentifikationsnummer, Steuer-ID, IdNr, Säumniszuschlag, ELSTER" },
+  { name: "Wohnen", words: "Miete, Mietvertrag, Mieterhöhung, Vermieter, Hausverwaltung, Nebenkostenabrechnung, Betriebskostenabrechnung, Heizkostenabrechnung, Stromrechnung, Zählerstand, Abschlagszahlung, Kaution, Wohnungsgeberbestätigung, Rundfunkbeitrag" },
+  // A letter from the police, the prosecutor or a court is the one kind of
+  // post where finding it a fortnight later is not good enough, so its words
+  // are the broadest of the lot. "Anzeige" and "Ladung" are deliberately not
+  // among them: one is also an advertisement and the other a lorry's load.
+  { name: "Recht & Behörden", words: "Staatsanwaltschaft, Strafbefehl, Strafbefehlsverfahren, Strafverfahren, StPO, Strafanzeige, Beschuldigten, Anhörungsbogen, Vorladung, Ermittlungsverfahren, Verteidiger, Rechtsanwalt, Aktenzeichen, Amtsgericht, Bußgeldstelle, Polizei" },
+  { name: "Gesundheit", words: "Arztbrief, Arztpraxis, Krankenkasse, Befund, Laborbefund, Rezept, Klinik, Krankenhaus, Entlassungsbericht, Überweisungsschein, Heilmittelverordnung, Impfung, Zuzahlung, Krankengeld" },
+  { name: "Werbung", words: "Werbung, Gewinnspiel, Gewinnbenachrichtigung, Gutschein, Gutscheincode, Rabatt, Rabattcode, Aktionscode, Sonderangebot, Prospekt, Katalog, Newsletter, jetzt bestellen, nur für kurze Zeit" },
 ];
 
 /// The address the folders belong to: the one just set up, or the only one.
