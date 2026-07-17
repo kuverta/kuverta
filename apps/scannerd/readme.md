@@ -175,9 +175,20 @@ the env file's list, or the one ticked on the setup page.
 A letter goes in **one** folder, because it is a piece of paper. Where its
 text fits more than one, the folder with the most of its words on the page
 wins — a letter carrying five of Taxes' words and one of Rechnungen's is a tax
-letter — and the others are said under it rather than beside it. Paperless
-tags the document with all of them, which is right for a document; the shelf
-is not a document.
+letter — and the others are said under it rather than beside it.
+
+That decision is made **once, on the rig, while the paper is in your hand**,
+and does not change afterwards. It is written beside the letter in the spool
+as it is queued, so it survives a restart, and put on the document as it is
+uploaded. Paperless does not match folder tags itself — they are saved with
+its matching switched off — because a second opinion arriving a minute later,
+from better OCR but after the paper is already in a drawer, could only make
+the record and the drawer disagree. The words stay on the tags: they are what
+the rig reads a page against, and where they are edited.
+
+That is what makes kuverta useful for finding the paper again. An open letter
+says which folder it is in, and that folder is the drawer you actually put it
+in.
 
 The words are matched against what tesseract made of a photograph, which is
 bad text: a letter from the Wasserschutzpolizei came out with

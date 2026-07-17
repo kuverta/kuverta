@@ -129,6 +129,10 @@ pub struct Scanner {
     /// The letter closed last, by file name, and when — what "Undo last
     /// letter" takes back. `None` once it has been.
     last_letter: Option<(String, u64)>,
+    /// Where the letter just closed was decided to go, read off the pages by
+    /// the Pi at the moment it was finished. Written beside the letter in the
+    /// spool as it is queued, so it survives a restart.
+    decided: Vec<Folder>,
     /// How much of the corners' area a page covers, from the pages seen:
     /// what an envelope is told apart by. Until the first, a page is taken
     /// to fill them.
@@ -169,6 +173,7 @@ impl Scanner {
             letters_closed: 0,
             clear_since: None,
             envelope_only: false,
+            decided: Vec::new(),
             page_covers: None,
             last_letter: None,
             ev: 0.0,
@@ -356,10 +361,21 @@ impl Scanner {
     }
 
     /// A letter was closed into `letter`.
-    fn closed(&mut self, letter: &std::path::Path, now: u64) {
+    fn closed(&mut self, spool: &Spool, letter: &std::path::Path, now: u64) {
         // What its pages said stays in front of whoever is standing there
         // until the next letter starts.
         self.sent_texts = std::mem::take(&mut self.page_texts);
+        // And where it goes is settled here, while the paper is still in
+        // somebody's hand, rather than later by Paperless. The folder on the
+        // panel is the drawer the paper goes in; it has to be the folder the
+        // record ends up with, or kuverta cannot lead you back to the paper.
+        self.decided = self.guessed();
+        let names: Vec<String> = self
+            .decided
+            .iter()
+            .map(|folder| folder.tag_name())
+            .collect();
+        spool.record_folders(letter, &names);
         self.letters_closed += 1;
         self.envelope_only = false;
         self.last_letter = letter
@@ -880,7 +896,7 @@ impl Scanner {
                                         tracing::info!(letter = %letter.display(), "letter closed by the next envelope");
                                         self.event(now, true, "an envelope: the letter before it is finished, sending");
                                         self.close_requested_at = None;
-                                        self.closed(&letter, now);
+                                        self.closed(spool, &letter, now);
                                         sent_before = true;
                                     }
                                     Ok(None) => {}
@@ -1304,7 +1320,7 @@ impl Scanner {
         let pages = spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
         match spool.close_letter() {
             Ok(Some(letter)) => {
-                self.closed(&letter, now);
+                self.closed(spool, &letter, now);
                 let how = if requested { "finished" } else { "left alone" };
                 tracing::info!(letter = %letter.display(), how, "letter closed");
                 let plural = if pages == 1 { "" } else { "s" };
@@ -1567,7 +1583,9 @@ async fn drain(
             }
         };
 
-        match uploader.send(&filename, bytes).await {
+        // Where it was decided to go, written beside it when it was closed.
+        let folders = spool.folders_decided(&item.path);
+        match uploader.send(&filename, bytes, &folders).await {
             Ok(task) => {
                 tracing::info!(file = %filename, %task, "uploaded");
                 if let Some(filings) = filings.as_deref_mut() {

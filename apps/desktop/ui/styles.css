@@ -1590,6 +1590,34 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 
 /* -- needs attention ------------------------------------------------------ */
 
+/* Where the paper is. A letter's most practical fact, said plainly under its
+   subject, because it is the one thing on screen you can act on with your
+   hands. */
+.reading-shelf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: -6px 0 14px;
+}
+
+.reading-shelf[hidden] { display: none !important; }
+
+.shelf-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 4px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.shelf-folder .icon { width: 15px; height: 15px; }
+.shelf-for { color: var(--muted); font-size: 12px; }
+
 .urgency-note {
   margin: -6px 0 14px;
   padding: 7px 11px;
