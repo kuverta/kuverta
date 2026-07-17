@@ -50,16 +50,25 @@ fn corners_in_the_wrong_order_or_off_the_picture_are_refused() {
 fn the_crop_holds_every_corner_and_the_corners_are_found_in_it() {
     let corners = Corners::parse("0.3004,0.1502,0.7,0.15,0.9,0.85,0.1,0.8517").unwrap();
     let crop = corners.crop();
-    assert_eq!(crop, "0.100,0.150,0.800,0.702");
+    // The marks span 0.1–0.9 across and 0.150–0.852 down, and the crop leaves
+    // 8% of that round them: a letter put down a little off the marks is
+    // still photographed, which is the only chance there is of keeping it.
+    assert_eq!(crop, "0.036,0.093,0.928,0.815");
     assert!(scannerd::settings::valid_roi(&crop).is_ok());
 
     let inside = corners.within(&crop).unwrap();
     for (x, y) in inside.0 {
-        assert!((-1e-9..=1.0 + 1e-9).contains(&x), "{inside:?}");
-        assert!((-1e-9..=1.0 + 1e-9).contains(&y), "{inside:?}");
+        assert!((0.0..=1.0).contains(&x), "{inside:?}");
+        assert!((0.0..=1.0).contains(&y), "{inside:?}");
     }
-    assert!(close(inside.0[3].0, 0.0, 1e-9));
-    assert!(close(inside.0[1].1, 0.0, 1e-9));
+    // Every corner has room on its own side of the photograph rather than
+    // sitting on its edge, which is where they used to be.
+    let leftmost = inside.0.iter().fold(1.0f64, |least, &(x, _)| least.min(x));
+    let topmost = inside.0.iter().fold(1.0f64, |least, &(_, y)| least.min(y));
+    let rightmost = inside.0.iter().fold(0.0f64, |most, &(x, _)| most.max(x));
+    let lowest = inside.0.iter().fold(0.0f64, |most, &(_, y)| most.max(y));
+    assert!(leftmost > 0.05 && topmost > 0.05, "{inside:?}");
+    assert!(rightmost < 0.95 && lowest < 0.95, "{inside:?}");
 }
 
 #[test]
@@ -256,6 +265,151 @@ fn table_with_page(w: usize, h: usize, page: [(f64, f64); 4]) -> Vec<u8> {
         }
     }
     rgb
+}
+
+/// A table with a white page on it and a dark band across the page's own top
+/// left corner — a letterhead, which is the first thing a crop takes and the
+/// thing the sender is read from.
+fn table_with_letterhead(w: usize, h: usize, page: [(f64, f64); 4]) -> Vec<u8> {
+    let mut rgb = table_with_page(w, h, page);
+    let map = Homography::square_to(&Corners::new(page).unwrap());
+    let steps = 600;
+    for i in 0..steps {
+        for j in 0..steps {
+            let u = 0.04 + (i as f64 / steps as f64) * 0.22;
+            let v = 0.04 + (j as f64 / steps as f64) * 0.06;
+            let (x, y) = map.apply(u, v);
+            let (px, py) = ((x * w as f64) as usize, (y * h as f64) as usize);
+            if px < w && py < h {
+                let at = (py * w + px) * 3;
+                rgb[at..at + 3].fill(20);
+            }
+        }
+    }
+    rgb
+}
+
+#[test]
+fn the_trim_takes_table_and_leaves_paper_it_only_thought_was_table() {
+    use scannerd::straighten::trim_to_page;
+    let (w, h) = (600usize, 800usize);
+
+    // A strip of table down one side is what the trim is for.
+    let mut rgb = vec![235u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..(w / 8) {
+            let at = (y * w + x) * 3;
+            rgb[at..at + 3].fill(110);
+        }
+    }
+    let (_, tw, th) = trim_to_page(rgb, w as u32, h as u32);
+    assert!(
+        tw < w as u32 * 9 / 10,
+        "the table was not trimmed: {tw} of {w}"
+    );
+    assert_eq!(th, h as u32, "nothing was cut the other way");
+
+    // The bug this is here for: the far edge of a sheet falls off under a
+    // camera on a stalk, so the page is found short there and the trim used
+    // to cut into the sheet. A side with paper beyond it is not a side.
+    let mut rgb = vec![235u8; w * h * 3];
+    for y in 0..h {
+        for x in 0..(w / 5) {
+            // Still clearly paper, just dimmer — a shadow, not a table.
+            let at = (y * w + x) * 3;
+            rgb[at..at + 3].fill(205);
+        }
+    }
+    let (_, tw, th) = trim_to_page(rgb, w as u32, h as u32);
+    assert_eq!(
+        (tw, th),
+        (w as u32, h as u32),
+        "a shadow on the page was cut off it"
+    );
+}
+
+#[test]
+fn a_letter_that_overhangs_the_marked_corners_is_kept_whole() {
+    use scannerd::straighten::straighten_trimmed;
+    let (w, h) = (600usize, 800usize);
+    // Marks from a setup where the page lay further right. This letter sticks
+    // out to the left of them — which is where its letterhead is, so the
+    // marks would take the sender off the letter before anything else sees it.
+    let marks = Corners::new([(0.18, 0.05), (0.95, 0.05), (0.95, 0.95), (0.18, 0.95)]).unwrap();
+    let page = [(0.04, 0.06), (0.93, 0.06), (0.93, 0.94), (0.04, 0.94)];
+    let mut jpeg = Vec::new();
+    jpeg_encoder::Encoder::new(&mut jpeg, 92)
+        .encode(
+            &table_with_letterhead(w, h, page),
+            w as u16,
+            h as u16,
+            jpeg_encoder::ColorType::Rgb,
+        )
+        .unwrap();
+
+    let kept = straighten_trimmed(&jpeg, &marks).unwrap();
+    let out = image::load_from_memory(&kept.jpeg).unwrap().into_luma8();
+    let width = out.width() as f64;
+    let row: Vec<u8> = (0..out.width())
+        .map(|x| out.get_pixel(x, (0.07 * out.height() as f64) as u32).0[0])
+        .collect();
+    let ink = |at: Option<usize>| at.map(|x| x as f64 / width);
+
+    // The letterhead is whole: it begins inside the picture rather than
+    // against its left edge, which is where a cut would leave it, and it is
+    // as wide as it was painted rather than the tail of it.
+    let first = ink(row.iter().position(|&v| v < 90)).expect("a letterhead");
+    let last = ink(row.iter().rposition(|&v| v < 90)).expect("a letterhead");
+    assert!(
+        first > 0.02,
+        "the letterhead runs off the left edge at {first}"
+    );
+    assert!(
+        last - first > 0.18,
+        "only {:.2} of the letterhead is left",
+        last - first
+    );
+
+    // And the middle is still paper, so nothing was warped onto the table.
+    let middle = out.get_pixel(out.width() / 2, out.height() / 2).0[0];
+    assert!(middle > 180, "the middle of the page: {middle}");
+}
+
+#[test]
+fn marks_that_hold_the_whole_letter_are_left_to_do_their_job() {
+    use scannerd::straighten::straighten_trimmed;
+    let (w, h) = (600usize, 800usize);
+    // The letter is inside the marks, and there is a bright patch of table
+    // outside them. Looking wider would take the patch for part of the page.
+    let marks = Corners::new([(0.10, 0.06), (0.90, 0.06), (0.90, 0.94), (0.10, 0.94)]).unwrap();
+    let page = [(0.14, 0.10), (0.86, 0.10), (0.86, 0.90), (0.14, 0.90)];
+    let mut rgb = table_with_letterhead(w, h, page);
+    for y in (h / 3)..(h / 2) {
+        for x in 0..(w / 24) {
+            let at = (y * w + x) * 3;
+            rgb[at..at + 3].fill(250);
+        }
+    }
+    let mut jpeg = Vec::new();
+    jpeg_encoder::Encoder::new(&mut jpeg, 92)
+        .encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb)
+        .unwrap();
+
+    let kept = straighten_trimmed(&jpeg, &marks).unwrap();
+    let out = image::load_from_memory(&kept.jpeg).unwrap().into_luma8();
+    let at = |fx: f64, fy: f64| {
+        out.get_pixel(
+            ((fx * out.width() as f64) as u32).min(out.width() - 1),
+            ((fy * out.height() as f64) as u32).min(out.height() - 1),
+        )
+        .0[0]
+    };
+    assert!(
+        at(0.5, 0.5) > 180,
+        "the middle of the page: {}",
+        at(0.5, 0.5)
+    );
+    assert!(at(0.12, 0.08) < 90, "the letterhead: {}", at(0.12, 0.08));
 }
 
 #[test]
