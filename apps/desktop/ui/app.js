@@ -1265,6 +1265,10 @@ async function openSelected() {
         pages ? (pages === 1 ? t("one page") : t("{count} pages", { count: pages })) : "",
         t("Paperless document {id}", { id: detail.row.id }),
       ]);
+      // Where the paper itself is. The rig decides this while somebody is
+      // holding the letter and it never changes afterwards, so it is a place
+      // you can go and look — which is the whole point of saying it here.
+      showShelf(detail.row.tags);
       // The OCR text is the body. It is missing while Paperless is still
       // reading a scan, which is not the same as a letter with nothing on it.
       el("reading-body").textContent =
@@ -1289,6 +1293,7 @@ async function openSelected() {
     showSecurity(detail);
     showUrgency(row.id);
     showSender({ id: row.id });
+    el("reading-shelf").hidden = true;
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     fillMeta(el("reading-meta"), detail.from, { id: row.id }, [
       formatDate(detail.date_utc),
@@ -1303,6 +1308,40 @@ async function openSelected() {
     say(t("could not open: {error}", { error: err }), true);
   }
 }
+
+/// Which folder on the shelf the paper went in, under the subject.
+///
+/// A letter's tags are its folders and the people it is for; the address
+/// label is neither, and is left out — it is on every letter of a postbox and
+/// says nothing about where this one is.
+function showShelf(tags) {
+    const shelf = el("reading-shelf");
+    const folders = (tags ?? []).filter((tag) => !tag.startsWith(PERSON_TAG));
+    const people = (tags ?? [])
+      .filter((tag) => tag.startsWith(PERSON_TAG))
+      .map((tag) => tag.slice(PERSON_TAG.length));
+    shelf.textContent = "";
+    if (!folders.length && !people.length) {
+      shelf.hidden = true;
+      return;
+    }
+    for (const folder of folders) {
+      const pill = document.createElement("span");
+      pill.className = "shelf-folder";
+      pill.append(iconSvg("folder"), folder);
+      shelf.append(pill);
+    }
+    if (people.length) {
+      const who = document.createElement("span");
+      who.className = "shelf-for";
+      who.textContent = t("for {who}", { who: people.join(", ") });
+      shelf.append(who);
+    }
+    shelf.hidden = false;
+}
+
+/// How a person's tag is named in Paperless, as `core_paper` writes it.
+const PERSON_TAG = "Person: ";
 
 /// The line under a subject: who it is from — which opens the card for them
 /// — and then the facts about the message itself.
