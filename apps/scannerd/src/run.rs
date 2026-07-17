@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use crate::button::Button;
 use crate::camera::Camera;
 use crate::detect::{Detector, State, Step, Thresholds};
+use crate::flatten::Tone;
 use crate::folders::{folders_among, Filing, Filings, Folder, Outcome, Refiling};
 use crate::hub::Event;
 use crate::picture::Picture;
@@ -129,6 +130,9 @@ pub struct Scanner {
     /// The letter closed last, by file name, and when — what "Undo last
     /// letter" takes back. `None` once it has been.
     last_letter: Option<(String, u64)>,
+    /// How each page was last cut up for reading, so asking again gives the
+    /// other way rather than the same one.
+    page_layouts: std::collections::HashMap<String, crate::read::Layout>,
     /// Where the letter just closed was decided to go, read off the pages by
     /// the Pi at the moment it was finished. Written beside the letter in the
     /// spool as it is queued, so it survives a restart.
@@ -173,6 +177,7 @@ impl Scanner {
             letters_closed: 0,
             clear_since: None,
             envelope_only: false,
+            page_layouts: std::collections::HashMap::new(),
             decided: Vec::new(),
             page_covers: None,
             last_letter: None,
@@ -255,6 +260,38 @@ impl Scanner {
                 .then_with(|| score(b).cmp(&score(a)))
         });
         folders
+    }
+
+    /// Reads one page again, cutting it up the other way.
+    ///
+    /// For a page that came out as soup. Tesseract is deterministic, so
+    /// reading it the same way twice is the same text; what this changes is
+    /// the page segmentation, which is what usually went wrong — a letter's
+    /// columns read as lines, or its lines read as columns.
+    pub fn read_again(&mut self, spool: &Spool, name: &str) -> bool {
+        let Some(reader) = &self.reader else {
+            return false;
+        };
+        // The open letter's pages, then the pages of the one just sent: the
+        // preview shows both, so both can be read again.
+        let page = spool
+            .open_pages()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|path| path.file_name().is_some_and(|had| had == name))
+            .unwrap_or_else(|| spool.sent_page(name));
+        if !page.exists() {
+            return false;
+        }
+        let how = self
+            .page_layouts
+            .get(name)
+            .copied()
+            .unwrap_or_default()
+            .other();
+        self.page_layouts.insert(name.to_string(), how);
+        reader.start_as(&page, how);
+        true
     }
 
     /// Everything the Pi has read of the letter in front of the camera.
@@ -1415,11 +1452,13 @@ fn capture(
         // A page that cannot be straightened is still kept as it was taken:
         // a slanted letter is better than none.
         let mut covered = None;
+        let mut tone = None;
         if let Some(corners) = corners {
             let started = std::time::Instant::now();
             match straighten_file(shot, corners) {
-                Ok(paper) => {
+                Ok((paper, taken_as)) => {
                     covered = paper;
+                    tone = taken_as;
                     tracing::info!(
                         ms = started.elapsed().as_millis() as u64,
                         ?paper,
@@ -1435,7 +1474,7 @@ fn capture(
             }
         }
 
-        let (quality, thumbnail) = judge(shot);
+        let (quality, thumbnail) = judge(shot, tone);
         let keep = match (&best, &quality) {
             (None, _) => true,
             (
@@ -1506,14 +1545,20 @@ fn capture(
 /// page is judged as it will be sent — at the cost, on a Pi Zero, of reading
 /// it a second time. A photograph that cannot be read is not judged, and is
 /// sent all the same.
-fn judge(path: &std::path::Path) -> (Option<Quality>, Option<Picture>) {
+///
+/// `tone` is how bright the page was before straightening flattened its
+/// light, and it wins where it is given: the sharpness and the text are
+/// judged on the page as it will be sent, the exposure on the page as the
+/// camera actually took it. Judging a flattened page's exposure would be
+/// reading back the number this code put there.
+fn judge(path: &std::path::Path, tone: Option<Tone>) -> (Option<Quality>, Option<Picture>) {
     let started = std::time::Instant::now();
     match std::fs::read(path)
         .map_err(anyhow::Error::from)
         .and_then(|jpeg| read_luma(&jpeg))
     {
         Ok((luma, width, height)) => {
-            let quality = assess(&luma, width, height);
+            let quality = assess(&luma, width, height).exposed_as(tone);
             let thumbnail = Picture::scaled(&luma, width, height, THUMBNAIL, THUMBNAIL);
             tracing::info!(
                 ms = started.elapsed().as_millis() as u64,
@@ -1534,12 +1579,15 @@ fn judge(path: &std::path::Path) -> (Option<Quality>, Option<Picture>) {
 
 /// Replaces a photograph with its straightened self — whole, by rename, so a
 /// crash leaves one or the other and never half of each.
-fn straighten_file(path: &std::path::Path, corners: &Corners) -> Result<Option<f64>> {
+fn straighten_file(
+    path: &std::path::Path,
+    corners: &Corners,
+) -> Result<(Option<f64>, Option<Tone>)> {
     let straight = straighten_trimmed(&std::fs::read(path)?, corners)?;
     let next = path.with_extension("straight");
     std::fs::write(&next, straight.jpeg)?;
     std::fs::rename(&next, path)?;
-    Ok(straight.covered)
+    Ok((straight.covered, straight.tone))
 }
 
 /// Sends everything waiting — and due, unless `force` — oldest first.

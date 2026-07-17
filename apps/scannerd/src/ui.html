@@ -134,6 +134,21 @@
   body.preview #preview-folders .chip.guess { border-width: 2px; font-weight: 700; }
   body.preview #preview-side h3 { font-size: 1.05rem; }
 
+  /* The pane shows one of the two at a time. */
+  .pane-tabs { display: flex; align-items: center; gap: 6px; flex: none; }
+  .pane-tabs [data-view] { padding: 5px 14px; font-size: .95rem; }
+  .pane-tabs [data-view][aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #preview-pane.showing-text #preview-page { display: none; }
+  #preview-pane:not(.showing-text) #preview-text { display: none; }
+
+  /* What the Pi recognised: the words that did the filing, and the address. */
+  .found-row { display: grid; grid-template-columns: minmax(6em, auto) 1fr; gap: 10px; align-items: baseline; padding: 4px 0; border-bottom: 1px solid var(--line); }
+  .found-name { font-weight: 650; }
+  .found-name.person { font-weight: 500; color: var(--muted); }
+  .found-words { font-size: .9rem; color: var(--muted); }
+  .found-address { margin: 4px 0 0; white-space: pre-line; font: .9rem/1.45 system-ui, sans-serif; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 10px; }
+  #preview-found h4 { margin: 12px 0 2px; font-size: .95rem; }
+
   #preview-text { margin: 0; white-space: pre-wrap; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; flex: 1 1 auto; min-height: 48px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
   /* Narrow, or too short to divide up: let it scroll again rather than
      squeezing the page into a strip. */
@@ -186,7 +201,16 @@
     </div>
     <div id="preview-grid">
       <div id="preview-pane">
+        <!-- The page, or what the Pi made of it. Two readings of the same
+             sheet, so they share the pane rather than competing for it. -->
+        <div class="pane-tabs" id="preview-view" role="tablist">
+          <button type="button" role="tab" data-view="scan" aria-selected="true">Scan</button>
+          <button type="button" role="tab" data-view="text" aria-selected="false">Text</button>
+          <span class="spacer"></span>
+          <button type="button" id="preview-reread" title="Read the page again, cutting it up the other way">Read it again</button>
+        </div>
         <img id="preview-page" alt="The page just photographed">
+        <pre id="preview-text"></pre>
         <div id="preview-sheets"></div>
       </div>
       <div id="preview-side">
@@ -197,9 +221,9 @@
           <button type="submit">Add folder</button>
         </form>
         <p class="hint" id="preview-add-hint">The words on this page go in as the folder's words, so the next letter like it lands there by itself.</p>
-        <h3>What it says</h3>
+        <h3>What was recognised</h3>
         <p class="hint" id="preview-text-hint"></p>
-        <pre id="preview-text"></pre>
+        <div id="preview-found"></div>
       </div>
     </div>
     <ul class="keys" id="preview-keys"></ul>
@@ -880,6 +904,31 @@
   ];
 
   let sheet = null;          // which page of the letter the preview shows
+  let paneView = 'scan';     // the page, or what the Pi made of it
+
+  /// Scan or Text: two readings of the same sheet, sharing the pane.
+  function setPaneView(which) {
+    paneView = which;
+    for (const tab of $('preview-view').querySelectorAll('[data-view]')) {
+      tab.setAttribute('aria-selected', String(tab.dataset.view === which));
+    }
+    $('preview-pane').classList.toggle('showing-text', which === 'text');
+  }
+  for (const tab of document.querySelectorAll('#preview-view [data-view]')) {
+    tab.onclick = () => setPaneView(tab.dataset.view);
+  }
+
+  /// Reads the page again, cutting it up the other way. Worth a button only
+  /// because it does something different: running the same reading twice
+  /// gives the same text, and a page that came out as soup usually came out
+  /// that way because its columns were read as lines, or the other way
+  /// about.
+  $('preview-reread').onclick = () => {
+    if (!sheet) return;
+    $('preview-reread').disabled = true;
+    $('preview-text-hint').textContent = 'Reading it again…';
+    post('/api/read-again', { page: sheet }).catch(complain);
+  };
   const inPreview = () => document.body.classList.contains('preview');
 
   function setPreview(on) {
@@ -960,15 +1009,80 @@
     const page = read.find((one) => one.name === sheet);
     const words = page && page.text ? page.text.trim().split(/\s+/).length : 0;
     $('preview-text').textContent = page ? page.text : '';
+    $('preview-reread').disabled = !page || !page.text;
     $('preview-text-hint').textContent = !names.length
       ? 'Put a page down.'
       : page
-        ? `${words} word${words === 1 ? '' : 's'} read here on the scanner — Paperless reads it properly when the letter is sent.`
+        ? `${words} word${words === 1 ? '' : 's'} read on the scanner.`
         : 'Reading this page…';
+    drawFound(s, read);
 
     const chips = folderChips(s);
     $('preview-folders').replaceChildren(...(chips.length ? chips
       : [Object.assign(document.createElement('span'), { className: 'hint', textContent: 'No folders on the shelf yet — name one below.' })]));
+  }
+
+  /// What the Pi actually recognised: the words that put the letter where it
+  /// is going, and the address block off the top of the page.
+  ///
+  /// The whole text is a tab away. This is the part that did something — a
+  /// folder with no words under it is a folder nothing matched, which is
+  /// worth seeing as plainly as one that did.
+  function drawFound(s, read) {
+    const text = read.map((page) => page.text || '').join('\n');
+    const shelf = (s.settings.folders || []);
+    const guessed = new Set((s.guess || []).map((g) => g.name.toLowerCase()));
+    const found = document.createElement('div');
+
+    for (const folder of shelf.filter((f) => guessed.has(f.name.toLowerCase()))) {
+      const words = (folder.words || '').split(',').map((w) => w.trim()).filter(Boolean)
+        .filter((word) => standsIn(text, word));
+      const row = Object.assign(document.createElement('div'), { className: 'found-row' });
+      row.append(Object.assign(document.createElement('span'), {
+        className: 'found-name' + (folder.person ? ' person' : ''),
+        textContent: folder.name,
+      }));
+      row.append(Object.assign(document.createElement('span'), {
+        className: 'found-words',
+        textContent: words.join(', ') || 'no word of its own — Paperless learns this one',
+      }));
+      found.append(row);
+    }
+    if (!found.childElementCount && text.trim()) {
+      found.append(Object.assign(document.createElement('p'), {
+        className: 'hint',
+        textContent: 'No folder’s words are on this page. Name one below, or file it by hand.',
+      }));
+    }
+
+    const where = address(text);
+    if (where) {
+      found.append(Object.assign(document.createElement('h4'), { textContent: 'Address on the page' }));
+      found.append(Object.assign(document.createElement('pre'), { className: 'found-address', textContent: where }));
+    }
+    $('preview-found').replaceChildren(found);
+  }
+
+  /// A word of its own, not one inside a longer one — the rule `folders::
+  /// stands_in` uses, so what is shown here is what actually matched.
+  function standsIn(text, word) {
+    const at = text.toLowerCase().indexOf(word.toLowerCase());
+    if (at < 0) return false;
+    const part = /[\p{L}\p{N}]/u;
+    const before = text[at - 1];
+    const after = text[at + word.length];
+    return !(before && part.test(before)) && !(after && part.test(after));
+  }
+
+  /// The address block off the top of a letter: the run of lines ending in a
+  /// postcode and a place. DIN 5008 puts it there; a letter that does not
+  /// follow it simply has none to show.
+  function address(text) {
+    const lines = text.split('\n').map((line) => line.trim())
+      .filter((line) => (line.match(/\p{L}/gu) || []).length >= 3).slice(0, 12);
+    const at = lines.findIndex((line) => /(^|[\s,])(?:[A-Z]{1,2}-)?\d{4,5}\s+\p{Lu}/u.test(line));
+    if (at < 0) return '';
+    return lines.slice(Math.max(0, at - 3), at + 1).join('\n');
   }
 
   /// A folder named here is added to the shelf and this letter goes in it.
