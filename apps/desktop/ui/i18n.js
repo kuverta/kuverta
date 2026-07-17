@@ -715,6 +715,10 @@ const GERMAN = {
   "Whole conversation": "Ganzes Gespräch",
   "Everything with this person, as a messenger shows it":
     "Alles mit dieser Person, wie es ein Messenger zeigt",
+  "Who this is — how much mail there is with them, and the last of it":
+    "Wer das ist — wie viel Post es mit ihnen gibt und die letzte davon",
+  "Move this message to the Trash": "Diese Nachricht in den Papierkorb verschieben",
+  "moved to {folder} — z undoes it": "nach {folder} verschoben — z macht es rückgängig",
   "that letter is further down the list than has been loaded":
     "Dieser Brief liegt weiter unten in der Liste, als bisher geladen ist",
 

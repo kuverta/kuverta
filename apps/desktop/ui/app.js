@@ -979,6 +979,100 @@ async function selectAccount(account) {
   await reload();
 }
 
+// -- the width of the columns -------------------------------------------------
+
+/// What each seam moves, and how far it may be moved.
+///
+/// `towards` is which way the column grows as the pointer goes right: the
+/// right-hand column is dragged by its left edge, so it grows the other way.
+/// The limits are what the pane inside still works at — a list narrower than
+/// 240px cannot show a sender and a date on one line.
+const COLUMNS = {
+  sidebar: { variable: "--sidebar-w", fallback: 236, least: 170, most: 460, towards: 1 },
+  list: { variable: "--list-w", fallback: 350, least: 240, most: 680, towards: 1 },
+  aside: { variable: "--aside-w", fallback: 360, least: 260, most: 640, towards: -1 },
+};
+
+function columnWidth(name) {
+  const column = COLUMNS[name];
+  const set = getComputedStyle(document.body).getPropertyValue(column.variable);
+  return Number.parseFloat(set) || column.fallback;
+}
+
+/// Sets one column's width, within its limits, and remembers it.
+function setColumnWidth(name, pixels) {
+  const column = COLUMNS[name];
+  const width = Math.round(Math.min(column.most, Math.max(column.least, pixels)));
+  document.body.style.setProperty(column.variable, `${width}px`);
+  try {
+    localStorage.setItem(`column.${name}`, String(width));
+  } catch {
+    // Lasts until the window closes.
+  }
+  return width;
+}
+
+/// The widths from last time. A width that no longer fits — a window dragged
+/// small, or a screen swapped — is left at its default rather than pushing
+/// the panes off the side.
+function restoreColumns() {
+  for (const name of Object.keys(COLUMNS)) {
+    let kept = null;
+    try {
+      kept = Number.parseFloat(localStorage.getItem(`column.${name}`) ?? "");
+    } catch {
+      kept = null;
+    }
+    if (Number.isFinite(kept)) setColumnWidth(name, kept);
+  }
+}
+
+for (const grip of document.querySelectorAll(".col-grip")) {
+  const name = grip.dataset.resizes;
+  grip.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = columnWidth(name);
+    grip.setPointerCapture(event.pointerId);
+    grip.classList.add("dragging");
+    document.body.classList.add("dragging-column");
+
+    const move = (at) => {
+      setColumnWidth(name, startWidth + (at.clientX - startX) * COLUMNS[name].towards);
+      render(true);
+    };
+    const done = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.classList.remove("dragging");
+      document.body.classList.remove("dragging-column");
+      // The list is a different width, so its pool is a different size.
+      buildPool();
+      render(true);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", done, { once: true });
+    grip.addEventListener("pointercancel", done, { once: true });
+  });
+
+  // Back to where it started, for a column dragged somewhere unusable.
+  grip.addEventListener("dblclick", () => {
+    setColumnWidth(name, COLUMNS[name].fallback);
+    buildPool();
+    render(true);
+  });
+
+  // The keyboard moves it too, since it is a button and can be reached.
+  grip.addEventListener("keydown", (event) => {
+    const step = { ArrowLeft: -16, ArrowRight: 16 }[event.key];
+    if (!step) return;
+    event.preventDefault();
+    setColumnWidth(name, columnWidth(name) + step * COLUMNS[name].towards);
+    buildPool();
+    render(true);
+  });
+}
+
 /// The right-hand column is there when anything in it is: the sender card,
 /// the assistant, or both. Called by whatever shows or hides one of them.
 ///
@@ -1165,15 +1259,12 @@ async function openSelected() {
       showSecurity(null);
       hideAttachments();
       el("reading-subject").textContent = detail.row.subject || t("(untitled)");
-      el("reading-meta").textContent = [
-        detail.row.from,
+      fillMeta(el("reading-meta"), detail.row.from, { id: row.id, postbox: state.postbox.id }, [
         formatDate(detail.row.date_utc),
         state.postbox.label,
         pages ? (pages === 1 ? t("one page") : t("{count} pages", { count: pages })) : "",
         t("Paperless document {id}", { id: detail.row.id }),
-      ]
-        .filter(Boolean)
-        .join("  ·  ");
+      ]);
       // The OCR text is the body. It is missing while Paperless is still
       // reading a scan, which is not the same as a letter with nothing on it.
       el("reading-body").textContent =
@@ -1199,13 +1290,10 @@ async function openSelected() {
     showUrgency(row.id);
     showSender({ id: row.id });
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
-    el("reading-meta").textContent = [
-      detail.from,
+    fillMeta(el("reading-meta"), detail.from, { id: row.id }, [
       formatDate(detail.date_utc),
       detail.folders.join(", "),
-    ]
-      .filter(Boolean)
-      .join("  ·  ");
+    ]);
     // HTML mail arrives already rendered to text, so an empty body really
     // means an empty body — an attachment-only message, or one whose stored
     // copy has gone.
@@ -1213,6 +1301,18 @@ async function openSelected() {
     showAttachments(detail);
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
+  }
+}
+
+/// The line under a subject: who it is from — which opens the card for them
+/// — and then the facts about the message itself.
+function fillMeta(into, from, about, rest) {
+  into.textContent = "";
+  if (from) into.append(senderName(from, about));
+  for (const part of rest.filter(Boolean)) {
+    const span = document.createElement("span");
+    span.textContent = part;
+    into.append(document.createTextNode("  ·  "), span);
   }
 }
 
@@ -2203,6 +2303,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Before the first paint of anything the window builds: the static text is
   // already on the page, and what follows is built through `t`.
   translateDom();
+  restoreColumns();
   start().catch((err) => {
     statusBar.textContent = t("failed to start: {error}", { error: err });
   });

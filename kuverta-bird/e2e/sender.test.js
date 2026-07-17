@@ -129,15 +129,30 @@ async function openWindow({ seed = null } = {}) {
 const rows = (page) => page.locator('#content .row:not([hidden])');
 const aside = (page) => page.locator('#aside');
 const card = (page) => page.locator('#sender');
+const grip = (page, which) => page.locator(`.col-grip[data-resizes="${which}"]`);
+
+/// Opens a message and then asks who it is from, which is the only way the
+/// card opens: reading a message must not take a quarter of the window.
+async function openCard(page, row = 3) {
+  await rows(page).nth(row).click();
+  await page.waitForSelector('#reading:not([hidden])');
+  await page.locator('#reading-meta .sender-link').click();
+  await card(page).waitFor();
+}
 
 /** Where something is on screen, or null when it is not. */
 const box = (locator) => locator.boundingBox();
 
-test('opening a message puts the card in a column of its own', async () => {
+test('reading a message does not open the card; asking who it is from does', async () => {
   const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
   assert.equal(await aside(page).isVisible(), false, 'nothing is open yet');
 
+  // The bug this is here for: the column opened itself on every message.
   await rows(page).nth(3).click();
+  await page.waitForSelector('#reading:not([hidden])');
+  assert.equal(await aside(page).isVisible(), false, 'reading a message opened it');
+
+  await page.locator('#reading-meta .sender-link').click();
   await card(page).waitFor();
   assert.match(await card(page).innerText(), /Erika Mustermann/);
   assert.match(await card(page).innerText(), /erika@example.de/);
@@ -153,8 +168,7 @@ test('opening a message puts the card in a column of its own', async () => {
 
 test('the card and the assistant share the column, neither pushed off it', async () => {
   const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
-  await rows(page).nth(3).click();
-  await card(page).waitFor();
+  await openCard(page);
   const alone = await box(card(page));
 
   await page.locator('#assistant-toggle').click();
@@ -179,19 +193,111 @@ test('the card and the assistant share the column, neither pushed off it', async
   await context.close();
 });
 
-test('closing the message gives the column back to the list', async () => {
+test('the column comes out of the reading pane, and goes back into it', async () => {
   const { page, context } = await openWindow({ seed: runFromOneSender() });
-  const wide = (await box(page.locator('#list'))).width;
-
   await rows(page).nth(3).click();
-  await card(page).waitFor();
-  const narrow = (await box(page.locator('#list'))).width;
-  assert.ok(narrow < wide, `the list gave up width: ${narrow} from ${wide}`);
+  await page.waitForSelector('#reading:not([hidden])');
+  const list = (await box(page.locator('#list'))).width;
+  const wide = (await box(page.locator('#detail'))).width;
 
-  // A reload — here, switching to another mailbox — closes what was open.
-  await page.locator('#folders .nav-item').nth(1).click();
+  await openCard(page);
+  const narrow = (await box(page.locator('#detail'))).width;
+  // The sidebar and the list are set by hand now, so the reading pane is the
+  // one that gives: it is the column with no width of its own.
+  assert.ok(narrow < wide, `the reading pane gave up width: ${narrow} from ${wide}`);
+  assert.equal(Math.round((await box(page.locator('#list'))).width), Math.round(list));
+
+  await page.locator('#sender .sender-close').click();
   await page.waitForFunction(() => document.getElementById('aside')?.hidden === true);
-  assert.equal(Math.round((await box(page.locator('#list'))).width), Math.round(wide));
+  assert.equal(Math.round((await box(page.locator('#detail'))).width), Math.round(wide));
+
+  // And it stays shut: the next message read does not bring it back.
+  await rows(page).nth(4).click();
+  await page.waitForTimeout(120);
+  assert.equal(await aside(page).isVisible(), false);
+  await context.close();
+});
+
+test('the card follows the cursor once it has been asked for', async () => {
+  const { page, context } = await openWindow({ seed: runFromOneSender() });
+  await openCard(page, 3);
+  assert.match(await card(page).innerText(), /Erika Mustermann/);
+
+  // Having asked who one message is with, you are usually asking of the next
+  // one too — so it keeps up rather than making you click again.
+  await rows(page).nth(4).click();
+  await page.waitForFunction(
+    () => /Finanzamt/.test(document.getElementById('sender')?.innerText ?? ''),
+    { timeout: 4000 },
+  );
+  await context.close();
+});
+
+test('a message can be thrown away from the card it is listed on', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  await openCard(page, 0);
+  const shop = page.locator('#sender .sender-msg-row');
+  const before = await shop.count();
+  assert.ok(before >= 3, `the shop's three orders are listed: ${before}`);
+  const subject = await shop.first().locator('.subject').innerText();
+
+  const listed = await rows(page).count();
+  await shop.first().locator('.sender-bin').click();
+  await page.waitForFunction(
+    (gone) => !(document.getElementById('sender')?.innerText ?? '').includes(gone),
+    subject,
+    { timeout: 5000 },
+  );
+
+  // It has left the list as well as the card, and the card is still open and
+  // still about the same person.
+  assert.equal(await rows(page).count(), listed - 1);
+  assert.match(await card(page).innerText(), /Shop/);
+  assert.match(await page.locator('#toast').innerText(), /Trash/i);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+// -- the width of the columns -------------------------------------------------
+
+test('the seams between the columns can be dragged, and remember where', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  const widthOf = async (selector) => (await box(page.locator(selector))).width;
+
+  for (const [which, pane, by] of [
+    ['sidebar', '#sidebar', 70],
+    ['list', '#list', -60],
+  ]) {
+    const before = await widthOf(pane);
+    const seam = await box(grip(page, which));
+    await page.mouse.move(seam.x + seam.width / 2, seam.y + seam.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(seam.x + seam.width / 2 + by, seam.y + seam.height / 2, { steps: 8 });
+    await page.mouse.up();
+    const after = await widthOf(pane);
+    assert.ok(
+      Math.abs(after - (before + by)) < 6,
+      `${which}: ${before} + ${by} should be about ${after}`,
+    );
+  }
+
+  // A column dragged past what its pane can work at stops at the limit
+  // rather than disappearing.
+  const seam = await box(grip(page, 'sidebar'));
+  await page.mouse.move(seam.x + seam.width / 2, seam.y + seam.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(2, seam.y + seam.height / 2, { steps: 8 });
+  await page.mouse.up();
+  assert.ok(await widthOf('#sidebar') >= 170, 'the sidebar kept a usable width');
+
+  // Double-click puts it back where it started.
+  await grip(page, 'sidebar').dblclick();
+  assert.equal(Math.round(await widthOf('#sidebar')), 236);
+
+  // The widths outlive the window.
+  const kept = await page.evaluate(() => localStorage.getItem('column.list'));
+  assert.ok(Number(kept) > 0, `the list width was remembered: ${kept}`);
+  assert.deepEqual(problems, []);
   await context.close();
 });
 

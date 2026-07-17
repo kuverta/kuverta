@@ -23,6 +23,14 @@
 const senderPanel = el("sender");
 const senderHover = el("sender-hover");
 
+/// Whether the card has been asked for. It is not opened by reading a
+/// message — that took a quarter of the window away every time a message was
+/// opened, for an answer nobody had asked for. It opens on the sender's name
+/// being clicked, and then follows the cursor until it is closed again: once
+/// you have asked who one message is with, you are usually asking of the
+/// next one too.
+let senderWanted = false;
+
 /// How long the cursor must rest on a row before its card appears. Long
 /// enough that running down the list with the mouse does not strobe cards,
 /// short enough to feel like an answer rather than a wait.
@@ -71,7 +79,7 @@ function forgetSenders() {
 /// `interactive` leaves in the parts that are there to be clicked. The hover
 /// copy takes no pointer events at all, so a dead button in it would be a
 /// button that lies about what it does.
-function senderCard(view, { interactive = false, recent = 6, open = openWholeMessage } = {}) {
+function senderCard(view, { interactive = false, recent = 6, open = openWholeMessage, postbox = null } = {}) {
   const card = document.createDocumentFragment();
 
   const head = document.createElement("div");
@@ -94,6 +102,16 @@ function senderCard(view, { interactive = false, recent = 6, open = openWholeMes
     who.append(address);
   }
   head.append(avatar, who);
+  if (interactive) {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "sender-close";
+    close.title = t("Close");
+    close.setAttribute("aria-label", t("Close"));
+    close.textContent = "×";
+    close.onclick = () => hideSender({ forGood: true });
+    head.append(close);
+  }
   card.append(head);
 
   // A letter's address is on the page, not in a header, so it comes as the
@@ -191,7 +209,9 @@ function senderCard(view, { interactive = false, recent = 6, open = openWholeMes
     heading.textContent = t("Last correspondence");
     list.append(heading);
     for (const message of view.recent.slice(0, recent)) {
-      list.append(recentRow(message, interactive && open, open));
+      list.append(
+        recentRow(message, interactive && open, open, interactive && !postbox && view.address),
+      );
     }
     card.append(list);
   }
@@ -214,8 +234,14 @@ function senderCard(view, { interactive = false, recent = 6, open = openWholeMes
   return card;
 }
 
-/// One message of the exchange: which way it went, what it was about, when.
-function recentRow(message, interactive, open) {
+/// One message of the exchange: which way it went, what it was about, when
+/// — and, where it can be, a way to be rid of it.
+///
+/// The row and the bin cannot both be one button, so the row is a button
+/// inside a div and the bin sits beside it.
+function recentRow(message, interactive, open, deleteFrom) {
+  const wrap = document.createElement("div");
+  wrap.className = "sender-msg-row";
   const row = document.createElement(interactive ? "button" : "div");
   row.className = `sender-msg${message.unread ? " unread" : ""}`;
   if (interactive) row.type = "button";
@@ -239,7 +265,52 @@ function recentRow(message, interactive, open) {
     .filter(Boolean)
     .join("  ·  ");
   if (interactive) row.onclick = () => open(message.id);
-  return row;
+  wrap.append(row);
+  if (deleteFrom) {
+    const bin = document.createElement("button");
+    bin.type = "button";
+    bin.className = "sender-bin";
+    bin.title = t("Move this message to the Trash");
+    bin.setAttribute("aria-label", t("Move this message to the Trash"));
+    bin.append(iconSvg("trash"));
+    bin.onclick = (event) => {
+      event.stopPropagation();
+      trashFromCard(message.id, wrap, deleteFrom);
+    };
+    wrap.append(bin);
+  }
+  return wrap;
+}
+
+/// Moves one of their messages to the Trash from the card.
+///
+/// The row goes at once and the card is asked for again, because every count
+/// on it has just changed. It is the same queued move the list makes, so `z`
+/// takes it back and the next sync carries it out.
+///
+/// Asked for again by `address`, never by the message: the message it was
+/// opened from may be the one that has just gone, and a card about a message
+/// in the Trash is a card about nobody.
+async function trashFromCard(id, row, address) {
+  if (!state.trash) {
+    say(t("this account has no Trash folder"), true);
+    return;
+  }
+  row.classList.add("going");
+  try {
+    await invoke("move_to", { account: state.account, id, target: state.trash });
+  } catch (err) {
+    row.classList.remove("going");
+    say(String(err), true);
+    return;
+  }
+  say(t("moved to {folder} — z undoes it", { folder: state.trash }));
+  forgetSenders();
+  // The list is showing the message that has just gone, so it is redrawn
+  // too. `reload` empties the card; it is filled again after, about the same
+  // person.
+  await reload({ keepPosition: true });
+  await showSender({ address });
 }
 
 // -- the card in the sidebar -------------------------------------------------
@@ -247,9 +318,12 @@ function recentRow(message, interactive, open) {
 /// Shows the card for the message that has just been opened. Quiet on
 /// failure: the message opened, and a card that could not be built is not a
 /// reason to put an error over it.
-async function showSender({ id = null, address = null, postbox = null }) {
-  const asked = `${postbox}|${id}|${address}`;
-  senderPanel.dataset.asked = asked;
+async function showSender({ id = null, address = null, postbox = null, asked = false }) {
+  if (asked) senderWanted = true;
+  // Following the cursor, not opening on it.
+  if (!senderWanted) return;
+  const asking = `${postbox}|${id}|${address}`;
+  senderPanel.dataset.asked = asking;
   let view;
   try {
     view = await senderSummary({ id, address, postbox });
@@ -259,11 +333,12 @@ async function showSender({ id = null, address = null, postbox = null }) {
     return;
   }
   // Another message was opened while this was in flight.
-  if (!view || senderPanel.dataset.asked !== asked) return;
+  if (!view || senderPanel.dataset.asked !== asking) return;
   senderPanel.textContent = "";
   senderPanel.append(
     senderCard(view, {
       interactive: true,
+      postbox,
       // A letter of theirs opens in the postbox it was scanned into.
       open: postbox ? (letter) => openLetter(postbox, letter) : openWholeMessage,
     }),
@@ -285,11 +360,26 @@ async function openLetter(postbox, documentId) {
   say(t("that letter is further down the list than has been loaded"));
 }
 
-function hideSender() {
+/// Puts the card away. `forGood` is the close button: it stops the card
+/// following the cursor, where a reload only empties it.
+function hideSender({ forGood = false } = {}) {
+  if (forGood) senderWanted = false;
   senderPanel.hidden = true;
   senderPanel.textContent = "";
   delete senderPanel.dataset.asked;
   syncAside();
+}
+
+/// The sender's name, as the thing you click to ask who they are. Everywhere
+/// a message names who it is from.
+function senderName(label, about, { className = "sender-link" } = {}) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.textContent = label;
+  button.title = t("Who this is — how much mail there is with them, and the last of it");
+  button.onclick = () => showSender({ ...about, asked: true });
+  return button;
 }
 
 // -- the card on hover ---------------------------------------------------------
