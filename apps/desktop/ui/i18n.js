@@ -207,6 +207,17 @@ const GERMAN = {
   "Name of the folder": "Name des Aktenordners",
   "Words, separated by commas (optional)": "Wörter, durch Kommas getrennt (optional)",
   "Remove this folder": "Diesen Aktenordner entfernen",
+  "What your letters suggest": "Was deine Briefe vorschlagen",
+  "Look through the letters already filed for words that would have filed them":
+    "Die schon abgehefteten Briefe nach Wörtern durchsehen, die sie abgeheftet hätten",
+  "Words that stand on several letters in one folder and on none in any other — so they would have filed those letters, and nothing else. Click one to give it to the folder. Nothing is saved until you save the folders.":
+    "Wörter, die auf mehreren Briefen eines Aktenordners stehen und auf keinem anderen — sie hätten also genau diese Briefe abgeheftet und sonst nichts. Klick eins an, um es dem Aktenordner zu geben. Gespeichert wird erst, wenn du die Aktenordner speicherst.",
+  "Reading the letters you have filed…": "Lese die Briefe, die du schon abgeheftet hast…",
+  "On {n} letters in this folder": "Auf {n} Briefen in diesem Aktenordner",
+  "Nothing stood out yet. File a few more letters and ask again.":
+    "Noch nichts Auffälliges. Hefte ein paar Briefe mehr ab und frag noch einmal.",
+  "Not enough filed yet. Once letters have gone into two different folders, the words that tell them apart show up here.":
+    "Noch zu wenig abgeheftet. Sobald Briefe in zwei verschiedenen Aktenordnern liegen, erscheinen hier die Wörter, die sie unterscheiden.",
   "No paper post connected yet — the page before this one.":
     "Noch keine Papierpost verbunden — auf der Seite davor.",
   "Two folders are called {name}.": "Zwei Aktenordner heißen {name}.",

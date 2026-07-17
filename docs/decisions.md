@@ -2211,3 +2211,56 @@ again — is there paper here, is it washed out — while leaving sharpness and
 is the right picture to measure them on. A photograph with no paper in it is
 still no paper whatever was done to it afterwards, so that verdict throws the
 rest away rather than reporting on a stretched table.
+
+## 37. Letting the letters say where they belong
+
+A folder's words are typed once, before any letter has arrived, and they are
+guesses. `Taxes` was given `Finanzamt` and `Steuerbescheid` and not
+`Kassenzeichen`, because nobody thinks of `Kassenzeichen` sitting at a
+keyboard. It is on every letter the tax office sends.
+
+The letters already filed know. Each one is a page of text with a folder
+written on it by somebody who was holding the paper, which is as good a label
+as this house will ever produce. A word that stands on several letters in one
+folder and on none in any other is a word that would have filed them, and
+nothing else. So `core-paper::learn` counts, and the folders page offers what
+it found: one row a folder, its words as buttons that put the word in that
+folder's own words box, where it can be edited or taken out again. Nothing is
+written until the folders are saved. A machine that reads the post is allowed
+to have an opinion about where it goes; it is not allowed to file it.
+
+### Four things it will not say, and why each one had to be found out
+
+**Nothing at all until two folders have letters in them.** On a shelf where
+only `Taxes` has been filed into, `Kassenzeichen` and `Sehr geehrter Herr` are
+the same word: both stand on every letter there is and on no letter anywhere
+else. The first tests written here duly proposed filing tax letters on
+`freundlichen` and on the household's own street. That is not a threshold to
+tune — it is the point at which this can tell one thing from another at all,
+and before it the honest answer is that there is nothing to say yet. It is
+also why there is no list of German filler words in this repository: the
+second folder does that job, and does it for the street name and the
+sender's own sign-off too, which no list would have covered.
+
+**Never fewer than two letters.** One is a coincidence, and it is also what a
+misread word looks like. OCR wreckage does not repeat, so counting letters is
+most of the defence against it.
+
+**Not a misreading of a commoner word.** Most of the defence is not all of it.
+Run against a real archive, this proposed `Hambura`: the same smudge on the
+same letterhead four times over. Counting letters did not catch it, and it
+reads like a word, so its spelling did not either. What catches it is that
+`Hamburg` stands on more letters than it does and is one character away — a
+misreading is a rare neighbour of a common word. A real word one character
+from a commoner one is lost with it, which is a small price; there is always
+another word on the page.
+
+**Never for a person.** A letter is for somebody because their name stands on
+it. No other word means "this is for Nicolas", and the first real run proposed
+`Hambura` for a person — which would have addressed the post to whoever lives
+in Hamburg.
+
+On the archive as it stands — twenty-nine letters over twelve folders, most
+with two or three — it proposes nothing, and says so: not enough filed yet.
+That is the feature working. A suggestion made from three letters would be
+worth less than no suggestion, because it would be acted on.

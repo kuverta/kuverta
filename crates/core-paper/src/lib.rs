@@ -17,6 +17,7 @@
 
 use std::collections::HashMap;
 
+pub mod learn;
 pub mod scan;
 
 use serde::{Deserialize, Serialize};
@@ -864,6 +865,69 @@ impl Paperless {
             .collect())
     }
 
+    /// Every letter with a folder on it, as what is written on it and which
+    /// folder it went in: what [`learn::learn`] reads.
+    ///
+    /// A letter in two folders comes back twice, once for each, because it
+    /// was put in both by somebody holding the paper and this is not the
+    /// place to second-guess that. Letters with no folder on them, and
+    /// letters in folders that are no longer on the shelf, are left out:
+    /// neither is evidence about anything on the shelf now.
+    ///
+    /// Paperless keeps the OCR text with the document, so this is one listing
+    /// and no downloads — but the text is the bulk of it, so it is asked for
+    /// a page at a time and the whole archive is never held twice.
+    pub async fn filed(&self, folders: &[ShelfFolder]) -> Result<Vec<(String, String)>> {
+        const PAGE: usize = 50;
+        let tags = self.names("/api/tags/").await?;
+        // Which folder, if any, each tag id stands for. Names are matched the
+        // way Paperless matches them itself: without regard to case.
+        let shelf: HashMap<i64, &str> = tags
+            .iter()
+            .filter_map(|(id, name)| {
+                let name = name.strip_prefix(PERSON_TAG_PREFIX).unwrap_or(name).trim();
+                folders
+                    .iter()
+                    .find(|folder| folder.name.eq_ignore_ascii_case(name))
+                    .map(|folder| (*id, folder.name.as_str()))
+            })
+            .collect();
+        if shelf.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let mut filed = Vec::new();
+        for page in 1.. {
+            let body = self
+                .get(
+                    "/api/documents/",
+                    &[
+                        ("fields".to_string(), "id,tags,content".to_string()),
+                        ("page".to_string(), page.to_string()),
+                        ("page_size".to_string(), PAGE.to_string()),
+                    ],
+                )
+                .await?;
+            let listing: FiledListing =
+                serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))?;
+            let got = listing.results.len();
+            for document in listing.results {
+                let Some(text) = document.content.filter(|text| !text.trim().is_empty()) else {
+                    continue;
+                };
+                for tag in document.tags {
+                    if let Some(folder) = shelf.get(&tag) {
+                        filed.push(((*folder).to_string(), text.clone()));
+                    }
+                }
+            }
+            if got < PAGE {
+                break;
+            }
+        }
+        Ok(filed)
+    }
+
     /// Makes each folder a tag that matches itself: by its words when it has
     /// some, and by what Paperless learns from the documents tagged with it
     /// when it has none. Tags already there are brought up to date, and tags
@@ -1179,6 +1243,21 @@ impl TagRow {
             .is_some_and(|m| !m.trim().is_empty())
             || self.matching_algorithm == Some(MATCH_AUTO)
     }
+}
+
+/// Documents as [`Paperless::filed`] asks for them: the OCR text and the
+/// tags, and nothing else that would make the listing bigger than it is.
+#[derive(Deserialize)]
+struct FiledListing {
+    results: Vec<FiledRow>,
+}
+
+#[derive(Deserialize)]
+struct FiledRow {
+    #[serde(default)]
+    tags: Vec<i64>,
+    #[serde(default)]
+    content: Option<String>,
 }
 
 #[derive(Deserialize)]
