@@ -114,7 +114,7 @@ for (const [width, height] of sizes) {
       inner: window.innerHeight,
       keys: document.getElementById('preview-keys').getBoundingClientRect().bottom,
       picture: document.getElementById('preview-page').getBoundingClientRect().height,
-      text: document.getElementById('preview-text').getBoundingClientRect().height,
+      side: document.getElementById('preview-side').getBoundingClientRect().height,
     }));
 
     assert.ok(
@@ -127,11 +127,48 @@ for (const [width, height] of sizes) {
     assert.ok(seen.keys > seen.inner * 0.9, `the window is only ${seen.keys} full of ${seen.inner}`);
     // And the room left over goes to the page, not to empty space.
     assert.ok(seen.picture > seen.inner * 0.4, `the page picture is only ${seen.picture} tall`);
-    assert.ok(seen.text > 40, `there is no room for what it says: ${seen.text}`);
+    // Beside it, where the folders and what was recognised are.
+    assert.ok(seen.side > seen.inner * 0.5, `there is no room beside it: ${seen.side}`);
     assert.deepEqual(problems, []);
     await context.close();
   });
 }
+
+test('the text tab takes the pane the scan had, and gives it back', async () => {
+  const { page, context } = await preview(1440, 900);
+  const pick = (view) =>
+    page.evaluate((which) => {
+      document.querySelector(`#preview-view [data-view="${which}"]`).click();
+    }, view);
+  const shape = () =>
+    page.evaluate(() => ({
+      picture: document.getElementById('preview-page').getBoundingClientRect().height,
+      text: document.getElementById('preview-text').getBoundingClientRect().height,
+      scrollHeight: document.documentElement.scrollHeight,
+      inner: window.innerHeight,
+    }));
+
+  // The scan is what preview opens on: the page, and no text taking room
+  // from it.
+  const scan = await shape();
+  assert.ok(scan.picture > 200, `the scan is only ${scan.picture} tall`);
+  assert.equal(scan.text, 0, 'the text is not also in the pane');
+
+  await pick('text');
+  await page.waitForTimeout(60);
+  const text = await shape();
+  assert.equal(text.picture, 0, 'the scan is not also in the pane');
+  assert.ok(text.text > 200, `the text is only ${text.text} tall`);
+  assert.ok(text.scrollHeight <= text.inner + 1, 'the page still does not scroll');
+
+  // And back, so a glance at the text does not cost the page.
+  await pick('scan');
+  await page.waitForTimeout(60);
+  const again = await shape();
+  assert.equal(Math.round(again.picture), Math.round(scan.picture));
+  assert.equal(again.text, 0);
+  await context.close();
+});
 
 test('a section added to the page cannot push the keys off the bottom', async () => {
   const { page, context } = await preview(1440, 900);

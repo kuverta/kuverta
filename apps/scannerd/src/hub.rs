@@ -77,6 +77,8 @@ pub enum Command {
     /// Delete a page of the open letter, by file name — one photographed by
     /// mistake.
     DeletePage(String),
+    /// Read a page again, cutting it up the other way.
+    ReadAgain(String),
     Settings(Settings),
 }
 
