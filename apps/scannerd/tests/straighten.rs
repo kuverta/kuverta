@@ -464,6 +464,47 @@ fn paper_smaller_than_a_page_is_an_envelope() {
 }
 
 #[test]
+fn what_the_paper_covers_is_measured_against_the_marks_and_nothing_else() {
+    use scannerd::straighten::{is_envelope, straighten_trimmed};
+    let (w, h) = (600usize, 800usize);
+    let encode = |rgb: Vec<u8>| {
+        let mut out = Vec::new();
+        jpeg_encoder::Encoder::new(&mut out, 92)
+            .encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb)
+            .unwrap();
+        out
+    };
+
+    // A letter overhanging the marks, so the picture is warped onto more than
+    // the marks enclose. The bug this is here for: the share was reported
+    // against that wider quad instead, so a page came out at an envelope's
+    // share — and the rig finished the letter it was collecting and called
+    // this page the envelope of the next one.
+    //
+    // The sizes are chosen so the two answers fall on opposite sides of the
+    // line: this page covers about 0.83 of the marks and about 0.63 of the
+    // marks widened to hold it, and an envelope is anything under 0.72.
+    let marks = Corners::new([(0.30, 0.10), (0.90, 0.10), (0.90, 0.90), (0.30, 0.90)]).unwrap();
+    let page = [(0.11, 0.24), (0.88, 0.24), (0.88, 0.76), (0.11, 0.76)];
+    let kept = straighten_trimmed(&encode(table_with_page(w, h, page)), &marks).unwrap();
+    let covered = kept.covered.expect("paper found");
+    assert!(covered > 0.78, "a page came out at {covered} of the marks");
+    assert!(
+        !is_envelope(kept.covered, 1.0),
+        "a page was called an envelope"
+    );
+
+    // And an envelope on the same marks still reads as one.
+    let envelope = [(0.42, 0.40), (0.80, 0.40), (0.80, 0.62), (0.42, 0.62)];
+    let kept = straighten_trimmed(&encode(table_with_page(w, h, envelope)), &marks).unwrap();
+    assert!(
+        is_envelope(kept.covered, 1.0),
+        "an envelope covering {:?} was not one",
+        kept.covered
+    );
+}
+
+#[test]
 fn a_photograph_says_how_much_of_it_the_paper_covers() {
     use scannerd::straighten::straighten_trimmed;
     let (w, h) = (400usize, 560usize);

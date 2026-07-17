@@ -250,6 +250,13 @@
     </section>
   </aside>
 
+  <!-- The seams between the columns, each over the border it moves. They are
+       grid items in the same cells as the panes, so they need no measuring:
+       see `.col-grip` in styles.css and `columns` in app.js. -->
+  <button type="button" class="col-grip" data-resizes="sidebar" aria-label="Drag to resize the sidebar" title="Drag to resize · double-click to reset"></button>
+  <button type="button" class="col-grip" data-resizes="list" aria-label="Drag to resize the message list" title="Drag to resize · double-click to reset"></button>
+  <button type="button" class="col-grip" data-resizes="aside" aria-label="Drag to resize the right-hand column" title="Drag to resize · double-click to reset"></button>
+
   <footer>
     <!-- Which account or postbox is open, and what a running sync is doing.
          Along the bottom because it is there to be glanced at, not read: a

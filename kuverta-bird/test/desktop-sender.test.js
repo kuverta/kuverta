@@ -71,7 +71,7 @@ function load({ answer = view(), fail = null } = {}) {
   globalThis.document = document;
 
   const el = (id) => document.getElementById(id);
-  const state = { account: 1, view: 'mail', postbox: null, rows: new Map() };
+  const state = { account: 1, view: 'mail', postbox: null, trash: 'Trash', rows: new Map() };
   const asked = [];
   const invoke = async (command, args) => {
     asked.push({ command, args });
@@ -91,12 +91,14 @@ function load({ answer = view(), fail = null } = {}) {
   // What the window's other files would have defined for it.
   const opened = [];
   const said = [];
+  const reloads = [];
   const source = readFileSync(`${UI}/sender.js`, 'utf8');
   const make = new Function(
     'el', 'invoke', 'state', 't', 'initials', 'listDate', 'formatDate', 'LEVELS',
     'viewport', 'window', 'document', 'openWholeMessage', 'syncAside', 'select', 'say',
+    'iconSvg', 'reload',
     `${source}
-     return { senderCard, showSender, hideSender, forgetSenders, hideHover, hoverTarget };`,
+     return { senderCard, showSender, hideSender, forgetSenders, hideHover, hoverTarget, senderName };`,
   );
   const api = make(
     el,
@@ -117,8 +119,10 @@ function load({ answer = view(), fail = null } = {}) {
     },
     (index) => opened.push({ row: index }),
     (text) => said.push(text),
+    () => document.createElement('span'),
+    async () => reloads.push(true),
   );
-  return { ...api, el, state, asked, opened, said, document, window };
+  return { ...api, el, state, asked, opened, said, reloads, document, window };
 }
 
 /** Lets the card's fetch settle. */
@@ -210,19 +214,19 @@ test('the hover copy leaves out what it could not be clicked to do', () => {
 
 test('the sidebar card is filled once and then asks the core no more', async () => {
   const { showSender, hideSender, forgetSenders, el, asked } = load();
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   assert.equal(el('sender').hidden, false);
   assert.match(el('sender').textContent, /Erika Mustermann/);
   assert.deepEqual(asked[0], { command: 'sender', args: { account: 1, id: 7, address: null } });
 
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   assert.equal(asked.length, 1, 'the same message is not asked about twice');
 
   // A reload moves the counts, so the cards are thrown away.
   forgetSenders();
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   assert.equal(asked.length, 2);
 
@@ -233,7 +237,7 @@ test('the sidebar card is filled once and then asks the core no more', async () 
 
 test('a card that cannot be built leaves the message it belongs to alone', async () => {
   const { showSender, el } = load({ fail: 'no such account' });
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   assert.equal(el('sender').hidden, true, 'no error is put over the open message');
 });
@@ -275,7 +279,7 @@ test('a scanned letter asks Paperless, and shows the address off the page', asyn
   });
   const { showSender, el, asked, opened, said, state } = load({ answer: letter });
   state.postbox = { id: 7 };
-  await showSender({ id: 91, postbox: 7 });
+  await showSender({ id: 91, postbox: 7, asked: true });
   await settle();
 
   assert.deepEqual(asked[0], { command: 'paper_sender', args: { id: 7, documentId: 91 } });
@@ -305,7 +309,7 @@ test('a scanned letter asks Paperless, and shows the address off the page', asyn
 test('the card opens the right-hand column and gives it back', async () => {
   const { showSender, hideSender, el } = load();
   assert.equal(el('aside').hidden, true);
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   assert.equal(el('aside').hidden, false, 'the column is there because the card is');
   hideSender();
@@ -313,7 +317,7 @@ test('the card opens the right-hand column and gives it back', async () => {
 
   // With the assistant open the column stays, card or no card.
   el('assistant').hidden = false;
-  await showSender({ id: 7 });
+  await showSender({ id: 7, asked: true });
   await settle();
   hideSender();
   assert.equal(el('aside').hidden, false);
