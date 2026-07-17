@@ -21,6 +21,11 @@ pub struct Corners(pub [(f64, f64); 4]);
 /// The smallest share of the view the corners may enclose.
 const MIN_AREA: f64 = 0.01;
 
+/// Room left round the marked corners in the crop, as a share of what they
+/// enclose. A letter is never put down in exactly the same place twice, and
+/// what is outside the crop was never photographed. See [`Corners::crop`].
+const CROP_MARGIN: f64 = 0.08;
+
 impl Corners {
     /// The whole picture: straightening with these changes nothing but the
     /// turn.
@@ -96,18 +101,34 @@ impl Corners {
             .join(",")
     }
 
-    /// The crop that holds all four corners, as `x,y,w,h`. The camera still
-    /// crops on the sensor, so detection watches only this and the photograph
-    /// spends its pixels on it.
+    /// The crop that holds all four corners with room round them, as
+    /// `x,y,w,h`. The camera crops on the sensor, so this decides what is in
+    /// the photograph at all.
+    ///
+    /// The room is the point. Cropped to the marks exactly, a letter put down
+    /// a little further left — or a sheet bigger than the one the rig was set
+    /// up with — is cut by the sensor before any of this code runs, and no
+    /// amount of straightening afterwards can find what was never
+    /// photographed. That took the letterhead off letters, which is the one
+    /// part of a page the sender is read from. The crop costs nothing to
+    /// widen: [`crate::camera::Camera::capture_size`] takes sensor pixels one
+    /// for one, so a wider crop is a bigger photograph rather than a coarser
+    /// one, and the page keeps every pixel it had.
     pub fn crop(&self) -> String {
         let xs = self.0.map(|(x, _)| x);
         let ys = self.0.map(|(_, y)| y);
         let lowest = |values: [f64; 4]| values.into_iter().fold(1.0, f64::min);
         let highest = |values: [f64; 4]| values.into_iter().fold(0.0, f64::max);
-        // Outwards to the next thousandth, which is what the crop is written to,
-        // so no corner falls outside it.
-        let (left, top) = (floor3(lowest(xs)), floor3(lowest(ys)));
-        let (right, bottom) = (ceil3(highest(xs)).min(1.0), ceil3(highest(ys)).min(1.0));
+        let (left, top) = (lowest(xs), lowest(ys));
+        let (right, bottom) = (highest(xs), highest(ys));
+        let (room_x, room_y) = ((right - left) * CROP_MARGIN, (bottom - top) * CROP_MARGIN);
+        // Outwards to the next thousandth, which is what the crop is written
+        // to, so no corner falls outside it.
+        let (left, top) = (floor3(left - room_x), floor3(top - room_y));
+        let (right, bottom) = (
+            ceil3(right + room_x).min(1.0),
+            ceil3(bottom + room_y).min(1.0),
+        );
         format!("{left:.3},{top:.3},{:.3},{:.3}", right - left, bottom - top)
     }
 
@@ -125,6 +146,40 @@ impl Corners {
             return None;
         }
         Some(Corners(self.0.map(|(cx, cy)| ((cx - x) / w, (cy - y) / h))))
+    }
+
+    /// The smallest quad in these corners' own perspective that holds both
+    /// them and `other`.
+    ///
+    /// Taken corner by corner in the marked quad's own coordinates, so the
+    /// result keeps its shape and its angle to the camera and can only ever
+    /// be bigger. That matters: the marks and a page found by its brightness
+    /// are each right about something. The marks are where the table is, and
+    /// are exact; the found page is where this letter actually lies, and its
+    /// edges are as good as the light on them. Taking whichever reaches
+    /// further on each side keeps a letter that overhangs the marks without
+    /// trusting a dim edge over a drawn one.
+    pub fn around(&self, other: &Corners) -> Option<Corners> {
+        let map = Homography::square_to(self);
+        let back = map.invert()?;
+        let (mut left, mut top, mut right, mut bottom) = (0.0_f64, 0.0_f64, 1.0_f64, 1.0_f64);
+        for &(x, y) in other.0.iter() {
+            let (u, v) = back.apply(x, y);
+            left = left.min(u);
+            top = top.min(v);
+            right = right.max(u);
+            bottom = bottom.max(v);
+        }
+        let grown = Corners([
+            map.apply(left, top),
+            map.apply(right, top),
+            map.apply(right, bottom),
+            map.apply(left, bottom),
+        ]);
+        // A corner that has left the picture is pulled back to its edge; if
+        // that bends the quad out of shape, the marks stand as they are.
+        let grown = Corners(grown.0.map(|(x, y)| (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0))));
+        grown.check().ok().map(|()| grown)
     }
 
     /// The corners moved outwards by `margin` of the page's size on each
@@ -201,6 +256,30 @@ impl Homography {
         }
     }
 
+    /// The map the other way, when there is one: from the four points back to
+    /// the unit square.
+    pub fn invert(&self) -> Option<Self> {
+        let (a, b, c) = (self.a, self.b, self.c);
+        let (d, e, f) = (self.d, self.e, self.f);
+        let (g, h) = (self.g, self.h);
+        // The adjugate of [[a,b,c],[d,e,f],[g,h,1]], divided through by its
+        // last entry so the result is in the same form.
+        let last = a * e - b * d;
+        if last.abs() < 1e-12 {
+            return None;
+        }
+        Some(Self {
+            a: (e - f * h) / last,
+            b: (c * h - b) / last,
+            c: (b * f - c * e) / last,
+            d: (f * g - d) / last,
+            e: (a - c * g) / last,
+            f: (c * d - a * f) / last,
+            g: (d * h - e * g) / last,
+            h: (b * g - a * h) / last,
+        })
+    }
+
     pub fn apply(&self, u: f64, v: f64) -> (f64, f64) {
         let w = self.g * u + self.h * v + 1.0;
         (
@@ -234,13 +313,31 @@ pub fn straighten(jpeg: &[u8], corners: &Corners) -> Result<Vec<u8>> {
 /// sharpness, and sharpness is what the OCR reads.
 pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened> {
     let source = decode(jpeg)?;
-    let quad = corners_in_pixels(corners, source.width(), source.height());
+    // The marks are where a page lay at setup, not where this one lies. When
+    // this one reaches past them they would cut it away unrecoverably, so the
+    // paper's own corners are added to theirs.
+    let overhanging = paper_overhanging(&source, corners);
+    let marked = match &overhanging {
+        Some(paper) => corners
+            .around(paper)
+            .unwrap_or(*corners)
+            .with_margin(TRIM_EDGE),
+        None => *corners,
+    };
+    let quad = corners_in_pixels(&marked, source.width(), source.height());
     let (width, height) = warped_size(&quad)?;
     let first = Homography::square_to(&quad);
     let looking = warp(&source, &first, width, height);
 
     let page = page_within(&looking, width, height);
-    let (rgb, width, height) = match page.corners {
+    // Looking again once the paper has already been found in the photograph
+    // would be asking the same question of the same edges twice, and the
+    // second answer can only be worse: this picture was made from the first
+    // one, and where an edge was too dim to find it is dimmer here. It cut
+    // real page off letters. The measurement is still wanted — it is what
+    // tells an envelope from a sheet — so only the warp is skipped.
+    let look_again = page.corners.filter(|_| overhanging.is_none());
+    let (rgb, width, height) = match look_again {
         // Worth a second look: the page is somewhere inside what the corners
         // enclose, so the picture is warped onto the page itself — from the
         // photograph, not from the picture just made of it.
@@ -333,24 +430,194 @@ struct Page {
     covered: Option<f64>,
 }
 
-fn page_within(rgb: &[u8], width: u32, height: u32) -> Page {
-    let nothing = Page {
-        corners: None,
-        covered: None,
+/// How far the paper may reach outside the marked corners before the marks
+/// are taken as the wrong answer, as a share of the photograph.
+const OVERHANG: f64 = 0.02;
+
+/// How far a point lies outside a quad, as a share of the picture: zero when
+/// it is inside. The corners are clockwise with `y` downwards ([`Corners::
+/// check`]), so a point to the left of every edge is within them.
+fn outside(quad: &Corners, (x, y): (f64, f64)) -> f64 {
+    (0..4).fold(0.0_f64, |worst, i| {
+        let (a, b) = (quad.0[i], quad.0[(i + 1) % 4]);
+        let (ex, ey) = (b.0 - a.0, b.1 - a.1);
+        let length = ex.hypot(ey);
+        if length < 1e-9 {
+            return worst;
+        }
+        worst.max(((x - a.0) * ey - (y - a.1) * ex) / length)
+    })
+}
+
+/// The paper's own corners, when the marked ones are cutting it.
+///
+/// Setup's corners say where a page lay when the rig was set up. A letter put
+/// down further left, or a bigger sheet, reaches past them — and everything
+/// outside them is thrown away by the first warp, before the page is ever
+/// looked for, so no amount of trimming afterwards can bring it back. That is
+/// a letterhead cut off its own letter, which is both the worst part of the
+/// page to lose and the part the sender is read from.
+///
+/// So the photograph itself is asked where the paper is, and its answer is
+/// used **only** when the marks are demonstrably cutting it: something
+/// page-shaped, page-sized against the marks, and reaching more than
+/// [`OVERHANG`] outside them. Anything else leaves the marks alone, because
+/// they are also what keeps the rest of the table out of the picture. Even
+/// then the answer is not taken in place of the marks but added to them
+/// ([`Corners::around`]): a page edge found by its brightness is only as
+/// good as the light on it, and where the marks reach further they are the
+/// better of the two.
+fn paper_overhanging(source: &RgbImage, marked: &Corners) -> Option<Corners> {
+    let (small, sw, sh) = small_grey(source.as_raw(), source.width(), source.height())?;
+    let (paper, lit) = crate::locate::page_corners(&small, sw, sh)?;
+    let covered = paper.area();
+    if covered < TRIM_MIN_SHARE || lit < covered * TRIM_MIN_FILL {
+        return None;
+    }
+    // The marks point at a sheet of paper on a table. What is found has to be
+    // that sheet rather than a bright patch somewhere else in the frame, and
+    // a sheet is about the size the marks say.
+    let marked_area = marked.area();
+    if covered < marked_area * 0.5 || covered > marked_area * 2.0 {
+        return None;
+    }
+    let worst = paper
+        .0
+        .iter()
+        .fold(0.0_f64, |worst, &corner| worst.max(outside(marked, corner)));
+    if worst <= OVERHANG {
+        return None;
+    }
+    tracing::info!(
+        overhang = format!("{worst:.3}"),
+        "the letter reaches past the marked corners; keeping the paper instead"
+    );
+    Some(paper)
+}
+
+/// How much darker than the page a strip has to be before it counts as the
+/// table the page is lying on.
+const TABLE_SHARE: f64 = 0.82;
+/// How far beyond a side to look for that table, as a share of the picture.
+/// Close, because the question is whether this side is the sheet's edge, not
+/// what lies over by the frame.
+const TABLE_STEP: f64 = 0.02;
+
+/// Sides of a found page that still have paper beyond them, put back where
+/// the picture ends.
+///
+/// The page is found by its brightness, so an edge lying in shadow — the far
+/// one, usually, under a camera on a stalk — is found short. Trimming to it
+/// then cuts into the sheet, which is how letters lost the column down their
+/// right-hand side while the rest of the page looked perfectly well framed.
+///
+/// So before a side is cut, the strip it would cut away is looked at. If that
+/// strip is as bright as the page, it is more page, and the side goes back
+/// out to the edge of the picture. Only a side with something darker beyond
+/// it — the table — is a side worth trimming to.
+fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
+    let at = |x: f64, y: f64| {
+        let (px, py) = (
+            ((x * sw as f64) as usize).min(sw - 1),
+            ((y * sh as f64) as usize).min(sh - 1),
+        );
+        small[py * sw + px] as f64
     };
+    // The picture is already straightened onto the marks, so the page in it
+    // is near enough square to look beyond it in strips.
+    let [tl, tr, br, bl] = page.0;
+    let (left, right) = (tl.0.min(bl.0), tr.0.max(br.0));
+    let (top, bottom) = (tl.1.min(tr.1), bl.1.max(br.1));
+
+    let mean = |points: &[(f64, f64)]| -> f64 {
+        points.iter().map(|&(x, y)| at(x, y)).sum::<f64>() / points.len().max(1) as f64
+    };
+    let inside = mean(
+        &(1..10)
+            .flat_map(|i| (1..10).map(move |j| (i, j)))
+            .map(|(i, j)| {
+                (
+                    left + (right - left) * i as f64 / 10.0,
+                    top + (bottom - top) * j as f64 / 10.0,
+                )
+            })
+            .collect::<Vec<_>>(),
+    );
+
+    /// Just outside a side — not halfway to the picture's edge, which only
+    /// ever samples the table near the frame and says nothing about whether
+    /// the side itself is inside the sheet.
+    fn beyond(side: f64, edge: f64) -> Option<f64> {
+        let room = edge - side;
+        (room.abs() > 0.01).then(|| side + room.signum() * TABLE_STEP.min(room.abs() * 0.8))
+    }
+    let along = |from: f64, to: f64| {
+        (1..10)
+            .map(move |i| from + (to - from) * i as f64 / 10.0)
+            .collect::<Vec<_>>()
+    };
+    let still_paper =
+        |strip: Vec<(f64, f64)>| !strip.is_empty() && mean(&strip) > inside * TABLE_SHARE;
+
+    let down = |x: f64| {
+        along(top, bottom)
+            .into_iter()
+            .map(|y| (x, y))
+            .collect::<Vec<_>>()
+    };
+    let across = |y: f64| {
+        along(left, right)
+            .into_iter()
+            .map(|x| (x, y))
+            .collect::<Vec<_>>()
+    };
+    let keep_left = beyond(left, 0.0).map(down).is_some_and(&still_paper);
+    let keep_right = beyond(right, 1.0).map(down).is_some_and(&still_paper);
+    let keep_top = beyond(top, 0.0).map(across).is_some_and(&still_paper);
+    let keep_bottom = beyond(bottom, 1.0).map(across).is_some_and(&still_paper);
+
+    // Only the sides with paper beyond them move; the rest of the quad — and
+    // with it the turn of a letter lying a few degrees off — stays as found.
+    let x = |keep: bool, edge: f64, found: f64| if keep { edge } else { found };
+    Corners([
+        (x(keep_left, 0.0, tl.0), x(keep_top, 0.0, tl.1)),
+        (x(keep_right, 1.0, tr.0), x(keep_top, 0.0, tr.1)),
+        (x(keep_right, 1.0, br.0), x(keep_bottom, 1.0, br.1)),
+        (x(keep_left, 0.0, bl.0), x(keep_bottom, 1.0, bl.1)),
+    ])
+}
+
+/// A small grey copy of packed RGB, which is all the paper has to be found
+/// in: at this size the edge of a sheet is still an edge and the work is a
+/// fortieth of the pixels.
+fn small_grey(rgb: &[u8], width: u32, height: u32) -> Option<(Vec<u8>, usize, usize)> {
     let (w, h) = (width as usize, height as usize);
     if w < 16 || h < 16 || rgb.len() < w * h * 3 {
-        return nothing;
+        return None;
     }
     let step = (w.max(h) / TRIM_SAMPLE).max(1);
     let (sw, sh) = (w / step, h / step);
-    let small: Vec<u8> = (0..sh)
+    if sw < 16 || sh < 16 {
+        return None;
+    }
+    let small = (0..sh)
         .flat_map(|y| (0..sw).map(move |x| (x, y)))
         .map(|(x, y)| {
             let i = ((y * step) * w + x * step) * 3;
             ((77 * rgb[i] as u32 + 150 * rgb[i + 1] as u32 + 29 * rgb[i + 2] as u32) >> 8) as u8
         })
         .collect();
+    Some((small, sw, sh))
+}
+
+fn page_within(rgb: &[u8], width: u32, height: u32) -> Page {
+    let nothing = Page {
+        corners: None,
+        covered: None,
+    };
+    let Some((small, sw, sh)) = small_grey(rgb, width, height) else {
+        return nothing;
+    };
     let Some((page, lit)) = crate::locate::page_corners(&small, sw, sh) else {
         return nothing;
     };
@@ -361,7 +628,7 @@ fn page_within(rgb: &[u8], width: u32, height: u32) -> Page {
             covered: Some(covered).filter(|_| lit >= covered * TRIM_MIN_FILL),
         };
     }
-    let page = page.with_margin(TRIM_EDGE);
+    let page = keep_paper(&small, sw, sh, page.with_margin(TRIM_EDGE));
     // Already the page, near enough: not worth warping again.
     let whole = Corners::WHOLE.0;
     let off = page

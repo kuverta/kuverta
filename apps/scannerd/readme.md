@@ -340,9 +340,17 @@ headless Pi needs no screen, no desktop and no second program: open
   A letter never lies exactly there, so after straightening each photograph
   is straightened once more onto the page it actually shows, cutting away the
   strips and wedges of table beside it; when no clear page covering at least
-  half the picture is found, the photograph is kept as it is. Every
-  photograph is then warped so those corners become a rectangle's, before it
-  joins the letter; the crop is the area the corners span. On a Pi Zero W this
+  half the picture is found, the photograph is kept as it is, and a side with
+  paper still beyond it is never cut — a sheet's far edge falls off under a
+  camera on a stalk and is found short, which used to take the right-hand
+  column off letters. Every photograph is then warped so those corners become
+  a rectangle's, before it joins the letter. The crop is the area the corners
+  span **with 8% of it left round them**, so a letter put down further along,
+  or a sheet bigger than the one set up with, is still photographed: what the
+  sensor leaves out is gone for good, and the part of a page that overhangs
+  is usually the letterhead, which is where the sender is read from. The room
+  costs no sharpness — the photograph is taken at the crop's own share of the
+  sensor, so a wider crop is a bigger picture rather than a coarser one. On a Pi Zero W this
   adds about five seconds a page (a 5-megapixel photograph: decoding, warping
   and encoding take a third each), and a page that cannot be straightened is
   kept as it was taken. `SCANNERD_CORNERS` sets the same from the env file.

@@ -1737,3 +1737,82 @@ is the layout, which is the whole point of the column, so
 the reading pane, the card and the assistant share it with the chat input
 still on screen, the list gets its width back when the message closes, and the
 hover card lands clear of the list and inside the window.
+
+## 29. What the sensor leaves out is gone: four ways a letter lost its edges
+
+**2026-09-24.**
+
+A Finanzamt letter came out of the rig with the "F" missing from
+`Finanzamt(Finanzkasse)` and the whole right-hand column — the one headed
+**Mahnung** — cut off. Paperless then read the first line it could, `26603
+Aurich`, and filed the letter as being from a postcode. Four separate things
+were wrong, and each of the first three hid the next.
+
+**The sensor crop was the marks' own bounding box.** `--roi` crops on the
+sensor, and the crop was computed as exactly the box the four marked corners
+span. So a letter lying further left than the marks was cut by the camera
+itself, before a single line of this code ran: nothing downstream can recover
+what was never photographed. Measured on the rig, the sheet's top left corner
+sat 9% of the frame outside the marks. The crop now leaves 8% of the marked
+area round it. That costs nothing, which is the part worth knowing:
+`capture_size` asks for the crop's own share of the sensor, so a wider crop is
+a bigger photograph rather than a coarser one, and the page keeps every pixel
+it had.
+
+**The marks were then used as the page.** Even with room in the photograph,
+the first warp goes onto the marks, so anything outside them is thrown away
+before the page is looked for. `paper_overhanging` now asks the photograph
+where the paper is and, when it reaches more than 2% outside the marks, adds
+its corners to theirs. Added, not substituted: the marks are exact and the
+found page is only as good as the light on its edges, so `Corners::around`
+takes whichever reaches further on each side, in the marks' own perspective so
+the shape and the angle to the camera survive.
+
+**The trim cut into the sheet.** After the warp, the picture is straightened
+once more onto the page found inside it, to remove the strips of table beside
+a letter lying a little off the marks. The page is found by its brightness,
+and the far edge of a sheet under a camera on a stalk falls off into shadow,
+so it is found short — and the trim then cut real page. It now looks just
+beyond each side before cutting it: a side with something as bright as the
+page beyond it is not the sheet's edge, and stays where the picture ends.
+
+**And the sender was read off whatever line came first.** With the letterhead
+cut, that was `26603 Aurich`. It would have been wrong again on the next
+letter whose top line OCR happened to read as the address beside the
+letterhead rather than the letterhead itself. `Document::letterhead` now takes
+the first of the top four lines that could be a name — not a postcode and a
+place, not a date, not mostly digits — and cuts a line at a column gap, so
+`Finanzamt(Finanzkasse)   26603 Aurich   02.05.25` reads as the Finanzamt.
+
+### Verified
+
+On the rig, against the letter that started it: the same sheet, in the same
+place, photographed before and after. Before, the letterhead began at
+`inanzamt` and **Mahnung** ran off the right edge; after, the whole page is
+there, barcode to signature. `apps/scannerd/examples/crop_check` is what that
+took — it puts a photograph through each step separately and prints where the
+paper lies in the marks' own frame — and it is kept because this class of bug
+is invisible from the code and obvious from the pictures.
+
+In `apps/scannerd/tests/straighten.rs`: a letter overhanging the marks keeps
+its letterhead, marks that hold the whole letter are left alone, the trim
+takes a strip of table but leaves a shadow on the page, and the crop holds
+every corner with room round it. Each fails with its fix removed.
+`crates/core-paper/tests/letters.rs` reads the sender out of the line order
+the rig's own OCR produced.
+
+## 30. The learn-table button that a ten-minute window took away
+
+**2026-09-24.**
+
+Filing the last letter by hand — **No folder** and **Throw away** — and
+learning the empty table were sharing one row of the panel, and refiling won
+it whenever there was a letter still inside its undo window. That window is
+ten minutes. So for ten minutes after every letter there was no way to learn
+the table from the rig at all, which is exactly the moment you want it: the
+pile has gone through, the table is clear, and learning it is the next thing
+you would do.
+
+Learning the table now goes last but is not given up. It stands down only when
+five rows are already taken, which is the most the card above the buttons can
+spare on a 480×320 panel.
