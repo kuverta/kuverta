@@ -739,9 +739,15 @@
             <div class="setup-actions">
               <button type="button" id="shelf-add">Add a folder</button>
               <button type="button" id="household-add">Add a person</button>
+              <button type="button" id="shelf-learn" title="Look through the letters already filed for words that would have filed them">What your letters suggest</button>
               <button type="button" class="primary" id="shelf-save">Save folders</button>
             </div>
             <p class="setup-result" id="shelf-result"></p>
+            <div id="shelf-learned" hidden>
+              <h3>What your letters suggest</h3>
+              <p class="hint">Words that stand on several letters in one folder and on none in any other — so they would have filed those letters, and nothing else. Click one to give it to the folder. Nothing is saved until you save the folders.</p>
+              <div id="shelf-learned-list"></div>
+            </div>
           </section>
 
           <section data-page="mail" hidden>
