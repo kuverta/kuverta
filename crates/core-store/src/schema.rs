@@ -463,6 +463,31 @@ ALTER TABLE classification ADD COLUMN rules_version INTEGER NOT NULL DEFAULT 1;
     r#"
 ALTER TABLE folder ADD COLUMN backfill_uid INTEGER;
 "#,
+    // v18 — who a letter was *to*, in the search index.
+    //
+    // The index held the subject, the sender and the body, which is most of a
+    // letter but not the part that matters in Sent: there, the only name worth
+    // searching for is the one it went to. Searching for `cadus` found
+    // twenty-six fewer messages than Thunderbird did on the same mailbox,
+    // every one of them sent by the person doing the search.
+    //
+    // The body text lives only here — it is not a column on `message` — so
+    // this carries the old rows across rather than rebuilding from scratch,
+    // which would silently empty every body. The recipients come from
+    // `message`, where they have been all along.
+    r#"
+CREATE VIRTUAL TABLE message_fts_next USING fts5(subject, sender, recipients, body);
+INSERT INTO message_fts_next (rowid, subject, sender, recipients, body)
+SELECT f.rowid, f.subject, f.sender, COALESCE(m.recipients, ''), f.body
+  FROM message_fts f
+  LEFT JOIN message m ON m.id = f.rowid;
+DROP TRIGGER message_fts_delete;
+DROP TABLE message_fts;
+ALTER TABLE message_fts_next RENAME TO message_fts;
+CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
+    DELETE FROM message_fts WHERE rowid = old.id;
+END;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
