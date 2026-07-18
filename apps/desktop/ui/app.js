@@ -252,6 +252,15 @@ async function reload({ keepPosition = false } = {}) {
   state.requested.clear();
   state.firstRendered = -1;
   state.searching = false;
+  // The box and the list have to say the same thing. Every reload leaves a
+  // search behind — `state.searching` is false from here down — so a query
+  // still sitting in the box describes a list that is not on screen: typing
+  // `cadus`, then clicking Sent, showed the whole of Sent with `cadus` in the
+  // box, as though that were what had been asked for.
+  //
+  // In People the box is not a search. It is a filter the page reads for
+  // itself when it loads, so there it stays.
+  if (state.view !== "people") searchBox.value = "";
   reading.hidden = true;
   emptyPane.hidden = false;
   // Whatever a sender card said about how much mail there is with somebody,
