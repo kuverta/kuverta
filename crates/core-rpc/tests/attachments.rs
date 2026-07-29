@@ -400,3 +400,52 @@ fn the_assistant_drafts_mail_to_someone_else_and_sends_none_of_it() {
     );
     assert!(matches!(empty.event, Some(AssistantEvent::Failed { .. })));
 }
+
+#[tokio::test]
+async fn the_assistant_reads_what_is_in_an_attachment_not_only_its_name() {
+    let world = world("read-attachment");
+    let id = file(&world, 1, &esim_mail(), "Ihre neue e-SIM ist da QR-Code");
+    let mut heard = Vec::new();
+
+    // The index as read_message gives it — and as a small model sends it, as
+    // text.
+    let read = core_rpc::assistant::read_attachment(
+        &world.core,
+        world.account,
+        &call("read_attachment", json!({"id": id, "index": "3"})),
+        1_000,
+        &mut |event: &AssistantEvent| heard.push(event.clone()),
+    )
+    .await;
+    let content: serde_json::Value = serde_json::from_str(&read.content).unwrap();
+    assert_eq!(content["name"], "login.html");
+    assert!(
+        content["text"].as_str().unwrap().contains("password"),
+        "{content}"
+    );
+    assert!(
+        matches!(&heard[..], [AssistantEvent::Looked { what }] if what == "reading login.html")
+    );
+
+    // One that is not there is said to be, to the model and in the window.
+    let missing = core_rpc::assistant::read_attachment(
+        &world.core,
+        world.account,
+        &call("read_attachment", json!({"id": id, "index": 9})),
+        1_000,
+        &mut |_: &AssistantEvent| {},
+    )
+    .await;
+    assert!(missing.content.contains("error"), "{}", missing.content);
+    assert!(matches!(missing.event, Some(AssistantEvent::Failed { .. })));
+
+    // read_message gives the index to ask for.
+    let message = world
+        .core
+        .assistant_tool(world.account, &call("read_message", json!({"id": id})));
+    assert!(
+        message.content.contains("\"index\":3"),
+        "{}",
+        message.content
+    );
+}

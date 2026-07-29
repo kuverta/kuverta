@@ -267,6 +267,70 @@ pub struct Draft {
     pub in_reply_to: Option<String>,
     /// References chain, oldest first, without angle brackets.
     pub references: Vec<String>,
+    /// Files sent along, after the text, in the order given.
+    pub attachments: Vec<Attachment>,
+}
+
+/// A file sent along with a message.
+///
+/// The name and type come from the sender's own computer, but they still end
+/// up in a header: [`Draft::build`] writes the name encoded, and a type that is
+/// not a plain `type/subtype` goes out as `application/octet-stream` rather
+/// than into the header as given.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Attachment {
+    pub name: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
+
+impl std::fmt::Debug for Attachment {
+    // The bytes are the file. A draft in a log line should say what it
+    // carries, not carry it.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Attachment")
+            .field("name", &self.name)
+            .field("content_type", &self.content_type)
+            .field("size", &self.data.len())
+            .finish()
+    }
+}
+
+impl Attachment {
+    /// The type as it goes into the header: `type/subtype` in the characters
+    /// RFC 2045 allows a token, lowercased, or `application/octet-stream`.
+    fn header_type(&self) -> String {
+        let token = |part: &str| {
+            !part.is_empty()
+                && part
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "!#$&-^_.+".contains(c))
+        };
+        let declared = self.content_type.trim().to_ascii_lowercase();
+        match declared.split_once('/') {
+            Some((kind, subtype)) if token(kind) && token(subtype) => declared,
+            _ => "application/octet-stream".into(),
+        }
+    }
+
+    /// The name as it goes into the header: no line breaks or other control
+    /// characters, no directories, and never empty.
+    fn header_name(&self) -> String {
+        let name: String = self
+            .name
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect();
+        let name = name.trim();
+        if name.is_empty() {
+            "attachment".into()
+        } else {
+            name.to_string()
+        }
+    }
 }
 
 impl Draft {
@@ -280,6 +344,7 @@ impl Draft {
             body: String::new(),
             in_reply_to: None,
             references: Vec::new(),
+            attachments: Vec::new(),
         }
     }
 
@@ -305,6 +370,11 @@ impl Draft {
 
     pub fn body(mut self, body: impl Into<String>) -> Self {
         self.body = body.into();
+        self
+    }
+
+    pub fn attach(mut self, attachment: Attachment) -> Self {
+        self.attachments.push(attachment);
         self
     }
 
@@ -434,6 +504,15 @@ impl Draft {
         }
         if !self.references.is_empty() {
             builder = builder.references(self.references.clone());
+        }
+        // With any attachment the message becomes multipart/mixed, the text
+        // first: what a reader sees before the files, in every client.
+        for attachment in &self.attachments {
+            builder = builder.attachment(
+                attachment.header_type(),
+                attachment.header_name(),
+                attachment.data.clone(),
+            );
         }
 
         Ok(BuiltMessage {
@@ -990,5 +1069,97 @@ mod tests {
             Mailbox::named("Doe, Jane", "jane@example.com")
         );
         assert!(Mailbox::parse("Jane <jane@example.com").is_err());
+    }
+
+    fn file(name: &str, content_type: &str, data: &[u8]) -> Attachment {
+        Attachment {
+            name: name.into(),
+            content_type: content_type.into(),
+            data: data.to_vec(),
+        }
+    }
+
+    use mail_parser::MimeHeaders;
+
+    fn parsed(built: &BuiltMessage) -> mail_parser::Message<'_> {
+        mail_parser::MessageParser::default()
+            .parse(&built.rfc822)
+            .unwrap()
+    }
+
+    #[test]
+    fn a_file_goes_after_the_text_with_its_name_and_bytes() {
+        let pdf = b"%PDF-1.4 not really";
+        let built = Draft::new(me())
+            .to(Mailbox::new("jane@example.com"))
+            .subject("Die Rechnung")
+            .body("anbei")
+            .attach(file("Rechnung März.pdf", "application/pdf", pdf))
+            .build()
+            .unwrap();
+
+        assert!(header_block(&built)
+            .to_ascii_lowercase()
+            .contains("multipart/mixed"));
+        let message = parsed(&built);
+        assert_eq!(message.body_text(0).unwrap().trim(), "anbei");
+        assert_eq!(message.attachment_count(), 1);
+        let part = message.attachment(0).unwrap();
+        assert_eq!(part.attachment_name(), Some("Rechnung März.pdf"));
+        assert_eq!(part.contents(), pdf);
+    }
+
+    #[test]
+    fn a_draft_without_files_stays_a_single_text_part() {
+        let built = Draft::new(me())
+            .to(Mailbox::new("jane@example.com"))
+            .body("hi")
+            .build()
+            .unwrap();
+        assert!(!header_block(&built)
+            .to_ascii_lowercase()
+            .contains("multipart"));
+    }
+
+    #[test]
+    fn a_files_type_and_name_cannot_write_headers() {
+        let built = Draft::new(me())
+            .to(Mailbox::new("jane@example.com"))
+            .body("x")
+            .attach(file(
+                "../../evil\r\nBcc: x@example.com.txt",
+                "text/plain\r\nBcc: y@example.com",
+                b"x",
+            ))
+            .attach(file("", "", b"y"))
+            .build()
+            .unwrap();
+
+        let rendered = String::from_utf8_lossy(&built.rfc822).to_string();
+        assert!(
+            !rendered
+                .lines()
+                .any(|line| line.to_ascii_lowercase().starts_with("bcc:")),
+            "{rendered}"
+        );
+        let message = parsed(&built);
+        let first = message.attachment(0).unwrap();
+        assert_eq!(first.attachment_name(), Some("evilBcc: x@example.com.txt"));
+        assert_eq!(
+            first.content_type().map(|ct| ct.ctype()),
+            Some("application")
+        );
+        assert_eq!(
+            message.attachment(1).unwrap().attachment_name(),
+            Some("attachment")
+        );
+    }
+
+    #[test]
+    fn a_draft_in_the_log_says_what_it_carries_not_the_bytes() {
+        let draft = Draft::new(me()).attach(file("a.bin", "application/octet-stream", &[7; 64]));
+        let logged = format!("{draft:?}");
+        assert!(logged.contains("size: 64"), "{logged}");
+        assert!(!logged.contains("7, 7"), "{logged}");
     }
 }
