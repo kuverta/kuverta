@@ -73,6 +73,8 @@ const GERMAN = {
   "Reply all (A)": "Allen antworten (A)",
   Forward: "Weiterleiten",
   "Forward (f)": "Weiterleiten (f)",
+  "✨ Answer": "✨ Beantworten",
+  "Let the assistant write the reply (a)": "Die Antwort vom Assistenten schreiben lassen (a)",
   "Ask the assistant": "Den Assistenten fragen",
   "Ask the assistant about this message (Shift+I)":
     "Den Assistenten zu dieser Nachricht fragen (Umschalt+I)",
@@ -1022,6 +1024,27 @@ const GERMAN = {
   "Sent at its time while kuverta is open. If it is closed then, a message goes the next time kuverta opens.":
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
+
+  // Files going out, and the assistant writing
+  "📎 Attach": "📎 Anhängen",
+  "Attach files": "Dateien anhängen",
+  "Attach files — or drop them here": "Dateien anhängen — oder hierher ziehen",
+  "Drop to attach": "Zum Anhängen loslassen",
+  "Take {name} out": "{name} herausnehmen",
+  "could not read {name}: {error}": "{name} ließ sich nicht lesen: {error}",
+  "{name} is too large: a message can carry {count} MB of files, and most servers refuse more":
+    "{name} ist zu groß: eine Nachricht kann {count} MB an Dateien tragen, und die meisten Server nehmen nicht mehr an",
+  "✨ Answer with assistant": "✨ Mit dem Assistenten beantworten",
+  "Answer with assistant": "Mit dem Assistenten beantworten",
+  "Write with assistant": "Mit dem Assistenten schreiben",
+  "The assistant writes it — what you have typed is its brief (⌘J)":
+    "Der Assistent schreibt es — was Sie schon getippt haben, ist sein Auftrag (⌘J)",
+  "Writing…": "Schreibt…",
+  "reading the attached files…": "liest die angehängten Dateien…",
+  "the assistant is writing…": "der Assistent schreibt…",
+  "Written by {model}. Read it before you send it — ⌘Z brings back your notes.":
+    "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden — ⌘Z holt Ihre Notizen zurück.",
+  "Written by {model}. Read it before you send it.": "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden.",
   "⌘/ctrl+enter sends · escape discards": "⌘/Strg+Enter sendet · Escape verwirft",
   "⌘/ctrl+enter sends, as a reply to their latest message. Double-click a bubble for the whole message.":
     "⌘/Strg+Enter sendet, als Antwort auf die letzte Nachricht. Doppelklick auf eine Sprechblase zeigt die ganze Nachricht.",
@@ -1117,6 +1140,7 @@ const GERMAN = {
   "c compose": "c schreiben",
   "R reply": "R antworten",
   "A reply all": "A allen antworten",
+  "a answer": "a beantworten",
   "i assistant": "i Assistent",
   "v text/pdf": "v Text/PDF",
   "/ search": "/ suchen",

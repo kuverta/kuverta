@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use core_pgp::MemoryPassphrases;
-use core_rpc::{Core, DraftInput, Keyring, RpcError, Session, SignatureState};
+use core_rpc::{Core, DraftAttachment, DraftInput, Keyring, RpcError, Session, SignatureState};
 use core_store::model::*;
 use core_store::{Blobs, Store};
 
@@ -331,4 +331,88 @@ fn an_encrypted_message_lists_the_attachments_inside_it() {
         .attachments
         .is_empty());
     assert!(bare.attachment(world.account, id, 0).is_err());
+}
+
+fn with_file(sign: bool, encrypt: bool) -> DraftInput {
+    DraftInput {
+        attachments: vec![DraftAttachment {
+            name: "Vertrag unterschrieben.pdf".into(),
+            // As a window with no type for it would send it.
+            content_type: String::new(),
+            data: b"%PDF-1.4 unterschrieben".to_vec(),
+        }],
+        ..draft(sign, encrypt)
+    }
+}
+
+#[test]
+fn a_file_sent_encrypted_is_inside_the_encryption_and_comes_back_out() {
+    let world = world("file-sealed");
+    let sealed = session(&world)
+        .preview(ERIKA, &with_file(true, true))
+        .unwrap();
+    assert!(sealed.encrypted);
+    // Neither its name nor its bytes are on the outside.
+    assert!(
+        !sealed.rfc822.contains("unterschrieben"),
+        "{}",
+        sealed.rfc822
+    );
+    assert!(!sealed.rfc822.contains("Vertrag unterschrieben"));
+
+    // The copy filed in Sent, opened again: text and file both there.
+    let core = core(&world);
+    let id = store_message(&world, &core, "file-sealed", sealed.rfc822.as_bytes());
+    let detail = core.message(world.account, id).unwrap();
+    assert!(detail.security.unwrap().decrypted);
+    assert_eq!(detail.attachments.len(), 1, "{:?}", detail.attachments);
+    assert_eq!(detail.attachments[0].name, "Vertrag unterschrieben.pdf");
+    // No type was given; the name said PDF.
+    assert_eq!(detail.attachments[0].content_type, "application/pdf");
+    let fetched = core.attachment(world.account, id, 0).unwrap();
+    assert_eq!(fetched.bytes, b"%PDF-1.4 unterschrieben");
+}
+
+#[test]
+fn a_file_sent_plain_is_a_second_part_after_the_text() {
+    let world = world("file-plain");
+    let plain = session(&world)
+        .preview(ERIKA, &with_file(false, false))
+        .unwrap();
+    assert!(plain
+        .rfc822
+        .to_ascii_lowercase()
+        .contains("multipart/mixed"));
+    assert!(plain.rfc822.contains("Der Vertrag liegt bei."));
+    // What compose shows is still only what was typed.
+    assert_eq!(plain.body, "Der Vertrag liegt bei.\n");
+}
+
+#[test]
+fn a_scheduled_draft_keeps_its_files_as_base64() {
+    // A message scheduled for Monday is stored as its DraftInput in JSON; the
+    // file it was written with must still be in it on Monday.
+    let input = with_file(false, false);
+    let json = serde_json::to_string(&input).unwrap();
+    assert!(
+        json.contains("\"data\":\"JVBERi0xLjQgdW50ZXJzY2hyaWViZW4=\""),
+        "{json}"
+    );
+    let back: DraftInput = serde_json::from_str(&json).unwrap();
+    assert_eq!(back.attachments, input.attachments);
+    // And the debug form, which is what a log line gets, holds no bytes.
+    let logged = format!("{input:?}");
+    assert!(logged.contains("size: 23"), "{logged}");
+    assert!(!logged.contains("37, 80, 68, 70"), "{logged}");
+}
+
+#[test]
+fn more_files_than_a_server_takes_are_refused_before_anything_is_built() {
+    let world = world("file-too-big");
+    let mut input = with_file(false, false);
+    input.attachments[0].data = vec![0; core_rpc::MAX_ATTACHMENT_BYTES + 1];
+    match session(&world).preview(ERIKA, &input).unwrap_err() {
+        RpcError::Rejected(message) => assert!(message.contains("25 MB"), "{message}"),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
 }

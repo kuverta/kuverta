@@ -2531,3 +2531,71 @@ is nothing before it to join to, and one person becomes two who do not exist.
 It splits on the commas outside the quotes now, which is the rule the header
 is written by. An unclosed quote takes the rest of the line with it, and that
 is the right way round: one recipient too few beats a name torn in half.
+
+## 43. Files go out with a message, and the assistant reads them
+
+Compose could not attach anything, and answering a letter that asks for a
+signed form meant another mail program. Now a file dropped anywhere on
+compose — or on the reply box under a conversation — goes out with the
+message, and Answer (✨, or `a`) has the assistant write the reply in one
+click, from the message, from what has been typed, and from the files.
+
+### The bytes are in the draft
+
+A `DraftInput` carries its files, base64 in JSON, rather than paths to them. A
+message scheduled for Monday is stored as its draft, and by Monday the file it
+was written with may have moved or changed; a draft that holds its bytes is
+the message that was meant. The window reads a dropped file with a
+`FileReader` and sends it that way, which also means nothing in the core ever
+opens a path the window names. The envelope previews that run on every change
+of recipient leave the files out: they only need the envelope, and a preview's
+message would carry the files back again each time.
+
+Files together are refused past 25 MB, before anything is built. Most providers
+refuse a message over that, and base64 makes it a third larger on the way; the
+server would say so too, but after a long upload and in its own words. The
+name and the type still end up in a header even though they come from the
+sender's own computer, so `core-smtp` writes the name encoded and without
+control characters, and a type that is not a plain `type/subtype` goes out as
+`application/octet-stream`. With no type at all the name decides: some Linux
+desktops have none for a `.docx`.
+
+Dropping only works with Tauri's own file-drop handling off
+(`dragDropEnabled: false`): with it on, a drop arrives as paths on a Tauri
+event and never reaches the page. The page then refuses a drop everywhere that
+does not take files, or a file let go of anywhere would replace the window.
+
+### Reading a file is turning it into text
+
+`readable.rs` reads what people send: text as it is (UTF-8, or Windows-1252
+for an old German CSV), HTML through §35's converter, a PDF by its text layer,
+Word, OpenDocument, Excel and PowerPoint by the XML inside them — headings,
+lists and tables as Markdown, which models read best — and a forwarded message
+by its headers and text. A photograph, and a PDF with no text layer, go to the
+vision model that reads letters (§24), page by page, five pages at most.
+Everything else is named as unreadable rather than guessed at.
+
+Two crates came in for it, both MIT: `pdf-extract`, because a PDF's text is
+not something to parse by hand, and `zip`, deflate only, whose `flate2` with
+`zlib-rs` was already in the tree. A zip entry inflates to 32 MB at most, a
+sheet to 300 rows, and pdf-extract's panics on malformed files are caught:
+that is one file unread, not a thread gone.
+
+The chat assistant has the same reader as a tool, `read_attachment`, so "what
+does the invoice they sent say" is now answered from the invoice.
+
+### Answer looks, and writes, and does nothing else
+
+It is the assistant's model, but offered only the tools that look: search,
+list, read a message, a conversation, an attachment. A button pressed in
+passing must not be able to move or trash anything, whatever a message it
+reads tells it to — and a model asking for another tool by name anyway is
+told no. It returns text for compose and nothing else; sending stays with the
+person. What was typed is its brief: followed when it reads as instructions,
+finished in its own words when it reads as a start. It is told to write
+`[Datum]` rather than make up a date. The reply replaces the body through the
+field's own editing (`insertText`), so ⌘Z brings the notes back.
+
+How much of a file it is shown depends on where the model runs: a model on
+this computer often works in a few thousand tokens, and a contract that fills
+them leaves no room for the answer.
