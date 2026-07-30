@@ -13,6 +13,17 @@
 //! translates what it can and **says what it could not**: a smart mailbox that
 //! silently lost its "is flagged" rule would show more mail than the original
 //! and look right while doing it.
+//!
+//! ## Taking mail out of the Inbox
+//!
+//! A smart mailbox is a search, and a search moves nothing: what it gathers
+//! stays in the Inbox. One that is given a `folder` also takes its mail out
+//! of the Inbox — into that folder on the server, so every device sees it
+//! gone — now, and from then on for every new message, before the list shows
+//! it. The moving is done by a task that belongs to the mailbox: an ordinary
+//! queued move with its Undo, each message once, so mail put back in the
+//! Inbox by hand stays there. The mailbox then lists its folder, and the
+//! sidebar does not list that folder a second time.
 
 use std::path::{Path, PathBuf};
 
@@ -30,6 +41,8 @@ pub struct SmartMailboxView {
     pub name: String,
     pub query: SmartQuery,
     pub source: Option<String>,
+    /// The server folder it takes its Inbox mail into, when it does.
+    pub folder: Option<String>,
     pub total: usize,
     pub unread: usize,
 }
@@ -41,6 +54,21 @@ pub struct SmartMailboxInput {
     pub account_id: AccountId,
     pub name: String,
     pub query: SmartQuery,
+    /// Take its mail out of the Inbox into this server folder, which is
+    /// created when it does not exist. `None` keeps it a search.
+    #[serde(default)]
+    pub folder: Option<String>,
+}
+
+/// A smart mailbox saved, and how much of the Inbox it took at once.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartSaved {
+    pub id: i64,
+    pub folder: Option<String>,
+    /// Messages moved out of the Inbox on saving.
+    pub moved: usize,
+    /// Set when the folder was made on the server for it.
+    pub created_folder: bool,
 }
 
 /// How many messages a query selects, and the first few, for the editor to
@@ -82,24 +110,43 @@ impl Core {
             .smart_mailboxes(account)?
             .into_iter()
             .map(|mailbox| {
-                let (total, unread) = self.store().count_matching(
-                    account,
-                    &ListFilter {
-                        smart: Some(mailbox.query.clone()),
-                        ..Default::default()
-                    },
-                )?;
+                let (total, unread) = self
+                    .store()
+                    .count_matching(account, &self.smart_filter(mailbox.id)?)?;
                 Ok(SmartMailboxView {
                     id: mailbox.id,
                     account_id: mailbox.account_id,
                     name: mailbox.name,
                     query: mailbox.query,
                     source: mailbox.source,
+                    folder: mailbox.folder,
                     total,
                     unread,
                 })
             })
             .collect()
+    }
+
+    /// What the list shows for a smart mailbox: its folder, when it takes its
+    /// mail into one — mail moved there by hand included — or else what its
+    /// rules select, wherever it is.
+    pub fn smart_filter(&self, id: i64) -> Result<ListFilter> {
+        let mailbox = self
+            .store()
+            .smart_mailbox(id)?
+            .ok_or_else(|| RpcError::Rejected(format!("no smart mailbox {id}")))?;
+        if let Some(folder) = &mailbox.folder {
+            if let Some(folder) = self.store().folder_named(mailbox.account_id, folder)? {
+                return Ok(ListFilter {
+                    folder: Some(folder),
+                    ..Default::default()
+                });
+            }
+        }
+        Ok(ListFilter {
+            smart: Some(mailbox.query),
+            ..Default::default()
+        })
     }
 
     /// The rules of one smart mailbox, for the list to filter by.
@@ -125,9 +172,81 @@ impl Core {
             rule.validate()
                 .map_err(|why| RpcError::Rejected(format!("rule {}: {why}", at + 1)))?;
         }
+        // As the server spells it, when it exists: rules and the sidebar
+        // compare names exactly.
+        let folder = match input
+            .folder
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty())
+        {
+            None => None,
+            Some(folder) if folder.eq_ignore_ascii_case("INBOX") => {
+                return Err(RpcError::Rejected(
+                    "mail cannot be taken out of the Inbox into the Inbox — choose another folder"
+                        .into(),
+                ))
+            }
+            Some(folder) => Some(
+                self.store()
+                    .folders(input.account_id)?
+                    .into_iter()
+                    .find(|f| f.name.eq_ignore_ascii_case(folder))
+                    .map(|f| f.name)
+                    .ok_or_else(|| {
+                        RpcError::Rejected(self.no_such_folder(input.account_id, folder))
+                    })?,
+            ),
+        };
+        let id = self.store().save_smart_mailbox(
+            input.id,
+            input.account_id,
+            name,
+            &input.query,
+            None,
+        )?;
+        self.store()
+            .set_smart_mailbox_folder(id, folder.as_deref())?;
+
+        // Its task, kept in step: made, changed, or gone.
+        let task = self.store().task_of_smart_mailbox(id)?;
+        match &folder {
+            None => {
+                if let Some(task) = task {
+                    self.store().delete_task(task.id)?;
+                }
+            }
+            Some(folder) => {
+                let action = serde_json::to_string(&crate::TaskAction::Move {
+                    folder: folder.clone(),
+                })
+                .map_err(|err| RpcError::Rejected(err.to_string()))?;
+                // Not marked as having seen what is there: the mail the
+                // mailbox gathers today leaves the Inbox too.
+                let task_id = self.store().save_task(
+                    task.map(|t| t.id),
+                    input.account_id,
+                    name,
+                    &input.query,
+                    &action,
+                    false,
+                    true,
+                )?;
+                self.store().link_task(task_id, id)?;
+            }
+        }
+        Ok(id)
+    }
+
+    /// Runs a smart mailbox's own task once, now: how the Inbox mail it
+    /// gathers leaves on saving rather than at the next sync.
+    pub fn sort_into_smart_mailbox(&self, account: AccountId, id: i64) -> Result<usize> {
+        let Some(task) = self.store().task_of_smart_mailbox(id)? else {
+            return Ok(0);
+        };
         Ok(self
-            .store()
-            .save_smart_mailbox(input.id, input.account_id, name, &input.query, None)?)
+            .run_rule_task(account, &task)?
+            .map_or(0, |run| run.done))
     }
 
     pub fn delete_smart_mailbox(&self, id: i64) -> Result<()> {
@@ -668,6 +787,53 @@ fn apple_rule(header: &str, qualifier: &str, expression: &str) -> Option<SmartRu
         op,
         value: expression.to_string(),
     })
+}
+
+impl crate::session::Session {
+    /// Saves a smart mailbox, making the server folder it takes its mail into
+    /// when that does not exist yet, and moves what it gathers out of the
+    /// Inbox at once.
+    pub async fn save_smart_mailbox(&self, input: &SmartMailboxInput) -> Result<SmartSaved> {
+        let core = Core::open(self.data_dir())?;
+        let folder = input
+            .folder
+            .as_deref()
+            .map(str::trim)
+            .filter(|f| !f.is_empty());
+        let mut created_folder = false;
+        if let Some(name) = folder {
+            let exists = core.store().folder_named(input.account_id, name)?.is_some();
+            if !exists {
+                let email = core.account_email(input.account_id)?;
+                self.create_folder(&email, name, None).await?;
+                created_folder = true;
+            }
+        }
+        let id = core.save_smart_mailbox(input)?;
+        let moved = core.sort_into_smart_mailbox(input.account_id, id)?;
+        Ok(SmartSaved {
+            id,
+            folder: core.store().smart_mailbox(id)?.and_then(|m| m.folder),
+            moved,
+            created_folder,
+        })
+    }
+
+    /// Runs the tasks that need no model on one account — the smart
+    /// mailboxes' and the person's — so new mail is where they put it before
+    /// the list shows it. How many messages were acted on.
+    pub fn sort_new_mail(&self, email: &str) -> Result<usize> {
+        let core = Core::open(self.data_dir())?;
+        let account = core
+            .store()
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+        Ok(core
+            .run_rule_tasks(account.id)?
+            .iter()
+            .map(|run| run.done)
+            .sum())
+    }
 }
 
 #[cfg(test)]

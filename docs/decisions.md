@@ -2659,3 +2659,49 @@ Moving the toolchain is when to move hayro.
 
 The assistant's reading of attachments goes through the same worker, when the
 app has one; the CLI, which starts no worker, still reads in its own process.
+
+## 45. A smart mailbox can take its mail out of the Inbox
+
+Mail picked in the list and made into a smart mailbox stayed in the Inbox,
+and it looked as if something had failed to reach the server. Nothing had:
+a smart mailbox was a saved search, as Apple Mail's are, and a search moves
+nothing. And new mail showed in the Inbox before any rule saw it, because
+after a sync the list was drawn first and the tasks run after.
+
+A smart mailbox can now be given a folder, and then it takes what it gathers
+out of the Inbox into that folder on the server — at once when it is saved,
+and after every sync for what is new. On the server, so the phone sees the
+mail gone from its Inbox too; and chosen per mailbox, on by default for a new
+one, so the searches people already have, and the ones imported from
+Thunderbird and Apple Mail, go on moving nothing. Saving makes the folder
+when it does not exist: from a mailbox's name, without an address in angle
+brackets and without the characters a server reads as a path.
+
+### The moving is a task's
+
+A task already did exactly this — rules, a move, after each sync, as an
+ordinary queued change with its Undo, each message once — so the mailbox gets
+one of its own (`task.smart_mailbox_id`), made, changed and deleted with it,
+and not listed among the person's tasks, the assistant's included. Each
+message once is the part that matters: mail put back in the Inbox by hand,
+or a move undone, stays where it was put instead of being taken again at the
+next sync.
+
+It acts on the Inbox only. An invoice filed in Archive was filed there on
+purpose, and taking the Inbox's mail is what was asked. That is a scope on the
+task's search, not one more rule: a mailbox that matches any of its rules
+cannot have "and it is in the Inbox" added as another.
+
+### Sorted before it is shown
+
+The window's sync now runs the tasks that need no model before it returns,
+for the account that was synced — not, as `runTasks` did, the one that
+happened to be open. A queued move takes a message out of the list it was in
+at once, while it waits out its undo window, so when the list is drawn the new mail is
+already where the rules put it. The model's tasks still run afterwards, in
+the background: they take seconds a message.
+
+A mailbox that takes its mail lists its folder rather than its rules — mail
+moved there by hand included — and the sidebar lists that folder once, as
+the mailbox. Deleted, the mailbox leaves its folder and the mail in it on the
+server; the folder is then listed again.

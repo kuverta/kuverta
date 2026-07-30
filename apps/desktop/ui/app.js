@@ -432,6 +432,12 @@ async function refreshSidebar() {
 
   await renderAttentionNav();
   state.folders = await invoke("folders", { account: state.account });
+  // Smart mailboxes first: one that takes its mail into a folder is where
+  // that folder is shown, and the folder is not listed a second time.
+  await renderSmartMailboxes();
+  const smartFolders = new Set(
+    (state.smartMailboxes ?? []).map((mailbox) => mailbox.folder?.toLowerCase()).filter(Boolean),
+  );
   sidebar.folders.textContent = "";
   sidebar.folders.append(
     navItem({
@@ -447,6 +453,7 @@ async function refreshSidebar() {
     }),
   );
   for (const folder of state.folders) {
+    if (smartFolders.has(folder.name.toLowerCase())) continue;
     const item = navItem({
       label: folder.label,
       icon: iconFor(folder),
@@ -469,8 +476,7 @@ async function refreshSidebar() {
     sidebar.folders.append(item);
   }
 
-  // Smart mailboxes and mail waiting to go, each drawn by its own file.
-  await renderSmartMailboxes();
+  // Mail waiting to go, drawn by its own file.
   await renderOutboxNav();
 
   renderCategories(
@@ -1939,6 +1945,7 @@ async function sync(account = null, { background = false } = {}) {
     if (s.changes_sent) parts.push(`${s.changes_sent} change(s) sent`);
     if (s.changes_refused) parts.push(`${s.changes_refused} refused`);
     if (s.inserted) parts.push(`${s.inserted} new`);
+    if (s.sorted) parts.push(t("{count} sorted by your rules", { count: s.sorted }));
     if (s.expunged) parts.push(`${s.expunged} gone`);
     // A sync nobody asked for says something only when it brought something:
     // "nothing new" every few minutes is noise, and noise is what makes a
