@@ -121,6 +121,41 @@ fn attachment(
     Ok(tauri::ipc::Response::new(found.bytes))
 }
 
+/// Safe preview: the attachment drawn, or its text read, in the locked-down
+/// worker (see core-rpc's preview.rs) — pages `first` to `first + count`.
+/// The store is held only while the bytes are read, not while it draws.
+#[tauri::command]
+async fn attachment_preview(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    index: usize,
+    first: usize,
+    count: usize,
+) -> Result<core_rpc::preview::SafePreview, String> {
+    let found = app
+        .core
+        .lock()
+        .unwrap()
+        .attachment(account, id, index)
+        .map_err(fail)?;
+    let worker = core_rpc::preview::worker()
+        .cloned()
+        .ok_or("safe preview is not available: its worker could not be found")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::preview::preview(
+            &worker,
+            &found.view.name,
+            &found.view.content_type,
+            &found.bytes,
+            first,
+            count,
+        )
+    })
+    .await
+    .map_err(|err| format!("the preview did not finish: {err}"))?
+}
+
 /// Saves an attachment to Downloads, shows it there, and says where.
 #[tauri::command]
 fn save_attachment(
@@ -1936,6 +1971,20 @@ fn default_data_dir() -> PathBuf {
 }
 
 fn main() {
+    // The preview worker is this program again: it draws one attachment,
+    // locked down, and exits — before it opens a window, a store or a log.
+    if std::env::args_os().nth(1).as_deref()
+        == Some(std::ffi::OsStr::new(core_rpc::preview::WORKER_FLAG))
+    {
+        core_rpc::preview::worker_main();
+    }
+    match core_rpc::preview::Worker::this_program() {
+        Ok(worker) => core_rpc::preview::set_worker(worker),
+        // Without it safe preview says it cannot draw, rather than drawing
+        // in here.
+        Err(err) => eprintln!("the preview worker cannot be started: {err}"),
+    }
+
     let data_dir = default_data_dir();
     // One window per data directory. Two — the installed app and one built
     // from source, say — would each sync the same store and each believe its
@@ -1994,6 +2043,7 @@ fn main() {
             attachment,
             save_attachment,
             open_attachment,
+            attachment_preview,
             search,
             folders,
             category_counts,
