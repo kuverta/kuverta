@@ -877,7 +877,7 @@
     <form id="smart-form" class="dialog-panel wide" autocomplete="off">
       <div class="dialog-head">
         <h2 id="smart-form-title">New smart mailbox</h2>
-        <p class="hint">Rules are checked against every message on the account. Nothing is moved.</p>
+        <p class="hint">Rules are checked against every message on the account.</p>
       </div>
       <div class="dialog-body">
         <label class="field">Name<input name="name" required placeholder="Receipts" spellcheck="false"></label>
@@ -891,6 +891,13 @@
         </div>
         <div id="smart-rules" class="rules"></div>
         <button type="button" id="smart-rule-add" class="link-button">+ Add a rule</button>
+        <!-- A search, or a mailbox that takes its mail out of the Inbox into a
+             server folder of its own. See smart.rs and smart.js. -->
+        <div class="take-line">
+          <label class="check"><input type="checkbox" name="take"> Take its mail out of the Inbox, into the folder</label>
+          <input name="folder" placeholder="Folder name" spellcheck="false" aria-label="Folder name">
+        </div>
+        <p class="hint" id="smart-take-hint"></p>
         <div class="preview-box">
           <div class="preview-head" id="smart-preview-count">…</div>
           <div id="smart-preview" class="preview-rows"></div>

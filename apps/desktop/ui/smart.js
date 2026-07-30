@@ -56,7 +56,28 @@ const SMART_OPS = {
 const CATEGORY_NAMES = ["personal", "newsletter", "marketing", "transactional", "notification", "unknown"];
 
 /// The mailbox being edited: `{ id, account }`, id null for a new one.
-const smartEditing = { id: null, account: null };
+const smartEditing = { id: null, account: null, folderTouched: false };
+
+/// A folder name from a smart mailbox's name: without an address in angle
+/// brackets, and without the characters a server takes for a folder inside
+/// another.
+function folderNameFor(name) {
+  return (name.replace(/\s*<[^>]*>\s*/g, " ").trim() || name)
+    .replace(/[/\\.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 80);
+}
+
+/// The folder line: its field only when mail is taken out, and in words what
+/// that means.
+function showTakeLine() {
+  const take = smartForm.take.checked;
+  smartForm.folder.disabled = !take;
+  el("smart-take-hint").textContent = take
+    ? t("What it gathers in the Inbox moves to this folder on the server — now, and each new message before it shows in the Inbox. Your other devices see it there too.")
+    : t("A search only: its mail stays where it is.");
+}
 
 ICONS.smart = "M3.5 4.5h13l-5 6v4.2l-3 1.8v-6z";
 
@@ -124,12 +145,13 @@ function describeQuery(query) {
 }
 
 async function deleteSmart(mailbox) {
-  if (
-    !confirm(
-      t("Delete the smart mailbox “{name}”? No mail is deleted — it only stops gathering it.", { name: mailbox.name }),
-    )
-  )
-    return;
+  const question = mailbox.folder
+    ? t("Delete the smart mailbox “{name}”? Its folder {folder} stays on the server with the mail in it; new mail stops going there.", {
+        name: mailbox.name,
+        folder: mailbox.folder,
+      })
+    : t("Delete the smart mailbox “{name}”? No mail is deleted — it only stops gathering it.", { name: mailbox.name });
+  if (!confirm(question)) return;
   try {
     await invoke("delete_smart_mailbox", { id: mailbox.id });
     if (state.filter.smart === mailbox.id) state.filter = { ...state.filter, smart: null };
@@ -158,6 +180,12 @@ function openSmartEditor(mailbox = null) {
   el("smart-delete").hidden = smartEditing.id === null;
   smartForm.name.value = mailbox?.name ?? "";
   smartForm.match_all.value = mailbox?.query?.match_all === false ? "any" : "all";
+  // A new one takes its mail out of the Inbox; one that exists keeps what it
+  // does. Its folder follows its name until the folder is typed in.
+  smartForm.take.checked = smartEditing.id === null ? true : Boolean(mailbox?.folder);
+  smartForm.folder.value = mailbox?.folder ?? folderNameFor(smartForm.name.value);
+  smartEditing.folderTouched = Boolean(mailbox?.folder);
+  showTakeLine();
   smartRules.textContent = "";
   const rules = mailbox?.query?.rules?.length
     ? mailbox.query.rules
@@ -306,17 +334,36 @@ async function previewSmart() {
 
 smartForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  const save = el("smart-save");
+  if (save.disabled) return;
+  const folder = smartForm.take.checked ? smartForm.folder.value.trim() : null;
+  if (smartForm.take.checked && !folder) {
+    say(t("name the folder its mail goes into"), true);
+    smartForm.folder.focus();
+    return;
+  }
+  // Making the folder asks the server, which takes a moment.
+  save.disabled = true;
   try {
-    const id = await invoke("save_smart_mailbox", {
+    const saved = await invoke("save_smart_mailbox", {
       input: {
         id: smartEditing.id,
         account_id: smartEditing.account,
         name: smartForm.name.value.trim(),
         query: smartQuery(),
+        folder,
       },
     });
+    const id = saved.id;
     closeDialog(smartSheet);
-    say(smartEditing.id ? t("saved") : t("created {name}", { name: smartForm.name.value.trim() }));
+    const name = smartForm.name.value.trim();
+    say(
+      saved.folder
+        ? t("{name}: {count} moved out of the Inbox into {folder}", { name, count: saved.moved, folder: saved.folder })
+        : smartEditing.id
+          ? t("saved")
+          : t("created {name}", { name }),
+    );
     if (smartEditing.account === state.account) {
       state.filter = { ...state.filter, smart: id, folder: null, category: null };
       await reload();
@@ -324,6 +371,8 @@ smartForm.addEventListener("submit", async (event) => {
     if (!SETTINGS_PAGES.smart.hidden) fillSmartPage();
   } catch (err) {
     say(String(err), true);
+  } finally {
+    save.disabled = false;
   }
 });
 
@@ -379,7 +428,9 @@ async function fillSmartPage() {
     title.textContent = mailbox.name;
     const sub = document.createElement("div");
     sub.className = "sub";
-    sub.textContent = describeQuery(mailbox.query);
+    sub.textContent = mailbox.folder
+      ? t("{rules} — takes its mail into {folder}", { rules: describeQuery(mailbox.query), folder: mailbox.folder })
+      : describeQuery(mailbox.query);
     text.append(title, sub);
     const count = document.createElement("span");
     count.className = "chip";
@@ -499,4 +550,10 @@ SETTINGS_PAGES.smart.addEventListener("show", () => {
   el("smart-import-list").textContent = "";
   el("smart-import-list").dataset.empty = "";
   el("smart-import-go").hidden = true;
+});
+
+smartForm.take.addEventListener("change", showTakeLine);
+smartForm.folder.addEventListener("input", () => (smartEditing.folderTouched = true));
+smartForm.name.addEventListener("input", () => {
+  if (!smartEditing.folderTouched) smartForm.folder.value = folderNameFor(smartForm.name.value);
 });

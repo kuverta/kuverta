@@ -78,21 +78,27 @@ fn messages(
     filter: ListQuery,
 ) -> Result<MessagePage, String> {
     let core = app.core.lock().unwrap();
-    let smart = match filter.smart {
-        Some(id) => Some(core.smart_query(id).map_err(fail)?),
-        None => None,
+    // A smart mailbox is its rules, or — when it takes its mail out of the
+    // Inbox — its folder.
+    let (smart, smart_folder) = match filter.smart {
+        Some(id) => {
+            let shown = core.smart_filter(id).map_err(fail)?;
+            (shown.smart, shown.folder)
+        }
+        None => (None, None),
     };
+    let folder = filter.folder.or(smart_folder);
     let filter = ListFilter {
         category: filter.category,
         unread_only: filter.unread_only,
-        folder: filter.folder,
+        folder,
         oldest_first: filter.oldest_first,
         // All mail — no folder, no smart mailbox — is mail that arrived: your
         // own replies and what you threw away are in their folders, and in
         // search, but not in the list you read top to bottom. A smart mailbox
         // says for itself what it wants, and a folder listing is of that
         // folder whatever is in it.
-        incoming_only: filter.folder.is_none() && smart.is_none(),
+        incoming_only: folder.is_none() && smart.is_none(),
         smart,
     };
     core.messages(account, offset, limit, &filter).map_err(fail)
@@ -613,6 +619,14 @@ async fn sync(
                         break;
                     }
                 }
+            }
+            // New mail goes where the smart mailboxes and tasks put it before
+            // the list is drawn again, not a moment after it has been seen in
+            // the Inbox.
+            let mut summary = summary;
+            match session.sort_new_mail(&email) {
+                Ok(sorted) => summary.sorted = sorted,
+                Err(err) => tracing::warn!(%err, "could not sort new mail"),
             }
             Ok(summary)
         })
@@ -1385,16 +1399,22 @@ fn smart_mailboxes(
         .map_err(fail)
 }
 
+/// Saves a smart mailbox. One that takes its mail out of the Inbox may need
+/// its folder made on the server first, so this talks to it, on its own
+/// thread; and what it gathers leaves the Inbox before this returns.
 #[tauri::command]
-fn save_smart_mailbox(
+async fn save_smart_mailbox(
     app: State<'_, App>,
     input: core_rpc::SmartMailboxInput,
-) -> Result<i64, String> {
-    app.core
-        .lock()
-        .unwrap()
-        .save_smart_mailbox(&input)
-        .map_err(fail)
+) -> Result<core_rpc::SmartSaved, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("smart mailbox", move || async move {
+        core_rpc::Session::new(data_dir)
+            .save_smart_mailbox(&input)
+            .await
+            .map_err(fail)
+    })
+    .await
 }
 
 #[tauri::command]

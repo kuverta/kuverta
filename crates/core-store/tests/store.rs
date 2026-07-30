@@ -2164,7 +2164,8 @@ fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
     };
 
     // Put the index back the way a v17 store left it: no recipients column,
-    // and the body still in it.
+    // and the body still in it. And without what came after v18, which the
+    // migrations add again.
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(
@@ -2177,6 +2178,8 @@ fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
              CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
                  DELETE FROM message_fts WHERE rowid = old.id;
              END;
+             ALTER TABLE smart_mailbox DROP COLUMN folder;
+             ALTER TABLE task DROP COLUMN smart_mailbox_id;
              PRAGMA user_version = 17;",
         )
         .unwrap();

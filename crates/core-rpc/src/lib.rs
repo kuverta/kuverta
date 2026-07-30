@@ -73,6 +73,7 @@ pub use session::{
 pub use settings::{AccountInput, AccountSettings};
 pub use smart::{
     FoundSmartMailbox, SmartImportScan, SmartMailboxInput, SmartMailboxView, SmartPreview,
+    SmartSaved,
 };
 pub use tasks::{ProposalView, TaskAction, TaskInput, TaskRun, TaskView};
 pub use urgency::{UrgencyJob, UrgencyView, UrgentRow};

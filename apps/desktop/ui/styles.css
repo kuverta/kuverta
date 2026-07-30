@@ -2193,3 +2193,15 @@ button.sender-msg:hover { background: var(--selected); border-color: transparent
 .sender-actions { display: flex; gap: 6px; margin-top: 9px; }
 .sender-actions button { flex: 1; }
 .sender-empty { margin-top: 8px; color: var(--muted); font-size: 11.5px; }
+
+/* The smart mailbox editor's choice to take its mail out of the Inbox. */
+.take-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.take-line input[name="folder"] { flex: 1; min-width: 160px; }
+.take-line input[name="folder"]:disabled { opacity: 0.5; }
