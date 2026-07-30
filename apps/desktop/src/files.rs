@@ -6,6 +6,13 @@
 //! under the system's temporary directory, read-only — a change made in the
 //! viewer would otherwise look saved and be lost — and the system cleans it up
 //! as it does the rest of that directory.
+//!
+//! Every file written here is marked as come from elsewhere, the way a
+//! browser marks a download: the quarantine attribute on macOS, the Mark of
+//! the Web on Windows. That is what makes Gatekeeper look at a program before
+//! it runs and Office open a document in Protected View — the system's own
+//! checks, for a file that leaves kuverta's safe preview for another program.
+//! A file that cannot be marked is not left behind unmarked.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -40,6 +47,14 @@ pub fn save_new(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
             Ok(mut file) => {
                 file.write_all(bytes)
                     .map_err(|err| format!("cannot write {}: {err}", candidate.display()))?;
+                drop(file);
+                if let Err(err) = mark_from_elsewhere(&candidate) {
+                    let _ = std::fs::remove_file(&candidate);
+                    return Err(format!(
+                        "cannot mark {} as downloaded, so it was not kept: {err}",
+                        candidate.display()
+                    ));
+                }
                 return Ok(candidate);
             }
             Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -50,6 +65,55 @@ pub fn save_new(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
         "{name} already exists too many times in {}",
         dir.display()
     ))
+}
+
+/// Marks a file as downloaded from somewhere else, for the system's checks.
+#[cfg(target_os = "macos")]
+pub fn mark_from_elsewhere(path: &Path) -> Result<(), String> {
+    use std::os::unix::ffi::OsStrExt;
+
+    // flags;time;agent — 0081 is "quarantined, not yet opened", the same as
+    // a browser writes. The time is hexadecimal seconds.
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let value = format!("0081;{now:08x};kuverta;");
+    let path = std::ffi::CString::new(path.as_os_str().as_bytes()).map_err(|e| e.to_string())?;
+    let name = c"com.apple.quarantine";
+    // SAFETY: both strings are NUL-terminated and outlive the call, and the
+    // value is passed with its length.
+    let status = unsafe {
+        libc::setxattr(
+            path.as_ptr(),
+            name.as_ptr(),
+            value.as_ptr().cast(),
+            value.len(),
+            0,
+            0,
+        )
+    };
+    if status == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error().to_string())
+    }
+}
+
+/// Marks a file as downloaded from somewhere else, for the system's checks.
+#[cfg(windows)]
+pub fn mark_from_elsewhere(path: &Path) -> Result<(), String> {
+    // Zone 3 is the Internet zone: the Mark of the Web, in the file's own
+    // alternate data stream.
+    let mut stream = path.as_os_str().to_owned();
+    stream.push(":Zone.Identifier");
+    std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n").map_err(|e| e.to_string())
+}
+
+/// Linux has no mark a desktop honours; nothing to do.
+#[cfg(not(any(target_os = "macos", windows)))]
+pub fn mark_from_elsewhere(_path: &Path) -> Result<(), String> {
+    Ok(())
 }
 
 /// Writes a read-only copy to open, in a folder of its own, and returns it.
@@ -105,6 +169,26 @@ mod tests {
         assert_eq!(bare2.file_name().unwrap(), "README (2)");
         assert_eq!(std::fs::read(&first).unwrap(), b"one");
         assert_eq!(std::fs::read(&bare).unwrap(), b"x");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn a_saved_attachment_is_marked_as_downloaded() {
+        let dir = std::env::temp_dir().join(format!("kuverta-mark-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = save_new(&dir, "Rechnung.pdf", b"%PDF").unwrap();
+        let out = std::process::Command::new("/usr/bin/xattr")
+            .args(["-p", "com.apple.quarantine"])
+            .arg(&path)
+            .output()
+            .unwrap();
+        let mark = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            mark.starts_with("0081;") && mark.contains(";kuverta;"),
+            "{mark:?}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

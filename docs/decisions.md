@@ -2599,3 +2599,63 @@ field's own editing (`insertText`), so ⌘Z brings the notes back.
 How much of a file it is shown depends on where the model runs: a model on
 this computer often works in a few thousand tokens, and a contract that fills
 them leaves no room for the answer.
+
+## 44. Safe preview: an attachment cannot reach the system
+
+The viewer never showed a file as a web page, and text was always text. But
+a picture or a PDF went to the system's own readers — ImageIO, PDFKit — and
+those are where the attacks that need no click have lived: FORCEDENTRY was a
+JBIG2 image inside a PDF, BLASTPASS a WebP. Written in C and Objective-C, fed
+whatever a stranger sends. So in safe preview, on unless turned off in
+Settings → General, nothing the sender wrote reaches them. Four layers, each
+stopping a different mistake (`core-rpc/src/preview.rs`):
+
+1. **Decoders written in Rust.** hayro draws PDFs and forbids unsafe code;
+   the `image` crate's codecs draw pictures; Word, Excel, web pages and
+   forwarded mail are read as text by §43's reader. A malformed file is an
+   error or a panic there, not a write past a buffer.
+2. **In a process of its own, locked down before it looks.** The app starts
+   itself again with `--preview-worker`, before any window, store or log. The
+   worker reads the file from standard input and then, before parsing a byte,
+   takes away what a foothold would want: on macOS the system sandbox in its
+   pure-computation profile — no files, no network, no programs — and on every
+   Unix resource limits: no new descriptors (so no file, socket or pipe), no
+   new processes, nothing written to disk, no core file, a CPU budget, and on
+   Linux an address-space limit. A worker that cannot lock itself down draws
+   nothing. Its environment is empty.
+3. **Bounded, and killed if it is not done.** Thirty seconds on the wall
+   clock, 64 MB in, 96 MB out, a picture may claim at most 20000 pixels a side
+   and 512 MB of decoding, and pages come two, then four, at a time.
+4. **Only pixels come back.** The worker answers with raw RGB and each page's
+   size. The app checks that the sizes add up and writes the PNG itself, so
+   the window's own image decoder only ever sees a PNG kuverta wrote. A worker
+   that had been taken over could still hand it nothing else.
+
+A test starts the real worker and has it try, once locked down, to write a
+file, open a socket, start a program and read a file; each must fail. With the
+lockdown taken out, the same test fails at the first — so it tests something.
+
+### What it cannot cover
+
+A file opened in another program is read by that program. Safe preview makes
+that a second, deliberate click, and every file kuverta writes — saved to
+Downloads or copied to be opened — carries the mark a browser gives a
+download: the quarantine attribute on macOS, the Mark of the Web on Windows.
+That is what makes Gatekeeper look at a program before it runs and Office open
+a document in Protected View. A file that cannot be marked is not kept.
+
+Linux has no sandbox here beyond the limits: a syscall filter would be the next
+step. Windows has only the separate process and the clock; a job object and a
+restricted token would be. The message itself — its HTML and the pictures in
+it — is still drawn by the window; that is a different question from
+attachments, with its own answer in §35.
+
+### Why hayro 0.5
+
+The toolchain is pinned to 1.90 and hayro 0.6 and later need 1.92, through
+vello_cpu. 0.5 draws real-world PDFs faithfully, fonts and colour included,
+and has none of its own unsafe code but one lifetime transmute in its parser.
+Moving the toolchain is when to move hayro.
+
+The assistant's reading of attachments goes through the same worker, when the
+app has one; the CLI, which starts no worker, still reads in its own process.

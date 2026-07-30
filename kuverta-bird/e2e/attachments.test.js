@@ -103,7 +103,7 @@ async function openWindow() {
 
 const log = (page) => page.evaluate(async () => (await window.__fakeBridge)('attachment_log', {}));
 
-test('an open message lists its attachments, and a picture shows in the viewer', async () => {
+test('an open message lists its attachments, and a picture shows in safe preview', async () => {
   const { page, context, problems } = await openWindow();
 
   await page.locator('#content .row', { hasText: 'Ihre neue e-SIM ist da' }).click();
@@ -117,23 +117,38 @@ test('an open message lists its attachments, and a picture shows in the viewer',
   await chips.filter({ hasText: 'eSIM QR.png' }).click();
   await page.waitForSelector('#attachment-sheet:not([hidden])');
   assert.equal(await page.locator('#attachment-title').innerText(), 'eSIM QR.png');
-  // Decoded, not just pointed at: the picture has a size.
+  // Drawn, and decoded: the page is a PNG kuverta wrote, with a size. The
+  // file itself never reaches the window.
   await page.waitForFunction(() => {
-    const image = document.getElementById('attachment-image');
-    return !image.hidden && image.complete && image.naturalWidth === 1;
+    const image = document.querySelector('#attachment-pages img');
+    return image?.complete && image.naturalWidth === 1;
   });
-  assert.equal(await page.locator('#attachment-open').isDisabled(), false);
+  assert.match(await page.locator('#attachment-pages img').getAttribute('src'), /^data:image\/png;base64,/);
+  assert.equal(await page.locator('#attachment-image').isHidden(), true);
+  assert.equal(await page.locator('#attachment-safe').isVisible(), true);
 
   await page.locator('#attachment-save').click();
   await page.waitForSelector('#toast:not([hidden])');
   assert.match(await page.locator('#toast').innerText(), /saved to .*Downloads\/eSIM QR\.png/);
-  await page.locator('#attachment-open').click();
-  assert.deepEqual(await log(page), { saved: ['eSIM QR.png'], opened: ['eSIM QR.png'] });
 
-  // Escape closes it and lets the picture go.
+  // Another app is outside safe preview: the first click only says so.
+  await page.locator('#attachment-open').click();
+  assert.equal(await page.locator('#attachment-open').innerText(), 'Open anyway?');
+  assert.match(await page.locator('#attachment-status').innerText(), /outside safe preview/);
+  assert.deepEqual((await log(page)).opened, []);
+  await page.locator('#attachment-open').click();
+  const after = await log(page);
+  assert.deepEqual(after.saved, ['eSIM QR.png']);
+  assert.deepEqual(after.opened, ['eSIM QR.png']);
+  assert.deepEqual(after.previewed.map((p) => p.name), ['eSIM QR.png']);
+
+  // Escape closes it and lets the pages go; opened again, it asks again.
   await page.keyboard.press('Escape');
   await page.waitForSelector('#attachment-sheet', { state: 'hidden' });
-  assert.equal(await page.locator('#attachment-image').getAttribute('src'), null);
+  assert.equal(await page.locator('#attachment-pages img').count(), 0);
+  await chips.filter({ hasText: 'eSIM QR.png' }).click();
+  await page.waitForSelector('#attachment-pages img');
+  assert.equal(await page.locator('#attachment-open').innerText(), 'Open in another app');
 
   assert.deepEqual(problems, []);
   await context.close();
@@ -150,7 +165,11 @@ test('a file that could run something can be saved but not opened', async () => 
   await page.waitForSelector('#attachment-sheet:not([hidden])');
   assert.equal(await page.locator('#attachment-open').isDisabled(), true);
   assert.match(await page.locator('#attachment-sub').innerText(), /could run something/);
-  assert.match(await page.locator('#attachment-status').innerText(), /can't show this kind of file/);
+  // Safe preview reads the page's words out of it; the page itself is never
+  // shown, and its scripts never run.
+  await page.waitForSelector('#attachment-text:not([hidden])');
+  assert.match(await page.locator('#attachment-text').innerText(), /Bitte melden Sie sich an/);
+  assert.equal(await page.locator('#attachment-safe').isVisible(), true);
   await page.locator('#attachment-close').click();
   await page.waitForSelector('#attachment-sheet', { state: 'hidden' });
 
@@ -252,7 +271,7 @@ test('the assistant shows the mail it found as a card, attachments and all', asy
 
   // Straight to the QR code, from the chat.
   await card.locator('.attachment-chip', { hasText: 'eSIM QR.png' }).click();
-  await page.waitForFunction(() => document.getElementById('attachment-image')?.naturalWidth === 1);
+  await page.waitForFunction(() => document.querySelector('#attachment-pages img')?.naturalWidth === 1);
   await page.keyboard.press('Escape');
   await page.waitForSelector('#attachment-sheet', { state: 'hidden' });
 
@@ -262,6 +281,58 @@ test('the assistant shows the mail it found as a card, attachments and all', asy
     () => document.getElementById('reading-subject')?.textContent === 'Ihre neue e-SIM ist da',
   );
   assert.equal(await page.locator('#reading-attachments .attachment-chip').count(), 3);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a PDF in safe preview comes a few pages at a time', async () => {
+  const { page, context, problems } = await openWindow();
+
+  await page.locator('#content .row', { hasText: 'Ihre neue e-SIM ist da' }).click();
+  await page.locator('#reading-attachments .attachment-chip', { hasText: 'Vertrag.pdf' }).click();
+  await page.waitForFunction(() => document.querySelectorAll('#attachment-pages img').length === 2);
+  const more = page.locator('#attachment-more');
+  assert.equal(await more.innerText(), 'More pages (2 of 3)');
+  await more.click();
+  await page.waitForFunction(() => document.querySelectorAll('#attachment-pages img').length === 3);
+  assert.equal(await more.isHidden(), true);
+  // The button stays last, under the pages.
+  assert.equal(await page.evaluate(() => document.querySelector('#attachment-pages').lastElementChild.id), 'attachment-more');
+  assert.deepEqual(
+    (await log(page)).previewed.map(({ first, count }) => [first, count]),
+    [
+      [0, 2],
+      [2, 4],
+    ],
+  );
+  // No frame was ever given the file.
+  assert.equal(await page.locator('#attachment-pdf').getAttribute('src'), null);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('with safe preview off in Settings, the system viewer shows it and opens it at once', async () => {
+  const { page, context, problems } = await openWindow();
+
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item', { hasText: /^General$/ }).click();
+  const pref = page.locator('#pref-safe-preview');
+  assert.equal(await pref.isChecked(), true, 'on unless turned off');
+  await pref.uncheck();
+  await page.keyboard.press('Escape');
+
+  await page.locator('#content .row', { hasText: 'Ihre neue e-SIM ist da' }).click();
+  await page.locator('#reading-attachments .attachment-chip', { hasText: 'eSIM QR.png' }).click();
+  await page.waitForFunction(() => {
+    const image = document.getElementById('attachment-image');
+    return !image.hidden && image.complete && image.naturalWidth === 1;
+  });
+  assert.equal(await page.locator('#attachment-safe').isHidden(), true);
+  await page.locator('#attachment-open').click();
+  assert.deepEqual((await log(page)).opened, ['eSIM QR.png']);
+  assert.deepEqual((await log(page)).previewed, []);
 
   assert.deepEqual(problems, []);
   await context.close();

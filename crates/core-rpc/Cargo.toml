@@ -6,6 +6,14 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[[bin]]
+# The preview worker as a program of its own, which the tests start. The app
+# is its own worker (`--preview-worker`) and never ships this.
+name = "kuverta-preview-worker"
+path = "src/bin/preview_worker.rs"
+test = false
+doc = false
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 serde_json.workspace = true
@@ -46,7 +54,18 @@ roxmltree = "0.21.1"
 # only — every office format uses it, and nothing else pulls in a C library.
 pdf-extract = "0.12.1"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+# Safe preview: attachments drawn by decoders written in Rust, in a worker
+# process locked down before it reads a byte of them — never by the system's
+# image and PDF frameworks. hayro forbids unsafe code; 0.5 is the last that
+# builds on this toolchain. The image codecs are the ones mail carries, and no
+# rayon: the worker is one thread, which its limits assume.
+hayro = "0.5.0"
+image = { version = "0.25.10", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp"] }
 thiserror.workspace = true
 # Today's date for the urgency agent, and checking the deadlines it is given.
 chrono.workspace = true
 tracing.workspace = true
+
+# Locking the preview worker down: resource limits, and on macOS the sandbox.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

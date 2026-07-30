@@ -30,6 +30,7 @@ pub mod mailboxes;
 pub mod outbox;
 pub mod paper;
 pub mod pgp;
+pub mod preview;
 pub mod profiles;
 pub mod readable;
 pub mod sender;

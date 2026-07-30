@@ -10,9 +10,28 @@
 // a program, a script, a web page — and the button says so rather than
 // failing: those can be saved, and opening them is a step the person takes
 // themselves, knowing where the file came from.
+//
+// Safe preview, on unless turned off in Settings → General, draws pictures
+// and PDFs without the system's own readers: kuverta's worker process draws
+// them, locked down, and hands back pages as pictures it made itself; Word,
+// Excel and web pages come back as their text. See core-rpc's preview.rs.
+// Opening a file in another app then leaves that protection, so it takes a
+// second, deliberate click.
 
 const attachmentSheet = el("attachment-sheet");
-const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0 };
+const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0, openArmed: false };
+
+/// Pages safe preview asks for at a time: a first look fast, more on request.
+const SAFE_PAGES_AT_ONCE = 2;
+
+/// Whether attachments are drawn by safe preview. On unless turned off.
+function safePreview() {
+  try {
+    return localStorage.getItem("safePreview") !== "no";
+  } catch {
+    return true;
+  }
+}
 
 function sizeText(bytes) {
   if (bytes < 1024) return t("{count} bytes", { count: bytes });
@@ -95,6 +114,55 @@ function clearViewer() {
   }
   el("attachment-text").textContent = "";
   el("attachment-text").hidden = true;
+  const pages = el("attachment-pages");
+  for (const page of pages.querySelectorAll("img")) page.remove();
+  pages.hidden = true;
+  el("attachment-more").hidden = true;
+  el("attachment-safe").hidden = true;
+}
+
+/// Shows what the worker drew or read, from `first` on.
+async function showSafePreview(generation, first) {
+  const { account, messageId, attachment } = viewer;
+  const status = el("attachment-status");
+  const more = el("attachment-more");
+  more.disabled = true;
+  const shown = await invoke("attachment_preview", {
+    account,
+    id: messageId,
+    index: attachment.index,
+    first,
+    count: first === 0 ? SAFE_PAGES_AT_ONCE : 4,
+  });
+  if (generation !== viewer.generation || attachmentSheet.hidden) return;
+  more.disabled = false;
+  if (shown.kind === "pages") {
+    const pages = el("attachment-pages");
+    shown.pages.forEach((png, at) => {
+      const page = document.createElement("img");
+      // A PNG kuverta wrote from the pixels the worker drew: never the file.
+      page.src = `data:image/png;base64,${png}`;
+      page.alt = shown.total > 1 ? t("Page {page}", { page: shown.first + at + 1 }) : "";
+      pages.insertBefore(page, more);
+    });
+    pages.hidden = false;
+    const next = shown.first + shown.pages.length;
+    more.hidden = next >= shown.total;
+    more.textContent = t("More pages ({shown} of {total})", { shown: next, total: shown.total });
+    more.onclick = () =>
+      showSafePreview(generation, next).catch((err) => {
+        status.textContent = t("could not load it: {error}", { error: err });
+      });
+    status.textContent = "";
+  } else if (shown.kind === "text") {
+    const text = el("attachment-text");
+    text.textContent = shown.text;
+    text.hidden = false;
+    status.textContent = "";
+  } else {
+    status.textContent = shown.why;
+  }
+  el("attachment-safe").hidden = false;
 }
 
 /// Opens the viewer on one attachment and loads it when it can be shown.
@@ -113,13 +181,27 @@ async function openAttachment(account, messageId, attachment) {
   const open = el("attachment-open");
   open.disabled = attachment.risky;
   open.title = attachment.risky ? t("Not opened from here: it could run something. Save it instead.") : "";
+  viewer.openArmed = false;
+  open.textContent = t("Open in another app");
+  open.classList.remove("danger");
   const status = el("attachment-status");
+  // Plain text is shown as text either way; everything else, in safe
+  // preview, goes to the worker — which reads Word and web pages too.
+  const safe = safePreview() && attachment.preview !== "text";
   status.textContent =
-    attachment.preview === "none"
+    attachment.preview === "none" && !safe
       ? t("kuverta can't show this kind of file itself. Save it, or open it in the app your computer has for it.")
       : t("Loading…");
   attachmentSheet.hidden = false;
   el("attachment-close").focus();
+  if (safe) {
+    try {
+      await showSafePreview(generation, 0);
+    } catch (err) {
+      if (generation === viewer.generation) status.textContent = t("could not load it: {error}", { error: err });
+    }
+    return;
+  }
   if (attachment.preview === "none") return;
 
   try {
@@ -161,9 +243,34 @@ el("attachment-save").onclick = async () => {
 
 el("attachment-open").onclick = async () => {
   const { account, messageId, attachment } = viewer;
+  // In safe preview, another app is outside it: the first click says so, the
+  // second opens.
+  if (safePreview() && !viewer.openArmed) {
+    viewer.openArmed = true;
+    const open = el("attachment-open");
+    open.textContent = t("Open anyway?");
+    open.classList.add("danger");
+    el("attachment-status").textContent = t(
+      "Another app reads the file itself, outside safe preview. Open it only if you trust the sender — click again to open.",
+    );
+    return;
+  }
   try {
     await invoke("open_attachment", { account, id: messageId, index: attachment.index });
   } catch (err) {
     say(t("could not open it: {error}", { error: err }), true);
   }
 };
+
+// Settings → General → Attachments.
+{
+  const pref = el("pref-safe-preview");
+  SETTINGS_PAGES.general.addEventListener("show", () => (pref.checked = safePreview()));
+  pref.addEventListener("change", () => {
+    try {
+      localStorage.setItem("safePreview", pref.checked ? "yes" : "no");
+    } catch {
+      // Lasts until the window closes: the default, on, comes back then.
+    }
+  });
+}
