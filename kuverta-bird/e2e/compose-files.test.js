@@ -63,7 +63,7 @@ after(async () => {
   server?.close();
 });
 
-async function openWindow() {
+async function openWindow({ contacts = [] } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
   const problems = [];
@@ -72,14 +72,14 @@ async function openWindow() {
     if (message.type() === 'error') problems.push(message.text());
   });
 
-  await page.addInitScript((fake) => {
+  await page.addInitScript(({ fake, contacts }) => {
     try {
       localStorage.clear();
     } catch {
       // A fresh context has nothing to clear.
     }
     window.__fakeBridge = import(fake).then((module) =>
-      module.fakeInvoke({ seed: module.defaultSeed(), paper: { paperMailboxes: [], documents: [] } }),
+      module.fakeInvoke({ seed: module.defaultSeed(), paper: { paperMailboxes: [], documents: [] }, contacts }),
     );
     window.__TAURI__ = {
       core: {
@@ -89,7 +89,7 @@ async function openWindow() {
         },
       },
     };
-  }, FAKE);
+  }, { fake: FAKE, contacts });
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -232,6 +232,84 @@ test('a new message is written, not answered, and the button says so', async () 
   assert.equal(asked.reply_to, null);
   assert.deepEqual(asked.to, ['jane@example.com']);
 
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('typing in To suggests who the mail is with, and takes one with Enter', async () => {
+  const { page, context, problems } = await openWindow({
+    contacts: [
+      { address: 'erika@example.de', name: 'Mustermann, Erika', sent: 12, received: 3, last_utc: 1 },
+      { address: 'eric@example.org', name: null, sent: 1, received: 0, last_utc: 1 },
+    ],
+  });
+
+  await page.locator('#new-message').click();
+  await page.waitForSelector('#compose:not([hidden])');
+  const to = page.locator('#compose-to');
+  const list = page.locator('#compose .address-suggestions').first();
+  const names = () => list.locator('.address-suggestion .name').allInnerTexts();
+
+  // A word of the name, as typed: most likely first.
+  await to.pressSequentially('eri');
+  await list.waitFor();
+  assert.deepEqual(await names(), ['Mustermann, Erika', 'eric@example.org']);
+  // The name found by its surname too, and by the domain.
+  await to.fill('');
+  await to.pressSequentially('muster');
+  await page.waitForFunction(() => document.querySelectorAll('#compose .address-suggestion').length === 1);
+  await to.fill('');
+  await to.pressSequentially('example.org');
+  await page.waitForFunction(
+    () => document.querySelector('#compose .address-suggestion .name')?.textContent === 'eric@example.org',
+  );
+
+  // ↓ Enter takes the second; Escape closes the list and leaves the message.
+  await to.fill('');
+  await to.pressSequentially('eri');
+  await list.waitFor();
+  await to.press('ArrowDown');
+  await to.press('Enter');
+  assert.equal(await to.inputValue(), 'eric@example.org, ');
+  assert.equal(await list.isHidden(), true);
+  // The next one after a comma: the name with a comma in it is quoted, and
+  // who is already there is not offered again.
+  await to.pressSequentially('e');
+  await list.waitFor();
+  const offered = await names();
+  assert.equal(offered[0], 'Mustermann, Erika');
+  assert.ok(!offered.includes('eric@example.org'), `${offered}`);
+  await to.press('Escape');
+  assert.equal(await list.isHidden(), true);
+  assert.equal(await page.locator('#compose').isVisible(), true, 'Escape closed the list, not compose');
+  await to.pressSequentially('r');
+  await list.waitFor();
+  await to.press('Tab');
+  assert.equal(await to.inputValue(), 'eric@example.org, "Mustermann, Erika" <erika@example.de>, ');
+
+  // And both reach the core as two recipients, not three.
+  await page.locator('#compose-subject').fill('Hallo');
+  await page.locator('#compose-send').click();
+  await page.waitForSelector('#compose', { state: 'hidden' });
+  const sent = (await page.evaluate(async () => (await window.__fakeBridge)('outgoing_log', {}))).sent[0];
+  assert.deepEqual(sent.to, ['eric@example.org', '"Mustermann, Erika" <erika@example.de>']);
+  // The book was asked for once, when compose opened.
+  assert.equal(await page.evaluate(async () => (await window.__fakeBridge)('address_book_asked', {})), 1);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a sender from the seeded mail is suggested by the start of their address', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.locator('#new-message').click();
+  await page.waitForSelector('#compose:not([hidden])');
+  await page.locator('#compose-cc').pressSequentially('sender3');
+  const list = page.locator('#compose-cc + .address-suggestions');
+  await list.waitFor();
+  assert.equal(await list.locator('.address-suggestion .address').first().innerText(), 'sender3@example.com');
+  await page.locator('#compose-cc').press('Enter');
+  assert.equal(await page.locator('#compose-cc').inputValue(), 'Sender 3 <sender3@example.com>, ');
   assert.deepEqual(problems, []);
   await context.close();
 });

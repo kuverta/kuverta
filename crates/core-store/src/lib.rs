@@ -30,7 +30,7 @@ pub use hygiene::{
 pub use model::*;
 pub use outbox::OutboxEntry;
 pub use people::{
-    Conversation, ConversationMessage, ConversationWindow, Correspondent, Urgency,
+    Contact, Conversation, ConversationMessage, ConversationWindow, Correspondent, Urgency,
     UrgencyCandidate, UrgentMessage,
 };
 pub use profiles::Profile;
