@@ -161,6 +161,35 @@ pub async fn sync_account_reporting(
     Ok(report)
 }
 
+/// Syncs one folder, as a whole-account sync would — for mail that is known
+/// to have just arrived in it, like the copy of a message just sent.
+///
+/// Leaves orphaned messages alone: those are collected only by a sync that
+/// has seen every folder (see [`sync_account_reporting`]).
+pub async fn sync_one_folder(
+    client: &mut ImapClient,
+    store: &Store,
+    blobs: &Blobs,
+    account_id: AccountId,
+    remote: &RemoteFolder,
+) -> Result<SyncReport, ProtoError> {
+    let mut report = SyncReport::default();
+    let ctx = Context {
+        store,
+        blobs,
+        account_id,
+        classifier: Classifier::new(load_history(store, account_id)?),
+    };
+    let mut at = SyncProgress {
+        folder: remote.name.clone(),
+        folders_done: 0,
+        folders_total: 1,
+        ..SyncProgress::default()
+    };
+    sync_folder(client, &ctx, remote, &mut report, &mut at, &mut |_| {}).await?;
+    Ok(report)
+}
+
 async fn sync_folder(
     client: &mut ImapClient,
     ctx: &Context<'_>,

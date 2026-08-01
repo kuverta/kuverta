@@ -346,7 +346,7 @@ async function deleteKey(key) {
   const warning = key.has_secret
     ? t("Delete your key {who}? Mail encrypted to it can never be read again unless you have a copy elsewhere.", { who })
     : t("Delete the key of {who}? You can import it again later.", { who });
-  if (!confirm(warning)) return;
+  if (!(await ask(warning, { yes: t("Delete"), danger: true }))) return;
   try {
     await invoke("pgp_delete", { fingerprint: key.fingerprint });
     say(t("deleted"));

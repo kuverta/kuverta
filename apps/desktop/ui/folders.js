@@ -129,7 +129,8 @@ async function deleteFolder(folder) {
     );
     return;
   }
-  if (!confirm(t("Delete the mailbox “{name}” from the server?", { name: folder.name }))) return;
+  if (!(await ask(t("Delete the mailbox “{name}” from the server?", { name: folder.name }), { yes: t("Delete"), danger: true })))
+    return;
   try {
     await invoke("delete_folder", { email: state.email, folder: folder.id });
     if (state.filter.folder === folder.id) state.filter = { ...state.filter, folder: null };

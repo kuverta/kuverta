@@ -80,6 +80,12 @@ async function preview(width, height) {
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
+  // The app's webview answers a native confirm() "no" without showing it, so
+  // one here is a question the person would never have been asked.
+  page.on('dialog', async (dialog) => {
+    problems.push(`a native ${dialog.type()} dialog: ${dialog.message()}`);
+    await dialog.dismiss();
+  });
   page.on('console', (message) => {
     // There is no scanner behind this page here, so its polling 404s. The
     // layout is what is being asked about.

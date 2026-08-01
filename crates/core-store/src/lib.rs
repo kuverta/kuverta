@@ -952,7 +952,7 @@ impl Store {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
                     m.has_attachments, m.snippet, c.category, c.confidence,
-                    {UNREAD_PREDICATE}
+                    {UNREAD_PREDICATE}, m.recipients
              {from}
              ORDER BY COALESCE(m.date_utc, 0) {order}, m.id {order}
              LIMIT ? OFFSET ?",
@@ -968,6 +968,7 @@ impl Store {
                 category: row.get(8)?,
                 confidence: row.get(9)?,
                 unread: row.get(10)?,
+                recipients: row.get(11)?,
             })
         })?;
 

@@ -2235,3 +2235,8 @@ button.sender-msg:hover { background: var(--selected); border-color: transparent
 .address-suggestion.active { background: var(--selected); }
 .address-suggestion .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .address-suggestion .address { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+
+/* A question asked over whatever is open, a settings sheet included. */
+.sheet.dialog.ask-sheet { z-index: 60; }
+.ask-panel { width: min(440px, 92vw); }
+#ask-question { margin: 4px 0 0; line-height: 1.5; white-space: pre-line; }

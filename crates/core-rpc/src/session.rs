@@ -818,7 +818,7 @@ impl Session {
         };
 
         if file_in_sent {
-            match file_copy_in_sent(&account, auth.as_ref(), &built.rfc822).await {
+            match file_copy_in_sent(&account, auth.as_ref(), &built.rfc822, &store, &blobs).await {
                 Ok(folder) => summary.filed_in = Some(folder),
                 Err(err) => {
                     tracing::warn!(%err, "sent, but could not file a copy in Sent");
@@ -990,10 +990,16 @@ async fn file_in_drafts(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) 
 }
 
 /// Files the sent copy, returning the folder it went to.
+/// Appends a copy to the Sent folder, and syncs that folder at once, so the
+/// copy is in the store — and in Sent in the window — when the send returns
+/// rather than at the next sync. A failure to sync is only logged: the copy
+/// is filed, and the next sync finds it.
 async fn file_copy_in_sent(
     account: &Account,
     auth: &dyn AuthProvider,
     raw: &[u8],
+    store: &Store,
+    blobs: &Blobs,
 ) -> Result<String> {
     let config = core_proto::ImapConfig {
         host: account.imap_host.clone(),
@@ -1004,17 +1010,31 @@ async fn file_copy_in_sent(
 
     let mut client = core_proto::ImapClient::connect(&config, auth).await?;
     let folders = client.folders().await?;
-    let sent = core_proto::client::find_sent(&folders)
-        .map(|folder| folder.name.clone())
+    let remote = core_proto::client::find_sent(&folders)
+        .cloned()
         .ok_or_else(|| {
             RpcError::Rejected(
                 "the server declares no Sent folder and none of the usual names exist".into(),
             )
         })?;
+    let sent = remote.name.clone();
 
     // \Seen because the sender has, by definition, read it; without it every
     // client shows Sent as full of unread mail.
     client.append(&sent, &["\\Seen"], raw).await?;
+
+    let excluded = core_store::folder_is_excluded(
+        &store.folder_exclusions(account.id)?,
+        &remote.name,
+        remote.special_use.as_deref(),
+    );
+    if !excluded {
+        if let Err(err) =
+            core_proto::sync::sync_one_folder(&mut client, store, blobs, account.id, &remote).await
+        {
+            tracing::warn!(%err, folder = %sent, "filed in Sent, but could not fetch it back");
+        }
+    }
     client.logout().await.ok();
     Ok(sent)
 }

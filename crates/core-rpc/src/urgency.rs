@@ -274,6 +274,7 @@ impl Core {
                     list_id: m.summary.list_id,
                     category: m.category,
                     snippet: m.summary.snippet,
+                    to: None,
                 },
                 urgency: m.urgency.into(),
             })

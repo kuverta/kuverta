@@ -147,6 +147,11 @@ pub struct MessageRow {
     /// First line or so of the body. A list showing only sender and subject
     /// makes you open mail to find out what it is.
     pub snippet: Option<String>,
+    /// Who it went to, by name where they ever signed one — set for mail the
+    /// account sent, which the list names by recipient: in Sent, the sender
+    /// is always the same person.
+    #[serde(default)]
+    pub to: Option<Vec<String>>,
 }
 
 impl From<ListedMessage> for MessageRow {
@@ -165,6 +170,7 @@ impl From<ListedMessage> for MessageRow {
             list_id: summary.list_id,
             category: listed.category,
             snippet: summary.snippet,
+            to: None,
         }
     }
 }
@@ -429,10 +435,55 @@ impl Core {
         filter: &ListFilter,
     ) -> Result<MessagePage> {
         let window = self.store.message_window(account, offset, limit, filter)?;
+        let me = self.account_email(account)?.to_lowercase();
+
+        // What the account sent is named by who it went to: the addresses,
+        // then the names those people signed their own mail with.
+        let sent_to: Vec<Option<Vec<String>>> = window
+            .messages
+            .iter()
+            .map(|listed| {
+                let from_me = listed
+                    .summary
+                    .from_addr
+                    .as_deref()
+                    .is_some_and(|from| from.eq_ignore_ascii_case(&me));
+                from_me.then(|| {
+                    listed
+                        .recipients
+                        .as_deref()
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(|a| a.trim().to_lowercase())
+                        .filter(|a| !a.is_empty() && *a != me)
+                        .collect()
+                })
+            })
+            .collect();
+        let everyone: Vec<String> = sent_to.iter().flatten().flatten().cloned().collect();
+        let names = if everyone.is_empty() {
+            Default::default()
+        } else {
+            self.store.names_of(account, &everyone)?
+        };
+
         Ok(MessagePage {
             total: window.total,
             offset: window.offset,
-            rows: window.messages.into_iter().map(MessageRow::from).collect(),
+            rows: window
+                .messages
+                .into_iter()
+                .zip(sent_to)
+                .map(|(listed, to)| MessageRow {
+                    to: to.map(|addresses| {
+                        addresses
+                            .into_iter()
+                            .map(|address| names.get(&address).cloned().unwrap_or(address))
+                            .collect()
+                    }),
+                    ..MessageRow::from(listed)
+                })
+                .collect(),
         })
     }
 
@@ -1020,6 +1071,7 @@ fn search_rows(found: Vec<core_store::MessageSummary>) -> Vec<MessageRow> {
             list_id: summary.list_id,
             category: None,
             snippet: summary.snippet,
+            to: None,
         })
         .collect()
 }
