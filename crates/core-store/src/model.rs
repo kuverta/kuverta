@@ -564,6 +564,8 @@ pub struct ListedMessage {
     pub confidence: Option<f64>,
     /// True when no copy of this message anywhere carries `\Seen`.
     pub unread: bool,
+    /// To and Cc, lowercased and comma separated: who a sent message went to.
+    pub recipients: Option<String>,
 }
 
 /// One window of the list, plus how many rows there are in total.

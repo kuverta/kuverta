@@ -1005,6 +1005,20 @@
        #aside because it floats against the window. -->
   <div id="sender-hover" class="sender-card floating" role="tooltip" hidden></div>
 
+  <!-- A yes-or-no question, above whatever else is open. The webview answers
+       window.confirm "no" without showing it; see ask() in app.js. -->
+  <div id="ask-sheet" class="sheet dialog ask-sheet" hidden>
+    <div class="dialog-panel ask-panel" role="alertdialog" aria-modal="true" aria-labelledby="ask-question">
+      <div class="dialog-body">
+        <p id="ask-question"></p>
+      </div>
+      <div class="dialog-foot">
+        <span class="spacer"></span>
+        <button type="button" id="ask-no">Cancel</button>
+        <button type="button" id="ask-yes" class="primary">OK</button>
+      </div>
+    </div>
+  </div>
   <input type="file" id="file-picker" multiple hidden>
   <script src="i18n.js"></script>
   <script src="app.js"></script>

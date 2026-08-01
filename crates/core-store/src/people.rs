@@ -416,6 +416,38 @@ impl Store {
         Ok(contacts)
     }
 
+    /// The name each of `addresses` last signed with, for those that ever
+    /// wrote to the account. The store keeps recipients as bare addresses, so
+    /// this is where the names of the people mail was sent to come from.
+    pub fn names_of(
+        &self,
+        account_id: AccountId,
+        addresses: &[String],
+    ) -> Result<std::collections::HashMap<String, String>> {
+        let wanted = serde_json::to_string(addresses).unwrap_or_else(|_| "[]".into());
+        let mut stmt = self.conn.prepare(
+            // By the address as stored, so the sender index answers it: a
+            // page of Sent asks this every time it is drawn. Recipients are
+            // kept lowercased, and so is nearly every sender; one who writes
+            // theirs in capitals is shown by address.
+            "SELECT lower(from_addr), from_name FROM message
+             WHERE account_id = ?1
+               AND from_addr IN (SELECT value FROM json_each(?2))
+               AND trim(COALESCE(from_name, '')) <> ''
+             ORDER BY COALESCE(date_utc, 0)",
+        )?;
+        let rows = stmt.query_map(params![account_id, wanted], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        // Oldest first, so the latest name is the one left standing.
+        let mut names = std::collections::HashMap::new();
+        for row in rows {
+            let (address, name) = row?;
+            names.insert(address, name.trim().to_string());
+        }
+        Ok(names)
+    }
+
     /// The last `limit` messages with one person, oldest first.
     pub fn conversation(
         &self,
