@@ -51,6 +51,38 @@ chats** in the panel's header lists them, newest first, each named after its
 first question: open one to read it again, with its cards, and go on from
 where it stopped; **×** deletes it. **New chat** starts afresh.
 
+### Memory
+
+The assistant keeps short notes on each account from one conversation to the
+next — who your tax adviser is, which folder a kind of mail goes to, how you
+like letters signed — so it need not search for them again. They go with
+every question, which saves the searching and the tokens it would cost; that
+is also why they are few (at most 60) and short (at most 300 characters).
+
+It keeps a note when you tell it something worth remembering, or agree to it,
+and never because a message asks it to: mail is written by strangers. Each
+note it keeps shows in the chat as a **Remembered** card with **Forget**.
+Tell it "forget that" or "that has changed" and it does. Under **Settings →
+Assistant memory** you see every note, can correct, add and forget them.
+
+**Sync the notes through this account's mail server** keeps them the same on
+every computer you use kuverta on. They are kept as one message in a folder
+named *Kuverta Memory*, which kuverta does not show as mail, signed with the
+account's own OpenPGP key and encrypted to it alone: the server — and anyone
+who can read your mailbox there — sees only that the message exists. A
+message in that folder that was not signed by your key is ignored. Another
+computer reads the notes once it has the same key: import the secret key you
+use under **Settings → Encryption** on each computer — from GnuPG or
+Thunderbird, or the file `pgp/<fingerprint>.secret.asc` in kuverta's data
+folder, which is protected by the key's passphrase. kuverta never shows a
+secret key in its window, so there is no button to copy one. They sync with
+the mail; when two
+computers both changed something, both changes are kept, the later one
+winning for the same note. A replaced copy goes to the Trash.
+
+Syncing needs a key of your own for the account, with its passphrase stored;
+without one, the switch says what is missing.
+
 ### Working on a message you have open
 
 **Ask the assistant** on an open message — or <kbd>Shift</kbd>+<kbd>I</kbd> on
@@ -108,8 +140,9 @@ a contract to sign and return. *"Sign the lease in the mail from the landlord
 and reply with it"* signs a copy (the original is never changed), shows it as a
 card, and drafts the reply with the signed copy attached. The signature goes on
 the last page at the bottom left unless you say otherwise — *"on page 2, bottom
-right, a bit higher"* — with the place and the date beneath it; if it landed in
-the wrong spot, say so and it signs the original again elsewhere.
+right, a bit higher"* — with the place and the date beneath it, in a letter it
+wrote as much as on a contract; if it landed in the wrong spot, say so and it
+signs the original again elsewhere.
 
 For that it needs your signature: a picture of it, under
 [Settings → General → Signature](settings.md#signature). Without one it writes

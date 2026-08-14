@@ -563,6 +563,9 @@ function showEvent(event) {
     case "document":
       assistant.log.append(documentCard(event));
       break;
+    case "remembered":
+      assistant.log.append(rememberedCard(event));
+      break;
   }
   assistant.log.scrollTop = assistant.log.scrollHeight;
 }
@@ -602,6 +605,18 @@ function cardButton(actions, label, action, className = "") {
   };
   actions.append(button);
   return button;
+}
+
+/// A note the assistant kept, with the way to take it back.
+function rememberedCard(event) {
+  const { box, actions } = card(t("Remembered"), event.text);
+  cardButton(actions, t("Forget"), async (button) => {
+    await invoke("forget_memory", { account: state.account, id: event.id });
+    box.classList.add("done");
+    button.textContent = t("Forgotten");
+  });
+  cardButton(actions, t("All notes"), async () => openSettings("memory"));
+  return box;
 }
 
 function changeCard(event) {

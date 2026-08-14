@@ -1,9 +1,12 @@
 //! Two endpoints of a local Ollama.
 
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use serde_json::{json, Value};
+
+use crate::usage::{self, Meter};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AiError {
@@ -119,6 +122,8 @@ fn pull_line(line: &[u8]) -> Result<Option<PullProgress>, AiError> {
 pub struct Ollama {
     base: String,
     http: reqwest::Client,
+    /// Told what each request cost, when someone is counting.
+    pub(crate) meter: Option<Arc<dyn Meter>>,
 }
 
 pub struct ChatReply {
@@ -150,7 +155,11 @@ impl Ollama {
             .timeout(Duration::from_secs(180))
             .build()
             .map_err(|err| AiError::Network(err.to_string()))?;
-        Ok(Self { base, http })
+        Ok(Self {
+            base,
+            http,
+            meter: None,
+        })
     }
 
     pub fn base_url(&self) -> &str {
@@ -360,6 +369,13 @@ impl Ollama {
     async fn exchange(&self, body: &Value) -> Result<ChatReply, AiError> {
         let started = Instant::now();
         let reply = self.post("/api/chat", body).await?;
+        usage::note(
+            &self.meter,
+            body.get("model")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            usage::from_ollama(&reply),
+        );
         let content = reply
             .get("message")
             .and_then(|message| message.get("content"))
@@ -384,6 +400,7 @@ impl Ollama {
         let reply = self
             .post("/api/embed", &json!({ "model": model, "input": inputs }))
             .await?;
+        usage::note(&self.meter, model, usage::from_ollama(&reply));
         let reply: Reply =
             serde_json::from_value(reply).map_err(|err| AiError::Shape(err.to_string()))?;
 

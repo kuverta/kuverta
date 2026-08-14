@@ -2592,6 +2592,8 @@ const SETTINGS_PAGES = {
   profiles: el("profiles-page"),
   smart: el("smart-page"),
   keys: el("keys-page"),
+  memory: el("memory-page"),
+  usage: el("usage-page"),
   general: el("general-page"),
   diagnostics: el("diagnostics-page"),
 };
@@ -2605,6 +2607,8 @@ const PAGE_HEADS = {
   provider: ["Model provider", "An Ollama elsewhere, or a hosted service with an OpenAI-compatible API."],
   smart: ["Smart mailboxes", "Saved searches that live in the sidebar."],
   keys: ["Encryption", "OpenPGP keys for signing and encrypting mail."],
+  memory: ["Assistant memory", "What the assistant remembers about each account."],
+  usage: ["Token usage", "How much the models were asked and answered."],
   general: ["General", ""],
   diagnostics: ["Diagnostics", "A log to attach when something goes wrong."],
 };
@@ -2686,6 +2690,9 @@ function renderSettingsList() {
   jobsLabel.textContent = t("Model for each job");
   jobs.append(jobsLabel);
   settings.list.append(jobs);
+  settings.list.append(
+    navItem({ label: t("Token usage"), active: settings.mode === "usage", onClick: () => showSettingsPage("usage") }),
+  );
   for (const provider of models.providers) {
     settings.list.append(
       navItem({
@@ -2709,6 +2716,7 @@ function renderSettingsList() {
   settings.list.append(
     navItem({ label: t("Smart mailboxes"), active: settings.mode === "smart", onClick: () => showSettingsPage("smart") }),
     navItem({ label: t("Encryption"), active: settings.mode === "keys", onClick: () => showSettingsPage("keys") }),
+    navItem({ label: t("Assistant memory"), active: settings.mode === "memory", onClick: () => showSettingsPage("memory") }),
   );
 
   settings.list.append(settingsHeading("kuverta"));

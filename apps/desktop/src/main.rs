@@ -1976,6 +1976,57 @@ fn clear_signature(app: State<'_, App>) -> Result<(), String> {
     app.core.lock().unwrap().clear_signature().map_err(fail)
 }
 
+/// The sample page's file name, when it is saved or opened.
+const SIGNATURE_SAMPLE_NAME: &str = "kuverta signature sample.pdf";
+
+/// A page signed with the stored signature, for the settings to show: the
+/// same four commands as a document, on a PDF that is not kept.
+#[tauri::command]
+fn signature_sample(app: State<'_, App>) -> Result<tauri::ipc::Response, String> {
+    let pdf = app.core.lock().unwrap().signature_sample().map_err(fail)?;
+    Ok(tauri::ipc::Response::new(pdf))
+}
+
+#[tauri::command]
+async fn signature_sample_preview(
+    app: State<'_, App>,
+    first: usize,
+    count: usize,
+) -> Result<core_rpc::preview::SafePreview, String> {
+    let pdf = app.core.lock().unwrap().signature_sample().map_err(fail)?;
+    let worker = core_rpc::preview::worker()
+        .cloned()
+        .ok_or("safe preview is not available: its worker could not be found")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::preview::preview(
+            &worker,
+            SIGNATURE_SAMPLE_NAME,
+            "application/pdf",
+            &pdf,
+            first,
+            count,
+        )
+    })
+    .await
+    .map_err(|err| format!("the preview did not finish: {err}"))?
+}
+
+#[tauri::command]
+fn save_signature_sample(app: State<'_, App>) -> Result<String, String> {
+    let pdf = app.core.lock().unwrap().signature_sample().map_err(fail)?;
+    let dir = files::downloads().ok_or("there is no Downloads folder to save to")?;
+    let path = files::save_new(&dir, SIGNATURE_SAMPLE_NAME, &pdf)?;
+    let _ = logging::reveal(&path);
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+fn open_signature_sample(app: State<'_, App>) -> Result<(), String> {
+    let pdf = app.core.lock().unwrap().signature_sample().map_err(fail)?;
+    let path = files::copy_to_open(SIGNATURE_SAMPLE_NAME, &pdf)?;
+    files::open(&path)
+}
+
 // -- the assistant's chats, kept ----------------------------------------------
 
 #[tauri::command]
@@ -2006,6 +2057,94 @@ fn save_chat(
 #[tauri::command]
 fn delete_chat(app: State<'_, App>, id: i64) -> Result<(), String> {
     app.core.lock().unwrap().delete_chat(id).map_err(fail)
+}
+
+#[tauri::command]
+fn usage_stats(app: State<'_, App>) -> Result<core_rpc::UsageStats, String> {
+    app.core.lock().unwrap().usage_stats().map_err(fail)
+}
+
+#[tauri::command]
+fn clear_usage_stats(app: State<'_, App>) -> Result<(), String> {
+    app.core.lock().unwrap().clear_usage_stats().map_err(fail)
+}
+
+#[tauri::command]
+fn memories(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::MemoryView>, String> {
+    app.core.lock().unwrap().memories(account).map_err(fail)
+}
+
+#[tauri::command]
+fn add_memory(
+    app: State<'_, App>,
+    account: i64,
+    text: String,
+) -> Result<core_rpc::MemoryView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .add_memory(account, &text)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn update_memory(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    text: String,
+) -> Result<core_rpc::MemoryView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .update_memory(account, id, &text)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn forget_memory(app: State<'_, App>, account: i64, id: i64) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .forget_memory(account, id)
+        .map(|_| ())
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn memory_sync_status(
+    app: State<'_, App>,
+    account: i64,
+) -> Result<core_rpc::MemorySyncView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .memory_sync_status(account)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_memory_sync(app: State<'_, App>, account: i64, enabled: bool) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_memory_sync(account, enabled)
+        .map_err(fail)
+}
+
+#[tauri::command]
+async fn sync_memory(
+    app: State<'_, App>,
+    email: String,
+) -> Result<core_rpc::MemorySyncReport, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("memory", move || async move {
+        core_rpc::Session::new(data_dir)
+            .sync_memory(&email)
+            .await
+            .map_err(fail)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -2352,10 +2491,23 @@ fn main() {
             set_signature,
             set_signature_place,
             clear_signature,
+            signature_sample,
+            signature_sample_preview,
+            save_signature_sample,
+            open_signature_sample,
             chats,
             chat,
             save_chat,
             delete_chat,
+            usage_stats,
+            clear_usage_stats,
+            memories,
+            add_memory,
+            update_memory,
+            forget_memory,
+            memory_sync_status,
+            set_memory_sync,
+            sync_memory,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");
