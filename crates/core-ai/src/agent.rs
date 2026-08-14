@@ -19,6 +19,7 @@ use serde_json::{json, Value};
 
 use crate::ollama::{AiError, Ollama};
 use crate::provider::{OpenAiCompatible, Provider};
+use crate::usage;
 
 /// A tool as the model is told about it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -137,6 +138,7 @@ impl Ollama {
                 }),
             )
             .await?;
+        usage::note(&self.meter, model, usage::from_ollama(&reply));
         let message = reply
             .get("message")
             .ok_or_else(|| AiError::Shape("no message in the reply".into()))?;
@@ -220,6 +222,7 @@ impl OpenAiCompatible {
                     .json(&body),
             )
             .await?;
+        usage::note(&self.meter, model, usage::from_openai(&reply));
         let message = reply
             .pointer("/choices/0/message")
             .ok_or_else(|| AiError::Shape("no choices[0].message in the reply".into()))?;

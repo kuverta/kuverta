@@ -584,6 +584,12 @@
           <!-- OpenPGP keys. Filled by encryption.js. -->
           <div id="keys-page" class="settings-page" hidden></div>
 
+          <!-- What the assistant remembers. Filled by memory.js. -->
+          <div id="memory-page" class="settings-page" hidden></div>
+
+          <!-- Tokens the models used. Filled by usage.js. -->
+          <div id="usage-page" class="settings-page" hidden></div>
+
           <!-- Everything that is not one account or one model. -->
           <div id="general-page" class="settings-page" hidden>
             <section class="card">
@@ -614,17 +620,23 @@
             </section>
             <section class="card" id="signature-card">
               <h3>Signature</h3>
-              <p class="hint">A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper, photograph or scan it, crop to the signature, and save it as a PNG or JPEG. The white of the paper is left out when it is placed; a PNG with a transparent background is placed as it is.</p>
+              <p class="hint">A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper and photograph or scan it, straight on, as a PNG or JPEG. kuverta takes the paper away — its grey, its shadows, its grain — and keeps the ink, so the signature sits on the page as if written there. The preview below is what is placed.</p>
               <p class="hint">It is a picture, as on a page you printed, signed and scanned, not a certificate. The assistant signs only when you ask it to, shows you the signed copy, and never sends it: that stays yours to do.</p>
-              <div id="signature-preview" class="signature-preview" hidden><img id="signature-image" alt="Your signature"></div>
+              <div id="signature-preview" class="signature-preview" hidden>
+                <div class="signature-paper">
+                  <img id="signature-image" alt="Your signature">
+                  <div class="signature-caption" id="signature-caption"></div>
+                </div>
+              </div>
               <p class="hint" id="signature-status"></p>
               <div class="card-actions">
                 <input type="file" id="signature-file" accept="image/png,image/jpeg" hidden>
                 <button type="button" id="signature-choose">Choose a picture…</button>
+                <button type="button" id="signature-sample" hidden>Show on a page</button>
                 <button type="button" id="signature-remove" class="danger" hidden>Remove</button>
               </div>
               <label>Place<input id="signature-place" autocomplete="off" spellcheck="false"></label>
-              <p class="hint">Written in front of the date beneath the signature, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.</p>
+              <p class="hint">Written in front of the date beneath the signature wherever it is placed, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.</p>
             </section>
             <section class="card">
               <h3>Needs attention</h3>
@@ -1058,5 +1070,7 @@
   <script src="profiles.js"></script>
   <script src="signature.js"></script>
   <script src="assistant.js"></script>
+  <script src="memory.js"></script>
+  <script src="usage.js"></script>
 </body>
 </html>

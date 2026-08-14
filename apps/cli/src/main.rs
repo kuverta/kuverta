@@ -2022,6 +2022,7 @@ fn describe_event(event: &core_rpc::AssistantEvent) -> String {
     match event {
         E::Looked { what } | E::Failed { what } => what.clone(),
         E::Changed { what, .. } => format!("{what} (queued, undoable)"),
+        E::Remembered { id, text } => format!("remembered note {id}: {text}"),
         E::Draft {
             to,
             subject,

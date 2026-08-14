@@ -153,7 +153,13 @@ impl Core {
         }
         let name = document_name(name);
         let title = name.trim_end_matches(".pdf");
-        let written = pdf::write(title, text, pixels.as_ref(), sign).map_err(reject)?;
+        let caption = if sign {
+            Some(self.signature_caption()?)
+        } else {
+            None
+        };
+        let written =
+            pdf::write(title, text, pixels.as_ref(), sign, caption.as_deref()).map_err(reject)?;
         let id = self.store().add_document(&NewDocument {
             account_id: account,
             name: &name,
@@ -219,12 +225,7 @@ impl Core {
             }
         };
         if with_date && placement.caption.is_none() {
-            let place = self.store().signature()?.and_then(|s| s.place);
-            let date = chrono::Local::now().format("%d.%m.%Y");
-            placement.caption = Some(match place {
-                Some(place) => format!("{place}, {date}"),
-                None => date.to_string(),
-            });
+            placement.caption = Some(self.signature_caption()?);
         }
         let (signed, page) = pdf::stamp(&bytes, &pixels, &placement).map_err(reject)?;
         let stem = name.trim_end_matches(".pdf").trim_end_matches(".PDF");
@@ -243,6 +244,30 @@ impl Core {
         })?;
         tracing::info!(id, page, "signed a PDF");
         self.document_view(id)
+    }
+
+    /// What is written beneath a signature: the place and today's date, the
+    /// way a letter is signed, or the date alone without a place.
+    pub fn signature_caption(&self) -> Result<String> {
+        let place = self.store().signature()?.and_then(|s| s.place);
+        let date = chrono::Local::now().format("%d.%m.%Y");
+        Ok(match place {
+            Some(place) => format!("{place}, {date}"),
+            None => date.to_string(),
+        })
+    }
+
+    /// A one-page PDF with the signature on it, for the settings to show
+    /// what signing looks like. Not kept.
+    pub fn signature_sample(&self) -> Result<Vec<u8>> {
+        let pixels = self
+            .signature_pixels()?
+            .ok_or_else(|| reject(NO_SIGNATURE))?;
+        let caption = self.signature_caption()?;
+        let text = "# A signed page\n\nThis is how the assistant signs: the signature where the text puts it, the place and the date beneath, on a page it wrote or on one that came as an attachment.\n\nWith kind regards\n\n[signature]\nErika Mustermann";
+        let written =
+            pdf::write("Signature", text, Some(&pixels), true, Some(&caption)).map_err(reject)?;
+        Ok(written.pdf)
     }
 
     pub fn rename_document(&self, id: i64, name: &str) -> Result<DocumentView> {
@@ -287,8 +312,10 @@ impl Core {
         })
     }
 
-    /// Keeps a picture of the signature: a PNG or a JPEG, checked by decoding
-    /// it, so that what is stored is known to draw.
+    /// Keeps a picture of the signature: a PNG or a JPEG, cut out of its
+    /// paper (see [`crate::signature`]) and kept as a PNG with the paper
+    /// transparent — which is what the settings show and what goes on a
+    /// page.
     pub fn set_signature(&self, bytes: &[u8], content_type: &str) -> Result<SignatureSettings> {
         if bytes.len() > MOST_SIGNATURE_BYTES {
             return Err(reject(format!(
@@ -296,27 +323,44 @@ impl Core {
                 MOST_SIGNATURE_BYTES / 1024 / 1024
             )));
         }
-        let content_type = match content_type.trim().to_ascii_lowercase().as_str() {
-            "image/png" => "image/png",
-            "image/jpeg" | "image/jpg" => "image/jpeg",
-            _ if bytes.starts_with(&[0x89, b'P', b'N', b'G']) => "image/png",
-            _ if bytes.starts_with(&[0xff, 0xd8, 0xff]) => "image/jpeg",
-            other => {
-                return Err(reject(format!(
-                    "{other} is not a picture of a signature: a PNG or a JPEG is"
-                )))
-            }
-        };
-        let pixels = decode(bytes)?;
+        let is_picture = matches!(
+            content_type.trim().to_ascii_lowercase().as_str(),
+            "image/png" | "image/jpeg" | "image/jpg"
+        ) || bytes.starts_with(&[0x89, b'P', b'N', b'G'])
+            || bytes.starts_with(&[0xff, 0xd8, 0xff]);
+        if !is_picture {
+            return Err(reject(format!(
+                "{content_type} is not a picture of a signature: a PNG or a JPEG is"
+            )));
+        }
+        let decoded = image::load_from_memory(bytes)
+            .map_err(|err| reject(format!("the picture could not be read: {err}")))?;
+        let (width, height) = (decoded.width(), decoded.height());
+        if width == 0 || height == 0 || width > MOST_SIGNATURE_SIDE || height > MOST_SIGNATURE_SIDE
+        {
+            return Err(reject(format!(
+                "the picture is {width} × {height} pixels; a signature is at most {MOST_SIGNATURE_SIDE} on a side"
+            )));
+        }
+        let cleaned = crate::signature::clean(&decoded);
+        if cleaned.pixels().all(|p| p[3] == 0) {
+            return Err(reject(
+                "no signature could be made out in the picture: it wants dark ink on light paper, photographed straight on",
+            ));
+        }
+        let mut png = std::io::Cursor::new(Vec::new());
+        cleaned
+            .write_to(&mut png, image::ImageFormat::Png)
+            .map_err(|err| reject(format!("the signature could not be kept: {err}")))?;
         self.store().set_signature(
-            bytes,
-            content_type,
-            i64::from(pixels.width),
-            i64::from(pixels.height),
+            png.get_ref(),
+            "image/png",
+            i64::from(cleaned.width()),
+            i64::from(cleaned.height()),
         )?;
         tracing::info!(
-            width = pixels.width,
-            height = pixels.height,
+            width = cleaned.width(),
+            height = cleaned.height(),
             "kept a signature"
         );
         self.signature()

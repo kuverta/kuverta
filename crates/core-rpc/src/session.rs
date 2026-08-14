@@ -409,7 +409,7 @@ impl Session {
         self
     }
 
-    fn keyring(&self) -> Keyring {
+    pub(crate) fn keyring(&self) -> Keyring {
         self.keyring
             .clone()
             .unwrap_or_else(|| Keyring::in_data_dir(&self.data_dir))
@@ -504,6 +504,13 @@ impl Session {
         )
         .await?;
         client.logout().await.ok();
+
+        // The assistant's notes ride along, when they are synced at all. A
+        // failure is the notes' own business — kept for the settings to show —
+        // and not the mail's.
+        if let Err(err) = self.sync_memory(&account.email).await {
+            tracing::warn!(account = %account.email, %err, "the assistant's notes did not sync");
+        }
 
         Ok(SyncSummary {
             email: account.email,

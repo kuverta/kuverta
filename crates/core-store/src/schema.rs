@@ -542,6 +542,50 @@ CREATE TABLE assistant_chat (
 );
 CREATE INDEX assistant_chat_account ON assistant_chat (account_id, updated_at);
 "#,
+    // v21 — what the models cost, and what the
+    // assistant remembers.
+    //
+    // Usage is a tally, a row per day, job and model, not a row per request:
+    // what the settings show is sums, and a log of every request would grow
+    // with every sync for nothing.
+    //
+    // A memory is a short note the assistant keeps about one account — "the
+    // tax adviser is Erika Mustermann", "invoices go to Rechnungen" — so it
+    // need not search for it again. Its key is random and the same on every
+    // device it is synced to; a forgotten note keeps its row, emptied, so
+    // that forgetting it reaches the other devices instead of being undone by
+    // them. `memory_sync` is whether and how the notes travel through the
+    // account's own mail server.
+    r#"
+CREATE TABLE ai_usage (
+    day           TEXT    NOT NULL,
+    task          TEXT    NOT NULL,
+    provider      TEXT    NOT NULL,
+    model         TEXT    NOT NULL,
+    local         INTEGER NOT NULL DEFAULT 0,
+    calls         INTEGER NOT NULL DEFAULT 0,
+    input_tokens  INTEGER NOT NULL DEFAULT 0,
+    output_tokens INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, task, provider, model)
+);
+CREATE TABLE assistant_memory (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    key        TEXT    NOT NULL,
+    text       TEXT    NOT NULL,
+    forgotten  INTEGER NOT NULL DEFAULT 0,
+    updated_at INTEGER NOT NULL,
+    UNIQUE (account_id, key)
+);
+CREATE TABLE memory_sync (
+    account_id INTEGER PRIMARY KEY REFERENCES account(id) ON DELETE CASCADE,
+    enabled    INTEGER NOT NULL DEFAULT 0,
+    -- Notes changed here since the last upload.
+    pending    INTEGER NOT NULL DEFAULT 0,
+    synced_at  INTEGER,
+    last_error TEXT
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

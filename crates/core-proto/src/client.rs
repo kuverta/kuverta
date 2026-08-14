@@ -682,6 +682,16 @@ pub fn find_archive<'a>(
     })
 }
 
+/// The folder kuverta keeps the assistant's notes in, encrypted, so they reach
+/// the person's other devices. Not mail: the sync leaves it alone.
+pub const MEMORY_FOLDER: &str = "Kuverta Memory";
+
+/// Whether a folder is [`MEMORY_FOLDER`], at the top or under a namespace
+/// such as `INBOX.`.
+pub fn is_memory_folder(name: &str) -> bool {
+    name_matches(name, MEMORY_FOLDER)
+}
+
 /// Picks the folder that deleted mail belongs in.
 pub fn find_trash<'a>(
     folders: impl IntoIterator<Item = (&'a str, Option<&'a str>)> + Clone,

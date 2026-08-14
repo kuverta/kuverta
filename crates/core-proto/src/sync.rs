@@ -130,6 +130,10 @@ pub async fn sync_account_reporting(
             tracing::debug!(folder = %remote.name, "skipping \\Noselect folder");
             continue;
         }
+        // The assistant's notes, encrypted: kuverta's, not mail.
+        if crate::is_memory_folder(&remote.name) {
+            continue;
+        }
         if core_store::folder_is_excluded(&exclusions, &remote.name, remote.special_use.as_deref())
         {
             tracing::debug!(folder = %remote.name, "excluded, not syncing");

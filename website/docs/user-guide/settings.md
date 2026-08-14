@@ -63,6 +63,16 @@ See [Paper post](paper.md#setting-up-a-postal-address).
 
 See [Models](models.md).
 
+### Token usage
+
+How many tokens the models were sent and wrote back, counted on this computer
+for every job — the assistant, sorting mail, judging urgency, tasks, reading
+scans, and trying a model on the models page. Today, this month and since
+counting began; the last thirty days as bars; and this month by model and by
+job. A hosted service bills by tokens; a model on this computer costs time and
+power instead. Only counts are kept, never what was asked or answered.
+**Reset the statistics** starts counting again from nothing.
+
 ## Smart mailboxes
 
 The account's smart mailboxes, with **Edit** and **Delete**, **New smart
@@ -73,6 +83,12 @@ mailbox…**, and importing them from Thunderbird and Apple Mail. See
 
 Your OpenPGP keys and other people's, creating a key, and importing keys. See
 [Encryption](encryption.md).
+
+## Assistant memory
+
+What the assistant remembers about each account: read a note, change it, add
+one, or **Forget** it. See [Memory](assistant.md#memory) for how notes are
+kept and synced to your other devices.
 
 ## General
 
@@ -92,14 +108,18 @@ Your OpenPGP keys and other people's, creating a key, and importing keys. See
 
 A picture of your handwritten signature, for the [assistant](assistant.md#writing-and-signing-pdfs)
 to put on a PDF when you ask it to. Sign on white paper, photograph or scan
-it, crop to the signature, and **Choose a picture…** — a PNG or JPEG, at most
-4000 pixels on a side. The white of the paper is left out when it is placed on
-a page, so a scan works; a PNG with a transparent background is placed as it
-is. The picture shows on the page once it is kept; **Remove** forgets it.
+it straight on, and **Choose a picture…** — a PNG or JPEG, at most 4000
+pixels on a side. kuverta cuts the ink out of the paper: it measures how
+bright the paper is across the picture, shadows and all, reads each pixel
+against the paper under it, drops specks, and crops to the strokes. What is
+kept is that cut-out, with the paper transparent, and the preview shows it on
+paper with the date line beneath — exactly what goes on a page. A PNG that is
+already cut out is only cropped. **Show on a page** opens a sample PDF signed
+with it; **Remove** forgets it.
 
-**Place** is written in front of the date beneath the signature, the way a
-letter is signed — *Musterstadt, 06.10.2026*; left empty, the date stands
-alone.
+**Place** is written in front of the date beneath the signature wherever it
+is placed, the way a letter is signed — *Musterstadt, 07.10.2026*; left
+empty, the date stands alone.
 
 It is a picture, not a certificate: what you would get from printing a page,
 signing it and scanning it. The assistant signs only when you ask it to, shows
