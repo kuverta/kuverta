@@ -63,7 +63,7 @@ after(async () => {
   server?.close();
 });
 
-async function openWindow({ contacts = [] } = {}) {
+async function openWindow({ contacts = [], withContract = false } = {}) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const page = await context.newPage();
   const problems = [];
@@ -78,14 +78,20 @@ async function openWindow({ contacts = [] } = {}) {
     if (message.type() === 'error') problems.push(message.text());
   });
 
-  await page.addInitScript(({ fake, contacts }) => {
+  await page.addInitScript(({ fake, contacts, withContract }) => {
     try {
       localStorage.clear();
     } catch {
       // A fresh context has nothing to clear.
     }
     window.__fakeBridge = import(fake).then((module) =>
-      module.fakeInvoke({ seed: module.defaultSeed(), paper: { paperMailboxes: [], documents: [] }, contacts }),
+      module.fakeInvoke({
+        seed: withContract
+          ? [{ ...module.esimMessage(), subject: 'Mietvertrag zur Unterschrift', body: 'Bitte unterschrieben zurück.' }, ...module.defaultSeed()]
+          : module.defaultSeed(),
+        paper: { paperMailboxes: [], documents: [] },
+        contacts,
+      }),
     );
     window.__TAURI__ = {
       core: {
@@ -95,7 +101,7 @@ async function openWindow({ contacts = [] } = {}) {
         },
       },
     };
-  }, { fake: FAKE, contacts });
+  }, { fake: FAKE, contacts, withContract });
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -219,6 +225,32 @@ test('one click on Answer writes the reply, from the notes and the files, and �
   await body.focus();
   await page.keyboard.press('ControlOrMeta+z');
   assert.equal(await body.inputValue(), 'zusagen, aber erst ab Mittwoch');
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a message asking for its contract back signed is answered with the signed copy attached', async () => {
+  const { page, context, problems } = await openWindow({ withContract: true });
+
+  await page.locator('#content .row', { hasText: 'Mietvertrag zur Unterschrift' }).click();
+  await page.locator('#reading-actions [data-act=answer]').click();
+  await page.waitForSelector('#compose:not([hidden])');
+  await page.waitForFunction(() => document.getElementById('compose-body').value.includes('Viele Grüße'));
+
+  // The signed copy is in the tray, as a file going out with the message,
+  // and the status says it is there to be read before it is sent.
+  const chip = page.locator('#compose-files .attachment-chip');
+  await chip.waitFor();
+  assert.match(await chip.innerText(), /Vertrag \(signed\)\.pdf/);
+  assert.match(await page.locator('#compose-answer-status').innerText(), /Vertrag \(signed\)\.pdf attached/);
+
+  // And it is what is sent: bytes and all, as a file of the draft.
+  await page.locator('#compose-send').click();
+  const sent = (await outgoing(page)).sent.at(-1);
+  assert.deepEqual(sent.attachments.map((file) => file.name), ['Vertrag (signed).pdf']);
+  assert.equal(sent.attachments[0].content_type, 'application/pdf');
+  assert.ok(sent.attachments[0].data.length > 0);
 
   assert.deepEqual(problems, []);
   await context.close();

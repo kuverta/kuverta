@@ -138,11 +138,16 @@ send it, or it goes nowhere.
 It can also **sign** a PDF: one it wrote, or one that came as an attachment —
 a contract to sign and return. *"Sign the lease in the mail from the landlord
 and reply with it"* signs a copy (the original is never changed), shows it as a
-card, and drafts the reply with the signed copy attached. The signature goes on
-the last page at the bottom left unless you say otherwise — *"on page 2, bottom
-right, a bit higher"* — with the place and the date beneath it, in a letter it
-wrote as much as on a contract; if it landed in the wrong spot, say so and it
-signs the original again elsewhere.
+card, and drafts the reply with the signed copy attached.
+
+It reads the page for the line the document rules for a signature — the rule
+with *Unterschrift* or a name under it — and sits the signature on that line,
+with the place and the date beneath where there is room for them. Where a
+contract rules a line for each party, it says which lines it found and asks
+which is yours. Only in a document that rules none does it fall back to the
+bottom of the last page; and if it landed in the wrong spot, say so — *"on page
+2, bottom right, a bit higher"* — and it signs the original again where you
+say.
 
 For that it needs your signature: a picture of it, under
 [Settings → General → Signature](settings.md#signature). Without one it writes

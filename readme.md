@@ -85,7 +85,11 @@ in its header.
 - **PDFs, written and signed** — the assistant writes a letter or a
   confirmation as a PDF, and signs a PDF — its own, or a contract that came as
   an attachment — with the picture of your signature from the settings, only
-  when asked; the signed copy is a card to open, save or attach to a draft
+  when asked; it reads the page for the line the document rules for a
+  signature and sits it there, asking which is yours where a contract rules one
+  per party; the signed copy is a card to open, save or attach to a draft, and
+  one click on ✨ Answer answers a "bitte unterschrieben zurück" with the signed
+  contract already attached
 - **Profiles** — accounts and postal addresses grouped (private, one company,
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in

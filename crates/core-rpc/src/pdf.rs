@@ -652,7 +652,7 @@ fn save(doc: &mut Document) -> Result<Vec<u8>, String> {
 
 /// Loads a PDF someone else wrote. lopdf can panic on a malformed one; that
 /// is this file refused, not the thread gone.
-fn load(pdf: &[u8]) -> Result<Document, String> {
+pub(crate) fn load(pdf: &[u8]) -> Result<Document, String> {
     let loaded = std::panic::catch_unwind(|| Document::load_mem(pdf));
     let doc = match loaded {
         Ok(Ok(doc)) => doc,
@@ -702,7 +702,7 @@ fn rectangle(object: Option<&Object>) -> Option<[f32; 4]> {
 }
 
 /// The page's visible box and its rotation, as a reader shows it.
-fn page_geometry(doc: &Document, page_id: ObjectId) -> ([f32; 4], i64) {
+pub(crate) fn page_geometry(doc: &Document, page_id: ObjectId) -> ([f32; 4], i64) {
     let media =
         rectangle(inherited(doc, page_id, b"MediaBox")).unwrap_or([0.0, 0.0, PAGE.0, PAGE.1]);
     let boxed = rectangle(inherited(doc, page_id, b"CropBox"))
@@ -755,7 +755,7 @@ fn add_to(resources: &mut Dictionary, kind: &str, name: &str, id: ObjectId) {
 
 /// The transform from the page as shown — x right, y up, origin at its lower
 /// left corner — to the page's own coordinates, honouring its rotation.
-fn display_to_page(boxed: [f32; 4], rotate: i64) -> ([f32; 6], (f32, f32)) {
+pub(crate) fn display_to_page(boxed: [f32; 4], rotate: i64) -> ([f32; 6], (f32, f32)) {
     let (x0, y0, x1, y1) = (boxed[0], boxed[1], boxed[2], boxed[3]);
     let (w, h) = (x1 - x0, y1 - y0);
     match rotate {
@@ -764,6 +764,19 @@ fn display_to_page(boxed: [f32; 4], rotate: i64) -> ([f32; 6], (f32, f32)) {
         270 => ([0.0, -1.0, 1.0, 0.0, x0, y1], (h, w)),
         _ => ([1.0, 0.0, 0.0, 1.0, x0, y0], (w, h)),
     }
+}
+
+/// The other way about: a point in the page's own coordinates, as the page
+/// shows it. What [`display_to_page`] builds is a turn and a shift, so this
+/// is its inverse — which is what reading a place off a page needs.
+pub(crate) fn to_display(matrix: [f32; 6], point: (f32, f32)) -> (f32, f32) {
+    let [a, b, c, d, e, f] = matrix;
+    let det = a * d - b * c;
+    if det == 0.0 {
+        return point;
+    }
+    let (x, y) = (point.0 - e, point.1 - f);
+    ((x * d - y * c) / det, (y * a - x * b) / det)
 }
 
 /// Puts the signature on a page of `pdf`, and returns the new PDF and the
