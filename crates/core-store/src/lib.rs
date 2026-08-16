@@ -966,7 +966,7 @@ impl Store {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
                     m.has_attachments, m.snippet, c.category, c.confidence,
-                    {UNREAD_PREDICATE}, m.recipients
+                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}
              {from}
              ORDER BY COALESCE(m.date_utc, 0) {order}, m.id {order}
              LIMIT ? OFFSET ?",
@@ -983,6 +983,7 @@ impl Store {
                 confidence: row.get(9)?,
                 unread: row.get(10)?,
                 recipients: row.get(11)?,
+                answered: row.get(12)?,
             })
         })?;
 
@@ -1897,6 +1898,27 @@ const COMING_HERE: &str = "(SELECT COUNT(DISTINCT o.message_id) FROM operation o
 pub(crate) const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
                                             WHERE ul.message_id = m.id
                                               AND ul.flags LIKE '%\\Seen%')";
+
+/// Whether the account has answered a message: a copy of it carries
+/// `\\Answered`, or the account itself sent something that says, in
+/// In-Reply-To, that it answers this one.
+///
+/// Two ways because each catches what the other misses. The flag is what
+/// every other mail program writes and reads, and it arrives with the next
+/// sync — including for a reply sent from a phone. The reply itself is in
+/// the store as soon as the copy is filed in Sent, which is while the send
+/// is still returning, so the list says so at once rather than in a minute.
+/// `from_addr` is compared against the account's own address so that a
+/// stranger's reply in a thread is not the account answering.
+pub(crate) const ANSWERED_PREDICATE: &str = "(EXISTS (SELECT 1 FROM message_location al
+                                               WHERE al.message_id = m.id
+                                                 AND al.flags LIKE '%\\Answered%')
+                                             OR (m.rfc822_message_id IS NOT NULL
+                                                 AND EXISTS (SELECT 1 FROM message r
+                                                             JOIN account ra ON ra.id = r.account_id
+                                                             WHERE r.account_id = m.account_id
+                                                               AND r.in_reply_to = m.rfc822_message_id
+                                                               AND lower(r.from_addr) = lower(ra.email))))";
 
 const MESSAGE_COLUMNS: &str = "SELECT id, rfc822_message_id, subject, from_addr, date_utc, \
      body_path, recipients FROM message";

@@ -566,6 +566,9 @@ pub struct ListedMessage {
     pub unread: bool,
     /// To and Cc, lowercased and comma separated: who a sent message went to.
     pub recipients: Option<String>,
+    /// True when the account has answered it — by the `\Answered` flag, or
+    /// because a message it sent answers this one.
+    pub answered: bool,
 }
 
 /// One window of the list, plus how many rows there are in total.

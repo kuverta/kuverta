@@ -30,6 +30,11 @@ pub struct StoredDocument {
     pub pages: Option<i64>,
     pub size: i64,
     pub created_at: i64,
+    /// For a signed document: what it was signed from and where the
+    /// signature was put, as JSON the caller writes and reads. Kept so the
+    /// signature can be moved, which means signing the original again
+    /// somewhere else — a stamp on a page cannot be taken off it.
+    pub signed_from: Option<String>,
 }
 
 /// A document to keep.
@@ -41,6 +46,8 @@ pub struct NewDocument<'a> {
     pub signed: bool,
     pub pages: Option<i64>,
     pub pdf: &'a [u8],
+    /// See [`StoredDocument::signed_from`].
+    pub signed_from: Option<&'a str>,
 }
 
 /// The signature as stored. `image` is `None` when only the place is set.
@@ -57,8 +64,9 @@ pub struct StoredSignature {
 impl Store {
     pub fn add_document(&self, new: &NewDocument<'_>) -> Result<i64> {
         self.conn.execute(
-            "INSERT INTO document (account_id, name, note, signed, pages, pdf, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO document
+                 (account_id, name, note, signed, pages, pdf, created_at, signed_from)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 new.account_id,
                 new.name,
@@ -66,7 +74,8 @@ impl Store {
                 new.signed,
                 new.pages,
                 new.pdf,
-                crate::now()
+                crate::now(),
+                new.signed_from,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -75,7 +84,8 @@ impl Store {
     /// The account's documents, newest first.
     pub fn documents(&self, account_id: AccountId) -> Result<Vec<StoredDocument>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, account_id, name, note, signed, pages, length(pdf), created_at
+            "SELECT id, account_id, name, note, signed, pages, length(pdf), created_at,
+                    signed_from
                FROM document WHERE account_id = ?1
               ORDER BY created_at DESC, id DESC",
         )?;
@@ -87,7 +97,8 @@ impl Store {
     pub fn document(&self, id: i64) -> Result<Option<StoredDocument>> {
         self.conn
             .query_row(
-                "SELECT id, account_id, name, note, signed, pages, length(pdf), created_at
+                "SELECT id, account_id, name, note, signed, pages, length(pdf), created_at,
+                        signed_from
                    FROM document WHERE id = ?1",
                 params![id],
                 document_row,
@@ -105,6 +116,27 @@ impl Store {
             )
             .optional()
             .map_err(Into::into)
+    }
+
+    /// Puts another PDF in a document's place, keeping its id and its name.
+    ///
+    /// The id is what a card, a chip and a message being written all hold, so
+    /// moving a signature must not make a second document: it is the same
+    /// document, signed again somewhere else.
+    pub fn replace_document(
+        &self,
+        id: i64,
+        pdf: &[u8],
+        pages: Option<i64>,
+        note: Option<&str>,
+        signed_from: Option<&str>,
+    ) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE document SET pdf = ?2, pages = ?3, note = ?4, signed_from = ?5, signed = 1
+             WHERE id = ?1",
+            params![id, pdf, pages, note, signed_from],
+        )?;
+        Ok(changed > 0)
     }
 
     pub fn rename_document(&self, id: i64, name: &str) -> Result<bool> {
@@ -195,6 +227,7 @@ fn document_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredDocument> {
         pages: row.get(5)?,
         size: row.get(6)?,
         created_at: row.get(7)?,
+        signed_from: row.get(8)?,
     })
 }
 
@@ -230,6 +263,7 @@ mod tests {
                 signed: true,
                 pages: Some(1),
                 pdf: b"%PDF-1.5 x",
+                signed_from: None,
             })
             .unwrap();
         let listed = store.documents(account).unwrap();
@@ -262,6 +296,7 @@ mod tests {
                 signed: false,
                 pages: None,
                 pdf: b"%PDF",
+                signed_from: None,
             })
             .unwrap();
         store.delete_account(account).unwrap();

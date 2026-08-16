@@ -665,6 +665,22 @@ pub(crate) fn load(pdf: &[u8]) -> Result<Document, String> {
     Ok(doc)
 }
 
+/// Every page's size in millimetres, as a reader shows it: a page stored
+/// sideways is measured the way it is read.
+pub fn page_sizes_mm(pdf: &[u8]) -> Vec<(f32, f32)> {
+    let Ok(doc) = load(pdf) else {
+        return Vec::new();
+    };
+    doc.get_pages()
+        .into_values()
+        .map(|page_id| {
+            let (boxed, rotate) = page_geometry(&doc, page_id);
+            let (_, (w, h)) = display_to_page(boxed, rotate);
+            (w / MM, h / MM)
+        })
+        .collect()
+}
+
 /// How many pages a PDF has, when it can be read.
 pub fn page_count(pdf: &[u8]) -> Option<usize> {
     load(pdf).ok().map(|doc| doc.get_pages().len())

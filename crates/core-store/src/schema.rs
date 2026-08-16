@@ -586,6 +586,14 @@ CREATE TABLE memory_sync (
     last_error TEXT
 );
 "#,
+    // What a signed document was signed from, and where the signature was
+    // put: the source as a message and attachment or another document, and
+    // the placement in millimetres. Kept so the signature can be moved —
+    // which means signing the original again somewhere else, because a
+    // stamp on a page cannot be taken off it.
+    r#"
+ALTER TABLE document ADD COLUMN signed_from TEXT;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

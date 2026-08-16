@@ -32,7 +32,7 @@ use core_store::model::{Account, AccountId, MessageId};
 use core_store::{Blobs, Store};
 use serde::{Deserialize, Serialize};
 
-use crate::{Result, RpcError};
+use crate::{Core, Result, RpcError};
 
 impl From<core_proto::ProtoError> for RpcError {
     fn from(err: core_proto::ProtoError) -> Self {
@@ -831,6 +831,17 @@ impl Session {
                     tracing::warn!(%err, "sent, but could not file a copy in Sent");
                     summary.filing_error = Some(err.to_string());
                 }
+            }
+        }
+
+        // The message it answers is answered now, and says so where every
+        // other mail program looks. Best-effort like the rest of this: the
+        // reply has gone either way, and the list reads the copy in Sent as
+        // well as the flag.
+        if let Some(answered) = input.reply_to {
+            let core = Core::new(store, blobs);
+            if let Err(err) = core.set_answered(account.id, answered) {
+                tracing::warn!(%err, id = answered, "sent, but could not mark it answered");
             }
         }
         Ok(summary)

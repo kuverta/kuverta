@@ -149,6 +149,13 @@ bottom of the last page; and if it landed in the wrong spot, say so — *"on pag
 2, bottom right, a bit higher"* — and it signs the original again where you
 say.
 
+Or put it there yourself. **Move the signature…** on the document's card shows
+the page as a picture with your signature loose on top of it: drag it onto the
+line, set how wide it should be, turn the page if it belongs on another one,
+and **Put it here**. What that saves is the original signed again at that
+place — the same document, with the same name, so a copy already attached to a
+message you are writing still points at it. Nothing is sent either way.
+
 For that it needs your signature: a picture of it, under
 [Settings → General → Signature](settings.md#signature). Without one it writes
 PDFs but says it cannot sign. It is a picture, as on a page you printed, signed

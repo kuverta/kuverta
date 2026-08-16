@@ -2225,3 +2225,102 @@ fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_message_reads_as_answered_by_the_flag_and_by_the_reply_itself() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let sent = store.upsert_folder(account, "Sent", None).unwrap();
+    let here = |uid: u32, folder: FolderId, flags: &str| Location {
+        folder_id: folder,
+        uid,
+        flags: flags.to_string(),
+    };
+    let arrived = |id: &str, subject: &str| NewMessage {
+        rfc822_message_id: Some(id.into()),
+        subject: Some(subject.into()),
+        from_addr: Some("erika@example.de".into()),
+        date_utc: Some(1_756_620_000),
+        ..Default::default()
+    };
+
+    // Three that arrived: one answered from here, one carrying the flag a
+    // phone set, and one nobody has touched.
+    let replied_to = store
+        .upsert_message(
+            account,
+            &arrived("ask@example.de", "Frage"),
+            Some(&here(1, inbox, "")),
+        )
+        .unwrap()
+        .0;
+    let flagged = store
+        .upsert_message(
+            account,
+            &arrived("other@example.de", "Noch eine Frage"),
+            Some(&here(2, inbox, "\\Seen \\Answered")),
+        )
+        .unwrap()
+        .0;
+    let untouched = store
+        .upsert_message(
+            account,
+            &arrived("quiet@example.de", "Nichts"),
+            Some(&here(3, inbox, "")),
+        )
+        .unwrap()
+        .0;
+
+    let answered = |store: &Store| -> Vec<(MessageId, bool)> {
+        store
+            .message_window(account, 0, 50, &ListFilter::default())
+            .unwrap()
+            .messages
+            .into_iter()
+            .map(|listed| (listed.summary.id, listed.answered))
+            .collect()
+    };
+    let before = answered(&store);
+    let says = |rows: &[(MessageId, bool)], id: MessageId| {
+        rows.iter().find(|(row, _)| *row == id).unwrap().1
+    };
+    assert!(!says(&before, replied_to));
+    assert!(says(&before, flagged));
+
+    // The reply, filed in Sent, is what says the first one is answered —
+    // the copy lands there while the send is still returning.
+    store
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("reply@kuverta.test".into()),
+                subject: Some("Re: Frage".into()),
+                from_addr: Some("dev@kuverta.test".into()),
+                in_reply_to: Some("ask@example.de".into()),
+                date_utc: Some(1_756_630_000),
+                ..Default::default()
+            },
+            Some(&here(1, sent, "\\Seen")),
+        )
+        .unwrap();
+    // Someone else answering in the same thread is not the account
+    // answering, whatever it says in In-Reply-To.
+    store
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("theirs@example.de".into()),
+                subject: Some("Re: Nichts".into()),
+                from_addr: Some("someone@example.de".into()),
+                in_reply_to: Some("quiet@example.de".into()),
+                date_utc: Some(1_756_630_000),
+                ..Default::default()
+            },
+            Some(&here(4, inbox, "")),
+        )
+        .unwrap();
+
+    let after = answered(&store);
+    assert!(says(&after, replied_to));
+    assert!(!says(&after, untouched));
+}

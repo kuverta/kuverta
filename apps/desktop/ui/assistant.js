@@ -715,6 +715,17 @@ function documentCard(event) {
     button.disabled = false;
     await openDocument(doc);
   }, "primary");
+  // Where the signature landed is the one thing a model cannot check, so
+  // the person can always put it where it belongs themselves.
+  if (canPlace(doc)) {
+    cardButton(actions, t("Move the signature…"), async (button) => {
+      button.disabled = false;
+      await openPlacer(doc, (moved) => {
+        Object.assign(doc, moved);
+        box.replaceWith(documentCard({ ...event, document: doc }));
+      });
+    });
+  }
   cardButton(actions, t("Save to Downloads"), async (button) => {
     button.disabled = false;
     const path = await invoke("save_document", { id: doc.id });

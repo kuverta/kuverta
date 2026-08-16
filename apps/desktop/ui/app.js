@@ -1215,6 +1215,7 @@ function render(force = false) {
       // The page is still in flight. A placeholder keeps the row height
       // correct so the scrollbar does not jump when it lands.
       node.row.classList.add("pending");
+      node.row.classList.remove("answered");
       node.unread.className = "dot";
       node.date.textContent = "";
       node.sender.textContent = "";
@@ -1234,9 +1235,17 @@ function render(force = false) {
     node.sender.title = row.to ? row.to.join(", ") : "";
     node.subject.textContent = row.subject;
     node.snippet.textContent = row.snippet ?? "";
-    node.tag.textContent = [row.has_attachments ? "📎" : "", row.category ? t(row.category) : ""]
+    // ↩ for mail that has been answered, the way every mail program has
+    // marked it: what you dealt with yesterday is readable at a glance.
+    node.row.classList.toggle("answered", Boolean(row.answered));
+    node.tag.textContent = [
+      row.answered ? "↩" : "",
+      row.has_attachments ? "📎" : "",
+      row.category ? t(row.category) : "",
+    ]
       .filter(Boolean)
       .join(" ");
+    node.tag.title = row.answered ? t("you answered this") : "";
   }
 
   ensureLoaded(first, first + state.pool.length);
@@ -1327,7 +1336,11 @@ async function openSelected() {
       el("reading-meta"),
       detail.from,
       { id: row.id },
-      [formatDate(detail.date_utc), detail.folders.join(", ")],
+      [
+        formatDate(detail.date_utc),
+        detail.folders.join(", "),
+        row.answered ? t("answered") : "",
+      ].filter(Boolean),
       { to: [...detail.to, ...detail.cc] },
     );
     // HTML mail arrives already rendered to text, so an empty body really
@@ -1775,6 +1788,10 @@ function closeCompose() {
 /// Opens compose. With `replyAll`, the recipients and quoted body come from
 /// the core rather than being assembled here — reply-all has rules (drop
 /// yourself, honour Reply-To) that belong in one place.
+///
+/// A reply or a forward leaves what it is about on screen above it: #detail
+/// is a grid of the reading pane and compose under it, and an answer written
+/// without the message it answers in front of you is written from memory.
 async function openCompose({ replyAll = null, forward = false } = {}) {
   const row = state.rows.get(state.selected);
   closeCompose();
@@ -1811,8 +1828,14 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
     compose.what.textContent = t("New message");
   }
 
+  const answering = compose.replyTo !== null || compose.forward !== null;
   compose.pane.hidden = false;
-  reading.hidden = true;
+  if (answering) {
+    // Opened from the list rather than from the message: show it first.
+    if (reading.hidden) await openSelected();
+  } else {
+    reading.hidden = true;
+  }
   emptyPane.hidden = true;
   loadAddressBook();
   (compose.to.value ? compose.body : compose.to).focus();
