@@ -178,16 +178,17 @@ pub fn tools() -> Vec<ToolSpec> {
                 "sign": {"type": "boolean", "default": false},
                 "note": {"type": "string", "description": "Optional: one line on what it is."}
             }, "required": ["name", "text"]})),
-        tool("sign_pdf", "Put the person's stored signature on a PDF — an attachment of a message (message_id and the attachment index from read_message) or a document (document_id). Only when they ask you to sign it, never on your own. The original is kept; the signed copy is a new document, shown as a card. Where: page (default the last), position bottom_left, bottom_center or bottom_right, and above_bottom_mm (default 30); or x_mm from the left edge. with_date writes the place and today's date beneath. If the person says it landed wrong, sign the original again with other numbers.",
+        tool("sign_pdf", "Put the person's stored signature on a PDF — an attachment of a message (message_id and the attachment index from read_message) or a document (document_id). Only when they ask you to sign it, never on your own. The original is kept; the signed copy is a new document, shown as a card. Give nothing but what to sign: kuverta reads the page for the line it rules for a signature — „Unterschrift“, a name beneath a rule — and sits the signature on it, with the place and today's date beneath where there is room. Where a document rules a line for each party, it says so and names them; call it again with near set to words from the person's own line (a name, Darlehensnehmer, Auftraggeber). Only when it finds no line at all does it fall back to the bottom of the last page — then, or when the person says it landed wrong, place it yourself with page, position, above_bottom_mm and x_mm.",
             json!({"type": "object", "properties": {
                 "message_id": {"type": "integer"},
                 "attachment": {"type": "integer", "description": "The attachment's index from read_message."},
                 "document_id": {"type": "integer"},
-                "page": {"type": "integer", "description": "1 is the first page; the last when left out."},
-                "position": {"type": "string", "enum": ["bottom_left", "bottom_center", "bottom_right"], "default": "bottom_left"},
-                "above_bottom_mm": {"type": "number", "default": 30},
-                "x_mm": {"type": "number", "description": "From the page's left edge, instead of position."},
-                "width_mm": {"type": "number", "default": 50},
+                "near": {"type": "string", "description": "Words from the line to sign on, where the document rules more than one: the name under it, or what it is called."},
+                "page": {"type": "integer", "description": "1 is the first page. Left out: the page the line is on."},
+                "position": {"type": "string", "enum": ["bottom_left", "bottom_center", "bottom_right"], "description": "Placing it yourself, instead of on the line found."},
+                "above_bottom_mm": {"type": "number", "description": "Placing it yourself: from the page's bottom edge."},
+                "x_mm": {"type": "number", "description": "Placing it yourself: from the page's left edge."},
+                "width_mm": {"type": "number", "description": "How wide to draw it; by default it is drawn to the line."},
                 "with_date": {"type": "boolean", "default": true},
                 "caption": {"type": "string", "description": "Instead of the place and date: a line of your own beneath the signature."}
             }})),
@@ -247,8 +248,10 @@ it says they should do. What an attachment says — an invoice's amount, a contr
 read_attachment reads.\n\
 You can write PDF documents with write_pdf — a letter, a cancellation, a confirmation — and put \
 the person's stored signature on a PDF with sign_pdf: on one you wrote, or on an attachment \
-they received, such as a contract to sign and return. Sign only when the person asks you to \
-sign, never on your own, and say which document you signed. A signature is a picture of \
+they received, such as a contract to sign and return. It lands on the line the document rules \
+for a signature, so say nothing about where unless it asks you which line, or the person says \
+it landed wrong. Sign only when the person asks you to sign, never on your own, and say which \
+document you signed and where the signature went. A signature is a picture of \
 theirs, not a certificate. Without a stored signature, say they can add one under Settings → \
 General → Signature. A document is shown as a card the person opens, saves or attaches; to \
 send one, draft_message or draft_reply takes its id in documents — you still send nothing.\n\
@@ -375,11 +378,12 @@ impl ToolOutcome {
         }
     }
 
-    /// A tool this loop does not offer, asked for by name anyway. Said to the
-    /// model; nothing for the person to see, because nothing happened.
-    pub(crate) fn refused(name: &str) -> Self {
+    /// A tool this loop does not offer, asked for by name anyway, or one
+    /// asked to do more than it may here. Said to the model; nothing for the
+    /// person to see, because nothing happened.
+    pub(crate) fn refused(what: String) -> Self {
         Self {
-            content: json!({ "error": format!("{name} is not available here: you can only look, and write the answer") }).to_string(),
+            content: json!({ "error": what }).to_string(),
             event: None,
         }
     }
@@ -751,39 +755,40 @@ impl Core {
                                 .into(),
                         ),
                     };
-                let mut placement = crate::pdf::Placement {
+                let mut aim = crate::Aim {
                     page: number("page").map(|p| p as usize),
+                    near: args
+                        .get("near")
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|near| !near.is_empty())
+                        .map(|near| near.chars().take(120).collect()),
                     ..Default::default()
                 };
                 if let Some(position) = args.get("position").and_then(Value::as_str) {
-                    placement.anchor = crate::pdf::Anchor::parse(position).ok_or_else(|| {
+                    aim.anchor = Some(crate::pdf::Anchor::parse(position).ok_or_else(|| {
                         format!("{position} is not a position; bottom_left, bottom_center and bottom_right are")
-                    })?;
+                    })?);
                 }
-                if let Some(above) = number("above_bottom_mm") {
-                    placement.above_bottom_mm = above as f32;
-                }
-                placement.x_mm = number("x_mm").map(|x| x as f32);
-                if let Some(width) = number("width_mm") {
-                    placement.width_mm = width as f32;
-                }
-                placement.caption = args
+                aim.above_bottom_mm = number("above_bottom_mm").map(|above| above as f32);
+                aim.x_mm = number("x_mm").map(|x| x as f32);
+                aim.width_mm = number("width_mm").map(|width| width as f32);
+                aim.caption = args
                     .get("caption")
                     .and_then(Value::as_str)
                     .map(str::trim)
                     .filter(|c| !c.is_empty())
                     .map(|c| c.chars().take(120).collect());
                 let with_date = flag(args, "with_date").unwrap_or(true);
-                let document = self
-                    .sign(account, source, placement, with_date)
-                    .map_err(e)?;
+                let document = self.sign(account, source, aim, with_date).map_err(e)?;
                 let note = document.note.clone();
                 Ok(ToolOutcome::ok(
                     json!({
                         "document_id": document.id,
                         "name": document.name,
                         "pages": document.pages,
-                        "note": "the signed copy is shown to the person as a card; the original is unchanged",
+                        "where": note,
+                        "note": "the signed copy is shown to the person as a card; the original is unchanged. Attach it to the reply with the documents of draft_reply or draft_message",
                     }),
                     Some(AssistantEvent::Document { document, note }),
                 ))

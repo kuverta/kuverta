@@ -865,20 +865,43 @@ mod tests {
     }
 }
 
-/// What the tests of this module and of [`crate::preview`] make files from.
+/// What the tests of this module, of [`crate::preview`] and of
+/// [`crate::spots`] make files from.
 #[cfg(test)]
 pub(crate) mod tests_support {
     /// A one-page PDF with `line` on it, in Helvetica, cross-reference table
     /// and all.
     pub(crate) fn pdf_saying(line: &str) -> Vec<u8> {
-        let stream = format!("BT /F1 12 Tf 72 720 Td ({line}) Tj ET");
-        let objects = [
+        pdf_of(&[format!("BT /F1 12 Tf 72 720 Td ({line}) Tj ET")])
+    }
+
+    /// A PDF of one page per content stream, letter-sized, with Helvetica as /F1.
+    pub(crate) fn pdf_of(streams: &[String]) -> Vec<u8> {
+        // 1 catalog, 2 pages, 3 the font, then a page and its stream each.
+        let first = 4;
+        let kids: Vec<String> = (0..streams.len())
+            .map(|at| format!("{} 0 R", first + at * 2))
+            .collect();
+        let mut objects = vec![
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
-            format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
-            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".to_string(),
+            format!(
+                "<< /Type /Pages /Kids [{}] /Count {} >>",
+                kids.join(" "),
+                streams.len()
+            ),
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+                .to_string(),
         ];
+        for (at, stream) in streams.iter().enumerate() {
+            objects.push(format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {} 0 R /Resources << /Font << /F1 3 0 R >> >> >>",
+                first + at * 2 + 1
+            ));
+            objects.push(format!(
+                "<< /Length {} >>\nstream\n{stream}\nendstream",
+                stream.len()
+            ));
+        }
         let mut out = b"%PDF-1.4\n".to_vec();
         let mut offsets = Vec::new();
         for (at, object) in objects.iter().enumerate() {

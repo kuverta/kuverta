@@ -43,6 +43,7 @@ pub mod settings;
 pub mod setup;
 pub mod signature;
 pub mod smart;
+pub mod spots;
 pub mod tasks;
 pub mod update;
 pub mod urgency;
@@ -65,7 +66,7 @@ pub use core_pgp::{
     SignatureState, SignatureView,
 };
 pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
-pub use documents::{DocumentFile, DocumentSource, DocumentView, SignatureSettings};
+pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, SignatureSettings};
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use outbox::{OutboxSent, OutboxView};

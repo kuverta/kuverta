@@ -21,7 +21,8 @@ use core_store::documents::NewDocument;
 use core_store::model::AccountId;
 
 use crate::attachments::safe_file_name;
-use crate::pdf::{self, Pixels, Placement};
+use crate::pdf::{self, Anchor, Pixels, Placement};
+use crate::spots::{self, Choice, Spot};
 use crate::{Core, Result, RpcError};
 
 /// A document as the window and the assistant see it: everything but the
@@ -52,6 +53,43 @@ pub struct DocumentFile {
 pub enum DocumentSource {
     Attachment { message: i64, index: usize },
     Document { id: i64 },
+}
+
+/// Where on the PDF the signature goes.
+///
+/// Nothing measured means: find the line the document rules for a signature
+/// and sit on it — which is what a contract asks for, and what a number
+/// guessed without reading the page cannot do. A measurement given — a
+/// position, a height above the bottom edge, a distance from the left — is
+/// the caller placing it themselves, which is how one that landed wrong is
+/// moved.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Aim {
+    /// 1-based; `None` is wherever the line is, or the last page.
+    pub page: Option<usize>,
+    /// Words from the right line, where a page rules more than one:
+    /// "Darlehensnehmer", a name, "Auftraggeber".
+    pub near: Option<String>,
+    pub anchor: Option<Anchor>,
+    pub above_bottom_mm: Option<f32>,
+    pub x_mm: Option<f32>,
+    pub width_mm: Option<f32>,
+    /// Written beneath in small type, instead of the place and the date.
+    pub caption: Option<String>,
+}
+
+impl Aim {
+    /// Whether the caller said where it goes, rather than leaving it to the
+    /// document.
+    fn measured(&self) -> bool {
+        self.anchor.is_some() || self.above_bottom_mm.is_some() || self.x_mm.is_some()
+    }
+
+    /// How wide the signature is drawn on a line that long.
+    fn width_on(&self, line_mm: f32) -> f32 {
+        self.width_mm
+            .unwrap_or_else(|| (line_mm * 0.65).clamp(20.0, 65.0).min(line_mm.max(10.0)))
+    }
 }
 
 /// The signature as settings show it: whether there is one, its measurements,
@@ -178,13 +216,17 @@ impl Core {
     }
 
     /// Puts the signature on a copy of `source`, kept as a new document.
-    /// `with_date` writes the place and today's date beneath it, unless the
-    /// placement brings a caption of its own.
+    ///
+    /// Where it goes is [`Aim`]: the line the document rules for a signature
+    /// unless the caller measured a place themselves. `with_date` writes the
+    /// place and today's date beneath it — unless the aim brings a caption of
+    /// its own, or the line is already named beneath, where the date would be
+    /// written over the words that name it.
     pub fn sign(
         &self,
         account: AccountId,
         source: DocumentSource,
-        mut placement: Placement,
+        aim: Aim,
         with_date: bool,
     ) -> Result<DocumentView> {
         let pixels = self
@@ -224,7 +266,25 @@ impl Core {
                 )
             }
         };
-        if with_date && placement.caption.is_none() {
+        let on = self.line_for(account, &bytes, &aim, &name)?;
+        let mut placement = Placement {
+            page: aim.page,
+            anchor: aim.anchor.unwrap_or(Anchor::BottomLeft),
+            above_bottom_mm: aim.above_bottom_mm.unwrap_or(30.0),
+            x_mm: aim.x_mm,
+            width_mm: aim.width_mm.unwrap_or(50.0),
+            caption: aim.caption.clone(),
+        };
+        if let Some(spot) = &on {
+            placement.page = Some(spot.page);
+            placement.x_mm = Some(spot.x_mm);
+            placement.above_bottom_mm = spot.above_bottom_mm;
+            placement.width_mm = aim.width_on(spot.line_mm);
+        }
+        // The place and the date go beneath the signature, where a line that
+        // names itself already has its words: there they would be written one
+        // over the other, so there they are left out.
+        if with_date && placement.caption.is_none() && on.as_ref().is_none_or(|s| s.room_beneath) {
             placement.caption = Some(self.signature_caption()?);
         }
         let (signed, page) = pdf::stamp(&bytes, &pixels, &placement).map_err(reject)?;
@@ -232,18 +292,68 @@ impl Core {
         let stem = stem.strip_suffix(" (signed)").unwrap_or(stem);
         let signed_name = document_name(&format!("{stem} (signed)"));
         let pages = pdf::page_count(&signed).map(|n| n as i64);
+        let where_it_went = match &on {
+            Some(spot) => format!("on the line {}", spot.say()),
+            None => format!("signature on page {page}"),
+        };
         let id = self.store().add_document(&NewDocument {
             account_id: account,
             name: &signed_name,
-            note: Some(&format!(
-                "signed copy of {name}, {from}; signature on page {page}"
-            )),
+            note: Some(&format!("signed copy of {name}, {from}; {where_it_went}")),
             signed: true,
             pages,
             pdf: &signed,
         })?;
-        tracing::info!(id, page, "signed a PDF");
+        tracing::info!(id, page, found = on.is_some(), "signed a PDF");
         self.document_view(id)
+    }
+
+    /// The line in `pdf` the signature belongs on, or `None` where the
+    /// document rules none and the measurements stand.
+    ///
+    /// A document that rules several — a contract both parties sign — and
+    /// nothing saying which is the person's is refused rather than guessed
+    /// at, with the lines named, so the next try can say which.
+    fn line_for(
+        &self,
+        account: AccountId,
+        pdf: &[u8],
+        aim: &Aim,
+        name: &str,
+    ) -> Result<Option<Spot>> {
+        if aim.measured() {
+            return Ok(None);
+        }
+        let found = spots::find(pdf);
+        match spots::choose(
+            &found,
+            aim.near.as_deref(),
+            aim.page,
+            &self.signing_as(account),
+        ) {
+            Choice::On(spot) => Ok(Some(spot)),
+            Choice::Nowhere => Ok(None),
+            Choice::Many(several) => Err(reject(format!(
+                "{name} has {} places to sign: {}. Sign it again with near set to words from the \
+                 right one — the name under it, or what the line is called.",
+                several.len(),
+                several.iter().map(Spot::say).collect::<Vec<_>>().join(", ")
+            ))),
+        }
+    }
+
+    /// Who the person signing is, as a document would name them: their own
+    /// name, which is what tells their line from the other party's. An
+    /// account labelled with its address names nobody — no contract writes
+    /// an address under the line — so it answers with nothing.
+    fn signing_as(&self, account: AccountId) -> String {
+        self.accounts()
+            .unwrap_or_default()
+            .into_iter()
+            .find(|view| view.id == account)
+            .map(|view| view.label.trim().to_string())
+            .filter(|label| !label.is_empty() && !label.contains('@'))
+            .unwrap_or_default()
     }
 
     /// What is written beneath a signature: the place and today's date, the
