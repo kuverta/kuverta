@@ -1878,6 +1878,61 @@ fn document(app: State<'_, App>, id: i64) -> Result<tauri::ipc::Response, String
     Ok(tauri::ipc::Response::new(file.bytes))
 }
 
+// -- a file going out with a message ------------------------------------------
+//
+// The tray under compose holds files the person is about to send: dropped
+// there, picked with Attach, or made here — a PDF the assistant signed. The
+// window has their bytes already, so showing one needs no fetching; drawing
+// it safely, saving it and opening it do, and these are those three. They
+// take the file as a draft carries it, which is exactly what the tray holds.
+
+/// Safe preview of a file going out, drawn in the locked-down worker like
+/// any other: what is about to be sent is often what somebody else sent.
+#[tauri::command]
+async fn outgoing_preview(
+    file: core_rpc::DraftAttachment,
+    first: usize,
+    count: usize,
+) -> Result<core_rpc::preview::SafePreview, String> {
+    let worker = core_rpc::preview::worker()
+        .cloned()
+        .ok_or("safe preview is not available: its worker could not be found")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::preview::preview(
+            &worker,
+            &file.name,
+            &file.content_type,
+            &file.data,
+            first,
+            count,
+        )
+    })
+    .await
+    .map_err(|err| format!("the preview did not finish: {err}"))?
+}
+
+#[tauri::command]
+fn save_outgoing(file: core_rpc::DraftAttachment) -> Result<String, String> {
+    let dir = files::downloads().ok_or("there is no Downloads folder to save to")?;
+    let path = files::save_new(&dir, &file.name, &file.data)?;
+    let _ = logging::reveal(&path);
+    Ok(path.display().to_string())
+}
+
+/// Opens it in the program the system has for it — not one that could run
+/// something, the same refusal a received attachment gets.
+#[tauri::command]
+fn open_outgoing(file: core_rpc::DraftAttachment) -> Result<(), String> {
+    if core_rpc::attachments::is_risky(&file.name, &file.content_type) {
+        return Err(format!(
+            "{} could run something when opened; save it instead if you trust it",
+            file.name
+        ));
+    }
+    let path = files::copy_to_open(&file.name, &file.data)?;
+    files::open(&path)
+}
+
 /// How large each page of a document is, in millimetres: what the placer
 /// turns a place on a picture of the page into.
 #[tauri::command]
@@ -2509,6 +2564,9 @@ fn main() {
             document_preview,
             place_signature,
             document_pages,
+            outgoing_preview,
+            save_outgoing,
+            open_outgoing,
             save_document,
             open_document,
             rename_document,

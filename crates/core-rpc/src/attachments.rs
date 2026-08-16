@@ -271,7 +271,11 @@ const RISKY_TYPES: &[&str] = &[
     "application/vnd.microsoft.portable-executable",
 ];
 
-fn is_risky(name: &str, content_type: &str) -> bool {
+/// Whether opening this file in whatever the system has for it could run
+/// something. Public because a file going *out* with a message is judged the
+/// same way: a signed copy of a stranger's contract is still a stranger's
+/// file, and the window never opens one of those without being told twice.
+pub fn is_risky(name: &str, content_type: &str) -> bool {
     RISKY_TYPES.contains(&content_type)
         || extension(name).is_some_and(|ext| RISKY_EXTENSIONS.contains(&ext.as_str()))
 }

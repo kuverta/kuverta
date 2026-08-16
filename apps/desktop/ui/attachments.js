@@ -26,11 +26,27 @@
 const attachmentSheet = el("attachment-sheet");
 const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0, openArmed: false };
 
+/// The bytes of a base64 string, as the viewer and the core take them.
+function base64Bytes(data) {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let at = 0; at < binary.length; at += 1) bytes[at] = binary.charCodeAt(at);
+  return bytes;
+}
+
 /// The command that fetches, draws, saves or opens what the viewer shows:
 /// an attachment of a message, or — when `attachment.document` is set — a
 /// document the assistant made, which has the same four.
 function viewerCall(what, extra = {}) {
   const { account, messageId, attachment } = viewer;
+  if (attachment.outgoing) {
+    // A file about to be sent. Its bytes are already here, so showing it
+    // asks for nothing; drawing, saving and opening it still do.
+    const file = attachment.outgoing;
+    if (what === "attachment") return Promise.resolve(base64Bytes(file.data).buffer);
+    const names = { attachment_preview: "outgoing_preview", save_attachment: "save_outgoing", open_attachment: "open_outgoing" };
+    return invoke(names[what], { file, ...extra });
+  }
   if (attachment.document != null) {
     const names = { attachment: "document", attachment_preview: "document_preview", save_attachment: "save_document", open_attachment: "open_document" };
     return invoke(names[what], { id: attachment.document, ...extra });
@@ -74,6 +90,31 @@ function documentAsAttachment(doc) {
 /// Opens the viewer on a document the assistant made.
 function openDocument(doc) {
   return openAttachment(null, null, documentAsAttachment(doc));
+}
+
+/// Opens the viewer on a file going out with a message: one dropped on
+/// compose, picked with Attach, or made here — the PDF the assistant signed,
+/// which is the one you most want to look at before you send it.
+function openOutgoing(file) {
+  const type = file.content_type || "";
+  return openAttachment(null, null, {
+    index: 0,
+    name: file.name,
+    content_type: type,
+    size: file.size,
+    inline: false,
+    preview: type.startsWith("image/")
+      ? "image"
+      : type === "application/pdf"
+        ? "pdf"
+        : type.startsWith("text/")
+          ? "text"
+          : "none",
+    // What could run something is refused when it is opened rather than
+    // guessed at here: the core knows the rule, and keeps it in one place.
+    risky: false,
+    outgoing: { name: file.name, content_type: type, data: file.data },
+  });
 }
 
 /// A chip for a document, like an attachment's, that opens it in the viewer.

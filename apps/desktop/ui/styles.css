@@ -921,6 +921,20 @@ footer .keys {
 
 .attachment-chip.outgoing { padding-right: 4px; }
 
+/* The chip's body is a button: it opens what is about to be sent. */
+.attachment-chip.outgoing .open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 .attachment-chip .remove {
   border: none;
   background: transparent;
