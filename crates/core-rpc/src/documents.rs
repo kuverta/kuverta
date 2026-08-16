@@ -27,7 +27,7 @@ use crate::{Core, Result, RpcError};
 
 /// A document as the window and the assistant see it: everything but the
 /// bytes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct DocumentView {
     pub id: i64,
     pub account_id: AccountId,
@@ -39,6 +39,26 @@ pub struct DocumentView {
     pub created_at: i64,
     /// Always `application/pdf`, for the viewer, which takes files by type.
     pub content_type: String,
+    /// Where the signature sits, for a signed document whose original is
+    /// still to hand: the window shows it there and lets it be dragged
+    /// somewhere else. `None` where the signature cannot be moved — a
+    /// document written with the signature in its text, or one signed by a
+    /// build that did not keep the original.
+    #[serde(default)]
+    pub placed: Option<Placed>,
+}
+
+/// Where the signature was put, and what it was put on: enough to put it
+/// somewhere else on the same original.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Placed {
+    pub source: DocumentSource,
+    /// 1-based.
+    pub page: usize,
+    pub x_mm: f32,
+    pub above_bottom_mm: f32,
+    pub width_mm: f32,
+    pub with_date: bool,
 }
 
 /// A document with its bytes.
@@ -49,7 +69,8 @@ pub struct DocumentFile {
 }
 
 /// What a signature goes on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DocumentSource {
     Attachment { message: i64, index: usize },
     Document { id: i64 },
@@ -110,6 +131,9 @@ const MOST_SIGNATURE_BYTES: usize = 4 * 1024 * 1024;
 const MOST_SIGNATURE_SIDE: u32 = 4000;
 /// The most text one written document takes.
 const MOST_TEXT_CHARS: usize = 60_000;
+/// Where the signature sits from the left edge when nothing said otherwise:
+/// the page's own margin, which is what [`pdf::stamp`] uses for bottom_left.
+const DEFAULT_X_MM: f32 = 20.0;
 
 fn reject(message: impl Into<String>) -> RpcError {
     RpcError::Rejected(message.into())
@@ -137,6 +161,12 @@ fn view(stored: core_store::documents::StoredDocument) -> DocumentView {
         size: stored.size,
         created_at: stored.created_at,
         content_type: "application/pdf".into(),
+        // Written by `sign`; anything else there is from a build that wrote
+        // something else, and the signature simply cannot be moved.
+        placed: stored
+            .signed_from
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok()),
     }
 }
 
@@ -205,6 +235,10 @@ impl Core {
             signed: written.signed,
             pages: Some(written.pages as i64),
             pdf: &written.pdf,
+            // A document written with the signature in its text has no
+            // original to sign again: the signature is where the words put
+            // it, and moving it means writing it again.
+            signed_from: None,
         })?;
         tracing::info!(
             id,
@@ -232,40 +266,7 @@ impl Core {
         let pixels = self
             .signature_pixels()?
             .ok_or_else(|| reject(NO_SIGNATURE))?;
-        let (name, bytes, from) = match source {
-            DocumentSource::Attachment { message, index } => {
-                let attachment = self.attachment(account, message, index)?;
-                if attachment.view.content_type != "application/pdf"
-                    && !attachment.bytes.starts_with(b"%PDF")
-                {
-                    return Err(reject(format!(
-                        "{} is {}, not a PDF; only a PDF can be signed",
-                        attachment.view.name, attachment.view.content_type
-                    )));
-                }
-                let detail = self.message(account, message)?;
-                let from = detail.from.unwrap_or_default();
-                (
-                    attachment.view.name,
-                    attachment.bytes,
-                    format!(
-                        "from the message “{}” by {from}",
-                        detail.subject.unwrap_or_default()
-                    ),
-                )
-            }
-            DocumentSource::Document { id } => {
-                let file = self.document(id)?;
-                if file.view.account_id != account {
-                    return Err(reject(format!("there is no document {id} on this account")));
-                }
-                (
-                    file.view.name,
-                    file.bytes,
-                    "a document made here".to_string(),
-                )
-            }
-        };
+        let (name, bytes, from) = self.to_sign(account, source)?;
         let on = self.line_for(account, &bytes, &aim, &name)?;
         let mut placement = Placement {
             page: aim.page,
@@ -291,21 +292,128 @@ impl Core {
         let stem = name.trim_end_matches(".pdf").trim_end_matches(".PDF");
         let stem = stem.strip_suffix(" (signed)").unwrap_or(stem);
         let signed_name = document_name(&format!("{stem} (signed)"));
-        let pages = pdf::page_count(&signed).map(|n| n as i64);
         let where_it_went = match &on {
             Some(spot) => format!("on the line {}", spot.say()),
             None => format!("signature on page {page}"),
+        };
+        let placed = Placed {
+            source,
+            page,
+            x_mm: placement.x_mm.unwrap_or(DEFAULT_X_MM),
+            above_bottom_mm: placement.above_bottom_mm,
+            width_mm: placement.width_mm,
+            with_date: placement.caption.is_some(),
         };
         let id = self.store().add_document(&NewDocument {
             account_id: account,
             name: &signed_name,
             note: Some(&format!("signed copy of {name}, {from}; {where_it_went}")),
             signed: true,
-            pages,
+            pages: pdf::page_count(&signed).map(|n| n as i64),
             pdf: &signed,
+            signed_from: serde_json::to_string(&placed).ok().as_deref(),
         })?;
         tracing::info!(id, page, found = on.is_some(), "signed a PDF");
         self.document_view(id)
+    }
+
+    /// Puts the signature somewhere else on the same original.
+    ///
+    /// This is what the window's placer saves: the person dragged the
+    /// signature to where it belongs, and the document is made again from
+    /// the original with the signature there. The same document — the id,
+    /// the name and anything already holding them stay as they are — because
+    /// a stamp cannot be lifted off a page, only put on a fresh copy.
+    pub fn place_signature(
+        &self,
+        account: AccountId,
+        document: i64,
+        at: &Placed,
+    ) -> Result<DocumentView> {
+        let view = self.document_view(document)?;
+        if view.account_id != account {
+            return Err(reject(format!(
+                "there is no document {document} on this account"
+            )));
+        }
+        let was = view
+            .placed
+            .ok_or_else(|| reject(format!("the signature on {} cannot be moved: kuverta no longer has what it was signed from", view.name)))?;
+        let pixels = self
+            .signature_pixels()?
+            .ok_or_else(|| reject(NO_SIGNATURE))?;
+        let (_, bytes, _) = self.to_sign(account, was.source)?;
+        let placement = Placement {
+            page: Some(at.page),
+            anchor: pdf::Anchor::BottomLeft,
+            above_bottom_mm: at.above_bottom_mm,
+            x_mm: Some(at.x_mm),
+            width_mm: at.width_mm,
+            caption: at.with_date.then(|| self.signature_caption()).transpose()?,
+        };
+        let (signed, page) = pdf::stamp(&bytes, &pixels, &placement).map_err(reject)?;
+        let placed = Placed {
+            source: was.source,
+            page,
+            ..at.clone()
+        };
+        let note = view
+            .note
+            .as_deref()
+            .and_then(|note| note.split_once(';').map(|(what, _)| what.to_string()))
+            .unwrap_or_else(|| format!("signed copy of {}", view.name));
+        self.store().replace_document(
+            document,
+            &signed,
+            pdf::page_count(&signed).map(|n| n as i64),
+            Some(&format!("{note}; moved by hand to page {page}")),
+            serde_json::to_string(&placed).ok().as_deref(),
+        )?;
+        tracing::info!(document, page, "moved a signature");
+        self.document_view(document)
+    }
+
+    /// What a source is: its name, its bytes, and where it came from in
+    /// words, for the note on the signed copy.
+    fn to_sign(
+        &self,
+        account: AccountId,
+        source: DocumentSource,
+    ) -> Result<(String, Vec<u8>, String)> {
+        match source {
+            DocumentSource::Attachment { message, index } => {
+                let attachment = self.attachment(account, message, index)?;
+                if attachment.view.content_type != "application/pdf"
+                    && !attachment.bytes.starts_with(b"%PDF")
+                {
+                    return Err(reject(format!(
+                        "{} is {}, not a PDF; only a PDF can be signed",
+                        attachment.view.name, attachment.view.content_type
+                    )));
+                }
+                let detail = self.message(account, message)?;
+                let from = detail.from.unwrap_or_default();
+                Ok((
+                    attachment.view.name,
+                    attachment.bytes,
+                    format!(
+                        "from the message “{}” by {from}",
+                        detail.subject.unwrap_or_default()
+                    ),
+                ))
+            }
+            DocumentSource::Document { id } => {
+                let file = self.document(id)?;
+                if file.view.account_id != account {
+                    return Err(reject(format!("there is no document {id} on this account")));
+                }
+                Ok((
+                    file.view.name,
+                    file.bytes,
+                    "a document made here".to_string(),
+                ))
+            }
+        }
     }
 
     /// The line in `pdf` the signature belongs on, or `None` where the
@@ -354,6 +462,17 @@ impl Core {
             .map(|view| view.label.trim().to_string())
             .filter(|label| !label.is_empty() && !label.contains('@'))
             .unwrap_or_default()
+    }
+
+    /// How large each page of a document is, in millimetres, as a reader
+    /// shows it — a rotated page the right way up.
+    ///
+    /// The window's placer needs it: what it has is a picture of the page and
+    /// a place on it the person dragged the signature to, and what
+    /// [`Self::place_signature`] takes is millimetres.
+    pub fn document_pages(&self, id: i64) -> Result<Vec<(f32, f32)>> {
+        let file = self.document(id)?;
+        Ok(pdf::page_sizes_mm(&file.bytes))
     }
 
     /// What is written beneath a signature: the place and today's date, the

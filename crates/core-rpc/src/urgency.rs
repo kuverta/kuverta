@@ -270,6 +270,9 @@ impl Core {
                         .unwrap_or_else(|| "(unknown)".into()),
                     subject: m.summary.subject.unwrap_or_else(|| "(no subject)".into()),
                     unread: m.unread,
+                    // Urgency is about what has not been dealt with, and the
+                    // ranking already drops what was answered.
+                    answered: false,
                     has_attachments: m.summary.has_attachments,
                     list_id: m.summary.list_id,
                     category: m.category,

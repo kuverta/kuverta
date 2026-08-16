@@ -40,6 +40,14 @@ const CAPTION_BAND: f32 = 24.0;
 /// a little under the line of text it is part of, and that line is beside it
 /// rather than over or under it.
 const OWN_BAND: f32 = 4.0;
+/// The room a line to sign on has above it, for the ink. Words closer than
+/// this are a table's row rather than the air over a signature.
+const ROOM_ABOVE: f32 = 20.0;
+/// Rules drawn to the same width this many times over are a table's borders,
+/// whatever the words in its cells say.
+const A_TABLE: usize = 3;
+/// How much of a label under a line may be read as naming the signatory.
+const MOST_LABEL: usize = 80;
 /// Strokes flatter than this read as horizontal.
 const FLAT: f32 = 2.0;
 
@@ -277,7 +285,7 @@ impl Reader {
         for (number, page_id) in doc.get_pages() {
             let number = number as usize;
             let (boxed, rotate) = pdf::page_geometry(doc, page_id);
-            let (matrix, _) = pdf::display_to_page(boxed, rotate);
+            let (matrix, size) = pdf::display_to_page(boxed, rotate);
             let shown = |point: (f32, f32)| pdf::to_display(matrix, point);
 
             let lines = text_lines(
@@ -308,8 +316,21 @@ impl Reader {
             for line in &lines {
                 rules.extend(underscore_rules(line));
             }
-            for rule in dedupe(rules) {
-                if let Some(spot) = spot(number, &rule, &lines) {
+            let rules = dedupe(rules);
+            #[cfg(test)]
+            if std::env::var("SPOT_DEBUG").is_ok() {
+                for rule in &rules {
+                    println!("rule p{number} {rule:?} border={}", a_border(rule, &rules));
+                    for line in lines
+                        .iter()
+                        .filter(|l| under(rule, l) && (l.y - rule.y).abs() < 40.0)
+                    {
+                        println!("   near y={} {:?}", line.y, line.text);
+                    }
+                }
+            }
+            for rule in &rules {
+                if let Some(spot) = spot(number, rule, &rules, &lines, size) {
                     out.push(spot);
                 }
             }
@@ -318,8 +339,42 @@ impl Reader {
     }
 }
 
+impl TextLine {
+    /// The part of the line standing over or under a rule, which is the
+    /// label that belongs to it.
+    ///
+    /// A page may set two signature blocks side by side, and then one
+    /// baseline carries both names with a wide gap between them. So the line
+    /// is read as the runs the gaps divide it into, and the rule takes the
+    /// run it lies most under — whole, even where the words run on past the
+    /// end of the rule, which is where a name usually is.
+    fn across(&self, x0: f32, x1: f32) -> String {
+        let mut runs: Vec<(f32, f32, String)> = Vec::new();
+        for item in &self.items {
+            match runs.last_mut() {
+                Some((_, end, text)) if item.x - *end <= item.size * 2.0 => {
+                    if item.x - *end > item.size * 0.25 && !text.ends_with(' ') {
+                        text.push(' ');
+                    }
+                    text.push_str(&item.text);
+                    *end = item.x + item.advance;
+                }
+                _ => runs.push((item.x, item.x + item.advance, item.text.clone())),
+            }
+        }
+        runs.into_iter()
+            .map(|(from, to, text)| (to.min(x1) - from.max(x0), text))
+            .filter(|(overlap, _)| *overlap > 0.0)
+            .max_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, text)| text.trim().to_string())
+            .unwrap_or_default()
+    }
+}
+
 /// The characters as lines of text: everything on one baseline, left to
-/// right, with a space where the page leaves a gap.
+/// right, with a space where the page leaves a gap. A line with nothing on
+/// it but spaces — an empty paragraph — is not a line: it would read as
+/// words standing over a rule where the page is blank.
 fn text_lines(mut glyphs: Vec<Glyph>) -> Vec<TextLine> {
     glyphs.sort_by(|a, b| b.y.total_cmp(&a.y).then(a.x.total_cmp(&b.x)));
     let mut lines: Vec<TextLine> = Vec::new();
@@ -342,6 +397,7 @@ fn text_lines(mut glyphs: Vec<Glyph>) -> Vec<TextLine> {
             }),
         }
     }
+    lines.retain(|line| !line.text.trim().is_empty());
     lines
 }
 
@@ -393,32 +449,103 @@ fn under(rule: &Rule, line: &TextLine) -> bool {
     line.x1 > rule.x0 - 10.0 && line.x0 < rule.x1 + 10.0
 }
 
-/// A rule as a place to sign, when the words around it say it is one.
-fn spot(page: usize, rule: &Rule, lines: &[TextLine]) -> Option<Spot> {
+/// Whether `rule` is one of a table's borders: a table rules the same width
+/// over and over down the page, and the words in its cells — „Für die GmbH
+/// unterzeichnet“ — are a heading, not a line to sign on.
+fn a_border(rule: &Rule, rules: &[Rule]) -> bool {
+    rules
+        .iter()
+        .filter(|other| (other.x0 - rule.x0).abs() < 6.0 && (other.x1 - rule.x1).abs() < 6.0)
+        .count()
+        >= A_TABLE
+}
+
+/// Whether `rule` is the page's own furniture rather than anything in it: a
+/// frame drawn around the paper, a line over a footer. Nobody signs there,
+/// and the title beneath a frame's top edge is not a name.
+fn furniture(rule: &Rule, size: (f32, f32)) -> bool {
+    rule.x1 - rule.x0 > size.0 * 0.9 || rule.y < 15.0 || rule.y > size.1 - 15.0
+}
+
+/// Whether words under a line read as the signatory it is for: a name, a
+/// role, a party — short, and not a sentence or a row of figures.
+fn names_a_signatory(text: &str) -> bool {
+    let text = text.trim();
+    !text.is_empty()
+        && text.chars().count() <= MOST_LABEL
+        && !text.ends_with('.')
+        && !text.ends_with(':')
+        && text.chars().filter(char::is_ascii_digit).count() <= 2
+        && text.chars().next().is_some_and(char::is_uppercase)
+}
+
+/// A rule as a place to sign, when the page says it is one.
+///
+/// Two ways it says so. The words right above it may ask for a signature —
+/// „Bitte hier unterschreiben:“ — and then they are the whole of the answer.
+/// Otherwise the line must have air above it, which is where the ink goes,
+/// and words under it that either name a signature or name the person
+/// signing. That second way is what a contract signed by name looks like:
+/// a rule, and under it „Nicolas Zemke“ and what they sign as.
+fn spot(
+    page: usize,
+    rule: &Rule,
+    rules: &[Rule],
+    lines: &[TextLine],
+    size: (f32, f32),
+) -> Option<Spot> {
+    if a_border(rule, rules) || furniture(rule, size) {
+        return None;
+    }
     // The words on the rule's own baseline: "Unterschrift: ______" names
-    // the line it precedes.
+    // the line it precedes; "Hamburg, den ______" is a field, not a line to
+    // sign on, and says nothing about signing.
     let own: String = lines
         .iter()
         .filter(|line| (line.y - rule.y).abs() <= OWN_BAND)
-        .map(|line| line.text.replace('_', " "))
+        .map(|line| line.across(rule.x0, rule.x1).replace('_', " "))
         .collect::<Vec<_>>()
         .join(" ");
-    let below = lines
-        .iter()
-        .filter(|line| under(rule, line))
-        .filter(|line| rule.y - line.y > OWN_BAND && rule.y - line.y <= LABEL_BELOW)
+    let nearby = |from: f32, to: f32| {
+        lines
+            .iter()
+            .filter(|line| under(rule, line))
+            .filter(move |line| {
+                let gap = (line.y - rule.y).abs();
+                gap > from && gap <= to
+            })
+    };
+    let below = nearby(OWN_BAND, LABEL_BELOW)
+        .filter(|line| line.y < rule.y)
         .max_by(|a, b| a.y.total_cmp(&b.y));
-    let above = lines
-        .iter()
-        .filter(|line| under(rule, line))
-        .filter(|line| line.y - rule.y > OWN_BAND && line.y - rule.y <= LABEL_ABOVE)
+    let above = nearby(OWN_BAND, LABEL_ABOVE)
+        .filter(|line| line.y > rule.y)
         .min_by(|a, b| a.y.total_cmp(&b.y));
-
     let words =
-        |line: Option<&TextLine>| line.map(|l| l.text.trim().to_string()).unwrap_or_default();
-    let label = [words(below), words(above), own.trim().to_string()]
-        .into_iter()
-        .find(|text| names_a_signature(text))?;
+        |line: Option<&TextLine>| line.map(|l| l.across(rule.x0, rule.x1)).unwrap_or_default();
+
+    let (below, above, own) = (words(below), words(above), own.trim().to_string());
+    let label = if names_a_signature(&above) {
+        above
+    } else {
+        // Room for the ink, or it is a row of something rather than a line
+        // to write on.
+        let room_above = nearby(OWN_BAND, ROOM_ABOVE).all(|line| line.y < rule.y);
+        if !room_above {
+            return None;
+        }
+        if names_a_signature(&below) || names_a_signature(&own) {
+            if names_a_signature(&below) {
+                below
+            } else {
+                own
+            }
+        } else if own.is_empty() && names_a_signatory(&below) {
+            below
+        } else {
+            return None;
+        }
+    };
 
     let room_beneath = !lines
         .iter()
@@ -603,6 +730,68 @@ mod tests {
             .to_string()]));
         assert_eq!(found.len(), 1, "{found:#?}");
         assert_eq!(found[0].label, "Unterschrift");
+    }
+
+    /// The last page of a resolution: a frame around the paper, a table
+    /// whose heading happens to say "unterzeichnet", and a signature block
+    /// of two rules side by side with a name under each — no word anywhere
+    /// saying "Unterschrift".
+    fn resolution() -> Vec<u8> {
+        pdf_of(&[[
+            // The page's own frame, and a table of four ruled rows.
+            "0 0 612 792 re S",
+            "70 700 440 0.5 re f",
+            "70 676 440 0.5 re f",
+            "70 652 440 0.5 re f",
+            "70 628 440 0.5 re f",
+            "BT /F1 10 Tf 74 682 Td (Für die GmbH unterzeichnet) Tj ET",
+            "BT /F1 10 Tf 74 658 Td (Stefan Pabst) Tj ET",
+            // An empty paragraph, which is a space and not a line of text.
+            "BT /F1 11 Tf 70 320 Td ( ) Tj ET",
+            // The signature block.
+            "0.5 w 70 300 m 274 300 l S",
+            "0.5 w 320 300 m 524 300 l S",
+            "BT /F1 10 Tf 70 286 Td (Erika Mustermann) Tj ET",
+            "BT /F1 10 Tf 320 286 Td (Max Mustermann) Tj ET",
+            "BT /F1 9 Tf 70 274 Td (Gesellschafterin und Darlehensgeberin) Tj ET",
+            "BT /F1 9 Tf 70 40 Td (Gesellschafterbeschluss vom 07.10.2026) Tj ET",
+        ]
+        .join("\n")])
+    }
+
+    #[test]
+    fn a_rule_with_a_name_under_it_is_a_line_to_sign_on() {
+        let found = find(&resolution());
+        assert_eq!(found.len(), 2, "{found:#?}");
+        // Each takes the name over its own half of the baseline, not both.
+        assert_eq!(found[0].label, "Erika Mustermann");
+        assert_eq!(found[1].label, "Max Mustermann");
+        assert!((found[0].x_mm - 26.1).abs() < 1.0, "{found:#?}");
+        assert!((found[1].x_mm - 114.3).abs() < 1.0, "{found:#?}");
+        assert!((found[0].above_bottom_mm - 105.1).abs() < 1.0, "{found:#?}");
+        match choose(&found, None, None, "Erika Mustermann") {
+            Choice::On(spot) => assert_eq!(spot.label, "Erika Mustermann"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_table_is_not_a_line_to_sign_on_however_its_heading_reads() {
+        // The four ruled rows say "unterzeichnet" and have a name under
+        // that; the page's frame has the title under its top edge. Of the
+        // whole page only the two rules of the signature block are places
+        // to sign, and the test above says which.
+        let found = find(&resolution());
+        assert!(
+            found.iter().all(|spot| spot.above_bottom_mm < 110.0),
+            "{found:#?}"
+        );
+        assert!(
+            !found
+                .iter()
+                .any(|spot| spot.label.contains("unterzeichnet")),
+            "{found:#?}"
+        );
     }
 
     #[test]

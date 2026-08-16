@@ -66,7 +66,7 @@ pub use core_pgp::{
     SignatureState, SignatureView,
 };
 pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
-pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, SignatureSettings};
+pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, SignatureSettings};
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use outbox::{OutboxSent, OutboxView};
@@ -163,6 +163,11 @@ pub struct MessageRow {
     /// is always the same person.
     #[serde(default)]
     pub to: Option<Vec<String>>,
+    /// The account has answered it. The list says so, the way a mail program
+    /// always has: you can see at a glance which of yesterday's mail you
+    /// already dealt with.
+    #[serde(default)]
+    pub answered: bool,
 }
 
 impl From<ListedMessage> for MessageRow {
@@ -182,6 +187,7 @@ impl From<ListedMessage> for MessageRow {
             category: listed.category,
             snippet: summary.snippet,
             to: None,
+            answered: listed.answered,
         }
     }
 }
@@ -750,6 +756,26 @@ impl Core {
         )
     }
 
+    /// Marks a message as answered, after a reply to it has gone.
+    ///
+    /// `\Answered` is what every other mail program writes when you reply,
+    /// so a reply sent from here shows as answered on the phone too. It is
+    /// queued like any other change but with no undo window: nothing undoes
+    /// a message that has already been sent, and the flag is only the record
+    /// of it.
+    pub fn set_answered(&self, account: AccountId, id: MessageId) -> Result<i64> {
+        self.enqueue(
+            account,
+            id,
+            OperationKind::Flag {
+                flag: "\\Answered".into(),
+                set: true,
+            },
+            None,
+            0,
+        )
+    }
+
     /// Files a message under a category, and records the correction.
     ///
     /// Not queued, and that is the point rather than an omission: a category
@@ -1078,6 +1104,7 @@ fn search_rows(found: Vec<core_store::MessageSummary>) -> Vec<MessageRow> {
             // Not carried by the search index; the list window is where
             // these are answered.
             unread: false,
+            answered: false,
             has_attachments: summary.has_attachments,
             list_id: summary.list_id,
             category: None,
