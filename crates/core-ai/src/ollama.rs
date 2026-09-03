@@ -24,6 +24,11 @@ pub enum AiError {
 
     #[error("{0} is not a kind of model provider kuverta knows")]
     Kind(String),
+
+    /// The model declined to answer: Claude's safety classifiers, which say
+    /// so as a reply rather than an error status.
+    #[error("the model refused to work on this (refusal, category {0})")]
+    Refused(String),
 }
 
 /// What a vision model is told before it is shown a page.
