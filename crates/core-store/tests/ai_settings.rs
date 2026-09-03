@@ -106,3 +106,39 @@ fn removing_a_provider_sends_its_jobs_back_to_their_defaults_and_leaves_the_rest
 
     let _ = std::fs::remove_dir_all(dir);
 }
+
+#[test]
+fn claude_is_a_kind_of_its_own_and_making_room_for_it_keeps_every_job() {
+    let (store, dir) = fresh("claude");
+    let hosted = store.add_ai_provider(&deepseek()).unwrap();
+    store.set_ai_task("chat", hosted, "deepseek-chat").unwrap();
+    // Back to before the provider table was rebuilt, so that opening the
+    // store rebuilds it with a job pointing into it.
+    store
+        .connection()
+        .execute_batch("PRAGMA user_version = 23;")
+        .unwrap();
+    drop(store);
+    let store = Store::open(dir.join("test.db")).unwrap();
+
+    assert_eq!(store.ai_providers().unwrap().len(), 2);
+    assert_eq!(store.ai_tasks().unwrap()[0].provider_id, hosted);
+    let claude = store
+        .add_ai_provider(&NewAiProvider {
+            kind: "anthropic".into(),
+            label: "Claude".into(),
+            base_url: "https://api.anthropic.com/v1".into(),
+        })
+        .unwrap();
+    assert_eq!(
+        store.ai_provider(claude).unwrap().unwrap().kind,
+        "anthropic"
+    );
+    let fk: i64 = store
+        .connection()
+        .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(fk, 1, "foreign keys are back on");
+
+    let _ = std::fs::remove_dir_all(dir);
+}

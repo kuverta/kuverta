@@ -3064,3 +3064,39 @@ The same silence hid the pictures bar and the outbox's "sent" report.
 keeps it there, and a refused `listen` is now said in the window rather
 than swallowed. The jsdom harness could not see this: its stubbed bridge
 answers every `listen`, which is one of the things it stubs.
+
+## 54. Claude as a provider of its own
+
+Claude can be added under Settings → Models as a provider, beside Ollama
+and the OpenAI-compatible services. It is a kind of its own, `anthropic`,
+spoken to over Anthropic's Messages API (`crates/core-ai/src/anthropic.rs`)
+rather than through an OpenAI-compatible shim: the key goes in `x-api-key`,
+the system prompt is a field of its own, a tool call and its result are
+content blocks matched by id, a page is an `image` block, and the model list
+says which models see images, so a vision job is checked rather than
+guessed at. The key is kept in the keychain as for any hosted service; it is
+an API key from console.anthropic.com, which a Claude.ai subscription is not.
+
+Three things differ from the other providers on purpose:
+
+- **No sampling settings, and room to think.** Current Claude models refuse
+  `temperature`, and think before answering — some cannot be told not to —
+  with the thinking counted against `max_tokens`. A one-word judgement is
+  therefore asked at low effort with at least 2,048 tokens of room, billed
+  by what is used. A model that refuses an effort level (older ones) is asked
+  again without one and not told from then on, as the OpenAI client does
+  with `reasoning_effort`.
+- **Thinking is never sent back.** Claude checks that the conversation
+  behind a thinking block is unchanged, and the assistant changes its
+  history: mail withheld after a refusal, a cut-off answer joined to its
+  continuation. Each turn goes back as its text and tool calls only, which
+  every Claude model accepts. A round offered no tools sends earlier calls
+  and results as text, so no request carries tool blocks without tools.
+- **A refusal is an error.** Claude's safety classifiers answer with
+  `stop_reason: "refusal"`, not an error status; that becomes
+  `AiError::Refused`, which the assistant treats as a content filter — the
+  question is asked once more without the mail.
+
+`ai_provider`'s CHECK now allows `anthropic`. SQLite cannot alter a CHECK,
+so migration 24 builds the table again with foreign keys off for the
+length of it, keeping every job that points at a provider.

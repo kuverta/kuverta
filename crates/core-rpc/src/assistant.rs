@@ -1040,7 +1040,8 @@ impl Core {
 
 /// Whether a model service's error is its content filter refusing the input,
 /// rather than anything wrong with the request. DeepSeek says "Content Exists
-/// Risk"; OpenAI and Azure say content_filter or content management policy.
+/// Risk"; OpenAI and Azure say content_filter or content management policy;
+/// Claude stops with a refusal.
 fn is_content_refusal(error: &str) -> bool {
     let error = error.to_lowercase();
     [
@@ -1048,6 +1049,8 @@ fn is_content_refusal(error: &str) -> bool {
         "content_filter",
         "content management policy",
         "content_policy_violation",
+        // Claude's safety classifiers, as core-ai reports them.
+        "the model refused to work on this",
     ]
     .iter()
     .any(|signal| error.contains(signal))

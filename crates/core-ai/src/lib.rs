@@ -21,10 +21,11 @@
 //! The model server is Ollama by default, spoken to over its HTTP API directly.
 //! It is a local process on a known port, and a client library for a handful
 //! of endpoints would be more code to trust than the endpoints themselves. A
-//! hosted service with an OpenAI-compatible API can stand in for it, when the
-//! person chooses one — see [`Provider`].
+//! hosted service with an OpenAI-compatible API, or Claude over Anthropic's own
+//! API, can stand in for it, when the person chooses one — see [`Provider`].
 
 mod agent;
+mod anthropic;
 mod neighbours;
 mod ollama;
 mod prompt;
@@ -33,6 +34,7 @@ mod transcript;
 mod usage;
 
 pub use agent::{AssistantReply, ToolCall, ToolSpec, Turn};
+pub use anthropic::Anthropic;
 pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
 pub use ollama::{
     AiError, ChatReply, Embedded, Ollama, PullProgress, TRANSCRIBE, TRANSCRIBE_CONTEXT,

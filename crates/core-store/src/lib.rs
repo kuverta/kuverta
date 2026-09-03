@@ -1859,7 +1859,8 @@ pub struct MessageSummary {
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredAiProvider {
     pub id: i64,
-    /// `ollama`, or `openai` for a service that speaks OpenAI's API.
+    /// `ollama`, `openai` for a service that speaks OpenAI's API, or
+    /// `anthropic` for Claude.
     pub kind: String,
     pub label: String,
     pub base_url: String,

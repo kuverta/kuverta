@@ -625,6 +625,27 @@ CREATE TABLE skill (
     enabled     INTEGER NOT NULL DEFAULT 1
 );
 "#,
+    // v24 — Claude as a provider of its own kind. SQLite cannot change a
+    // CHECK, so the table is built again with the wider one. Foreign keys are
+    // off while it is, so that dropping the old table does not take `ai_task`
+    // rows with it; the new table takes the old one's name, which is the name
+    // `ai_task` refers to.
+    r#"
+PRAGMA foreign_keys = OFF;
+CREATE TABLE ai_provider_new (
+    id         INTEGER PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('ollama', 'openai', 'anthropic')),
+    label      TEXT NOT NULL,
+    base_url   TEXT NOT NULL,
+    key_name   TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+INSERT INTO ai_provider_new (id, kind, label, base_url, key_name, created_at)
+SELECT id, kind, label, base_url, key_name, created_at FROM ai_provider;
+DROP TABLE ai_provider;
+ALTER TABLE ai_provider_new RENAME TO ai_provider;
+PRAGMA foreign_keys = ON;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
