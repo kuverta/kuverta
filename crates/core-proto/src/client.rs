@@ -74,7 +74,7 @@ impl ImapClient {
             .map_err(ProtoError::Io)?
             .ok_or(ProtoError::NoGreeting)?;
 
-        let credential = auth.credential()?;
+        let credential = auth.credential().await?;
         let mut session = match credential {
             Credential::Password(password) => client
                 .login(&config.username, &password)

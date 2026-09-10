@@ -14,6 +14,7 @@ fn store_with_account() -> (Store, AccountId) {
             imap_security: ImapSecurity::Plaintext,
             username: "dev@fuckmail.test".into(),
             auth_method: "app_password".into(),
+            ..Default::default()
         })
         .expect("add account");
     (store, id)
@@ -91,6 +92,7 @@ fn the_same_message_on_two_accounts_stays_separate() {
             imap_security: ImapSecurity::Plaintext,
             username: "work@fuckmail.test".into(),
             auth_method: "app_password".into(),
+            ..Default::default()
         })
         .unwrap();
 
@@ -363,6 +365,7 @@ fn reopening_a_database_is_a_no_op_migration() {
                 imap_security: ImapSecurity::Plaintext,
                 username: "dev@fuckmail.test".into(),
                 auth_method: "app_password".into(),
+                ..Default::default()
             })
             .unwrap()
     };
@@ -511,4 +514,48 @@ fn folder_round_trips_its_sync_state() {
     assert_eq!(folder.name, "INBOX");
 
     assert!(store.folder(9999).unwrap().is_none());
+}
+
+#[test]
+fn an_oauth_account_round_trips_its_app_registration() {
+    let store = Store::open_in_memory().unwrap();
+    store
+        .add_account(&NewAccount {
+            label: "Work".into(),
+            email: "work@example.com".into(),
+            imap_host: "outlook.office365.com".into(),
+            imap_port: 993,
+            imap_security: ImapSecurity::Tls,
+            username: "work@example.com".into(),
+            auth_method: "oauth2".into(),
+            oauth_client_id: Some("11111111-2222-3333-4444-555555555555".into()),
+            oauth_tenant: Some("common".into()),
+        })
+        .unwrap();
+
+    let account = store.account_by_email("work@example.com").unwrap().unwrap();
+    assert_eq!(account.auth_method, "oauth2");
+    assert_eq!(account.oauth_tenant.as_deref(), Some("common"));
+    assert_eq!(
+        account.oauth_client_id.as_deref(),
+        Some("11111111-2222-3333-4444-555555555555")
+    );
+
+    // A password account leaves them unset rather than storing empty strings.
+    store
+        .add_account(&NewAccount {
+            label: "Personal".into(),
+            email: "me@example.de".into(),
+            imap_host: "imap.example.de".into(),
+            imap_port: 993,
+            imap_security: ImapSecurity::Tls,
+            username: "me@example.de".into(),
+            auth_method: "app_password".into(),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let plain = store.account_by_email("me@example.de").unwrap().unwrap();
+    assert!(plain.oauth_client_id.is_none());
+    assert!(plain.oauth_tenant.is_none());
 }

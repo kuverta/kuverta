@@ -36,6 +36,11 @@ rusqlite = { version = "0.40.2", features = ["bundled"] }
 async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
 mail-parser = "0.11.9"
 sha2 = "0.11.0"
+async-trait = "0.1.92"
+# rustls rather than the platform's native TLS, matching the IMAP transport.
+# 0.13 renamed the TLS features and split `form` out of the default set; the
+# device flow posts form bodies, so it has to be requested explicitly.
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "json", "form", "http2", "charset"] }
 # Pinned to 3.x: 4.x rewrote the API around `keyring-core` and requires
 # registering a credential store at startup. 3.6 is maintained and its `Entry`
 # API is stable; revisit when there is a reason to.

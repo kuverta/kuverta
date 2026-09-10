@@ -118,7 +118,18 @@ touches 6 folders; the next one touches 0.
 
 Still open for month 2: IDLE for push, and QRESYNC (`VANISHED`) to replace the
 `UID SEARCH ALL` reconciliation, which is currently proportional to folder size.
-Month 3 is next: OAuth2 device flow for M365, and the real accounts.
+Month 3's OAuth2 device flow (RFC 8628) is implemented and tested against a
+scripted endpoint: polling, `slow_down`, expired codes, refresh-token rotation,
+and a rejected refresh token that is discarded rather than retried forever.
+`AuthProvider` became async to accommodate it — the reason the trait existed.
+
+To use it you need an Azure AD app registration (a public client with the
+`IMAP.AccessAsUser.All` and `offline_access` scopes); pass its application id as
+`--client-id`. Nothing about it is verified against a real tenant yet, which is
+the one thing still outstanding for M365.
+
+Still open: IDLE for push, QRESYNC (`VANISHED`) to replace the `UID SEARCH ALL`
+reconciliation, and connecting the three real accounts.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 

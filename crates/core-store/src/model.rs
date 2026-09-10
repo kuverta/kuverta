@@ -8,9 +8,10 @@ pub type AccountId = i64;
 pub type FolderId = i64;
 pub type MessageId = i64;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum ImapSecurity {
     /// Implicit TLS, normally port 993.
+    #[default]
     Tls,
     /// Cleartext connection upgraded via STARTTLS, normally port 143.
     StartTls,
@@ -37,7 +38,7 @@ impl ImapSecurity {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NewAccount {
     pub label: String,
     pub email: String,
@@ -47,6 +48,10 @@ pub struct NewAccount {
     pub username: String,
     /// Matches the auth strategy in `core-accounts`: "app_password" | "oauth2".
     pub auth_method: String,
+    /// Azure AD (or equivalent) application id, for `oauth2` accounts.
+    pub oauth_client_id: Option<String>,
+    /// Directory id, or "common" for personal Microsoft accounts.
+    pub oauth_tenant: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +64,8 @@ pub struct Account {
     pub imap_security: ImapSecurity,
     pub username: String,
     pub auth_method: String,
+    pub oauth_client_id: Option<String>,
+    pub oauth_tenant: Option<String>,
 }
 
 #[derive(Debug, Clone)]
