@@ -90,6 +90,12 @@ e2e: dev-up build ## Register the dev account in a scratch store, sync it, and s
 	    --subject "Gruesse aus fuckmail" --no-save-to-sent \
 	    --password-env FUCKMAIL_DEV_PASSWORD
 	@echo "  -> read it at http://localhost:8025"
+	@echo
+	@# Queued and then withdrawn, so the demo shows the undo window without
+	@# mutating the seeded mailbox the sync tests assert on.
+	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail archive 1
+	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail queue
+	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail undo
 
 
 clean: ## Remove build output and the scratch store

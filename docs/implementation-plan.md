@@ -38,11 +38,18 @@ Decision 2 changed after month 4. Splitting write into two stages keeps most of 
 | Stage | What it is | What it costs | Safety |
 |---|---|---|---|
 | **Send** | Compose, reply, forward, SMTP submission, `APPEND` to Sent | Contained: a new crate, a schema migration, no change to the sync path | IMAP stays `EXAMINE`-only. Purely additive — a bug can misdeliver a message it was asked to send, but cannot touch stored mail |
-| **Mailbox mutation** | Archive, delete, move, mark-read from inside fuckmail | The expensive half: `SELECT`+`STORE`+`MOVE`+`EXPUNGE`, an offline operation queue, conflict resolution against server-side changes, and an undo window | Gives up the structural guarantee. This is the stage that needs the queue, the conflict rules, and the tests to earn it back |
+| **Mailbox mutation** | Archive, delete, move, mark-read from inside fuckmail | The expensive half: `SELECT`+`STORE`+`MOVE`, a durable operation queue, conflict resolution against server-side changes, and an undo window | Gives up the structural guarantee, and earns back what it can: intent is recorded before the server is touched, no UID is acted on without proving it still holds the expected message, and **delete means move-to-Trash** — nothing here destroys mail permanently |
 
 Send ships and gets dogfooded before mutation starts. The point of the ordering is that if motivation or time runs out mid-write, it runs out with the safe half done rather than the dangerous half half-done.
 
-Until stage 2 lands, read-only remains a real security posture: folders are opened with `EXAMINE`, so the server itself rejects any mutation, and a sync bug can lose cached data but never mail.
+Both stages have landed. What replaced the structural guarantee, and what the tests hold in place:
+
+- **Intent is durable before it is acted on.** The queue is written first, so a crash between the user acting and the round trip completing loses nothing and repeats nothing.
+- **No UID is trusted on its own.** A UID means nothing without the UIDVALIDITY it was issued under, and neither proves it still refers to the same mail. The folder's UIDVALIDITY, the UID's occupancy, and the message's `Message-ID` are all checked before a write. Anything that does not line up is refused with a reason, not applied.
+- **Nothing is destroyed.** There is no expunge operation: delete moves to Trash. A bare `EXPUNGE` is never sent even as part of a move fallback, because it would remove every `\Deleted` message in the folder including ones another client marked.
+- **The local store is never guessed at.** The executor changes nothing locally; the sync pass observes the server afterwards, using the same code that reconciles changes made from any other client.
+
+The remaining risk is honest and unshrinkable: fuckmail can now move your mail, and a bug in the queue can move it somewhere you did not ask for. It cannot delete it.
 
 ---
 
@@ -68,7 +75,7 @@ Until stage 2 lands, read-only remains a real security posture: folders are open
 | Crate | Month | Responsibility |
 |---|---|---|
 | `core-store` | 1 | SQLite + FTS5, blobs on disk, **Message-ID dedup** |
-| `core-proto` | 1–2 | IMAP: LIST, FETCH, CONDSTORE, IDLE — read-only plus `APPEND` |
+| `core-proto` | 1–2 | IMAP: LIST, FETCH, CONDSTORE, IDLE, plus the writes behind §1a |
 | `core-accounts` | 2–3 | Auth trait: app password \| OAuth device flow; autoconfig |
 | `core-rules` | 4 | Deterministic baseline classifier |
 | `core-smtp` | 5–6 | Compose, MIME construction, SMTP submission (§1a stage 1) |
@@ -101,7 +108,7 @@ Until stage 2 lands, read-only remains a real security posture: folders are open
 | **4** | `core-rpc`. Triage UI in Tauri: list, filter, categorise, keyboard-first. `core-rules` baseline. | You open it daily |
 | **5** | `core-ai` → Ollama. Correction logging. Measure model vs. baseline. | **SHIPPABLE — daily driver** |
 | **5–6** | `core-smtp`: compose, reply, SMTP submission, `APPEND` to Sent (§1a stage 1). | You reply from fuckmail |
-| **6** | Mailbox mutation: operation queue, `STORE`/`MOVE`/`EXPUNGE`, conflict resolution, undo (§1a stage 2). | Apple Mail stays closed |
+| **6** | Mailbox mutation: operation queue, `STORE`/`MOVE`, conflict resolution, undo (§1a stage 2). | Apple Mail stays closed |
 | **6–7** | Paperless-ngx in Docker. `scannerd` on the Pi: page detect → capture → deskew → crop → upload with offline spooling. | Paper is searchable |
 | **8** | Unified inbox: documents and mail as one item type in one triage surface. | **The actual product** |
 | **9+** | Optional: mobile, distribution, SaaS. Decide with 4 months of real usage behind you. | — |
@@ -174,10 +181,27 @@ real TLS account — a path no test reaches, because the dev server is plaintext
 Every TLS config now names its provider, with a server-free regression test on
 each.
 
+Stage 2 landed too. `fuckmail archive`, `delete`, `move`, `read` and `unread`
+queue a change rather than performing one; `fuckmail sync` sends everything
+whose undo window has elapsed and then reconciles, so one command does both.
+`fuckmail undo` cancels the last change that has not left the machine, and
+`fuckmail queue` shows what is waiting.
+
+The executor is where the care went, and §1a lists what it guarantees. Nine
+integration tests against Dovecot cover the move, the flag change, both
+conflict paths, the obsolete path, cancellation, ordering, and mail with no
+`Message-ID`. The conflict check was verified by disabling it: without it the
+executor moves the wrong message and the test fails.
+
+That last case is worth recording, because the tests did not catch it and
+dogfooding did. A message with no `Message-ID` header is legal and is in the
+seeded fixtures. Reading "no `Message-ID` came back" as "no message at this
+UID" made such mail silently impossible to file — the operation was marked
+obsolete and nothing happened. Absence is now compared as carefully as
+presence, in both directions.
+
 Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, connecting the three real accounts, and stage 2 of
-the write capability (mailbox mutation: operation queue, conflict resolution,
-undo).
+UI, IDLE for push, QRESYNC, and connecting the three real accounts.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 

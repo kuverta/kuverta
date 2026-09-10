@@ -25,7 +25,7 @@ use std::collections::HashMap;
 use core_store::model::{AccountId, Operation, OperationKind, OperationState};
 use core_store::Store;
 
-use crate::client::{ImapClient, MoveOutcome};
+use crate::client::{ImapClient, MoveOutcome, UidProbe};
 use crate::ProtoError;
 
 #[derive(Debug, Default, Clone)]
@@ -156,26 +156,35 @@ async fn apply(
     op: &Operation,
     folder: &str,
 ) -> Result<Outcome, ProtoError> {
-    let found = client.uid_message_id(op.source_uid).await?;
-
-    let Some(found) = found else {
+    let found = match client.uid_probe(op.source_uid).await? {
         // Somebody else moved or deleted it. For a move that is the intent
         // already satisfied by other means; for a flag change there is nothing
         // left to flag. Either way there is nothing to do and nothing wrong.
-        return Ok(Outcome::Obsolete(format!(
-            "no message at UID {} in {folder} any more",
-            op.source_uid
-        )));
-    };
-
-    // The dangerous case, and the reason the expected id is recorded at all.
-    if let Some(expected) = &op.expect_message_id {
-        if found != *expected {
-            return Ok(Outcome::Conflict(format!(
-                "UID {} in {folder} now holds <{found}>, not <{expected}>",
+        UidProbe::Vacant => {
+            return Ok(Outcome::Obsolete(format!(
+                "no message at UID {} in {folder} any more",
                 op.source_uid
             )));
         }
+        UidProbe::Present { message_id } => message_id,
+    };
+
+    // The dangerous case, and the reason the expected id is recorded at all.
+    //
+    // Both sides are compared including their absence: `expect_message_id` is
+    // `None` precisely when the queued message had no `Message-ID` header, so
+    // finding one there now is as much a mismatch as finding the wrong one.
+    if found.as_deref() != op.expect_message_id.as_deref() {
+        let describe = |id: Option<&str>| match id {
+            Some(id) => format!("<{id}>"),
+            None => "a message with no Message-ID".to_string(),
+        };
+        return Ok(Outcome::Conflict(format!(
+            "UID {} in {folder} now holds {}, not {}",
+            op.source_uid,
+            describe(found.as_deref()),
+            describe(op.expect_message_id.as_deref()),
+        )));
     }
 
     match &op.kind {

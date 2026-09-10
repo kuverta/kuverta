@@ -14,7 +14,9 @@ use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
 use core_proto::{ImapClient, ImapConfig};
 use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
-use core_store::model::{ImapSecurity, NewAccount, SmtpConfig, SmtpSecurity};
+use core_store::model::{
+    ImapSecurity, NewAccount, NewOperation, OperationKind, SmtpConfig, SmtpSecurity,
+};
 use core_store::{Blobs, Store};
 
 #[derive(Parser)]
@@ -90,6 +92,35 @@ enum Command {
         /// Only show this category (e.g. transactional).
         #[arg(long)]
         category: Option<String>,
+    },
+    /// Move a message to the Archive folder.
+    Archive(Mutation),
+    /// Move a message to the Trash folder.
+    ///
+    /// Nothing here deletes mail permanently — see `docs/implementation-plan.md`
+    /// section 1a.
+    Delete(Mutation),
+    /// Move a message to a named folder.
+    Move {
+        #[command(flatten)]
+        common: Mutation,
+        /// Destination folder, as the server names it.
+        #[arg(long)]
+        to: String,
+    },
+    /// Mark a message read.
+    Read(Mutation),
+    /// Mark a message unread.
+    Unread(Mutation),
+    /// Cancel the most recent change that has not yet reached the server.
+    Undo {
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Show changes queued but not yet sent.
+    Queue {
+        #[arg(long)]
+        email: Option<String>,
     },
     /// Compose and send a message.
     ///
@@ -173,6 +204,28 @@ impl SmtpArgs {
             security,
         }))
     }
+}
+
+/// Everything a mailbox mutation needs beyond what it does.
+#[derive(Args)]
+struct Mutation {
+    /// The message: its number from `list`, or its Message-ID.
+    message: String,
+    #[arg(long)]
+    email: Option<String>,
+    /// Seconds to hold the change before it may be sent, so `undo` can still
+    /// reach it. The change is cancellable for as long as it is queued; this
+    /// is the floor, not the whole grace period.
+    #[arg(long, default_value_t = 10)]
+    undo_window: u64,
+}
+
+/// What the user asked for, before it is resolved to a folder or a flag.
+enum Intent {
+    Archive,
+    Trash,
+    MoveTo(String),
+    Seen(bool),
 }
 
 #[derive(Args)]
@@ -292,6 +345,13 @@ async fn main() -> Result<()> {
             limit,
             category,
         } => triage(&store, email.as_deref(), limit, category.as_deref()),
+        Command::Archive(args) => mutate(&store, args, Intent::Archive),
+        Command::Delete(args) => mutate(&store, args, Intent::Trash),
+        Command::Move { common, to } => mutate(&store, common, Intent::MoveTo(to)),
+        Command::Read(args) => mutate(&store, args, Intent::Seen(true)),
+        Command::Unread(args) => mutate(&store, args, Intent::Seen(false)),
+        Command::Undo { email } => undo(&store, email.as_deref()),
+        Command::Queue { email } => show_queue(&store, email.as_deref()),
         Command::Send(args) => send(&store, &blobs, args).await,
         Command::SetSmtp { email, clear, smtp } => set_smtp(&store, &email, clear, &smtp),
         Command::Status => status(&store, &blobs),
@@ -343,6 +403,194 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
         Auth::Oauth2 => println!("authorise it with: fuckmail login --email {}", args.email),
     }
     Ok(())
+}
+
+/// Queues a mailbox mutation.
+///
+/// Nothing is sent here. The change is recorded, the undo window starts, and
+/// the next `sync` is what puts it on the server — which is also what makes
+/// `undo` meaningful rather than a race.
+fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
+    let account = resolve_account(store, args.email.as_deref())?;
+    let message = resolve_message(store, account, &args.message)?;
+    let folders = store.folders(account)?;
+
+    let kind = match &intent {
+        Intent::Archive => OperationKind::Move {
+            target_folder: special_folder(&folders, "\\Archive", core_proto::client::ARCHIVE_NAMES)
+                .context(
+                    "this account has no Archive folder; use `move --to <folder>` to say where",
+                )?,
+        },
+        Intent::Trash => OperationKind::Move {
+            target_folder: special_folder(&folders, "\\Trash", core_proto::client::TRASH_NAMES)
+                .context("this account has no Trash folder; use `move --to <folder>`")?,
+        },
+        Intent::MoveTo(folder) => OperationKind::Move {
+            target_folder: folder.clone(),
+        },
+        Intent::Seen(set) => OperationKind::Flag {
+            flag: "\\Seen".into(),
+            set: *set,
+        },
+    };
+
+    let target = match &kind {
+        OperationKind::Move { target_folder } => Some(target_folder.as_str()),
+        OperationKind::Flag { .. } => None,
+    };
+    let (location, folder) = pick_location(store, &folders, message.id, target)?;
+
+    let op = store.enqueue_operation(&NewOperation {
+        account_id: account,
+        message_id: message.id,
+        kind: kind.clone(),
+        source_folder_id: folder.id,
+        source_uid: location.uid,
+        source_uid_validity: folder.uid_validity,
+        // What the executor will verify before it touches anything. Without a
+        // Message-ID there is nothing to check the UID against, and the
+        // operation is only as safe as the UID being untouched.
+        expect_message_id: message.rfc822_message_id.clone(),
+        execute_after: now_utc() + args.undo_window as i64,
+    })?;
+
+    let what = match &kind {
+        OperationKind::Move { target_folder } => format!("move to {target_folder}"),
+        OperationKind::Flag { set: true, .. } => "mark read".into(),
+        OperationKind::Flag { .. } => "mark unread".into(),
+    };
+    println!(
+        "queued: {what} — {} (from {})",
+        message.subject.as_deref().unwrap_or("(no subject)"),
+        folder.name
+    );
+    if args.undo_window > 0 {
+        println!("  `fuckmail undo` cancels it; `fuckmail sync` sends it (op {op})");
+    } else {
+        println!("  sends at the next `fuckmail sync` (op {op})");
+    }
+    Ok(())
+}
+
+fn undo(store: &Store, email: Option<&str>) -> Result<()> {
+    let account = resolve_account(store, email)?;
+    match store.cancel_latest_operation(account)? {
+        Some(op) => {
+            let what = match &op.kind {
+                OperationKind::Move { target_folder } => format!("move to {target_folder}"),
+                OperationKind::Flag { flag, set: true } => format!("set {flag}"),
+                OperationKind::Flag { flag, .. } => format!("clear {flag}"),
+            };
+            println!("undone: {what} (op {})", op.id);
+        }
+        // Deliberately not an error: "nothing to undo" is an answer.
+        None => println!("nothing queued to undo"),
+    }
+    Ok(())
+}
+
+fn show_queue(store: &Store, email: Option<&str>) -> Result<()> {
+    let account = resolve_account(store, email)?;
+    let pending = store.pending_operations(account)?;
+    if pending.is_empty() {
+        println!("nothing queued");
+        return Ok(());
+    }
+
+    let now = now_utc();
+    for op in &pending {
+        let what = match &op.kind {
+            OperationKind::Move { target_folder } => format!("move to {target_folder}"),
+            OperationKind::Flag { flag, set: true } => format!("set {flag}"),
+            OperationKind::Flag { flag, .. } => format!("clear {flag}"),
+        };
+        let when = if op.execute_after > now {
+            format!("holds for {}s", op.execute_after - now)
+        } else {
+            "ready".into()
+        };
+        println!("  {:>4}  {what:<28} {when}", op.id);
+        if let Some(error) = &op.last_error {
+            println!("        last attempt: {error}");
+        }
+    }
+    println!("{} queued; `fuckmail sync` sends them", pending.len());
+    Ok(())
+}
+
+/// Resolves the folder behind a special-use attribute, from what sync recorded.
+fn special_folder(
+    folders: &[core_store::model::Folder],
+    attribute: &str,
+    known_names: &[&str],
+) -> Option<String> {
+    let pairs: Vec<(&str, Option<&str>)> = folders
+        .iter()
+        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+        .collect();
+    core_proto::client::find_special(pairs, attribute, known_names).map(str::to_string)
+}
+
+/// Chooses which copy of a message to act on.
+///
+/// One message can be in several folders — that is the whole point of the
+/// dedup design, and on Gmail it is routine. Archiving means getting it out of
+/// the inbox, so INBOX wins when there is a choice; a copy already sitting in
+/// the destination is never the one to move.
+fn pick_location(
+    store: &Store,
+    folders: &[core_store::model::Folder],
+    message_id: i64,
+    target: Option<&str>,
+) -> Result<(core_store::model::Location, core_store::model::Folder)> {
+    let by_id = |id: i64| folders.iter().find(|f| f.id == id).cloned();
+
+    let mut candidates: Vec<_> = store
+        .locations_of(message_id)?
+        .into_iter()
+        .filter_map(|location| by_id(location.folder_id).map(|folder| (location, folder)))
+        .filter(|(_, folder)| target != Some(folder.name.as_str()))
+        .collect();
+
+    if candidates.is_empty() {
+        match target {
+            Some(folder) => bail!("that message is already in {folder}"),
+            None => bail!("that message is not in any folder this account has synced"),
+        }
+    }
+
+    candidates.sort_by_key(|(_, folder)| folder.name != "INBOX");
+    Ok(candidates.remove(0))
+}
+
+/// Accepts either the number `list` prints or an RFC 5322 Message-ID.
+///
+/// Both because neither alone is usable: the number is short enough to type
+/// but means nothing outside this store, and the Message-ID is stable but
+/// nobody wants to type one.
+fn resolve_message(
+    store: &Store,
+    account: i64,
+    handle: &str,
+) -> Result<core_store::model::StoredMessage> {
+    if let Ok(id) = handle.parse::<i64>() {
+        if let Some(message) = store.message_by_id(account, id)? {
+            return Ok(message);
+        }
+        bail!("no message {id} in this account; `fuckmail list` shows the numbers");
+    }
+
+    store
+        .message_by_rfc822_id(account, handle)?
+        .with_context(|| format!("no message <{handle}> in the store; sync first"))
+}
+
+fn now_utc() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 async fn send(store: &Store, blobs: &Blobs, args: SendArgs) -> Result<()> {
@@ -670,6 +918,40 @@ async fn sync(
             .await
             .with_context(|| format!("connecting to {}", account.imap_host))?;
 
+        // Queued changes go out first, so the reconciliation pass below sees
+        // their results and the user gets one command rather than two.
+        let flushed =
+            core_proto::flush_operations(&mut client, store, account.id, now_utc()).await?;
+        if !flushed.is_empty() {
+            println!(
+                "{}: {} change(s) sent{}{}{}",
+                account.email,
+                flushed.applied,
+                if flushed.obsolete > 0 {
+                    format!(", {} no longer applied", flushed.obsolete)
+                } else {
+                    String::new()
+                },
+                if flushed.conflicted > 0 {
+                    format!(", {} refused (see `fuckmail queue`)", flushed.conflicted)
+                } else {
+                    String::new()
+                },
+                if flushed.retryable > 0 {
+                    format!(", {} will be retried", flushed.retryable)
+                } else {
+                    String::new()
+                },
+            );
+        }
+        if flushed.non_atomic_moves > 0 {
+            eprintln!(
+                "warning: {} move(s) left a copy behind — this server supports neither \
+                 MOVE nor UIDPLUS",
+                flushed.non_atomic_moves
+            );
+        }
+
         let report = core_proto::sync_account(&mut client, store, blobs, account.id).await?;
         client.logout().await.ok();
 
@@ -827,8 +1109,10 @@ fn print_summary(message: &core_store::MessageSummary) {
         .or(message.from_addr.as_deref())
         .unwrap_or("(unknown)");
 
+    // The number is the handle the mutation commands take.
     println!(
-        "{when}  {:<28.28} {}{}{}",
+        "{:>5}  {when}  {:<28.28} {}{}{}",
+        message.id,
         sender,
         message.subject.as_deref().unwrap_or("(no subject)"),
         if message.has_attachments {

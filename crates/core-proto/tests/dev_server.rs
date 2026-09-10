@@ -296,6 +296,22 @@ mod mutate {
             .unwrap();
     }
 
+    /// Appends a message with no `Message-ID` header — unusual but legal, and
+    /// the case that made the executor's identity check ambiguous.
+    pub async fn append_without_message_id(session: &mut Session, subject: &str) {
+        let raw = format!(
+            "From: Test <test@example.com>\r\n\
+             Subject: {subject}\r\n\
+             Date: Mon, 07 Sep 2026 03:00:00 +0200\r\n\
+             \r\n\
+             body\r\n"
+        );
+        session
+            .append("INBOX", None, None, raw.as_bytes())
+            .await
+            .unwrap();
+    }
+
     pub async fn set_flag(session: &mut Session, uid: u32, flag: &str) {
         session.select("INBOX").await.unwrap();
         drain(
@@ -923,6 +939,106 @@ async fn operations_on_one_message_are_applied_in_the_order_they_were_made() {
         locations[0].flags.contains("\\Seen"),
         "flags were {:?}",
         locations[0].flags
+    );
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_message_without_a_message_id_can_still_be_filed() {
+    // Caught by dogfooding, not by the tests above: a message with no
+    // Message-ID header is legal and is in the fixtures, and reading "no
+    // Message-ID came back" as "no message here" made such mail impossible to
+    // move — silently, as an operation marked obsolete.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "no-msgid-op@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    for folder in ["INBOX", "Archive", "Trash"] {
+        mutate::reset_folder(&mut writer, folder).await;
+    }
+    mutate::append_without_message_id(&mut writer, "anonymous but filable").await;
+
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+    let stored = store.recent(account, 10).unwrap();
+    assert_eq!(stored.len(), 1);
+    let message = store.message_by_id(account, stored[0].id).unwrap().unwrap();
+    assert!(
+        message.rfc822_message_id.is_none(),
+        "the fixture should have no Message-ID"
+    );
+
+    let location = store.locations_of(message.id).unwrap().remove(0);
+    let folder = store.folder(location.folder_id).unwrap().unwrap();
+    let op = store
+        .enqueue_operation(&NewOperation {
+            account_id: account,
+            message_id: message.id,
+            kind: OperationKind::Move {
+                target_folder: "Archive".into(),
+            },
+            source_folder_id: location.folder_id,
+            source_uid: location.uid,
+            source_uid_validity: folder.uid_validity,
+            // None here means "expect a message with no Message-ID", which is
+            // exactly what is there.
+            expect_message_id: None,
+            execute_after: 0,
+        })
+        .unwrap();
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.applied, 1, "{report:?}");
+    assert_eq!(state_of(&store, op).0, "done");
+
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    let locations = store.locations_of(message.id).unwrap();
+    let folder = store.folder(locations[0].folder_id).unwrap().unwrap();
+    assert_eq!(folder.name, "Archive");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn expecting_no_message_id_and_finding_one_is_a_conflict() {
+    // The other half of comparing absence: absence must not act as a wildcard,
+    // or every message without an id would match every UID.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "msgid-mismatch-op@fuckmail.test";
+    let message_id = "has-an-id@example.com";
+    let mut writer = seeded_inbox(user, message_id, "this one has an id").await;
+
+    let (store, account, _blobs, _dir, mut client) = synced(user).await;
+    let op = enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        None,
+    );
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.conflicted, 1, "{report:?}");
+
+    let (state, error) = state_of(&store, op);
+    assert_eq!(state, "failed");
+    assert!(
+        error.as_deref().unwrap().contains("no Message-ID"),
+        "got {error:?}"
     );
 
     client.logout().await.unwrap();
