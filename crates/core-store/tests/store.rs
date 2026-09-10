@@ -530,6 +530,7 @@ fn an_oauth_account_round_trips_its_app_registration() {
             auth_method: "oauth2".into(),
             oauth_client_id: Some("11111111-2222-3333-4444-555555555555".into()),
             oauth_tenant: Some("common".into()),
+            smtp: None,
         })
         .unwrap();
 
@@ -558,4 +559,77 @@ fn an_oauth_account_round_trips_its_app_registration() {
     let plain = store.account_by_email("me@example.de").unwrap().unwrap();
     assert!(plain.oauth_client_id.is_none());
     assert!(plain.oauth_tenant.is_none());
+}
+
+#[test]
+fn an_account_round_trips_its_submission_endpoint() {
+    let store = Store::open_in_memory().unwrap();
+    store
+        .add_account(&NewAccount {
+            label: "Personal".into(),
+            email: "me@example.de".into(),
+            imap_host: "imap.example.de".into(),
+            imap_port: 993,
+            imap_security: ImapSecurity::Tls,
+            username: "me@example.de".into(),
+            auth_method: "app_password".into(),
+            smtp: Some(SmtpConfig {
+                host: "smtp.example.de".into(),
+                port: 587,
+                security: SmtpSecurity::StartTls,
+            }),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let account = store.account_by_email("me@example.de").unwrap().unwrap();
+    let smtp = account.smtp.expect("submission endpoint");
+    assert_eq!(smtp.host, "smtp.example.de");
+    assert_eq!(smtp.port, 587);
+    assert_eq!(smtp.security, SmtpSecurity::StartTls);
+}
+
+#[test]
+fn an_account_registered_before_send_existed_can_gain_an_endpoint() {
+    // Every account created up to schema v2 is in this state: it syncs, but
+    // has nowhere to submit to. It must not need re-creating to send.
+    let (store, account_id) = store_with_account();
+    assert!(store
+        .account_by_email("dev@fuckmail.test")
+        .unwrap()
+        .unwrap()
+        .smtp
+        .is_none());
+
+    store
+        .set_smtp(
+            account_id,
+            Some(&SmtpConfig {
+                host: "127.0.0.1".into(),
+                port: 1025,
+                security: SmtpSecurity::Plaintext,
+            }),
+        )
+        .unwrap();
+
+    let account = store
+        .account_by_email("dev@fuckmail.test")
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.smtp.as_ref().map(|s| s.port), Some(1025));
+
+    // And can lose it again, which is how sending gets turned off.
+    store.set_smtp(account_id, None).unwrap();
+    assert!(store
+        .account_by_email("dev@fuckmail.test")
+        .unwrap()
+        .unwrap()
+        .smtp
+        .is_none());
+}
+
+#[test]
+fn setting_an_endpoint_on_an_unknown_account_is_an_error() {
+    let store = Store::open_in_memory().unwrap();
+    assert!(store.set_smtp(4242, None).is_err());
 }

@@ -38,6 +38,53 @@ impl ImapSecurity {
     }
 }
 
+/// Transport security for SMTP submission.
+///
+/// Deliberately a separate type from [`ImapSecurity`] rather than a shared one:
+/// the two protocols have different conventional ports, and a value that means
+/// "993" must never be silently usable where one meaning "465" is expected.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum SmtpSecurity {
+    /// Implicit TLS, normally port 465.
+    #[default]
+    Tls,
+    /// Cleartext connection upgraded via STARTTLS, normally port 587.
+    StartTls,
+    /// No transport security. Only ever valid against the local dev sink.
+    Plaintext,
+}
+
+impl SmtpSecurity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Tls => "tls",
+            Self::StartTls => "starttls",
+            Self::Plaintext => "plaintext",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "tls" => Some(Self::Tls),
+            "starttls" => Some(Self::StartTls),
+            "plaintext" => Some(Self::Plaintext),
+            _ => None,
+        }
+    }
+}
+
+/// Where an account submits outgoing mail.
+///
+/// All-or-nothing: an account either has a complete submission endpoint or
+/// cannot send at all, which is why `Account::smtp` is one `Option` rather
+/// than three independently-nullable fields.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SmtpConfig {
+    pub host: String,
+    pub port: u16,
+    pub security: SmtpSecurity,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct NewAccount {
     pub label: String,
@@ -52,6 +99,8 @@ pub struct NewAccount {
     pub oauth_client_id: Option<String>,
     /// Directory id, or "common" for personal Microsoft accounts.
     pub oauth_tenant: Option<String>,
+    /// Submission endpoint. `None` leaves the account receive-only.
+    pub smtp: Option<SmtpConfig>,
 }
 
 #[derive(Debug, Clone)]
@@ -66,6 +115,9 @@ pub struct Account {
     pub auth_method: String,
     pub oauth_client_id: Option<String>,
     pub oauth_tenant: Option<String>,
+    /// Submission endpoint, when one has been configured. `None` means the
+    /// account can receive but not send.
+    pub smtp: Option<SmtpConfig>,
 }
 
 #[derive(Debug, Clone)]

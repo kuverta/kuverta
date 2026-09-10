@@ -10,7 +10,7 @@ Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
 | # | Decision | Choice | Why |
 |---|---|---|---|
 | 1 | Capacity | Solo, ~10h/week (~43h/month) | Given. Drives everything below. |
-| 2 | **What is v1** | **Triage layer, not a mail client** | A full client is ~18 months to beta at this pace. A read-only triage layer is usable in ~5 months and can be abandoned at any month with something left over. |
+| 2 | **What is v1** | **Full client, send first** | *Revised 2026-09-10.* Triage alone does not replace Apple Mail: every reply meant leaving the app, which is exactly the friction the project exists to remove. Write capability is in, sequenced cheapest-and-safest first — **send** (SMTP submission + `APPEND` to Sent), then **mailbox mutation** (archive/delete/move/mark-read). See §1a. |
 | 3 | UI stack | Tauri v2, dev mode only | Native shell + on-ramp to a real client, signing deferred until distribution. **Validated:** 59.8 fps scrolling 200k rows ([spike](spike-tauri-list.md)). |
 | 4 | Auth | App passwords now, pluggable trait | Google's restricted-scope verification (CASA) only applies when *distributing* an OAuth client. Personal use sidesteps it entirely. |
 | 5 | Providers | Custom domain → Gmail → M365 | Easiest-first. M365 needs an Azure app registration + device-code flow, but only for your own tenant: hours, not weeks. |
@@ -19,19 +19,30 @@ Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
 | 8 | Licence | Private now, AGPL-3.0 at publish | Sole copyright holder can always dual-license, so AGPL costs nothing and protects the SaaS option. |
 | 9 | Name | `fuckmail` as working title | Private repo. Keep it renameable: never in crate names, bundle ID, or schema. |
 
-**Deferred, not decided:** SaaS/multi-device sync, compose & send, OpenPGP, mobile app, distribution. Revisit at month 9.
+**Deferred, not decided:** SaaS/multi-device sync, OpenPGP, mobile app, distribution. Revisit at month 9.
 
 ---
 
 ## 1. What v1 actually is
 
-You keep reading and sending mail in Apple Mail. fuckmail runs alongside, connects **read-only** over IMAP, classifies everything, and gives you one triage surface. Scanned paper lands in the same surface.
+fuckmail syncs your mail over IMAP, classifies everything, and gives you one triage surface you can act from: read, reply, send, and file. Scanned paper lands in the same surface.
 
-**Explicit non-goals for v1:** composing, sending, HTML mail rendering, threading UI, attachment handling, search UX, multi-user, anything signed or distributable.
+**Still non-goals:** HTML mail *composition*, OpenPGP, multi-user, mobile, anything signed or distributable. Rendering received HTML, threading UI and attachments are now in scope, but late — they are UI work, not core work.
 
-That non-goals list is where the 18 months went. Guard it.
+That non-goals list is where the 18 months went. It is shorter than it was; guard what is left of it.
 
-Read-only is also a security posture: the app cannot destroy mail, so a sync bug is an annoyance rather than a catastrophe. It removes the offline-op-queue, conflict-resolution and draft-loss problems that eat the most time in real clients.
+### 1a. Write capability, in two stages
+
+Decision 2 changed after month 4. Splitting write into two stages keeps most of the original safety property while it is being built:
+
+| Stage | What it is | What it costs | Safety |
+|---|---|---|---|
+| **Send** | Compose, reply, forward, SMTP submission, `APPEND` to Sent | Contained: a new crate, a schema migration, no change to the sync path | IMAP stays `EXAMINE`-only. Purely additive — a bug can misdeliver a message it was asked to send, but cannot touch stored mail |
+| **Mailbox mutation** | Archive, delete, move, mark-read from inside fuckmail | The expensive half: `SELECT`+`STORE`+`MOVE`+`EXPUNGE`, an offline operation queue, conflict resolution against server-side changes, and an undo window | Gives up the structural guarantee. This is the stage that needs the queue, the conflict rules, and the tests to earn it back |
+
+Send ships and gets dogfooded before mutation starts. The point of the ordering is that if motivation or time runs out mid-write, it runs out with the safe half done rather than the dangerous half half-done.
+
+Until stage 2 lands, read-only remains a real security posture: folders are opened with `EXAMINE`, so the server itself rejects any mutation, and a sync bug can lose cached data but never mail.
 
 ---
 
@@ -88,9 +99,11 @@ Read-only is also a security posture: the app cannot destroy mail, so a sync bug
 | **3** | Auth trait. Gmail app password + label dedup verified. M365 Azure app + device flow. | All three accounts sync |
 | **4** | `core-rpc`. Triage UI in Tauri: list, filter, categorise, keyboard-first. `core-rules` baseline. | You open it daily |
 | **5** | `core-ai` → Ollama. Correction logging. Measure model vs. baseline. | **SHIPPABLE — daily driver** |
+| **5–6** | `core-smtp`: compose, reply, SMTP submission, `APPEND` to Sent (§1a stage 1). | You reply from fuckmail |
+| **6** | Mailbox mutation: operation queue, `STORE`/`MOVE`/`EXPUNGE`, conflict resolution, undo (§1a stage 2). | Apple Mail stays closed |
 | **6–7** | Paperless-ngx in Docker. `scannerd` on the Pi: page detect → capture → deskew → crop → upload with offline spooling. | Paper is searchable |
 | **8** | Unified inbox: documents and mail as one item type in one triage surface. | **The actual product** |
-| **9+** | Optional: compose/send, mobile, distribution, SaaS. Decide with 4 months of real usage behind you. | — |
+| **9+** | Optional: mobile, distribution, SaaS. Decide with 4 months of real usage behind you. | — |
 
 ### Progress
 
