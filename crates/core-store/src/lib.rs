@@ -83,8 +83,9 @@ impl Store {
     pub fn add_account(&self, account: &NewAccount) -> Result<AccountId> {
         self.conn.execute(
             "INSERT INTO account
-                 (label, email, imap_host, imap_port, imap_security, username, auth_method, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                 (label, email, imap_host, imap_port, imap_security, username, auth_method,
+                  oauth_client_id, oauth_tenant, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             params![
                 account.label,
                 account.email,
@@ -93,6 +94,8 @@ impl Store {
                 account.imap_security.as_str(),
                 account.username,
                 account.auth_method,
+                account.oauth_client_id,
+                account.oauth_tenant,
                 now(),
             ],
         )?;
@@ -102,7 +105,8 @@ impl Store {
     pub fn account_by_email(&self, email: &str) -> Result<Option<Account>> {
         self.conn
             .query_row(
-                "SELECT id, label, email, imap_host, imap_port, imap_security, username, auth_method
+                "SELECT id, label, email, imap_host, imap_port, imap_security, username,
+                        auth_method, oauth_client_id, oauth_tenant
                  FROM account WHERE email = ?1",
                 params![email],
                 row_to_account,
@@ -113,7 +117,8 @@ impl Store {
 
     pub fn accounts(&self) -> Result<Vec<Account>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, label, email, imap_host, imap_port, imap_security, username, auth_method
+            "SELECT id, label, email, imap_host, imap_port, imap_security, username,
+                    auth_method, oauth_client_id, oauth_tenant
              FROM account ORDER BY id",
         )?;
         let rows = stmt.query_map([], row_to_account)?;
@@ -556,6 +561,8 @@ fn row_to_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
         imap_security: ImapSecurity::parse(&security).unwrap_or(ImapSecurity::Tls),
         username: row.get(6)?,
         auth_method: row.get(7)?,
+        oauth_client_id: row.get(8)?,
+        oauth_tenant: row.get(9)?,
     })
 }
 
