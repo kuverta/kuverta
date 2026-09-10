@@ -312,6 +312,11 @@ mod mutate {
             .unwrap();
     }
 
+    /// Removes a folder if it is there, so a create test can be re-run.
+    pub async fn delete_folder(session: &mut Session, name: &str) {
+        session.delete(name).await.ok();
+    }
+
     pub async fn set_flag(session: &mut Session, uid: u32, flag: &str) {
         session.select("INBOX").await.unwrap();
         drain(
@@ -1151,4 +1156,74 @@ async fn starttls_negotiates_the_upgrade_and_then_verifies_the_certificate() {
         message.contains("certificate") || message.contains("tls") || message.contains("Tls"),
         "expected a certificate failure, got: {message}"
     );
+}
+
+#[tokio::test]
+async fn a_created_folder_becomes_resolvable_as_the_archive() {
+    // The systemli case: a Dovecot that ships without an Archive folder, where
+    // `archive` has nowhere to file to until one exists.
+    //
+    // Dovecot advertises SPECIAL-USE (it reports attributes in LIST) but not
+    // CREATE-SPECIAL-USE (it will not let you set one), so the folder is
+    // created plainly and has to be found by name. That is exactly why
+    // `find_archive` keeps a name fallback.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "create-folder@fuckmail.test";
+    let name = "Archive";
+
+    let mut writer = mutate::login(user).await;
+    mutate::delete_folder(&mut writer, name).await;
+
+    let (_store, _account, _blobs, _dir, mut client) = isolated(user).await;
+    let marked = client
+        .create_folder(name, Some("\\Archive"))
+        .await
+        .expect("create");
+
+    // Whether the attribute stuck is the server's business; being resolvable
+    // afterwards is not.
+    let folders = client.folders().await.unwrap();
+    let pairs: Vec<(&str, Option<&str>)> = folders
+        .iter()
+        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+        .collect();
+    assert_eq!(
+        core_proto::client::find_archive(pairs.iter().copied()),
+        Some(name),
+        "created with special-use applied = {marked}"
+    );
+
+    mutate::delete_folder(&mut writer, name).await;
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_folder_name_cannot_smuggle_in_another_command() {
+    // The USE form is built by hand, so the name is interpolated into a quoted
+    // IMAP string. Without the check, a name could close the quote and append
+    // whatever it liked.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "folder-injection@fuckmail.test";
+    let (_store, _account, _blobs, _dir, mut client) = isolated(user).await;
+
+    for bad in [
+        "Archive\" (USE (\\Archive))\r\nx DELETE \"INBOX",
+        "Ar\\chive",
+        "Archive\r\nx LOGOUT",
+        "",
+    ] {
+        assert!(
+            client.create_folder(bad, Some("\\Archive")).await.is_err(),
+            "{bad:?} should have been refused"
+        );
+    }
+
+    // INBOX is still there, which is the thing that matters.
+    assert!(client.examine("INBOX").await.is_ok());
+    client.logout().await.unwrap();
 }
