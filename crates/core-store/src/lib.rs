@@ -325,6 +325,88 @@ impl Store {
         Ok(max.map(|v| v as u32))
     }
 
+    /// Looks up a single folder.
+    pub fn folder(&self, folder_id: FolderId) -> Result<Option<Folder>> {
+        self.conn
+            .query_row(
+                "SELECT id, account_id, name, special_use, uid_validity, uid_next, highest_modseq
+                 FROM folder WHERE id = ?1",
+                params![folder_id],
+                |row| {
+                    Ok(Folder {
+                        id: row.get(0)?,
+                        account_id: row.get(1)?,
+                        name: row.get(2)?,
+                        special_use: row.get(3)?,
+                        uid_validity: row.get::<_, Option<i64>>(4)?.map(|v| v as u32),
+                        uid_next: row.get::<_, Option<i64>>(5)?.map(|v| v as u32),
+                        highest_modseq: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Every UID currently cached for a folder.
+    ///
+    /// Used to work out what the server has expunged: anything here that the
+    /// server no longer lists is gone.
+    pub fn folder_uids(&self, folder_id: FolderId) -> Result<Vec<u32>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT uid FROM message_location WHERE folder_id = ?1")?;
+        let rows = stmt.query_map(params![folder_id], |row| Ok(row.get::<_, i64>(0)? as u32))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Updates the flags on a stored location.
+    ///
+    /// Returns whether anything actually changed, so a sync can report real
+    /// flag churn rather than counting every message the server re-reported.
+    pub fn set_location_flags(&self, folder_id: FolderId, uid: u32, flags: &str) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE message_location SET flags = ?3
+             WHERE folder_id = ?1 AND uid = ?2 AND flags <> ?3",
+            params![folder_id, uid, flags],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Removes locations the server no longer has, then deletes any message
+    /// left with no location at all.
+    ///
+    /// A message expunged from one folder but still present in another keeps
+    /// its remaining location and stays in the store — the same property that
+    /// makes Gmail labels work.
+    ///
+    /// Note: the message's body blob is not removed here. Blob pruning is a
+    /// separate sweep, so a partial sync cannot delete a body that a surviving
+    /// location still points at.
+    pub fn remove_locations(&self, folder_id: FolderId, uids: &[u32]) -> Result<usize> {
+        if uids.is_empty() {
+            return Ok(0);
+        }
+
+        let tx = self.conn.unchecked_transaction()?;
+        let mut removed = 0;
+        {
+            let mut stmt =
+                tx.prepare("DELETE FROM message_location WHERE folder_id = ?1 AND uid = ?2")?;
+            for uid in uids {
+                removed += stmt.execute(params![folder_id, *uid])?;
+            }
+        }
+        tx.execute(
+            "DELETE FROM message
+             WHERE id NOT IN (SELECT message_id FROM message_location)",
+            [],
+        )?;
+        tx.commit()?;
+        Ok(removed)
+    }
+
     pub fn message_count(&self, account_id: AccountId) -> Result<i64> {
         self.conn
             .query_row(

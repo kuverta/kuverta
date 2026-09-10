@@ -5,6 +5,7 @@
 //! mutation. A sync bug can therefore lose cached data but never mail. This is
 //! the main reason v1 is a triage layer rather than a full client.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 
 use async_imap::types::{Flag, NameAttribute};
@@ -185,6 +186,42 @@ impl ImapClient {
         }
 
         Ok(messages)
+    }
+
+    /// Fetches flags for messages whose state changed after `since_modseq`.
+    ///
+    /// With a modseq this is a `CHANGEDSINCE` fetch, so the server sends only
+    /// what actually moved — usually nothing. Without one (a first sync, or a
+    /// server with no CONDSTORE) it falls back to fetching every flag, which is
+    /// correct but proportional to the mailbox.
+    pub async fn fetch_flag_changes(
+        &mut self,
+        since_modseq: Option<u64>,
+    ) -> Result<Vec<(u32, String)>, ProtoError> {
+        let query = match since_modseq {
+            Some(modseq) => format!("(UID FLAGS) (CHANGEDSINCE {modseq})"),
+            None => "(UID FLAGS)".to_string(),
+        };
+
+        let mut stream = self.session.uid_fetch("1:*", query).await?;
+        let mut changes = Vec::new();
+
+        while let Some(fetch) = stream.try_next().await? {
+            if let Some(uid) = fetch.uid {
+                changes.push((uid, format_flags(fetch.flags())));
+            }
+        }
+
+        Ok(changes)
+    }
+
+    /// Every UID the server currently holds in the open folder.
+    ///
+    /// Compared against the local cache this is how expunges are detected.
+    /// QRESYNC would deliver `VANISHED` directly and avoid the full listing,
+    /// but this works on every server including those without CONDSTORE.
+    pub async fn all_uids(&mut self) -> Result<HashSet<u32>, ProtoError> {
+        Ok(self.session.uid_search("ALL").await?)
     }
 
     pub async fn logout(mut self) -> Result<(), ProtoError> {

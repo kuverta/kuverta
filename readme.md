@@ -16,6 +16,8 @@ UI yet.
 ## What works today
 
 - Read-only IMAP sync (`EXAMINE`, `BODY.PEEK[]`) into SQLite + FTS5
+- Incremental sync: unchanged folders are skipped via `HIGHESTMODSEQ`, flag
+  changes arrive via `CHANGEDSINCE`, server-side deletions are reconciled
 - Message identity and deduplication — one message in several folders is stored
   once with several locations, which is what Gmail's labels-as-folders needs
 - MIME parsing: RFC 2047 encoded headers, quoted-printable, charsets, attachments
@@ -81,6 +83,11 @@ beating plain heuristics" — the model layer is not in yet, but the schema is.
 **The list must page over the IPC bridge.** Tauri serialises commands as JSON at
 roughly 78 MiB/s, so shipping a whole mailbox across it stalls visibly at ~200k
 messages. Request the visible slice, not everything.
+
+**A sync must be cheap when nothing changed.** Folders whose `HIGHESTMODSEQ`
+matches the stored one are skipped without a fetch — on a quiet mailbox that is
+every folder, and a whole sync costs one `EXAMINE` each. Anything added to the
+per-folder path has to preserve that.
 
 **Corrections are captured from day one.** Nothing consumes the `correction`
 table until the model lands; it is being filled now so there is training data
