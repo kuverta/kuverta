@@ -353,6 +353,50 @@ impl ImapClient {
         Ok(())
     }
 
+    /// Creates a folder, marking it with an RFC 6154 special-use attribute
+    /// where the server allows it.
+    ///
+    /// Explicit rather than implicit: `archive` does not conjure a folder into
+    /// existence as a side effect of filing a message. Creating a mailbox on
+    /// someone's mail server is the kind of thing that should happen because
+    /// they asked, not because a command needed somewhere to put something.
+    ///
+    /// Returns whether the special-use attribute was applied. Dovecot — and so
+    /// most of the small providers — advertises `SPECIAL-USE`, meaning it
+    /// reports attributes in `LIST`, but not `CREATE-SPECIAL-USE`, meaning it
+    /// will not let you set one. There the folder is created plainly and found
+    /// by name instead, which is why [`find_archive`] keeps a name fallback.
+    pub async fn create_folder(
+        &mut self,
+        name: &str,
+        special_use: Option<&str>,
+    ) -> Result<bool, ProtoError> {
+        // The USE form is built by hand, so the name has to be checked here.
+        // `Session::create` validates for itself; this path would otherwise let
+        // a folder name close the quoted string and append a command.
+        if name.is_empty()
+            || name
+                .chars()
+                .any(|c| c.is_control() || c == '"' || c == '\\')
+        {
+            return Err(ProtoError::Unsupported(
+                "a folder name cannot be empty or contain quotes, backslashes or control characters",
+            ));
+        }
+
+        if let Some(attribute) = special_use {
+            if self.capability("CREATE-SPECIAL-USE").await? {
+                self.session
+                    .run_command_and_check_ok(&format!("CREATE \"{name}\" (USE ({attribute}))"))
+                    .await?;
+                return Ok(true);
+            }
+        }
+
+        self.session.create(name).await?;
+        Ok(false)
+    }
+
     /// Which of the extensions this client can exploit the server actually has.
     ///
     /// Reported rather than assumed, because what a provider supports decides
