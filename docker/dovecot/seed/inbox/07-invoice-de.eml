@@ -1,0 +1,15 @@
+Return-Path: <rechnung@hosting.example.de>
+Delivered-To: dev@fuckmail.test
+Message-ID: <inv-4471182@hosting.example.de>
+Date: Mon, 07 Sep 2026 03:00:00 +0200
+From: Hosting AG <rechnung@hosting.example.de>
+To: dev@fuckmail.test
+Subject: Ihre Rechnung 4471182 fuer September 2026
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Rechnungsnummer: 4471182
+Betrag: 24,90 EUR
+Faellig: 21.09.2026
+
+Der Betrag wird per SEPA-Lastschrift eingezogen.

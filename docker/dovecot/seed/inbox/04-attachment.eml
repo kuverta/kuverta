@@ -1,0 +1,29 @@
+Return-Path: <buchhaltung@lieferant.example.de>
+Delivered-To: dev@fuckmail.test
+Message-ID: <RE-2026-0912@lieferant.example.de>
+Date: Thu, 03 Sep 2026 08:20:11 +0200
+From: Buchhaltung <buchhaltung@lieferant.example.de>
+To: dev@fuckmail.test
+Subject: =?UTF-8?Q?Rechnung_RE-2026-0912?=
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b2_mixed_0912"
+
+--b2_mixed_0912
+Content-Type: text/plain; charset=utf-8
+
+Sehr geehrte Damen und Herren,
+
+anbei die Rechnung RE-2026-0912 ueber 1.249,00 EUR.
+Zahlbar bis 17.09.2026.
+
+--b2_mixed_0912
+Content-Type: application/pdf; name="RE-2026-0912.pdf"
+Content-Disposition: attachment; filename="RE-2026-0912.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBv
+Ymo8PC9UeXBlL1BhZ2VzL0tpZHNbMyAwIFJdL0NvdW50IDE+PmVuZG9iagozIDAgb2JqPDwvVHlw
+ZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgNTk1IDg0Ml0+PmVuZG9iagp0cmFpbGVy
+PDwvUm9vdCAxIDAgUj4+CiUlRU9GCg==
+
+--b2_mixed_0912--

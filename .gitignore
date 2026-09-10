@@ -1,0 +1,11 @@
+/target
+**/*.rs.bk
+.env
+.env.local
+/data
+/docker/dovecot/mail
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+/.devdata

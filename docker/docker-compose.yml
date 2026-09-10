@@ -1,0 +1,84 @@
+name: fuckmail-dev
+
+# Local development stack. Nothing here is hardened; see docker/README.md.
+#
+#   docker compose up -d                      # test IMAP server + fixtures
+#   docker compose --profile ai up -d         # + Ollama
+#   docker compose --profile paperless up -d  # + Paperless-ngx
+
+services:
+  # Dovecot 2.4: the 2.3 images are amd64-only and crash under Rosetta on Apple
+  # Silicon. 2.4 runs rootless, so IMAP listens on 31143 inside the container.
+  dovecot:
+    image: dovecot/dovecot:2.4.4
+    environment:
+      USER_PASSWORD: devpass
+    ports:
+      - "10143:31143"
+    volumes:
+      - maildata:/srv/vmail
+      - ./dovecot/dovecot-dev.conf:/etc/dovecot/conf.d/90-fuckmail-dev.conf:ro
+
+  # Loads the .eml fixtures over IMAP once Dovecot answers. Runs once, exits.
+  # The image is distroless with no shell tools, so readiness is handled by the
+  # seeder retrying rather than by a compose healthcheck.
+  mailseed:
+    image: python:3.13-alpine
+    depends_on:
+      - dovecot
+    environment:
+      IMAP_HOST: dovecot
+      IMAP_PORT: "31143"
+      IMAP_USER: dev@fuckmail.test
+      IMAP_PASS: devpass
+    volumes:
+      - ./dovecot/seed:/seed:ro
+      - ./dovecot/seed-imap.py:/seed-imap.py:ro
+    command: ["python3", "/seed-imap.py"]
+
+  # On Apple Silicon this container has no GPU access (no Metal passthrough), so
+  # it is slow. Use it for CI and parity; run Ollama natively for real dev work.
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["ai"]
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+
+  paperless-redis:
+    image: redis:7-alpine
+    profiles: ["paperless"]
+    volumes:
+      - paperless-redis:/data
+
+  paperless:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    profiles: ["paperless"]
+    depends_on:
+      - paperless-redis
+    ports:
+      - "8000:8000"
+    environment:
+      PAPERLESS_REDIS: redis://paperless-redis:6379
+      PAPERLESS_URL: http://localhost:8000
+      PAPERLESS_ADMIN_USER: admin
+      PAPERLESS_ADMIN_PASSWORD: admin
+      PAPERLESS_OCR_LANGUAGE: deu+eng
+      PAPERLESS_OCR_LANGUAGES: deu eng
+      PAPERLESS_TIME_ZONE: Europe/Berlin
+      PAPERLESS_FILENAME_FORMAT: "{created_year}/{correspondent}/{title}"
+    volumes:
+      - paperless-data:/usr/src/paperless/data
+      - paperless-media:/usr/src/paperless/media
+      - paperless-export:/usr/src/paperless/export
+      # scannerd drops captured pages here; Paperless consumes them.
+      - ./paperless/consume:/usr/src/paperless/consume
+
+volumes:
+  maildata:
+  ollama:
+  paperless-redis:
+  paperless-data:
+  paperless-media:
+  paperless-export:
