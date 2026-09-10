@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core-store",
+    "crates/core-proto",
+    "crates/core-accounts",
+    "apps/cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+core-store = { path = "crates/core-store" }
+core-proto = { path = "crates/core-proto" }
+core-accounts = { path = "crates/core-accounts" }
+
+anyhow = "1.0.104"
+thiserror = "2.0.20"
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
+futures = "0.3.34"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+toml = "1.1.5"
+chrono = "0.4.45"
+clap = { version = "4.6.6", features = ["derive", "env"] }
+
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
+mail-parser = "0.11.9"
+sha2 = "0.11.0"
+# Pinned to 3.x: 4.x rewrote the API around `keyring-core` and requires
+# registering a credential store at startup. 3.6 is maintained and its `Entry`
+# API is stable; revisit when there is a reason to.
+keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native"] }
+tokio-rustls = "0.26.5"
+rustls = "0.23.44"
+rustls-platform-verifier = "0.7.0"
+
+[profile.dev]
+# Sync work is I/O and parse bound; unoptimised mail-parser is painfully slow on
+# real mailboxes, so build dependencies with optimisation even in dev.
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 2

@@ -1,0 +1,18 @@
+Return-Path: <bounce-8837221@news.rustweekly.example>
+Delivered-To: dev@fuckmail.test
+Message-ID: <newsletter-2026-w36@news.rustweekly.example>
+Date: Mon, 31 Aug 2026 06:00:00 +0000
+From: Rust Weekly <hello@news.rustweekly.example>
+To: dev@fuckmail.test
+Subject: Rust Weekly #612 - async traits everywhere
+List-Id: Rust Weekly <news.rustweekly.example>
+List-Unsubscribe: <https://news.rustweekly.example/u/8837221>, <mailto:unsub@news.rustweekly.example>
+List-Post: NO
+Precedence: bulk
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This week in Rust: async fn in traits stabilises, plus a deep dive on
+IMAP parsing.
+
+Unsubscribe: https://news.rustweekly.example/u/8837221
