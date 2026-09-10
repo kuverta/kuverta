@@ -8,6 +8,10 @@
 
 use std::fmt;
 
+pub mod oauth;
+
+pub use oauth::{DeviceCodePrompt, OAuth2Config, OAuth2Device, TokenStore};
+
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
     #[error("keychain: {0}")]
@@ -21,6 +25,25 @@ pub enum AuthError {
 
     #[error("{0} is not implemented yet")]
     Unimplemented(&'static str),
+
+    #[error("http: {0}")]
+    Http(#[from] reqwest::Error),
+
+    #[error("no stored login for {0}; run `fuckmail login --email {0}`")]
+    NotLoggedIn(String),
+
+    #[error("the stored login for {user} is no longer valid ({reason}); run `fuckmail login --email {user}`")]
+    LoginExpired { user: String, reason: String },
+
+    #[error("{provider} rejected the request: {error}{}", .description.as_deref().map(|d| format!(" — {d}")).unwrap_or_default())]
+    Provider {
+        provider: &'static str,
+        error: String,
+        description: Option<String>,
+    },
+
+    #[error("authorization timed out; the code was not entered in time")]
+    DeviceCodeExpired,
 }
 
 pub type Result<T> = std::result::Result<T, AuthError>;
@@ -50,8 +73,17 @@ impl fmt::Debug for Credential {
 }
 
 /// Supplies a credential, refreshing it if the scheme requires that.
+///
+/// Async because OAuth2 access tokens expire and refreshing one is an HTTP
+/// round trip. A blocking refresh would stall the runtime mid-sync.
+///
+/// Implementations must never wait for human interaction here: `credential()`
+/// is called during sync, so an expired login has to fail with a clear error
+/// telling the user to re-authenticate, not hang on a browser prompt. The
+/// interactive part lives in [`oauth::OAuth2Device::device_login`].
+#[async_trait::async_trait]
 pub trait AuthProvider: Send + Sync {
-    fn credential(&self) -> Result<Credential>;
+    async fn credential(&self) -> Result<Credential>;
 
     /// Stable name for logs and the `account.auth_method` column.
     fn method(&self) -> &'static str;
@@ -91,8 +123,9 @@ impl KeychainPassword {
     }
 }
 
+#[async_trait::async_trait]
 impl AuthProvider for KeychainPassword {
-    fn credential(&self) -> Result<Credential> {
+    async fn credential(&self) -> Result<Credential> {
         match self.entry()?.get_password() {
             Ok(password) => Ok(Credential::Password(password)),
             Err(keyring::Error::NoEntry) => Err(AuthError::NotFound {
@@ -123,8 +156,9 @@ impl EnvPassword {
     }
 }
 
+#[async_trait::async_trait]
 impl AuthProvider for EnvPassword {
-    fn credential(&self) -> Result<Credential> {
+    async fn credential(&self) -> Result<Credential> {
         std::env::var(&self.var)
             .map(Credential::Password)
             .map_err(|_| AuthError::MissingEnv(self.var.clone()))
@@ -135,47 +169,26 @@ impl AuthProvider for EnvPassword {
     }
 }
 
-/// OAuth2 device-code flow, for Microsoft 365 and Gmail.
-///
-/// Not implemented yet — scheduled for month 3, once two accounts already sync.
-/// The type exists now so the trait shape is proven against a second scheme
-/// rather than being retrofitted around `KeychainPassword`.
-pub struct OAuth2Device {
-    pub user: String,
-    pub tenant: String,
-    pub client_id: String,
-}
-
-impl AuthProvider for OAuth2Device {
-    fn credential(&self) -> Result<Credential> {
-        Err(AuthError::Unimplemented("OAuth2 device-code flow"))
-    }
-
-    fn method(&self) -> &'static str {
-        "oauth2"
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn env_provider_reads_the_variable() {
+    #[tokio::test]
+    async fn env_provider_reads_the_variable() {
         // SAFETY: single-threaded test, no other thread reads the environment.
         unsafe { std::env::set_var("FUCKMAIL_TEST_PW", "devpass") };
         let provider = EnvPassword::new("FUCKMAIL_TEST_PW");
         assert_eq!(
-            provider.credential().unwrap(),
+            provider.credential().await.unwrap(),
             Credential::Password("devpass".into())
         );
     }
 
-    #[test]
-    fn env_provider_reports_a_missing_variable() {
+    #[tokio::test]
+    async fn env_provider_reports_a_missing_variable() {
         let provider = EnvPassword::new("FUCKMAIL_TEST_DEFINITELY_UNSET");
         assert!(matches!(
-            provider.credential(),
+            provider.credential().await,
             Err(AuthError::MissingEnv(_))
         ));
     }

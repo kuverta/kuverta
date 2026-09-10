@@ -18,6 +18,8 @@ UI yet.
 - Read-only IMAP sync (`EXAMINE`, `BODY.PEEK[]`) into SQLite + FTS5
 - Incremental sync: unchanged folders are skipped via `HIGHESTMODSEQ`, flag
   changes arrive via `CHANGEDSINCE`, server-side deletions are reconciled
+- Two auth schemes behind one trait: app passwords in the OS keychain, and the
+  OAuth2 device flow (RFC 8628) for Microsoft 365
 - Message identity and deduplication — one message in several folders is stored
   once with several locations, which is what Gmail's labels-as-folders needs
 - MIME parsing: RFC 2047 encoded headers, quoted-printable, charsets, attachments
@@ -88,6 +90,10 @@ messages. Request the visible slice, not everything.
 matches the stored one are skipped without a fetch — on a quiet mailbox that is
 every folder, and a whole sync costs one `EXAMINE` each. Anything added to the
 per-folder path has to preserve that.
+
+**Getting a credential must never wait for a human.** `AuthProvider::credential`
+runs inside sync, so an expired OAuth login fails with an error naming the
+command to fix it. Only `fuckmail login` is interactive.
 
 **Corrections are captured from day one.** Nothing consumes the `correction`
 table until the model lands; it is being filled now so there is training data

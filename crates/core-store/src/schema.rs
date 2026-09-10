@@ -108,6 +108,13 @@ CREATE TABLE correction (
     created_at    INTEGER NOT NULL
 );
 "#,
+    // v2 — OAuth2 app registration, for accounts that cannot use a password.
+    // No secret is stored here: the device flow is a public-client grant, and
+    // the refresh token lives in the OS keychain.
+    r#"
+ALTER TABLE account ADD COLUMN oauth_client_id TEXT;
+ALTER TABLE account ADD COLUMN oauth_tenant TEXT;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

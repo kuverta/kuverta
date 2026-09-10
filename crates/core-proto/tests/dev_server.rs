@@ -61,6 +61,7 @@ fn fixture_store() -> (Store, i64, Blobs, tempdir::TempDir) {
             imap_security: ImapSecurity::Plaintext,
             username: USER.into(),
             auth_method: "app_password".into(),
+            ..Default::default()
         })
         .unwrap();
     let blobs = Blobs::new(dir.path().join("blobs"));
@@ -336,6 +337,7 @@ async fn isolated(user: &str) -> (Store, i64, Blobs, tempdir::TempDir, ImapClien
             imap_security: ImapSecurity::Plaintext,
             username: user.into(),
             auth_method: "app_password".into(),
+            ..Default::default()
         })
         .unwrap();
     let blobs = Blobs::new(dir.path().join("blobs"));
