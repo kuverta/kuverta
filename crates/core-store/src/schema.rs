@@ -115,6 +115,17 @@ CREATE TABLE correction (
 ALTER TABLE account ADD COLUMN oauth_client_id TEXT;
 ALTER TABLE account ADD COLUMN oauth_tenant TEXT;
 "#,
+    // v3 — SMTP submission endpoint, for accounts that can send.
+    //
+    // Nullable as a group: an account registered before send existed has no
+    // SMTP endpoint and stays receive-only until one is configured. There is
+    // no separate credential — submission reuses the account's `AuthProvider`,
+    // so nothing secret lands here either.
+    r#"
+ALTER TABLE account ADD COLUMN smtp_host TEXT;
+ALTER TABLE account ADD COLUMN smtp_port INTEGER;
+ALTER TABLE account ADD COLUMN smtp_security TEXT;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

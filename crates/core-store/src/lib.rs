@@ -84,8 +84,8 @@ impl Store {
         self.conn.execute(
             "INSERT INTO account
                  (label, email, imap_host, imap_port, imap_security, username, auth_method,
-                  oauth_client_id, oauth_tenant, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                  oauth_client_id, oauth_tenant, smtp_host, smtp_port, smtp_security, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
             params![
                 account.label,
                 account.email,
@@ -96,17 +96,42 @@ impl Store {
                 account.auth_method,
                 account.oauth_client_id,
                 account.oauth_tenant,
+                account.smtp.as_ref().map(|s| s.host.as_str()),
+                account.smtp.as_ref().map(|s| s.port),
+                account.smtp.as_ref().map(|s| s.security.as_str()),
                 now(),
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Attaches (or replaces) the submission endpoint for an existing account.
+    ///
+    /// Separate from `add_account` because accounts registered before send
+    /// existed need a way to gain one without being re-created.
+    pub fn set_smtp(&self, account_id: AccountId, smtp: Option<&SmtpConfig>) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE account SET smtp_host = ?2, smtp_port = ?3, smtp_security = ?4
+             WHERE id = ?1",
+            params![
+                account_id,
+                smtp.map(|s| s.host.as_str()),
+                smtp.map(|s| s.port),
+                smtp.map(|s| s.security.as_str()),
+            ],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::UnknownAccount(account_id));
+        }
+        Ok(())
+    }
+
     pub fn account_by_email(&self, email: &str) -> Result<Option<Account>> {
         self.conn
             .query_row(
                 "SELECT id, label, email, imap_host, imap_port, imap_security, username,
-                        auth_method, oauth_client_id, oauth_tenant
+                        auth_method, oauth_client_id, oauth_tenant,
+                        smtp_host, smtp_port, smtp_security
                  FROM account WHERE email = ?1",
                 params![email],
                 row_to_account,
@@ -118,7 +143,8 @@ impl Store {
     pub fn accounts(&self) -> Result<Vec<Account>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, email, imap_host, imap_port, imap_security, username,
-                    auth_method, oauth_client_id, oauth_tenant
+                    auth_method, oauth_client_id, oauth_tenant,
+                    smtp_host, smtp_port, smtp_security
              FROM account ORDER BY id",
         )?;
         let rows = stmt.query_map([], row_to_account)?;
@@ -563,7 +589,8 @@ impl Store {
                 category: row.get(2)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// Messages where the rules baseline and the model disagreed.
@@ -628,6 +655,22 @@ pub struct Disagreement {
 
 fn row_to_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
     let security: String = row.get(5)?;
+    // The three SMTP columns are written as a unit, but a hand-edited database
+    // could still hold a partial row; treat anything incomplete as "cannot
+    // send" rather than inventing a default port.
+    let smtp = match (
+        row.get::<_, Option<String>>(10)?,
+        row.get::<_, Option<i64>>(11)?,
+        row.get::<_, Option<String>>(12)?,
+    ) {
+        (Some(host), Some(port), Some(security)) => Some(SmtpConfig {
+            host,
+            port: port as u16,
+            security: SmtpSecurity::parse(&security).unwrap_or(SmtpSecurity::Tls),
+        }),
+        _ => None,
+    };
+
     Ok(Account {
         id: row.get(0)?,
         label: row.get(1)?,
@@ -639,6 +682,7 @@ fn row_to_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
         auth_method: row.get(7)?,
         oauth_client_id: row.get(8)?,
         oauth_tenant: row.get(9)?,
+        smtp,
     })
 }
 
