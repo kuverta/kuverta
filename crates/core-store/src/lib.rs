@@ -329,6 +329,36 @@ impl Store {
         Ok((id, outcome))
     }
 
+    /// Looks a message up by its RFC 5322 Message-ID.
+    ///
+    /// Angle brackets are optional: callers get the id from wherever the user
+    /// copied it, which may or may not include them.
+    pub fn message_by_rfc822_id(
+        &self,
+        account_id: AccountId,
+        message_id: &str,
+    ) -> Result<Option<StoredMessage>> {
+        let normalized = crate::dedup::normalize_message_id(message_id);
+        self.conn
+            .query_row(
+                "SELECT id, rfc822_message_id, subject, from_addr, date_utc, body_path
+                 FROM message WHERE account_id = ?1 AND rfc822_message_id = ?2",
+                params![account_id, normalized],
+                |row| {
+                    Ok(StoredMessage {
+                        id: row.get(0)?,
+                        rfc822_message_id: row.get(1)?,
+                        subject: row.get(2)?,
+                        from_addr: row.get(3)?,
+                        date_utc: row.get(4)?,
+                        body_path: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn locations_of(&self, message_id: MessageId) -> Result<Vec<Location>> {
         let mut stmt = self.conn.prepare(
             "SELECT folder_id, uid, flags FROM message_location

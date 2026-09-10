@@ -12,6 +12,7 @@ core-store.workspace = true
 
 mail-send.workspace = true
 mail-builder.workspace = true
+mail-parser.workspace = true
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

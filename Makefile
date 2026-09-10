@@ -69,16 +69,28 @@ spike-window: ## Same, but leave the window open to scroll by hand
 
 ## -- manual smoke test -----------------------------------------------------
 
-e2e: dev-up build ## Register the dev account in a scratch store and sync it
+e2e: dev-up build ## Register the dev account in a scratch store, sync it, and send
 	@rm -rf .devdata
 	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail add-account \
 	    --email dev@fuckmail.test --label "Dev server" \
-	    --host 127.0.0.1 --port 10143 --security plaintext
+	    --host 127.0.0.1 --port 10143 --security plaintext \
+	    --smtp-host 127.0.0.1 --smtp-port 1025 --smtp-security plaintext
 	@FUCKMAIL_DEV_PASSWORD=devpass FUCKMAIL_DATA_DIR=.devdata \
 	    ./target/debug/fuckmail sync --password-env FUCKMAIL_DEV_PASSWORD
 	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail status
 	@echo
 	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail list
+	@echo
+	@# --no-save-to-sent on purpose: filing a copy would add a message to the
+	@# seeded mailbox, and the sync tests assert on its exact contents. The
+	@# Sent copy is covered by the dev_server integration test, on its own user.
+	@echo "Hallo Jane, hier ist fuckmail." | \
+	  FUCKMAIL_DEV_PASSWORD=devpass FUCKMAIL_DATA_DIR=.devdata \
+	    ./target/debug/fuckmail send --to "Jane Doe <jane@example.com>" \
+	    --subject "Gruesse aus fuckmail" --no-save-to-sent \
+	    --password-env FUCKMAIL_DEV_PASSWORD
+	@echo "  -> read it at http://localhost:8025"
+
 
 clean: ## Remove build output and the scratch store
 	cargo clean
