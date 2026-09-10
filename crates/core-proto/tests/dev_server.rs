@@ -456,3 +456,67 @@ async fn a_message_expunged_on_the_server_is_removed_locally() {
     client.logout().await.unwrap();
     writer.logout().await.ok();
 }
+
+#[tokio::test]
+async fn a_sent_message_is_appended_to_the_sent_folder() {
+    // Stage 1 of the write capability (plan section 1a): the only write this
+    // client performs. It has to work against a real server, and it has to
+    // leave the read-only property intact — nothing here selects a folder.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "append-test@fuckmail.test";
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+
+    let folders = client.folders().await.unwrap();
+    let sent = core_proto::client::find_sent(&folders).expect("dev server declares \\Sent");
+    assert_eq!(sent.name, "Sent");
+    let sent_name = sent.name.clone();
+
+    // Unique per run: APPEND is additive and this test does not tear its
+    // mailbox down, so a fixed id would either accumulate rows or collapse
+    // into one deduplicated message and make the assertions meaningless.
+    let message_id = format!(
+        "appended-{}@fuckmail.test",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    );
+    let raw = format!(
+        "Message-ID: <{message_id}>\r\n\
+         From: Erika <{user}>\r\n\
+         To: Jane <jane@example.com>\r\n\
+         Subject: filed under sent\r\n\
+         Date: Thu, 10 Sep 2026 12:00:00 +0000\r\n\
+         \r\n\
+         body\r\n"
+    );
+
+    client
+        .append(&sent_name, &["\\Seen"], raw.as_bytes())
+        .await
+        .expect("append");
+
+    // Read it back the way the next sync will, rather than trusting the OK.
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let stored = store
+        .message_by_rfc822_id(account, &message_id)
+        .unwrap()
+        .expect("the appended message should sync back");
+    assert_eq!(stored.subject.as_deref(), Some("filed under sent"));
+
+    // \Seen matters: without it every client shows Sent as full of unread mail.
+    let locations = store.locations_of(stored.id).unwrap();
+    assert_eq!(locations.len(), 1);
+    assert!(
+        locations[0].flags.contains("\\Seen"),
+        "flags were {:?}",
+        locations[0].flags
+    );
+
+    client.logout().await.unwrap();
+}

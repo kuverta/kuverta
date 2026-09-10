@@ -155,6 +155,22 @@ pub struct NewMessage {
     pub search_text: Option<String>,
 }
 
+/// A stored message, with enough to find its raw blob again.
+///
+/// Distinct from `MessageSummary`, which is what a list view needs; this is
+/// what a reply needs, and the difference is `body_path`.
+#[derive(Debug, Clone)]
+pub struct StoredMessage {
+    pub id: MessageId,
+    pub rfc822_message_id: Option<String>,
+    pub subject: Option<String>,
+    pub from_addr: Option<String>,
+    pub date_utc: Option<i64>,
+    /// Path to the raw message on disk, relative to the blob root. `None` when
+    /// the message was stored without its body.
+    pub body_path: Option<String>,
+}
+
 /// Where a message lives on the server. One message can have many locations —
 /// this is what makes Gmail's labels-as-folders behaviour representable.
 #[derive(Debug, Clone)]

@@ -174,6 +174,85 @@ pub struct ReplySource {
     pub body: Option<String>,
 }
 
+impl ReplySource {
+    /// Reads a received message into the parts a reply or forward needs.
+    ///
+    /// `mail-parser` rather than anything hand-rolled, for the reason
+    /// `core-proto::parse` gives: hand-written MIME handling is where mail
+    /// clients get their memory-safety bugs. Keeping this here rather than in
+    /// the parse layer means everything about answering a message lives in one
+    /// crate; `ReplySource` itself stays plain data either way.
+    ///
+    /// Returns `None` only when the bytes are not a message at all.
+    pub fn from_rfc822(raw: &[u8]) -> Option<Self> {
+        let parsed = mail_parser::MessageParser::default().parse(raw)?;
+
+        Some(Self {
+            message_id: parsed.message_id().map(|id| unbracket(id).to_string()),
+            references: reference_list(parsed.references()),
+            subject: parsed.subject().map(str::to_string),
+            from: first_mailbox(parsed.from()),
+            reply_to: first_mailbox(parsed.reply_to()),
+            to: all_mailboxes(parsed.to()),
+            cc: all_mailboxes(parsed.cc()),
+            date_utc: parsed.date().map(|date| date.to_timestamp()),
+            // Part 0 is the first text/plain part. An HTML-only message yields
+            // nothing here and is quoted as empty rather than as markup —
+            // rendering HTML to text is a job for the UI layer, not the
+            // composer.
+            body: parsed.body_text(0).map(|text| text.into_owned()),
+        })
+    }
+}
+
+fn unbracket(id: &str) -> &str {
+    id.trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim()
+}
+
+fn reference_list(value: &mail_parser::HeaderValue<'_>) -> Vec<String> {
+    match value {
+        mail_parser::HeaderValue::Text(id) => vec![unbracket(id).to_string()],
+        mail_parser::HeaderValue::TextList(ids) => {
+            ids.iter().map(|id| unbracket(id).to_string()).collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn to_mailbox(addr: &mail_parser::Addr<'_>) -> Option<Mailbox> {
+    let address = addr.address()?.trim();
+    if address.is_empty() {
+        return None;
+    }
+    Some(Mailbox {
+        name: addr
+            .name()
+            .map(|name| name.trim().to_string())
+            .filter(|n| !n.is_empty()),
+        address: address.to_string(),
+    })
+}
+
+fn all_mailboxes(address: Option<&mail_parser::Address<'_>>) -> Vec<Mailbox> {
+    match address {
+        Some(mail_parser::Address::List(addrs)) => addrs.iter().filter_map(to_mailbox).collect(),
+        // Groups are legal and rare; flatten rather than drop the recipients.
+        Some(mail_parser::Address::Group(groups)) => groups
+            .iter()
+            .flat_map(|group| group.addresses.iter())
+            .filter_map(to_mailbox)
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
+fn first_mailbox(address: Option<&mail_parser::Address<'_>>) -> Option<Mailbox> {
+    all_mailboxes(address).into_iter().next()
+}
+
 /// An outgoing message, before it is serialised.
 #[derive(Debug, Clone)]
 pub struct Draft {
@@ -805,6 +884,68 @@ mod tests {
         assert!(body.contains("one\r\ntwo\r\nthree"));
         // No bare LF anywhere: SMTP DATA is a CRLF protocol.
         assert!(!body.replace("\r\n", "").contains('\n'));
+    }
+
+    #[test]
+    fn a_received_message_reads_back_into_a_reply_source() {
+        let raw = concat!(
+            "Message-ID: <parent-1@example.com>\r\n",
+            "References: <root-0@example.com> <mid-1@example.com>\r\n",
+            "From: \"Doe, Jane\" <jane@example.com>\r\n",
+            "Reply-To: Liste <list@example.com>\r\n",
+            "To: Erika <erika@fuckmail.test>, bob@example.com\r\n",
+            "Cc: carol@example.com\r\n",
+            "Subject: =?utf-8?q?Rechnung_f=C3=BCr_M=C3=A4rz?=\r\n",
+            "Date: Tue, 9 Sep 2026 14:03:22 +0200\r\n",
+            "Content-Type: text/plain; charset=utf-8\r\n",
+            "\r\n",
+            "Kannst du das prüfen?\r\n",
+        )
+        .as_bytes();
+
+        let source = ReplySource::from_rfc822(raw).expect("parse");
+        // Angle brackets are stripped, here and in the chain.
+        assert_eq!(source.message_id.as_deref(), Some("parent-1@example.com"));
+        assert_eq!(
+            source.references,
+            vec!["root-0@example.com", "mid-1@example.com"]
+        );
+        // RFC 2047 subjects are decoded, not passed through encoded.
+        assert_eq!(source.subject.as_deref(), Some("Rechnung für März"));
+        assert_eq!(
+            source.from,
+            Some(Mailbox::named("Doe, Jane", "jane@example.com"))
+        );
+        assert_eq!(
+            source.reply_to,
+            Some(Mailbox::named("Liste", "list@example.com"))
+        );
+        assert_eq!(source.to.len(), 2);
+        assert_eq!(source.cc, vec![Mailbox::new("carol@example.com")]);
+        assert!(source.date_utc.is_some());
+        assert!(source.body.as_deref().unwrap().contains("prüfen"));
+
+        // And the whole point: it composes into a reply that threads.
+        let reply = Draft::reply(me(), &source, ReplyMode::All);
+        assert_eq!(reply.subject, "Re: Rechnung für März");
+        assert_eq!(reply.to[0].address, "list@example.com");
+        assert_eq!(
+            reply.references,
+            vec![
+                "root-0@example.com",
+                "mid-1@example.com",
+                "parent-1@example.com"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_message_with_a_single_reference_still_yields_a_chain() {
+        // The References header degenerates to a bare Text value rather than a
+        // list when there is only one id.
+        let raw = b"Message-ID: <p@example.com>\r\nReferences: <root@example.com>\r\n\r\nhi";
+        let source = ReplySource::from_rfc822(raw).expect("parse");
+        assert_eq!(source.references, vec!["root@example.com"]);
     }
 
     #[test]

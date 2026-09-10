@@ -68,9 +68,10 @@ Until stage 2 lands, read-only remains a real security posture: folders are open
 | Crate | Month | Responsibility |
 |---|---|---|
 | `core-store` | 1 | SQLite + FTS5, blobs on disk, **Message-ID dedup** |
-| `core-proto` | 1–2 | IMAP read-only: LIST, FETCH, CONDSTORE, IDLE |
+| `core-proto` | 1–2 | IMAP: LIST, FETCH, CONDSTORE, IDLE — read-only plus `APPEND` |
 | `core-accounts` | 2–3 | Auth trait: app password \| OAuth device flow; autoconfig |
 | `core-rules` | 4 | Deterministic baseline classifier |
+| `core-smtp` | 5–6 | Compose, MIME construction, SMTP submission (§1a stage 1) |
 | `core-ai` | 5 | Provider trait → Ollama; embeddings or prompting |
 | `core-rpc` | 4 | Stable surface for the shell (and later, agents) |
 | `scannerd` | 6–7 | Pi capture daemon (separate binary, cross-compiled) |
@@ -149,8 +150,34 @@ with confidence that tracks how clear-cut the evidence was. Corrections feed
 back in: a sender or list you have filed is filed that way next time,
 overriding the heuristics outright. `fuckmail triage` shows the result.
 
+Stage 1 of the write capability (§1a) is in: `core-smtp` composes RFC 5322
+messages and submits them over SMTP, and `fuckmail send` sends, replies and
+forwards from the command line, filing a copy in Sent via `APPEND`. `make e2e`
+now runs that loop end to end against the dev stack — sync, send, and the sent
+copy coming back on the next sync.
+
+The composer is deliberately the thick half: Bcc reaches the SMTP envelope but
+never the message, addresses and subjects are checked for the line breaks that
+would forge headers, `Re:`/`AW:` prefixes collapse instead of stacking,
+References is capped, reply-all excludes the sender, and `Reply-To` wins over
+`From`. A Mailpit sink in the compose stack is what makes the Bcc property
+assertable end to end, because it records the envelope separately from the
+headers.
+
+IMAP is still `EXAMINE`-only. `APPEND` is the single write, and it can only
+create a message — see the note in `core-proto::client`.
+
+Adding `mail-send` also surfaced a latent crash: with both aws-lc-rs (via
+reqwest) and ring (via mail-send) linked, rustls cannot pick a process-wide
+crypto provider, and `core-proto` would have panicked on the first sync of a
+real TLS account — a path no test reaches, because the dev server is plaintext.
+Every TLS config now names its provider, with a server-free regression test on
+each.
+
 Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, and connecting the three real accounts.
+UI, IDLE for push, QRESYNC, connecting the three real accounts, and stage 2 of
+the write capability (mailbox mutation: operation queue, conflict resolution,
+undo).
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
