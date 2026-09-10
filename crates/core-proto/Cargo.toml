@@ -9,6 +9,7 @@ publish.workspace = true
 [dependencies]
 core-store.workspace = true
 core-accounts.workspace = true
+core-rules.workspace = true
 
 async-imap.workspace = true
 mail-parser.workspace = true

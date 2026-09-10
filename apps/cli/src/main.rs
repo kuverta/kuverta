@@ -80,6 +80,16 @@ enum Command {
         #[arg(short = 'n', long, default_value_t = 20)]
         limit: usize,
     },
+    /// Show each message's category as the rules classified it during sync.
+    Triage {
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(short = 'n', long, default_value_t = 40)]
+        limit: usize,
+        /// Only show this category (e.g. transactional).
+        #[arg(long)]
+        category: Option<String>,
+    },
     /// Summarise what is in the store.
     Status,
 }
@@ -177,6 +187,11 @@ async fn main() -> Result<()> {
             email,
             limit,
         } => search(&store, &query, email.as_deref(), limit),
+        Command::Triage {
+            email,
+            limit,
+            category,
+        } => triage(&store, email.as_deref(), limit, category.as_deref()),
         Command::Status => status(&store, &blobs),
     }
 }
@@ -413,6 +428,40 @@ fn search(store: &Store, query: &str, email: Option<&str>, limit: usize) -> Resu
     }
     for message in hits {
         print_summary(&message);
+    }
+    Ok(())
+}
+
+fn triage(store: &Store, email: Option<&str>, limit: usize, category: Option<&str>) -> Result<()> {
+    let account = resolve_account(store, email)?;
+    let rows = store.recent_with_category(account, limit)?;
+
+    for row in rows {
+        let verdict = row.category.as_deref().unwrap_or("-");
+        if let Some(wanted) = category {
+            if verdict != wanted {
+                continue;
+            }
+        }
+
+        let sender = row
+            .summary
+            .from_name
+            .as_deref()
+            .or(row.summary.from_addr.as_deref())
+            .unwrap_or("(unknown)");
+
+        let confidence = row
+            .confidence
+            .map(|c| format!("{:>3.0}%", c * 100.0))
+            .unwrap_or_else(|| "  -".into());
+
+        println!(
+            "{:<14} {confidence}  {:<26.26} {}",
+            verdict,
+            sender,
+            row.summary.subject.as_deref().unwrap_or("(no subject)"),
+        );
     }
     Ok(())
 }

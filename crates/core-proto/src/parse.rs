@@ -4,8 +4,53 @@
 //! the classic source of memory-safety bugs in mail clients, and this is the
 //! best-tested implementation in the Rust ecosystem.
 
+use core_rules::MessageFacts;
 use core_store::model::NewMessage;
-use mail_parser::{Address, MessageParser};
+use mail_parser::{Address, HeaderName, MessageParser};
+
+/// Everything the classifier needs, owned, so it outlives the borrowed parse.
+///
+/// Kept next to parsing because that is the one place the whole message is in
+/// hand; re-reading these headers from the store later would mean persisting
+/// them for no other purpose.
+#[derive(Debug, Clone, Default)]
+pub struct ClassifyFacts {
+    pub from_addr: Option<String>,
+    pub from_name: Option<String>,
+    pub subject: Option<String>,
+    pub list_id: Option<String>,
+    pub list_unsubscribe: Option<String>,
+    pub precedence: Option<String>,
+    pub auto_submitted: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub has_attachments: bool,
+    pub recipient_count: usize,
+    pub snippet: Option<String>,
+}
+
+impl ClassifyFacts {
+    pub fn as_message_facts(&self) -> MessageFacts<'_> {
+        MessageFacts {
+            from_addr: self.from_addr.as_deref(),
+            from_name: self.from_name.as_deref(),
+            subject: self.subject.as_deref(),
+            list_id: self.list_id.as_deref(),
+            list_unsubscribe: self.list_unsubscribe.as_deref(),
+            precedence: self.precedence.as_deref(),
+            auto_submitted: self.auto_submitted.as_deref(),
+            in_reply_to: self.in_reply_to.as_deref(),
+            has_attachments: self.has_attachments,
+            recipient_count: self.recipient_count,
+            snippet: self.snippet.as_deref(),
+        }
+    }
+}
+
+/// A parsed message plus the facts needed to classify it.
+pub struct Parsed {
+    pub message: NewMessage,
+    pub facts: ClassifyFacts,
+}
 
 /// Longest snippet kept for the message list. Enough for a useful preview
 /// without pulling whole bodies into the list query.
@@ -16,7 +61,7 @@ const SNIPPET_LEN: usize = 220;
 /// Returns `None` only when the bytes are not a message at all. Malformed but
 /// recognisable mail still parses — two decades of broken senders mean strict
 /// parsing would reject real mail.
-pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<NewMessage> {
+pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<Parsed> {
     let parsed = MessageParser::default().parse(raw)?;
 
     let (from_name, from_addr) = match parsed.from() {
@@ -44,28 +89,63 @@ pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<NewMessage> {
     };
 
     let body_text = parsed.body_text(0).map(|c| c.into_owned());
+
+    // Recipients across To and Cc, for the "addressed only to you" signal.
+    let recipient_count = count_addresses(parsed.to()) + count_addresses(parsed.cc());
+
+    let list_id = parsed.header_raw("List-Id").map(clean_list_id);
+    let in_reply_to = parsed
+        .header_raw("In-Reply-To")
+        .map(|v| core_store::normalize_message_id(v).to_string());
     // Bound to a local: the iterator borrows `parsed`, and as a temporary
     // inside the struct literal it would outlive it.
     let has_attachments = parsed.attachments().next().is_some();
 
-    Some(NewMessage {
+    let message = NewMessage {
         rfc822_message_id: parsed.message_id().map(str::to_string),
         subject: parsed.subject().map(str::to_string),
-        from_name,
-        from_addr,
+        from_name: from_name.clone(),
+        from_addr: from_addr.clone(),
         date_utc: parsed.date().map(|d| d.to_timestamp()),
         size_bytes: size.or(Some(raw.len() as i64)),
         snippet: body_text.as_deref().map(snippet),
         has_attachments,
-        // Read raw: mail-parser may interpret `List-Id: Name <id>` as an
-        // address, and the bracketed identifier is what rules need to match on.
-        list_id: parsed.header_raw("List-Id").map(clean_list_id),
-        in_reply_to: parsed
-            .header_raw("In-Reply-To")
-            .map(|v| core_store::normalize_message_id(v).to_string()),
+        list_id: list_id.clone(),
+        in_reply_to: in_reply_to.clone(),
         body_path: None,
-        search_text: body_text,
-    })
+        search_text: body_text.clone(),
+    };
+
+    let facts = ClassifyFacts {
+        from_addr,
+        from_name,
+        subject: message.subject.clone(),
+        list_id,
+        list_unsubscribe: header_text(&parsed, "List-Unsubscribe"),
+        precedence: header_text(&parsed, "Precedence"),
+        auto_submitted: header_text(&parsed, "Auto-Submitted"),
+        in_reply_to,
+        has_attachments,
+        recipient_count,
+        snippet: message.snippet.clone(),
+    };
+
+    Some(Parsed { message, facts })
+}
+
+fn count_addresses(address: Option<&Address<'_>>) -> usize {
+    match address {
+        Some(Address::List(addrs)) => addrs.len(),
+        Some(Address::Group(groups)) => groups.iter().map(|g| g.addresses.len()).sum(),
+        None => 0,
+    }
+}
+
+fn header_text(message: &mail_parser::Message<'_>, name: &str) -> Option<String> {
+    message
+        .header(HeaderName::parse(name)?)
+        .and_then(|h| h.as_text())
+        .map(|s| s.trim().to_string())
 }
 
 /// Collapses whitespace and truncates on a character boundary.
@@ -101,7 +181,7 @@ mod tests {
                     Date: Wed, 02 Sep 2026 11:42:33 +0200\r\n\
                     \r\n\
                     Dienstag passt.\r\n";
-        let m = parse_message(raw, None).unwrap();
+        let m = parse_message(raw, None).unwrap().message;
 
         assert_eq!(m.rfc822_message_id.as_deref(), Some("abc@example.com"));
         assert_eq!(m.from_name.as_deref(), Some("Anna Weber"));
@@ -120,7 +200,7 @@ mod tests {
                     Subject: =?UTF-8?Q?Ihre_Abschlagszahlung_f=C3=BCr_M=C3=A4rz?=\r\n\
                     \r\n\
                     body\r\n";
-        let m = parse_message(raw, None).unwrap();
+        let m = parse_message(raw, None).unwrap().message;
         assert_eq!(m.subject.as_deref(), Some("Ihre Abschlagszahlung für März"));
     }
 
@@ -130,14 +210,14 @@ mod tests {
                     List-Id: Rust Weekly <news.rustweekly.example>\r\n\
                     \r\n\
                     body\r\n";
-        let m = parse_message(raw, None).unwrap();
+        let m = parse_message(raw, None).unwrap().message;
         assert_eq!(m.list_id.as_deref(), Some("news.rustweekly.example"));
     }
 
     #[test]
     fn a_missing_message_id_is_not_an_error() {
         let raw = b"From: cron@example.org\r\nSubject: nightly\r\n\r\nok\r\n";
-        let m = parse_message(raw, None).unwrap();
+        let m = parse_message(raw, None).unwrap().message;
         assert_eq!(m.rfc822_message_id, None);
         assert_eq!(m.subject.as_deref(), Some("nightly"));
     }
@@ -159,7 +239,7 @@ mod tests {
                     \r\n\
                     %PDF-1.4\r\n\
                     --bb--\r\n";
-        let m = parse_message(raw, None).unwrap();
+        let m = parse_message(raw, None).unwrap().message;
         assert!(m.has_attachments);
     }
 
@@ -167,7 +247,7 @@ mod tests {
     fn snippets_collapse_whitespace_and_truncate_safely() {
         let long = "ä".repeat(400);
         let raw = format!("Subject: s\r\n\r\n{long}\r\n");
-        let m = parse_message(raw.as_bytes(), None).unwrap();
+        let m = parse_message(raw.as_bytes(), None).unwrap().message;
         // Truncation must land on a character boundary, not a UTF-8 byte.
         assert!(m.snippet.unwrap().chars().count() <= SNIPPET_LEN + 1);
     }

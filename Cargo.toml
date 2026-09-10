@@ -4,6 +4,7 @@ members = [
     "crates/core-store",
     "crates/core-proto",
     "crates/core-accounts",
+    "crates/core-rules",
     "apps/cli",
     "apps/desktop",
 ]
@@ -19,6 +20,7 @@ publish = false
 core-store = { path = "crates/core-store" }
 core-proto = { path = "crates/core-proto" }
 core-accounts = { path = "crates/core-accounts" }
+core-rules = { path = "crates/core-rules" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.20"

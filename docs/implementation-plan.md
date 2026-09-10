@@ -128,8 +128,16 @@ To use it you need an Azure AD app registration (a public client with the
 `--client-id`. Nothing about it is verified against a real tenant yet, which is
 the one thing still outstanding for M365.
 
-Still open: IDLE for push, QRESYNC (`VANISHED`) to replace the `UID SEARCH ALL`
-reconciliation, and connecting the three real accounts.
+Month 4's rules baseline landed. A scoring classifier (six categories) runs on
+every message during sync and records its verdict, so the model — when it
+arrives — has a baseline to be measured against across the whole mailbox rather
+than from the day it is switched on. On the seeded fixtures it is 8/8 correct,
+with confidence that tracks how clear-cut the evidence was. Corrections feed
+back in: a sender or list you have filed is filed that way next time,
+overriding the heuristics outright. `fuckmail triage` shows the result.
+
+Still open: the model layer itself (local Ollama, plan section 4), the triage
+UI, IDLE for push, QRESYNC, and connecting the three real accounts.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 

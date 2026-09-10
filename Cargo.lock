@@ -676,6 +676,7 @@ dependencies = [
  "async-imap",
  "chrono",
  "core-accounts",
+ "core-rules",
  "core-store",
  "futures",
  "mail-parser",
@@ -684,6 +685,14 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-rustls",
+ "tracing",
+]
+
+[[package]]
+name = "core-rules"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "tracing",
 ]
 
