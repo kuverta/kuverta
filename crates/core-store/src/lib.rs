@@ -599,13 +599,28 @@ impl Store {
                 removed += stmt.execute(params![folder_id, *uid])?;
             }
         }
-        tx.execute(
+        tx.commit()?;
+        Ok(removed)
+    }
+
+    /// Deletes messages that are no longer in any folder.
+    ///
+    /// Separate from [`Self::remove_locations`], and this is load-bearing
+    /// rather than tidy. A message being moved is out of its old folder before
+    /// it is seen in the new one, so a sync that collected orphans as it went
+    /// would destroy the row in between — and with it the classifier verdict,
+    /// the corrections the user made, and any queued operation, all of which
+    /// cascade. Whether that happened came down to the order the server
+    /// happened to list the two folders in.
+    ///
+    /// Call once, after every folder in a sync has been fetched, so a message
+    /// that merely moved has already been seen in its new home.
+    pub fn delete_orphaned_messages(&self) -> Result<usize> {
+        Ok(self.conn.execute(
             "DELETE FROM message
              WHERE id NOT IN (SELECT message_id FROM message_location)",
             [],
-        )?;
-        tx.commit()?;
-        Ok(removed)
+        )?)
     }
 
     pub fn message_count(&self, account_id: AccountId) -> Result<i64> {

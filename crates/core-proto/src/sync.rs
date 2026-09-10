@@ -32,6 +32,9 @@ pub struct SyncReport {
     pub unparseable: usize,
     /// Folders whose UIDVALIDITY changed, forcing a rebuild.
     pub invalidated: usize,
+    /// Messages that ended the sync in no folder at all, and were dropped.
+    /// A message that merely moved is not one of these.
+    pub deleted: usize,
 }
 
 /// The parts of a sync that do not change between folders.
@@ -83,6 +86,13 @@ pub async fn sync_account(
         }
         sync_folder(client, &ctx, &remote, &mut report).await?;
     }
+
+    // Only now, with every folder seen. A message that moved was out of its
+    // old folder before it turned up in the new one, and collecting orphans
+    // per folder would delete it in between — taking its classifier verdict,
+    // the user's corrections and any queued operation with it. See
+    // `Store::delete_orphaned_messages`.
+    report.deleted = store.delete_orphaned_messages()?;
 
     Ok(report)
 }
