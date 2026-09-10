@@ -1044,3 +1044,78 @@ async fn expecting_no_message_id_and_finding_one_is_a_conflict() {
     client.logout().await.unwrap();
     writer.logout().await.ok();
 }
+
+#[tokio::test]
+async fn a_sparse_uid_range_fetches_exactly_the_messages_that_remain() {
+    // Batching turned the fetch from one `lo:*` range into an explicit UID
+    // set, so gaps left by expunges now have to be carried through
+    // uid_sizes -> plan_batches -> fetch_uids without dropping or inventing
+    // anything.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "sparse-fetch@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    for n in 1..=5 {
+        mutate::append(
+            &mut writer,
+            &format!("sparse-{n}@example.com"),
+            &format!("msg {n}"),
+        )
+        .await;
+    }
+
+    // Punch holes before the first sync, so the client never sees the gaps
+    // being made — it just meets a folder with non-contiguous UIDs.
+    let uids = mutate::uids(&mut writer).await;
+    mutate::expunge_uid(&mut writer, uids[1]).await;
+    mutate::expunge_uid(&mut writer, uids[3]).await;
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+    let report = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(report.inserted, 3, "{report:?}");
+
+    let mut subjects: Vec<String> = store
+        .recent(account, 10)
+        .unwrap()
+        .into_iter()
+        .filter_map(|m| m.subject)
+        .collect();
+    subjects.sort();
+    assert_eq!(subjects, vec!["msg 1", "msg 3", "msg 5"]);
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn asking_for_uids_past_the_end_of_a_folder_returns_nothing() {
+    // The `lo:*` quirk: `*` is the highest existing UID, so a `lo` past the end
+    // makes the server return the last message rather than nothing. Left
+    // unhandled, every sync would re-fetch the newest mail forever.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "star-quirk@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    mutate::append(&mut writer, "only-one@example.com", "the only message").await;
+
+    let (_store, _account, _blobs, _dir, mut client) = isolated(user).await;
+    let state = client.examine("INBOX").await.unwrap();
+    let highest = state.uid_next.unwrap() - 1;
+
+    assert_eq!(client.uid_sizes(highest).await.unwrap().len(), 1);
+    assert!(
+        client.uid_sizes(highest + 1).await.unwrap().is_empty(),
+        "a UID past the end must fetch nothing, not the last message"
+    );
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
