@@ -72,6 +72,48 @@ pub struct ImapClient {
     capabilities: std::collections::HashMap<String, bool>,
 }
 
+/// Most messages to pull in one `FETCH`, regardless of how small they are.
+///
+/// A cap on the command length and on the per-response bookkeeping, not on
+/// memory — [`MAX_BATCH_BYTES`] does that.
+pub const MAX_BATCH_MESSAGES: usize = 200;
+
+/// Roughly how many bytes of message body to hold in memory at once.
+///
+/// The first sync of a real mailbox is the case this exists for: fetching
+/// `1:*` in one command means the entire mailbox is resident before a single
+/// row is written, which on a mailbox of any size is an out-of-memory kill
+/// rather than a slow sync.
+pub const MAX_BATCH_BYTES: u64 = 16 * 1024 * 1024;
+
+/// Groups `(uid, size)` pairs into batches that respect both caps.
+///
+/// A single message larger than [`MAX_BATCH_BYTES`] gets a batch to itself:
+/// refusing to fetch it would be worse than the memory spike, and a 30 MB
+/// attachment is unusual but not pathological.
+pub fn plan_batches(sizes: &[(u32, u32)]) -> Vec<Vec<u32>> {
+    let mut batches = Vec::new();
+    let mut batch: Vec<u32> = Vec::new();
+    let mut bytes: u64 = 0;
+
+    for (uid, size) in sizes {
+        let size = *size as u64;
+        if !batch.is_empty()
+            && (batch.len() >= MAX_BATCH_MESSAGES || bytes + size > MAX_BATCH_BYTES)
+        {
+            batches.push(std::mem::take(&mut batch));
+            bytes = 0;
+        }
+        batch.push(*uid);
+        bytes += size;
+    }
+
+    if !batch.is_empty() {
+        batches.push(batch);
+    }
+    batches
+}
+
 /// What a [`ImapClient::uid_probe`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UidProbe {
@@ -299,34 +341,53 @@ impl ImapClient {
         Ok(has)
     }
 
-    /// Fetches messages with a UID greater than `after`, or all of them when
-    /// `after` is `None`.
+    /// UIDs at or above `lo`, with each message's size, and nothing else.
     ///
-    /// `state` is required to guard an IMAP quirk: in a range like `900:*`, `*`
-    /// means the *highest existing UID*, so if 900 is beyond the end the server
-    /// helpfully returns the last message instead of nothing. Without the
-    /// check, every sync of an unchanged folder would re-fetch its newest mail.
-    pub async fn fetch_since(
-        &mut self,
-        state: &FolderState,
-        after: Option<u32>,
-    ) -> Result<Vec<RawMessage>, ProtoError> {
-        let start = after.map_or(1, |uid| uid.saturating_add(1));
+    /// The cheap half of a fetch: a few bytes per message rather than the
+    /// message. [`plan_batches`] uses it to decide how much to pull at a time,
+    /// which is what stops a first sync of a real mailbox from loading every
+    /// body into memory at once.
+    ///
+    /// `lo:*` has an IMAP quirk — `*` is the *highest existing UID*, so a `lo`
+    /// past the end returns the last message rather than nothing. Filtering on
+    /// `uid >= lo` here handles that in one place, for every caller.
+    pub async fn uid_sizes(&mut self, lo: u32) -> Result<Vec<(u32, u32)>, ProtoError> {
+        let mut stream = self
+            .session
+            .uid_fetch(format!("{lo}:*"), "(UID RFC822.SIZE)")
+            .await?;
 
-        if let Some(uid_next) = state.uid_next {
-            if start >= uid_next {
-                return Ok(Vec::new());
+        let mut sizes = Vec::new();
+        while let Some(fetch) = stream.try_next().await? {
+            if let Some(uid) = fetch.uid {
+                if uid >= lo {
+                    sizes.push((uid, fetch.size.unwrap_or(0)));
+                }
             }
-        } else if state.exists == 0 {
+        }
+        sizes.sort_unstable();
+        Ok(sizes)
+    }
+
+    /// Fetches the given messages in full, in one command.
+    ///
+    /// Callers are expected to have sized the batch with [`plan_batches`]; this
+    /// will happily pull whatever it is given into memory.
+    pub async fn fetch_uids(&mut self, uids: &[u32]) -> Result<Vec<RawMessage>, ProtoError> {
+        if uids.is_empty() {
             return Ok(Vec::new());
         }
 
-        // BODY.PEEK[] rather than BODY[]: the latter sets \Seen. EXAMINE already
+        // BODY.PEEK[] rather than BODY[]: the latter sets \\Seen. EXAMINE already
         // prevents that, but the two together mean neither alone is load-bearing.
         let query = "(UID FLAGS RFC822.SIZE BODY.PEEK[])";
-        let range = format!("{start}:*");
+        let set = uids
+            .iter()
+            .map(|uid| uid.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
 
-        let mut stream = self.session.uid_fetch(range, query).await?;
+        let mut stream = self.session.uid_fetch(set, query).await?;
         let mut messages = Vec::new();
 
         while let Some(fetch) = stream.try_next().await? {
@@ -352,12 +413,6 @@ impl ImapClient {
         Ok(messages)
     }
 
-    /// Fetches flags for messages whose state changed after `since_modseq`.
-    ///
-    /// With a modseq this is a `CHANGEDSINCE` fetch, so the server sends only
-    /// what actually moved — usually nothing. Without one (a first sync, or a
-    /// server with no CONDSTORE) it falls back to fetching every flag, which is
-    /// correct but proportional to the mailbox.
     pub async fn fetch_flag_changes(
         &mut self,
         since_modseq: Option<u64>,
@@ -619,6 +674,41 @@ mod tests {
         // has to decide whether to create a folder, not this function.
         let bare = vec![folder("INBOX", None), folder("Archive", Some("\\Archive"))];
         assert!(find_sent(&bare).is_none());
+    }
+
+    #[test]
+    fn batches_respect_both_the_count_and_the_byte_cap() {
+        // Small messages fill a batch by count.
+        let many: Vec<(u32, u32)> = (1..=450).map(|uid| (uid, 1_000)).collect();
+        let batches = plan_batches(&many);
+        assert_eq!(batches.len(), 3);
+        assert_eq!(batches[0].len(), MAX_BATCH_MESSAGES);
+        assert_eq!(batches[2].len(), 50);
+        // Every UID appears once, in order.
+        let flat: Vec<u32> = batches.concat();
+        assert_eq!(flat, (1..=450).collect::<Vec<_>>());
+
+        // Large ones fill it by size long before the count cap.
+        let heavy: Vec<(u32, u32)> = (1..=10).map(|uid| (uid, 5 * 1024 * 1024)).collect();
+        let batches = plan_batches(&heavy);
+        assert!(batches.len() >= 4, "{batches:?}");
+        for batch in &batches {
+            assert!(batch.len() <= 3, "16 MB holds at most three 5 MB messages");
+        }
+    }
+
+    #[test]
+    fn a_message_larger_than_the_cap_gets_a_batch_to_itself() {
+        // Refusing to fetch it would be worse than the memory spike, but it
+        // must not drag its neighbours into the same batch.
+        let sizes = vec![(1, 1_000), (2, (MAX_BATCH_BYTES + 1) as u32), (3, 1_000)];
+        let batches = plan_batches(&sizes);
+        assert_eq!(batches, vec![vec![1], vec![2], vec![3]]);
+    }
+
+    #[test]
+    fn nothing_to_fetch_plans_nothing() {
+        assert!(plan_batches(&[]).is_empty());
     }
 
     #[test]

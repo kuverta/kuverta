@@ -165,41 +165,70 @@ async fn fetch_new(
 ) -> Result<(), ProtoError> {
     let store = ctx.store;
     let after = store.max_uid(folder_id)?;
+    let start = after.map_or(1, |uid| uid.saturating_add(1));
 
-    for message in client.fetch_since(state, after).await? {
-        let Some(mut parsed) = parse_message(&message.raw, message.size) else {
-            tracing::warn!(folder_id, uid = message.uid, "could not parse message");
-            report.unparseable += 1;
-            continue;
-        };
+    // Nothing new. Checked against UIDNEXT rather than by asking, so an
+    // unchanged folder costs no FETCH at all.
+    if let Some(uid_next) = state.uid_next {
+        if start >= uid_next {
+            return Ok(());
+        }
+    } else if state.exists == 0 {
+        return Ok(());
+    }
 
-        // Blob path is keyed by the same identity the store dedups on, so one
-        // message shared across folders keeps exactly one body on disk.
-        let key = dedup_key(&parsed.message);
-        parsed.message.body_path = Some(ctx.blobs.put(ctx.account_id, &key, &message.raw)?);
-
-        let location = Location {
-            folder_id,
-            uid: message.uid,
-            flags: message.flags,
-        };
-
-        let (message_id, outcome) =
-            store.upsert_message(ctx.account_id, &parsed.message, Some(&location))?;
-        match outcome {
-            Upsert::Inserted => {
-                report.inserted += 1;
-                // Classify only new messages: a deduplicated one already has a
-                // verdict, and the same mail seen in a second folder has not
-                // changed. The rules run on every message so that when the
-                // model lands its verdicts can be compared against a baseline
-                // that already exists for the whole mailbox — plan section 4.
-                record_rules_verdict(ctx, message_id, &parsed);
-            }
-            Upsert::Deduplicated => report.deduplicated += 1,
+    // Sizes first, then bodies in batches. The extra round trip buys a bounded
+    // memory profile: without it the first sync of a real mailbox holds every
+    // message at once. See `plan_batches`.
+    let sizes = client.uid_sizes(start).await?;
+    for batch in crate::client::plan_batches(&sizes) {
+        for message in client.fetch_uids(&batch).await? {
+            store_message(ctx, folder_id, message, report)?;
         }
     }
 
+    Ok(())
+}
+
+/// Parses one fetched message, files its body, and records it.
+fn store_message(
+    ctx: &Context<'_>,
+    folder_id: FolderId,
+    message: crate::client::RawMessage,
+    report: &mut SyncReport,
+) -> Result<(), ProtoError> {
+    let Some(mut parsed) = parse_message(&message.raw, message.size) else {
+        tracing::warn!(folder_id, uid = message.uid, "could not parse message");
+        report.unparseable += 1;
+        return Ok(());
+    };
+
+    // Blob path is keyed by the same identity the store dedups on, so one
+    // message shared across folders keeps exactly one body on disk.
+    let key = dedup_key(&parsed.message);
+    parsed.message.body_path = Some(ctx.blobs.put(ctx.account_id, &key, &message.raw)?);
+
+    let location = Location {
+        folder_id,
+        uid: message.uid,
+        flags: message.flags,
+    };
+
+    let (message_id, outcome) =
+        ctx.store
+            .upsert_message(ctx.account_id, &parsed.message, Some(&location))?;
+    match outcome {
+        Upsert::Inserted => {
+            report.inserted += 1;
+            // Classify only new messages: a deduplicated one already has a
+            // verdict, and the same mail seen in a second folder has not
+            // changed. The rules run on every message so that when the
+            // model lands its verdicts can be compared against a baseline
+            // that already exists for the whole mailbox — plan section 4.
+            record_rules_verdict(ctx, message_id, &parsed);
+        }
+        Upsert::Deduplicated => report.deduplicated += 1,
+    }
     Ok(())
 }
 
