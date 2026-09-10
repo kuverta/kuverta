@@ -472,19 +472,28 @@ impl Store {
         let normalized = crate::dedup::normalize_message_id(message_id);
         self.conn
             .query_row(
-                "SELECT id, rfc822_message_id, subject, from_addr, date_utc, body_path
-                 FROM message WHERE account_id = ?1 AND rfc822_message_id = ?2",
+                &format!("{MESSAGE_COLUMNS} WHERE account_id = ?1 AND rfc822_message_id = ?2"),
                 params![account_id, normalized],
-                |row| {
-                    Ok(StoredMessage {
-                        id: row.get(0)?,
-                        rfc822_message_id: row.get(1)?,
-                        subject: row.get(2)?,
-                        from_addr: row.get(3)?,
-                        date_utc: row.get(4)?,
-                        body_path: row.get(5)?,
-                    })
-                },
+                row_to_stored_message,
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
+    /// Looks a message up by its row id, scoped to the account.
+    ///
+    /// Scoped rather than global so a stale id from another account cannot
+    /// silently address someone else's mail.
+    pub fn message_by_id(
+        &self,
+        account_id: AccountId,
+        id: MessageId,
+    ) -> Result<Option<StoredMessage>> {
+        self.conn
+            .query_row(
+                &format!("{MESSAGE_COLUMNS} WHERE account_id = ?1 AND id = ?2"),
+                params![account_id, id],
+                row_to_stored_message,
             )
             .optional()
             .map_err(Into::into)
@@ -812,6 +821,20 @@ pub struct Disagreement {
     pub subject: Option<String>,
     pub rules_category: String,
     pub model_category: String,
+}
+
+const MESSAGE_COLUMNS: &str =
+    "SELECT id, rfc822_message_id, subject, from_addr, date_utc, body_path FROM message";
+
+fn row_to_stored_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
+    Ok(StoredMessage {
+        id: row.get(0)?,
+        rfc822_message_id: row.get(1)?,
+        subject: row.get(2)?,
+        from_addr: row.get(3)?,
+        date_utc: row.get(4)?,
+        body_path: row.get(5)?,
+    })
 }
 
 fn row_to_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Operation> {

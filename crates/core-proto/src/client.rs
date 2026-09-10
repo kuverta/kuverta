@@ -72,6 +72,26 @@ pub struct ImapClient {
     capabilities: std::collections::HashMap<String, bool>,
 }
 
+/// What a [`ImapClient::uid_probe`] found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UidProbe {
+    /// Nothing at that UID any more. UIDs are never reused within a
+    /// UIDVALIDITY, so this means the message left, not that it changed.
+    Vacant,
+    /// A message is there. `message_id` is `None` when it carries no
+    /// `Message-ID` header, which is legal.
+    Present { message_id: Option<String> },
+}
+
+/// Pulls the value out of a one-header `HEADER.FIELDS` response.
+fn header_message_id(header: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(header);
+    text.split_once(':')
+        .map(|(_, value)| value.trim().trim_start_matches('<').trim_end_matches('>'))
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
 /// How a move actually happened, since not every server can do it atomically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MoveOutcome {
@@ -178,35 +198,35 @@ impl ImapClient {
         })
     }
 
-    /// Reads back the Message-ID stored at `uid` in the open folder.
+    /// Looks at what is actually at `uid` in the open folder.
     ///
     /// This is the conflict check. UIDs are stable within a UIDVALIDITY, but
     /// "stable" only means the server will not reissue one — it says nothing
     /// about the message still being there, and a stale UID acted on blindly is
-    /// how a client archives the wrong mail. `None` means there is no message
-    /// at that UID any more.
+    /// how a client archives the wrong mail.
+    ///
+    /// The distinction [`UidProbe`] draws is not pedantry: a message with no
+    /// `Message-ID` header is unusual but legal, and one is in the dev
+    /// fixtures. Reading "no Message-ID came back" as "no message here" would
+    /// quietly make such mail impossible to file.
     ///
     /// `BODY.PEEK` rather than `BODY`, so the check itself does not mark
     /// anything read.
-    pub async fn uid_message_id(&mut self, uid: u32) -> Result<Option<String>, ProtoError> {
+    pub async fn uid_probe(&mut self, uid: u32) -> Result<UidProbe, ProtoError> {
         let mut stream = self
             .session
             .uid_fetch(uid.to_string(), "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]")
             .await?;
 
-        let mut found = None;
+        // A UID with nothing at it draws no FETCH response at all, which is
+        // what separates the two cases.
+        let mut probe = UidProbe::Vacant;
         while let Some(fetch) = stream.try_next().await? {
-            let Some(header) = fetch.header() else {
-                continue;
+            probe = UidProbe::Present {
+                message_id: fetch.header().and_then(header_message_id),
             };
-            let text = String::from_utf8_lossy(header);
-            found = text
-                .split_once(':')
-                .map(|(_, value)| value.trim().trim_start_matches('<').trim_end_matches('>'))
-                .filter(|value| !value.is_empty())
-                .map(str::to_string);
         }
-        Ok(found)
+        Ok(probe)
     }
 
     /// Moves `uid` out of the open folder and into `target`.
@@ -397,38 +417,74 @@ impl ImapClient {
     }
 }
 
-/// Picks the folder that sent mail belongs in.
+/// Names a client might have given the folder behind each RFC 6154 attribute.
 ///
-/// `\\Sent` (RFC 6154) when the server declares it, which is the only reliable
-/// answer. The name fallbacks exist because plenty of servers — including
-/// Dovecot in its default configuration — advertise no special-use attributes
-/// at all, and guessing from a known list beats creating a second Sent folder
-/// alongside the one the user's other clients already use.
-pub fn find_sent(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
-    if let Some(declared) = folders
-        .iter()
-        .find(|folder| folder.special_use.as_deref() == Some("\\Sent"))
+/// The fallbacks exist because plenty of servers — including Dovecot in its
+/// default configuration — advertise no special-use attributes at all, and
+/// guessing from a known list beats creating a second Sent folder alongside the
+/// one the user's other clients already use. German names are here for the same
+/// reason the classifier is bilingual.
+pub const SENT_NAMES: &[&str] = &[
+    "Sent",
+    "Sent Items",
+    "Sent Messages",
+    "INBOX.Sent",
+    "Gesendet",
+    "Gesendete Objekte",
+    "Gesendete Elemente",
+];
+
+pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived", "INBOX.Archive", "All Mail"];
+
+pub const TRASH_NAMES: &[&str] = &[
+    "Trash",
+    "Deleted Items",
+    "Deleted Messages",
+    "INBOX.Trash",
+    "Papierkorb",
+    "Gelöschte Objekte",
+    "Gelöschte Elemente",
+];
+
+/// Picks the folder behind a special-use attribute.
+///
+/// The declared attribute wins outright: a server that puts `\\Sent` on a
+/// folder named something else is right and the name list is wrong. Takes
+/// `(name, special_use)` pairs so it works on both a `LIST` response and the
+/// folders already recorded in the store.
+pub fn find_special<'a>(
+    folders: impl IntoIterator<Item = (&'a str, Option<&'a str>)> + Clone,
+    attribute: &str,
+    known_names: &[&str],
+) -> Option<&'a str> {
+    if let Some((name, _)) = folders
+        .clone()
+        .into_iter()
+        .find(|(_, special)| *special == Some(attribute))
     {
-        return Some(declared);
+        return Some(name);
     }
 
-    const KNOWN_NAMES: &[&str] = &[
-        "Sent",
-        "Sent Items",
-        "Sent Messages",
-        "INBOX.Sent",
-        // German, for the same reason the classifier is bilingual.
-        "Gesendet",
-        "Gesendete Objekte",
-        "Gesendete Elemente",
-    ];
-
-    folders.iter().find(|folder| {
-        folder.selectable
-            && KNOWN_NAMES
+    folders
+        .into_iter()
+        .find(|(name, _)| {
+            known_names
                 .iter()
-                .any(|name| folder.name.eq_ignore_ascii_case(name))
-    })
+                .any(|known| name.eq_ignore_ascii_case(known))
+        })
+        .map(|(name, _)| name)
+}
+
+/// Picks the folder that sent mail belongs in.
+pub fn find_sent(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
+    let selectable: Vec<_> = folders.iter().filter(|f| f.selectable).collect();
+    let pairs: Vec<(&str, Option<&str>)> = selectable
+        .iter()
+        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+        .collect();
+
+    let name = find_special(pairs, "\\Sent", SENT_NAMES)?.to_string();
+    folders.iter().find(|f| f.selectable && f.name == name)
 }
 
 async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
