@@ -108,6 +108,22 @@ enum Command {
         #[arg(long)]
         password_env: Option<String>,
     },
+    /// Create a folder on the server.
+    ///
+    /// Needed on servers that ship without an Archive folder — plain Dovecot
+    /// setups usually do — where `archive` has nowhere to file to.
+    CreateFolder {
+        /// Folder name, as the server should see it.
+        name: String,
+        /// RFC 6154 attribute to mark it with, e.g. \Archive. Ignored by
+        /// servers without CREATE-SPECIAL-USE, which then match it by name.
+        #[arg(long)]
+        r#use: Option<String>,
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long)]
+        password_env: Option<String>,
+    },
     /// Move a message to the Archive folder.
     Archive(Mutation),
     /// Move a message to the Trash folder.
@@ -365,6 +381,21 @@ async fn main() -> Result<()> {
             measure,
             password_env,
         } => check(&store, email.as_deref(), measure, password_env.as_deref()).await,
+        Command::CreateFolder {
+            name,
+            r#use,
+            email,
+            password_env,
+        } => {
+            create_folder(
+                &store,
+                email.as_deref(),
+                &name,
+                r#use.as_deref(),
+                password_env.as_deref(),
+            )
+            .await
+        }
         Command::Archive(args) => mutate(&store, args, Intent::Archive),
         Command::Delete(args) => mutate(&store, args, Intent::Trash),
         Command::Move { common, to } => mutate(&store, common, Intent::MoveTo(to)),
@@ -597,6 +628,47 @@ fn human_bytes(bytes: u64) -> String {
     }
 }
 
+async fn create_folder(
+    store: &Store,
+    email: Option<&str>,
+    name: &str,
+    special_use: Option<&str>,
+    password_env: Option<&str>,
+) -> Result<()> {
+    let account_id = resolve_account(store, email)?;
+    let account = store
+        .accounts()?
+        .into_iter()
+        .find(|a| a.id == account_id)
+        .expect("resolve_account returned an id that is not in the store");
+
+    let auth = provider_for(&account, password_env)?;
+    let config = ImapConfig {
+        host: account.imap_host.clone(),
+        port: account.imap_port,
+        security: account.imap_security.clone(),
+        username: account.username.clone(),
+    };
+
+    let mut client = ImapClient::connect(&config, auth.as_ref())
+        .await
+        .with_context(|| format!("connecting to {}", account.imap_host))?;
+    let marked = client.create_folder(name, special_use).await?;
+    client.logout().await.ok();
+
+    print!("created {name}");
+    match (special_use, marked) {
+        (Some(attribute), true) => println!(" as {attribute}"),
+        (Some(attribute), false) => println!(
+            " (the server does not support CREATE-SPECIAL-USE, so it is not marked \
+             {attribute}; it will be found by name instead)"
+        ),
+        (None, _) => println!(),
+    }
+    println!("  run `fuckmail sync` to pick it up");
+    Ok(())
+}
+
 /// Queues a mailbox mutation.
 ///
 /// Nothing is sent here. The change is recorded, the undo window starts, and
@@ -613,7 +685,9 @@ fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
             target_folder: core_proto::client::find_archive(pairs.iter().copied())
                 .map(str::to_string)
                 .context(
-                    "this account has no Archive folder; use `move --to <folder>` to say where",
+                    "this account has no Archive folder. Create one with \
+                     `fuckmail create-folder Archive --use '\\Archive'`, or file this \
+                     message somewhere that exists with `move --to <folder>`",
                 )?,
         },
         Intent::Trash => OperationKind::Move {
