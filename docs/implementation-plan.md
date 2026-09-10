@@ -11,7 +11,7 @@ Original scope evaluation: [`readme-evaluation.md`](readme-evaluation.md).
 |---|---|---|---|
 | 1 | Capacity | Solo, ~10h/week (~43h/month) | Given. Drives everything below. |
 | 2 | **What is v1** | **Triage layer, not a mail client** | A full client is ~18 months to beta at this pace. A read-only triage layer is usable in ~5 months and can be abandoned at any month with something left over. |
-| 3 | UI stack | Tauri v2, dev mode only | Native shell + on-ramp to a real client, but signing/notarization deferred until distribution. `tauri dev` needs no certificates. |
+| 3 | UI stack | Tauri v2, dev mode only | Native shell + on-ramp to a real client, signing deferred until distribution. **Validated:** 59.8 fps scrolling 200k rows ([spike](spike-tauri-list.md)). |
 | 4 | Auth | App passwords now, pluggable trait | Google's restricted-scope verification (CASA) only applies when *distributing* an OAuth client. Personal use sidesteps it entirely. |
 | 5 | Providers | Custom domain → Gmail → M365 | Easiest-first. M365 needs an Azure app registration + device-code flow, but only for your own tenant: hours, not weeks. |
 | 6 | Classification | Local Ollama model from the start | User's call, against the heuristics-first recommendation. Mitigated by logging a rules baseline alongside (§4). |
@@ -103,10 +103,16 @@ Month 1 is done ahead of the gate, and part of month 2 with it:
 - `docker/`: seeded Dovecot dev server, Ollama and Paperless-ngx behind profiles
 - 31 tests green; sync verified end to end against the dev server
 
+- `apps/desktop`: the Tauri list spike — **PASS**, see [spike-tauri-list.md](spike-tauri-list.md)
+
 Both "must be right from commit one" constraints from section 2 are in and
-covered by tests. Still open for month 2: the Tauri spike, incremental sync via
-`HIGHESTMODSEQ` (currently captured but not yet used to skip unchanged folders),
-and IDLE.
+covered by tests, and the UI-stack risk is retired: a Tauri v2 webview holds
+59.8 fps scrolling 200k rows. The spike did change one design decision — the
+Rust/JS bridge costs ~78 MiB/s of JSON, so the list must request windowed slices
+rather than the whole mailbox (decision 3 stands; the UI just pages).
+
+Still open for month 2: incremental sync via `HIGHESTMODSEQ` (captured but not
+yet used to skip unchanged folders), and IDLE.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
