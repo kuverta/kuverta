@@ -10,7 +10,7 @@ help: ## Show this help
 
 ## -- dev services ----------------------------------------------------------
 
-dev-up: ## Start the dev IMAP server and load the fixtures
+dev-up: ## Start the dev IMAP server and SMTP sink, and load the fixtures
 	$(COMPOSE) up -d
 	@$(COMPOSE) logs mailseed --no-log-prefix | tail -3
 
