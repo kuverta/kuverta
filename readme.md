@@ -23,12 +23,15 @@ UI yet.
 - Full-text search
 - Credentials in the OS keychain, behind a pluggable auth trait
 - A Docker dev stack with a seeded Dovecot, so nothing needs a real mailbox
+- A Tauri v2 UI spike that scrolls 200k rows at 59.8 fps
+  ([findings](docs/spike-tauri-list.md))
 
 ## Quick start
 
 ```sh
 make dev-up     # Dovecot with nine fixture messages
 make e2e        # register the dev account, sync it, show the result
+make spike      # Tauri list benchmark; prints frame timings and a verdict
 ```
 
 Expected: **9 fixtures, 8 messages, 9 locations.** The newsletter appears in both
@@ -56,6 +59,7 @@ month 3 (`core-accounts::OAuth2Device`).
 | `crates/core-proto` | IMAP client, MIME parsing, folder sync |
 | `crates/core-accounts` | Credentials behind an auth trait |
 | `apps/cli` | Development driver — not the product |
+| `apps/desktop` | Tauri list spike — a risk test, not the UI |
 | `docker/` | Dev stack: Dovecot, Ollama, Paperless-ngx |
 | `docs/` | Plan, evaluation, original brief |
 
@@ -73,6 +77,10 @@ really is two copies. See `core-store/src/dedup.rs`.
 **Both classifiers always record a verdict.** Rules and model verdicts coexist in
 the `classification` table so `store.disagreements()` can answer "is the model
 beating plain heuristics" — the model layer is not in yet, but the schema is.
+
+**The list must page over the IPC bridge.** Tauri serialises commands as JSON at
+roughly 78 MiB/s, so shipping a whole mailbox across it stalls visibly at ~200k
+messages. Request the visible slice, not everything.
 
 **Corrections are captured from day one.** Nothing consumes the `correction`
 table until the model lands; it is being filled now so there is training data
