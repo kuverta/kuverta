@@ -1221,7 +1221,7 @@ async fn sync(
 
         println!(
             "{}: {} folders synced, {} unchanged | {} new, {} deduplicated, \
-             {} flag changes, {} expunged, {} unparseable{}",
+             {} flag changes, {} expunged, {} unparseable{}{}",
             account.email,
             report.folders_synced,
             report.folders_skipped,
@@ -1230,6 +1230,11 @@ async fn sync(
             report.flag_updates,
             report.expunged,
             report.unparseable,
+            if report.deleted > 0 {
+                format!(", {} dropped", report.deleted)
+            } else {
+                String::new()
+            },
             if report.invalidated > 0 {
                 format!(
                     ", {} folders rebuilt after UIDVALIDITY change",
