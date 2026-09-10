@@ -23,3 +23,8 @@ chrono.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# Tests need write access to the dev server to create the conditions sync has
+# to handle (flag changes, expunges). The production client is read-only by
+# design, so it cannot set those up itself.
+async-imap.workspace = true
+futures.workspace = true

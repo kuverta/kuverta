@@ -225,3 +225,232 @@ mod tempdir {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Incremental sync
+//
+// These use their own IMAP users. Dovecot's dev passdb accepts any username, so
+// each test gets an empty mailbox of its own and cannot disturb the seeded
+// fixtures — or another test running in parallel.
+// ---------------------------------------------------------------------------
+
+mod mutate {
+    //! Test-only write access to the dev server.
+
+    use futures::{StreamExt, TryStreamExt};
+    use tokio::net::TcpStream;
+
+    pub type Session = async_imap::Session<TcpStream>;
+
+    pub async fn login(user: &str) -> Session {
+        let tcp = TcpStream::connect((super::HOST, super::PORT))
+            .await
+            .unwrap();
+        let mut client = async_imap::Client::new(tcp);
+        client.read_response().await.unwrap().expect("greeting");
+        client
+            .login(user, "devpass")
+            .await
+            .map_err(|(err, _)| err)
+            .expect("login")
+    }
+
+    /// Empties INBOX so a re-run starts from a known state.
+    pub async fn reset_inbox(session: &mut Session) {
+        session.select("INBOX").await.unwrap();
+        let uids = session.uid_search("ALL").await.unwrap();
+        if !uids.is_empty() {
+            let set = uids
+                .iter()
+                .map(|u| u.to_string())
+                .collect::<Vec<_>>()
+                .join(",");
+            drain(session.uid_store(set, "+FLAGS (\\Deleted)").await.unwrap()).await;
+            session.expunge().await.unwrap().collect::<Vec<_>>().await;
+        }
+    }
+
+    pub async fn append(session: &mut Session, message_id: &str, subject: &str) {
+        let raw = format!(
+            "Message-ID: <{message_id}>\r\n\
+             From: Test <test@example.com>\r\n\
+             Subject: {subject}\r\n\
+             Date: Mon, 07 Sep 2026 03:00:00 +0200\r\n\
+             \r\n\
+             body\r\n"
+        );
+        session
+            .append("INBOX", None, None, raw.as_bytes())
+            .await
+            .unwrap();
+    }
+
+    pub async fn set_flag(session: &mut Session, uid: u32, flag: &str) {
+        session.select("INBOX").await.unwrap();
+        drain(
+            session
+                .uid_store(uid.to_string(), format!("+FLAGS ({flag})"))
+                .await
+                .unwrap(),
+        )
+        .await;
+    }
+
+    pub async fn expunge_uid(session: &mut Session, uid: u32) {
+        set_flag(session, uid, "\\Deleted").await;
+        session.expunge().await.unwrap().collect::<Vec<_>>().await;
+    }
+
+    pub async fn uids(session: &mut Session) -> Vec<u32> {
+        session.select("INBOX").await.unwrap();
+        let mut uids: Vec<u32> = session
+            .uid_search("ALL")
+            .await
+            .unwrap()
+            .into_iter()
+            .collect();
+        uids.sort_unstable();
+        uids
+    }
+
+    /// Commands that return a stream must have it consumed before the session
+    /// can be used again.
+    async fn drain<S, T>(stream: S)
+    where
+        S: futures::Stream<Item = async_imap::error::Result<T>>,
+    {
+        let _ = stream.try_collect::<Vec<_>>().await;
+    }
+}
+
+/// Builds a store plus a connected read-only client for a dedicated test user.
+async fn isolated(user: &str) -> (Store, i64, Blobs, tempdir::TempDir, ImapClient) {
+    let dir = tempdir::TempDir::new();
+    let store = Store::open(dir.path().join("test.db")).unwrap();
+    let account = store
+        .add_account(&NewAccount {
+            label: user.into(),
+            email: user.into(),
+            imap_host: HOST.into(),
+            imap_port: PORT,
+            imap_security: ImapSecurity::Plaintext,
+            username: user.into(),
+            auth_method: "app_password".into(),
+        })
+        .unwrap();
+    let blobs = Blobs::new(dir.path().join("blobs"));
+
+    let config = ImapConfig {
+        host: HOST.into(),
+        port: PORT,
+        security: ImapSecurity::Plaintext,
+        username: user.into(),
+    };
+    let client = ImapClient::connect(&config, &auth()).await.unwrap();
+    (store, account, blobs, dir, client)
+}
+
+#[tokio::test]
+async fn an_unchanged_folder_is_skipped_entirely() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "skip-test@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    mutate::append(&mut writer, "skip-1@example.com", "one").await;
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+    let first = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(first.inserted, 1, "{first:?}");
+
+    // Nothing has changed, so every folder's HIGHESTMODSEQ matches what was
+    // stored and none of them should be fetched from at all.
+    let second = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(second.folders_synced, 0, "{second:?}");
+    assert!(second.folders_skipped >= 1, "{second:?}");
+    assert_eq!(second.inserted, 0, "{second:?}");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_flag_set_on_the_server_reaches_the_store() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "flag-test@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    mutate::append(&mut writer, "flag-1@example.com", "unread message").await;
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let message = store.recent(account, 1).unwrap().pop().unwrap();
+    assert!(
+        !store.locations_of(message.id).unwrap()[0]
+            .flags
+            .contains("\\Seen"),
+        "should start unread"
+    );
+
+    let uid = mutate::uids(&mut writer).await[0];
+    mutate::set_flag(&mut writer, uid, "\\Seen").await;
+
+    let report = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(report.flag_updates, 1, "{report:?}");
+    assert_eq!(report.inserted, 0, "a flag change must not re-insert");
+
+    let flags = &store.locations_of(message.id).unwrap()[0].flags;
+    assert!(flags.contains("\\Seen"), "got {flags:?}");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_message_expunged_on_the_server_is_removed_locally() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "expunge-test@fuckmail.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    mutate::append(&mut writer, "keep-1@example.com", "keep me").await;
+    mutate::append(&mut writer, "drop-1@example.com", "delete me").await;
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+    let first = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(first.inserted, 2, "{first:?}");
+
+    let uids = mutate::uids(&mut writer).await;
+    mutate::expunge_uid(&mut writer, uids[1]).await;
+
+    let report = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert_eq!(report.expunged, 1, "{report:?}");
+    assert_eq!(store.message_count(account).unwrap(), 1);
+
+    let remaining = store.recent(account, 10).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].subject.as_deref(), Some("keep me"));
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
