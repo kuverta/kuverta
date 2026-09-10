@@ -296,6 +296,11 @@ pub struct NewOperation {
     pub source_uid: u32,
     pub source_uid_validity: Option<u32>,
     /// The Message-ID the caller believes lives at that UID.
+    ///
+    /// `None` means "a message with no `Message-ID` header", which is legal
+    /// and does happen — not "do not check". The executor compares presence
+    /// and absence alike, so finding an id where none was expected is as much
+    /// a conflict as finding the wrong one.
     pub expect_message_id: Option<String>,
     /// Unix seconds before which this must not be sent to the server.
     pub execute_after: i64,
