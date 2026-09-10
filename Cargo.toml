@@ -5,6 +5,7 @@ members = [
     "crates/core-proto",
     "crates/core-accounts",
     "apps/cli",
+    "apps/desktop",
 ]
 
 [workspace.package]

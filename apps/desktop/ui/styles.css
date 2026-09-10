@@ -1,0 +1,89 @@
+/* No inline styles anywhere: the CSP is strict (no 'unsafe-inline'), matching
+   the posture the real message renderer will need. */
+
+:root {
+  --row-height: 28px;
+  --bg: #ffffff;
+  --fg: #1a1a1a;
+  --muted: #6b7280;
+  --line: #e5e7eb;
+  --accent: #2563eb;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181d;
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --line: #2a2e37;
+    --accent: #60a5fa;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+header {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
+#status { color: var(--muted); }
+
+#viewport {
+  position: relative;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  contain: strict;
+}
+
+#content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.row {
+  height: var(--row-height);
+  display: grid;
+  grid-template-columns: 128px 200px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.row.unread { font-weight: 600; }
+
+.date, .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+.sender, .subject { overflow: hidden; text-overflow: ellipsis; }
+.meta { font-size: 11px; }
+
+#results {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 10px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--fg);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+}
+
+#results[hidden] { display: none; }

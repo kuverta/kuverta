@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>fuckmail — list spike</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <strong>Virtualized list spike</strong>
+    <span id="status">starting…</span>
+  </header>
+
+  <!-- The scroll container. `spacer` gives it the full scrollable height while
+       only a screenful of rows actually exists in the DOM. -->
+  <div id="viewport">
+    <div id="spacer"></div>
+    <div id="content"></div>
+  </div>
+
+  <pre id="results" hidden></pre>
+
+  <script src="app.js"></script>
+</body>
+</html>

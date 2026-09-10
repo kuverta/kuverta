@@ -2,7 +2,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
-        paperless-up build test test-all lint fmt check e2e clean
+        paperless-up build test test-all lint fmt check e2e spike spike-window clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -54,6 +54,18 @@ check: ## What CI runs
 	cargo fmt --all -- --check
 	$(MAKE) lint
 	$(MAKE) test-all
+
+## -- spikes ----------------------------------------------------------------
+
+# --release matters: a debug build triples the measured IPC cost, which is the
+# one number this spike exists to find out.
+spike: ## Tauri virtualized-list risk test; prints frame timings and a verdict
+	cargo build --release -p fuckmail-desktop
+	FUCKMAIL_SPIKE_AUTOEXIT=1 ./target/release/fuckmail-desktop
+
+spike-window: ## Same, but leave the window open to scroll by hand
+	cargo build --release -p fuckmail-desktop
+	./target/release/fuckmail-desktop
 
 ## -- manual smoke test -----------------------------------------------------
 
