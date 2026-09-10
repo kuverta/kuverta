@@ -200,8 +200,33 @@ UID" made such mail silently impossible to file — the operation was marked
 obsolete and nothing happened. Absence is now compared as carefully as
 presence, in both directions.
 
+Then a pass to make all of that survive contact with a real provider, since
+everything above had only ever met Dovecot and nine synthetic fixtures:
+
+- **Fetching is batched.** Sync used to pull `1:*` in one command and hold every
+  body in memory before writing a row — about 1.5 GB for a 30k-message mailbox,
+  which on this machine is an OOM kill rather than a slow sync. It now asks for
+  UIDs and sizes first, then fetches in batches capped at 200 messages and
+  ~16 MB. No test would have caught this: the fixtures fit in one batch.
+- **Gmail can be archived.** Gmail has no Archive folder — archiving is removing
+  the INBOX label, which over IMAP is a move into the folder it marks `\All`.
+  Special-folder resolution now tries attributes in priority order, falls back
+  to names matched on their last path segment (`[Gmail]/All Mail`,
+  `INBOX.Archive`), and treats `\All` as the last-resort archive. Gmail, M365
+  and a bare Dovecot are covered as table-driven tests.
+- **STARTTLS works**, for servers on port 143. Hand-rolled, because `async-imap`
+  neither performs the upgrade nor hands back its stream: no silent downgrade to
+  cleartext, pre-TLS capabilities discarded rather than cached, and the same
+  certificate verification as the implicit-TLS path. Tested against the dev
+  server, which advertises STARTTLS with a self-signed certificate — so the test
+  proves both that the upgrade happens and that the certificate is rejected.
+- **`fuckmail check`** reports what a server actually offers before anything
+  depends on it: extensions, folder layout, where sent/archived/deleted mail
+  will go, and with `--measure` how much a first sync will download.
+
 Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, and connecting the three real accounts.
+UI, IDLE for push, QRESYNC, attachments in compose, and connecting the three
+real accounts.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
