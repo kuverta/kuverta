@@ -1227,3 +1227,150 @@ async fn a_folder_name_cannot_smuggle_in_another_command() {
     assert!(client.examine("INBOX").await.is_ok());
     client.logout().await.unwrap();
 }
+
+#[tokio::test]
+async fn a_message_moved_between_folders_keeps_its_identity_and_its_history() {
+    // A message moving folder is routine: fuckmail's own archive does it, and
+    // so does every other client touching the same mailbox. What must not
+    // happen is the local row being destroyed and rebuilt on the way, because
+    // everything hanging off it goes too — the classifier verdict, and the
+    // corrections the user made, which plan section 4 calls the training data
+    // the whole model layer depends on.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "move-identity@fuckmail.test";
+    let message_id = "keeps-identity@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "moved by another client").await;
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+
+    let before = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    store
+        .record_correction(before.id, Some("notification"), "transactional")
+        .unwrap();
+    let corrections_before: i64 = store
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM correction WHERE message_id = ?1",
+            [before.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(corrections_before, 1);
+
+    // Another client moves it. Nothing to do with our queue.
+    let uids = mutate::uids(&mut writer).await;
+    writer.select("INBOX").await.unwrap();
+    writer.uid_mv(uids[0].to_string(), "Archive").await.unwrap();
+
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let after = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .expect("the message should still be in the store");
+    assert_eq!(
+        after.id, before.id,
+        "the message row was destroyed and rebuilt on the way between folders"
+    );
+
+    let corrections_after: i64 = store
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM correction WHERE message_id = ?1",
+            [before.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(corrections_after, 1, "the correction was lost with the row");
+
+    let locations = store.locations_of(after.id).unwrap();
+    assert_eq!(locations.len(), 1);
+    let folder = store.folder(locations[0].folder_id).unwrap().unwrap();
+    assert_eq!(folder.name, "Archive");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn identity_survives_a_move_against_the_folder_order_too() {
+    // The same thing as the test above, in the direction that puts the source
+    // folder before the destination in LIST order. That ordering decides
+    // whether the message is briefly in no folder at all part-way through a
+    // sync — and if orphan collection runs then, the row and everything
+    // hanging off it goes with it. Which direction is safe must not be luck.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "move-identity-reverse@fuckmail.test";
+    let message_id = "keeps-identity-reverse@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "moved the other way").await;
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+
+    // Park it in Archive first, then move it back to INBOX — the direction
+    // systemli's folder order exposed.
+    let uids = mutate::uids(&mut writer).await;
+    writer.select("INBOX").await.unwrap();
+    writer.uid_mv(uids[0].to_string(), "Archive").await.unwrap();
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let before = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    store
+        .record_correction(before.id, Some("notification"), "transactional")
+        .unwrap();
+
+    writer.select("Archive").await.unwrap();
+    let archived: Vec<u32> = writer
+        .uid_search("ALL")
+        .await
+        .unwrap()
+        .into_iter()
+        .collect();
+    writer
+        .uid_mv(archived[0].to_string(), "INBOX")
+        .await
+        .unwrap();
+
+    let report = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let after = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .expect("the message should still be in the store");
+    assert_eq!(
+        after.id, before.id,
+        "the row was rebuilt on the way back: {report:?}"
+    );
+    assert_eq!(
+        report.deduplicated, 1,
+        "a message that moved is the same message, not a new one: {report:?}"
+    );
+
+    let corrections: i64 = store
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM correction WHERE message_id = ?1",
+            [before.id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(corrections, 1, "the correction was lost with the row");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}

@@ -439,10 +439,16 @@ fn expunging_from_one_folder_keeps_a_message_that_lives_in_another() {
     assert_eq!(store.message_count(account).unwrap(), 1);
     assert_eq!(store.locations_of(id).unwrap().len(), 1);
 
-    // Removing the last location deletes the message itself.
+    // Removing the last location leaves the message behind, on purpose: a
+    // message being moved is out of its old folder before it appears in the
+    // new one, and dropping it in between would take its history with it.
     assert_eq!(store.remove_locations(archive, &[1]).unwrap(), 1);
-    assert_eq!(store.message_count(account).unwrap(), 0);
     assert_eq!(store.location_count(account).unwrap(), 0);
+    assert_eq!(store.message_count(account).unwrap(), 1);
+
+    // Collecting orphans is a separate step, for the end of a sync.
+    assert_eq!(store.delete_orphaned_messages().unwrap(), 1);
+    assert_eq!(store.message_count(account).unwrap(), 0);
 }
 
 #[test]
