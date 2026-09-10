@@ -669,3 +669,203 @@ fn a_message_can_be_found_by_its_message_id_with_or_without_brackets() {
     // Scoped to the account, like every other lookup here.
     assert!(store.message_by_rfc822_id(4242, bare).unwrap().is_none());
 }
+
+fn queued_move(account: AccountId, message: MessageId, folder: FolderId) -> NewOperation {
+    NewOperation {
+        account_id: account,
+        message_id: message,
+        kind: OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        source_folder_id: folder,
+        source_uid: 2,
+        source_uid_validity: Some(1234),
+        expect_message_id: Some("newsletter-2026-w36@news.rustweekly.example".into()),
+        execute_after: 0,
+    }
+}
+
+/// A store with one message in INBOX, which is what a mutation needs a handle on.
+fn store_with_message() -> (Store, AccountId, MessageId, FolderId) {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let (message, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 2,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    (store, account, message, inbox)
+}
+
+#[test]
+fn a_queued_operation_records_what_it_expects_to_find() {
+    // The source coordinates are the whole point of the queue: without them
+    // the executor would be acting on a UID it cannot verify.
+    let (store, account, message, inbox) = store_with_message();
+    store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+
+    let pending = store.pending_operations(account).unwrap();
+    assert_eq!(pending.len(), 1);
+    let op = &pending[0];
+    assert_eq!(
+        op.kind,
+        OperationKind::Move {
+            target_folder: "Archive".into()
+        }
+    );
+    assert_eq!(op.source_uid, 2);
+    assert_eq!(op.source_uid_validity, Some(1234));
+    assert_eq!(
+        op.expect_message_id.as_deref(),
+        Some("newsletter-2026-w36@news.rustweekly.example")
+    );
+    assert_eq!(op.state, OperationState::Pending);
+    assert_eq!(op.attempts, 0);
+}
+
+#[test]
+fn an_operation_is_not_due_until_its_undo_window_has_elapsed() {
+    let (store, account, message, inbox) = store_with_message();
+    store
+        .enqueue_operation(&NewOperation {
+            execute_after: 1_000,
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+
+    // Visible as queued straight away — but not yet something to send.
+    assert_eq!(store.pending_operations(account).unwrap().len(), 1);
+    assert!(store.due_operations(account, 999).unwrap().is_empty());
+    assert_eq!(store.due_operations(account, 1_000).unwrap().len(), 1);
+}
+
+#[test]
+fn undo_cancels_the_last_thing_queued_and_only_while_it_is_pending() {
+    let (store, account, message, inbox) = store_with_message();
+    let first = store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+    let second = store
+        .enqueue_operation(&NewOperation {
+            kind: OperationKind::Flag {
+                flag: "\\Seen".into(),
+                set: true,
+            },
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+
+    let undone = store.cancel_latest_operation(account).unwrap().unwrap();
+    assert_eq!(undone.id, second);
+
+    let remaining = store.pending_operations(account).unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, first);
+
+    // Once it has been sent, undo can no longer reach it — the server has
+    // already been told, and pretending otherwise would be a lie.
+    store
+        .settle_operation(first, OperationState::Done, None)
+        .unwrap();
+    assert!(!store.cancel_operation(first).unwrap());
+    assert!(store.cancel_latest_operation(account).unwrap().is_none());
+}
+
+#[test]
+fn re_flagging_a_message_supersedes_the_pending_change_rather_than_queueing_both() {
+    // Mark read, change your mind, mark unread. Two operations racing to the
+    // server would leave the outcome down to ordering luck.
+    let (store, account, message, inbox) = store_with_message();
+    let mark_read = store
+        .enqueue_operation(&NewOperation {
+            kind: OperationKind::Flag {
+                flag: "\\Seen".into(),
+                set: true,
+            },
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+    let mark_unread = store
+        .enqueue_operation(&NewOperation {
+            kind: OperationKind::Flag {
+                flag: "\\Seen".into(),
+                set: false,
+            },
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+
+    let pending = store.pending_operations(account).unwrap();
+    assert_eq!(pending.len(), 1, "{pending:?}");
+    assert_eq!(pending[0].id, mark_unread);
+    assert_eq!(
+        pending[0].kind,
+        OperationKind::Flag {
+            flag: "\\Seen".into(),
+            set: false
+        }
+    );
+
+    // A different flag is a different operation and is left alone.
+    store
+        .enqueue_operation(&NewOperation {
+            kind: OperationKind::Flag {
+                flag: "\\Flagged".into(),
+                set: true,
+            },
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+    assert_eq!(store.pending_operations(account).unwrap().len(), 2);
+
+    // And the superseded one is settled, not silently deleted.
+    let settled: String = store
+        .connection()
+        .query_row(
+            "SELECT state FROM operation WHERE id = ?1",
+            [mark_read],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(settled, "cancelled");
+}
+
+#[test]
+fn a_failed_attempt_is_counted_and_can_stay_pending_for_a_retry() {
+    let (store, account, message, inbox) = store_with_message();
+    let op = store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+
+    store
+        .settle_operation(op, OperationState::Pending, Some("connection reset"))
+        .unwrap();
+
+    let pending = store.pending_operations(account).unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].attempts, 1);
+    assert_eq!(pending[0].last_error.as_deref(), Some("connection reset"));
+}
+
+#[test]
+fn a_message_that_leaves_the_store_takes_its_queued_operations_with_it() {
+    // If sync finds the message gone from the server, acting on it is moot.
+    let (store, account, message, inbox) = store_with_message();
+    store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+
+    store
+        .connection()
+        .execute("DELETE FROM message WHERE id = ?1", [message])
+        .unwrap();
+    assert!(store.pending_operations(account).unwrap().is_empty());
+}
