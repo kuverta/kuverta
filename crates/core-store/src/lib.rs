@@ -329,6 +329,137 @@ impl Store {
         Ok((id, outcome))
     }
 
+    // -- the mutation queue ------------------------------------------------
+
+    /// Queues a mutation, returning its id.
+    ///
+    /// A still-pending operation on the same message and the same flag is
+    /// cancelled first: while the undo window is open the user's last word
+    /// wins, and marking a message read then unread should leave one
+    /// operation rather than two that fight.
+    pub fn enqueue_operation(&self, op: &NewOperation) -> Result<OperationId> {
+        if let OperationKind::Flag { flag, .. } = &op.kind {
+            self.conn.execute(
+                "UPDATE operation SET state = 'cancelled', settled_at = ?3,
+                        last_error = 'superseded by a later change'
+                 WHERE message_id = ?1 AND state = 'pending' AND kind = 'flag' AND flag = ?2",
+                params![op.message_id, flag, now()],
+            )?;
+        }
+
+        let (target_folder, flag, flag_set) = match &op.kind {
+            OperationKind::Move { target_folder } => (Some(target_folder.as_str()), None, None),
+            OperationKind::Flag { flag, set } => (None, Some(flag.as_str()), Some(*set as i64)),
+        };
+
+        self.conn.execute(
+            "INSERT INTO operation
+                 (account_id, message_id, kind, source_folder_id, source_uid,
+                  source_uid_validity, expect_message_id, target_folder, flag, flag_set,
+                  state, execute_after, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 'pending', ?11, ?12)",
+            params![
+                op.account_id,
+                op.message_id,
+                op.kind.as_str(),
+                op.source_folder_id,
+                op.source_uid,
+                op.source_uid_validity,
+                op.expect_message_id,
+                target_folder,
+                flag,
+                flag_set,
+                op.execute_after,
+                now(),
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Every operation still waiting, oldest first, whether or not its undo
+    /// window has elapsed. This is what a "what is queued" view shows.
+    pub fn pending_operations(&self, account_id: AccountId) -> Result<Vec<Operation>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {OPERATION_COLUMNS} FROM operation
+             WHERE account_id = ?1 AND state = 'pending' ORDER BY id"
+        ))?;
+        let rows = stmt.query_map(params![account_id], row_to_operation)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Operations whose undo window has elapsed, oldest first.
+    ///
+    /// Order matters and is not cosmetic: two operations on the same message
+    /// must reach the server in the order the user made them, or a move
+    /// followed by a flag change would apply the flag in the folder the
+    /// message has just left.
+    pub fn due_operations(&self, account_id: AccountId, now_utc: i64) -> Result<Vec<Operation>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT {OPERATION_COLUMNS} FROM operation
+             WHERE account_id = ?1 AND state = 'pending' AND execute_after <= ?2
+             ORDER BY id"
+        ))?;
+        let rows = stmt.query_map(params![account_id, now_utc], row_to_operation)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Cancels a pending operation. Returns false if it had already settled —
+    /// undo cannot reach something the server has been told.
+    pub fn cancel_operation(&self, id: OperationId) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE operation SET state = 'cancelled', settled_at = ?2,
+                    last_error = 'cancelled'
+             WHERE id = ?1 AND state = 'pending'",
+            params![id, now()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Cancels the most recently queued pending operation, and returns it.
+    ///
+    /// This is `undo`: the last thing you did that has not yet left the
+    /// machine.
+    pub fn cancel_latest_operation(&self, account_id: AccountId) -> Result<Option<Operation>> {
+        let latest = self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT {OPERATION_COLUMNS} FROM operation
+                     WHERE account_id = ?1 AND state = 'pending' ORDER BY id DESC LIMIT 1"
+                ),
+                params![account_id],
+                row_to_operation,
+            )
+            .optional()?;
+
+        match latest {
+            Some(op) if self.cancel_operation(op.id)? => Ok(Some(op)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Records the outcome of an attempt.
+    ///
+    /// `Pending` is a legal outcome: it means the attempt failed in a way that
+    /// is worth retrying, and only the attempt count and error move.
+    pub fn settle_operation(
+        &self,
+        id: OperationId,
+        state: OperationState,
+        error: Option<&str>,
+    ) -> Result<()> {
+        let settled_at = (state != OperationState::Pending).then(now);
+        self.conn.execute(
+            "UPDATE operation
+             SET state = ?2, last_error = ?3, settled_at = ?4, attempts = attempts + 1
+             WHERE id = ?1",
+            params![id, state.as_str(), error, settled_at],
+        )?;
+        Ok(())
+    }
+
     /// Looks a message up by its RFC 5322 Message-ID.
     ///
     /// Angle brackets are optional: callers get the id from wherever the user
@@ -682,6 +813,40 @@ pub struct Disagreement {
     pub rules_category: String,
     pub model_category: String,
 }
+
+fn row_to_operation(row: &rusqlite::Row<'_>) -> rusqlite::Result<Operation> {
+    let kind: String = row.get(3)?;
+    let kind = match kind.as_str() {
+        "move" => OperationKind::Move {
+            target_folder: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+        },
+        _ => OperationKind::Flag {
+            flag: row.get::<_, Option<String>>(9)?.unwrap_or_default(),
+            set: row.get::<_, Option<i64>>(10)?.unwrap_or(0) != 0,
+        },
+    };
+
+    Ok(Operation {
+        id: row.get(0)?,
+        account_id: row.get(1)?,
+        message_id: row.get(2)?,
+        kind,
+        source_folder_id: row.get(4)?,
+        source_uid: row.get::<_, i64>(5)? as u32,
+        source_uid_validity: row.get::<_, Option<i64>>(6)?.map(|v| v as u32),
+        expect_message_id: row.get(7)?,
+        state: OperationState::parse(&row.get::<_, String>(11)?).unwrap_or(OperationState::Failed),
+        execute_after: row.get(12)?,
+        attempts: row.get(13)?,
+        last_error: row.get(14)?,
+        created_at: row.get(15)?,
+    })
+}
+
+/// Column list for [`row_to_operation`], in the order it reads them.
+const OPERATION_COLUMNS: &str = "id, account_id, message_id, kind, source_folder_id, source_uid, \
+     source_uid_validity, expect_message_id, target_folder, flag, flag_set, state, \
+     execute_after, attempts, last_error, created_at";
 
 fn row_to_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
     let security: String = row.get(5)?;

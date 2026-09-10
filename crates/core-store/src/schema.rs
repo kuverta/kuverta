@@ -126,6 +126,56 @@ ALTER TABLE account ADD COLUMN smtp_host TEXT;
 ALTER TABLE account ADD COLUMN smtp_port INTEGER;
 ALTER TABLE account ADD COLUMN smtp_security TEXT;
 "#,
+    // v4 — the pending-operation queue for mailbox mutations (plan section 1a,
+    // stage 2).
+    //
+    // Intent is recorded here *before* the server is touched, never after. A
+    // crash between the user acting and the round trip completing must leave
+    // the intent durable rather than lose it, and an operation that may or may
+    // not have reached the server must be re-checkable rather than blindly
+    // retried.
+    //
+    // The source columns exist for exactly that re-check. A UID means nothing
+    // without the UIDVALIDITY it was issued under, and neither proves the UID
+    // still refers to the mail the user acted on — so the Message-ID they
+    // expected is recorded too, and the executor verifies all three before it
+    // mutates anything.
+    r#"
+CREATE TABLE operation (
+    id                  INTEGER PRIMARY KEY,
+    account_id          INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    -- Cascades: if sync finds the message gone from the server entirely, a
+    -- queued operation on it is moot rather than pending.
+    message_id          INTEGER NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+    kind                TEXT    NOT NULL,
+
+    source_folder_id    INTEGER NOT NULL REFERENCES folder(id) ON DELETE CASCADE,
+    source_uid          INTEGER NOT NULL,
+    source_uid_validity INTEGER,
+    expect_message_id   TEXT,
+
+    -- kind = 'move'. A folder name rather than an id: the destination need not
+    -- have been synced yet, and names are what IMAP commands take anyway.
+    target_folder       TEXT,
+
+    -- kind = 'flag'
+    flag                TEXT,
+    flag_set            INTEGER,
+
+    state               TEXT    NOT NULL,
+    -- The undo window: not eligible to be sent to the server before this.
+    -- Cancelling is allowed at any point while the operation is still pending,
+    -- so this is a floor on the grace period, not the whole of it.
+    execute_after       INTEGER NOT NULL,
+    attempts            INTEGER NOT NULL DEFAULT 0,
+    last_error          TEXT,
+    created_at          INTEGER NOT NULL,
+    settled_at          INTEGER
+);
+
+CREATE INDEX operation_due ON operation (account_id, state, execute_after);
+CREATE INDEX operation_by_message ON operation (message_id, state);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

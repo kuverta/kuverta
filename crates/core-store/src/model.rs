@@ -215,3 +215,99 @@ pub struct Verdict {
     pub model: Option<String>,
     pub latency_ms: Option<i64>,
 }
+
+pub type OperationId = i64;
+
+/// What a queued mutation does.
+///
+/// Two kinds cover everything stage 2 promises: archive, delete and move are
+/// all "move to folder X", and mark-read/unread is "set or clear one flag".
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OperationKind {
+    /// Move the message to `target_folder`.
+    ///
+    /// Deliberately no `Expunge` sibling. Deleting means moving to Trash, so
+    /// nothing this client does destroys mail permanently — the one part of
+    /// the original read-only safety story that survives stage 2 intact.
+    Move { target_folder: String },
+    /// Add or remove a single IMAP flag, e.g. `\Seen`.
+    Flag { flag: String, set: bool },
+}
+
+impl OperationKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Move { .. } => "move",
+            Self::Flag { .. } => "flag",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OperationState {
+    /// Queued. Cancellable, and eligible for the server once `execute_after`
+    /// has passed.
+    Pending,
+    /// The server accepted it.
+    Done,
+    /// Abandoned. Either the user cancelled it or it could not be applied —
+    /// `last_error` says which.
+    Cancelled,
+    Failed,
+}
+
+impl OperationState {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::Done => "done",
+            Self::Cancelled => "cancelled",
+            Self::Failed => "failed",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "pending" => Some(Self::Pending),
+            "done" => Some(Self::Done),
+            "cancelled" => Some(Self::Cancelled),
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+
+/// A mutation to queue.
+#[derive(Debug, Clone)]
+pub struct NewOperation {
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    pub kind: OperationKind,
+    /// Where the message was when the user acted, and what the executor will
+    /// verify before touching the server.
+    pub source_folder_id: FolderId,
+    pub source_uid: u32,
+    pub source_uid_validity: Option<u32>,
+    /// The Message-ID the caller believes lives at that UID.
+    pub expect_message_id: Option<String>,
+    /// Unix seconds before which this must not be sent to the server.
+    pub execute_after: i64,
+}
+
+/// A queued mutation as stored.
+#[derive(Debug, Clone)]
+pub struct Operation {
+    pub id: OperationId,
+    pub account_id: AccountId,
+    pub message_id: MessageId,
+    pub kind: OperationKind,
+    pub source_folder_id: FolderId,
+    pub source_uid: u32,
+    pub source_uid_validity: Option<u32>,
+    pub expect_message_id: Option<String>,
+    pub state: OperationState,
+    pub execute_after: i64,
+    pub attempts: i64,
+    pub last_error: Option<String>,
+    pub created_at: i64,
+}
