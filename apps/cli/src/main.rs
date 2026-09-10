@@ -250,11 +250,15 @@ async fn sync(
         client.logout().await.ok();
 
         println!(
-            "{}: {} folders, {} new, {} deduplicated, {} unparseable{}",
+            "{}: {} folders synced, {} unchanged | {} new, {} deduplicated, \
+             {} flag changes, {} expunged, {} unparseable{}",
             account.email,
             report.folders_synced,
+            report.folders_skipped,
             report.inserted,
             report.deduplicated,
+            report.flag_updates,
+            report.expunged,
             report.unparseable,
             if report.invalidated > 0 {
                 format!(

@@ -373,3 +373,142 @@ fn reopening_a_database_is_a_no_op_migration() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn flag_updates_report_whether_anything_changed() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 2,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    assert!(store.set_location_flags(inbox, 2, "\\Seen").unwrap());
+    // Re-reporting the same flags is not a change; counting it as one would
+    // make every sync look like it did work.
+    assert!(!store.set_location_flags(inbox, 2, "\\Seen").unwrap());
+    assert!(store
+        .set_location_flags(inbox, 2, "\\Seen \\Flagged")
+        .unwrap());
+
+    let locations = store.locations_of(1).unwrap();
+    assert_eq!(locations[0].flags, "\\Seen \\Flagged");
+}
+
+#[test]
+fn expunging_from_one_folder_keeps_a_message_that_lives_in_another() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 2,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: archive,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    // Unlabelled in Gmail terms: gone from the inbox, still archived.
+    assert_eq!(store.remove_locations(inbox, &[2]).unwrap(), 1);
+    assert_eq!(store.message_count(account).unwrap(), 1);
+    assert_eq!(store.locations_of(id).unwrap().len(), 1);
+
+    // Removing the last location deletes the message itself.
+    assert_eq!(store.remove_locations(archive, &[1]).unwrap(), 1);
+    assert_eq!(store.message_count(account).unwrap(), 0);
+    assert_eq!(store.location_count(account).unwrap(), 0);
+}
+
+#[test]
+fn removing_no_locations_is_a_no_op() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 2,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(store.remove_locations(inbox, &[]).unwrap(), 0);
+    assert_eq!(store.message_count(account).unwrap(), 1);
+}
+
+#[test]
+fn folder_uids_lists_what_is_cached() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+
+    for uid in [3u32, 1, 9] {
+        let mut m = newsletter();
+        m.rfc822_message_id = Some(format!("m{uid}@example.com"));
+        store
+            .upsert_message(
+                account,
+                &m,
+                Some(&Location {
+                    folder_id: inbox,
+                    uid,
+                    flags: String::new(),
+                }),
+            )
+            .unwrap();
+    }
+
+    let mut uids = store.folder_uids(inbox).unwrap();
+    uids.sort_unstable();
+    assert_eq!(uids, vec![1, 3, 9]);
+}
+
+#[test]
+fn folder_round_trips_its_sync_state() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+
+    assert!(store
+        .folder(inbox)
+        .unwrap()
+        .unwrap()
+        .highest_modseq
+        .is_none());
+
+    store
+        .set_folder_sync_state(inbox, Some(1789), Some(42), Some(97))
+        .unwrap();
+
+    let folder = store.folder(inbox).unwrap().unwrap();
+    assert_eq!(folder.uid_validity, Some(1789));
+    assert_eq!(folder.uid_next, Some(42));
+    assert_eq!(folder.highest_modseq, Some(97));
+    assert_eq!(folder.name, "INBOX");
+
+    assert!(store.folder(9999).unwrap().is_none());
+}

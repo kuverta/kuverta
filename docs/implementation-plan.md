@@ -111,8 +111,14 @@ covered by tests, and the UI-stack risk is retired: a Tauri v2 webview holds
 Rust/JS bridge costs ~78 MiB/s of JSON, so the list must request windowed slices
 rather than the whole mailbox (decision 3 stands; the UI just pages).
 
-Still open for month 2: incremental sync via `HIGHESTMODSEQ` (captured but not
-yet used to skip unchanged folders), and IDLE.
+Incremental sync landed too: a folder whose `HIGHESTMODSEQ` is unchanged is
+skipped without fetching, flag changes arrive via `CHANGEDSINCE`, and messages
+expunged on the server are removed locally. On the seeded account a cold sync
+touches 6 folders; the next one touches 0.
+
+Still open for month 2: IDLE for push, and QRESYNC (`VANISHED`) to replace the
+`UID SEARCH ALL` reconciliation, which is currently proportional to folder size.
+Month 3 is next: OAuth2 device flow for M365, and the real accounts.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
