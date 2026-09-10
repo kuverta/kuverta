@@ -447,6 +447,39 @@ impl Store {
             .map_err(Into::into)
     }
 
+    /// Recent messages, each with the most recent rules verdict recorded for
+    /// it. Messages never classified come back with `category: None`.
+    pub fn recent_with_category(
+        &self,
+        account_id: AccountId,
+        limit: usize,
+    ) -> Result<Vec<CategorizedMessage>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, c.category, c.confidence
+             FROM message m
+             LEFT JOIN classification c
+               ON c.message_id = m.id
+              AND c.source = 'rules'
+              AND c.id = (
+                  SELECT MAX(c2.id) FROM classification c2
+                  WHERE c2.message_id = m.id AND c2.source = 'rules'
+              )
+             WHERE m.account_id = ?1
+             ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(params![account_id, limit as i64], |row| {
+            Ok(CategorizedMessage {
+                summary: row_to_summary(row)?,
+                category: row.get(7)?,
+                confidence: row.get(8)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     /// Full-text search over subject, sender and body.
     pub fn search(
         &self,
@@ -505,6 +538,34 @@ impl Store {
         Ok(())
     }
 
+    /// The categories the user has assigned by correcting messages, expressed
+    /// as (sender, list_id, category) so the classifier can key on either.
+    ///
+    /// Only the most recent correction per message counts — a later correction
+    /// supersedes an earlier one. Where several messages from one sender were
+    /// corrected differently, the most recent wins, which matches the
+    /// intuition that the latest decision is the current one.
+    pub fn learned_categories(&self, account_id: AccountId) -> Result<Vec<LearnedCategory>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.from_addr, m.list_id, c.to_category
+             FROM correction c
+             JOIN message m ON m.id = c.message_id
+             WHERE m.account_id = ?1
+               AND c.id = (
+                   SELECT MAX(c2.id) FROM correction c2 WHERE c2.message_id = c.message_id
+               )
+             ORDER BY c.id",
+        )?;
+        let rows = stmt.query_map(params![account_id], |row| {
+            Ok(LearnedCategory {
+                sender: row.get(0)?,
+                list_id: row.get(1)?,
+                category: row.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+    }
+
     /// Messages where the rules baseline and the model disagreed.
     ///
     /// This is the query that answers "is the model worth its latency"; it
@@ -540,6 +601,21 @@ pub struct MessageSummary {
     pub date_utc: Option<i64>,
     pub list_id: Option<String>,
     pub has_attachments: bool,
+}
+
+/// A category the user assigned by correcting a message. Either key may be set.
+#[derive(Debug, Clone)]
+pub struct LearnedCategory {
+    pub sender: Option<String>,
+    pub list_id: Option<String>,
+    pub category: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct CategorizedMessage {
+    pub summary: MessageSummary,
+    pub category: Option<String>,
+    pub confidence: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
