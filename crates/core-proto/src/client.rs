@@ -1,9 +1,16 @@
-//! Read-only IMAP client.
+//! IMAP client: read-only, plus `APPEND`.
 //!
 //! Read-only is enforced structurally, not by convention: folders are opened
 //! with `EXAMINE` rather than `SELECT`, so the server itself rejects any
-//! mutation. A sync bug can therefore lose cached data but never mail. This is
-//! the main reason v1 is a triage layer rather than a full client.
+//! mutation. A sync bug can therefore lose cached data but never mail.
+//!
+//! [`ImapClient::append`] is the one write, and it does not weaken that.
+//! `APPEND` creates a message; it cannot modify or remove one, and it names its
+//! target mailbox rather than acting on a selected one — so no folder is ever
+//! opened writable. It exists so a sent message can be filed in Sent, which is
+//! stage 1 of the write capability in docs/implementation-plan.md section 1a.
+//! Stage 2 is where `SELECT`, `STORE` and `EXPUNGE` arrive, and where this
+//! property is deliberately given up.
 
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -224,10 +231,67 @@ impl ImapClient {
         Ok(self.session.uid_search("ALL").await?)
     }
 
+    /// Appends a message to `folder`, as [`RFC 3501 section
+    /// 6.3.11`](https://www.rfc-editor.org/rfc/rfc3501#section-6.3.11).
+    ///
+    /// Additive by construction: it can only create a message, and it takes the
+    /// mailbox as an argument rather than acting on a selected one, so nothing
+    /// is ever opened writable. See the module docs.
+    ///
+    /// `flags` are IMAP flag names such as `\\Seen`. A message filed in Sent
+    /// should carry `\\Seen`: the sender has, by definition, read it, and
+    /// without it every client shows the Sent folder as full of unread mail.
+    pub async fn append(
+        &mut self,
+        folder: &str,
+        flags: &[&str],
+        raw: &[u8],
+    ) -> Result<(), ProtoError> {
+        let flags = (!flags.is_empty()).then(|| format!("({})", flags.join(" ")));
+        self.session
+            .append(folder, flags.as_deref(), None, raw)
+            .await?;
+        Ok(())
+    }
+
     pub async fn logout(mut self) -> Result<(), ProtoError> {
         self.session.logout().await?;
         Ok(())
     }
+}
+
+/// Picks the folder that sent mail belongs in.
+///
+/// `\\Sent` (RFC 6154) when the server declares it, which is the only reliable
+/// answer. The name fallbacks exist because plenty of servers — including
+/// Dovecot in its default configuration — advertise no special-use attributes
+/// at all, and guessing from a known list beats creating a second Sent folder
+/// alongside the one the user's other clients already use.
+pub fn find_sent(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
+    if let Some(declared) = folders
+        .iter()
+        .find(|folder| folder.special_use.as_deref() == Some("\\Sent"))
+    {
+        return Some(declared);
+    }
+
+    const KNOWN_NAMES: &[&str] = &[
+        "Sent",
+        "Sent Items",
+        "Sent Messages",
+        "INBOX.Sent",
+        // German, for the same reason the classifier is bilingual.
+        "Gesendet",
+        "Gesendete Objekte",
+        "Gesendete Elemente",
+    ];
+
+    folders.iter().find(|folder| {
+        folder.selectable
+            && KNOWN_NAMES
+                .iter()
+                .any(|name| folder.name.eq_ignore_ascii_case(name))
+    })
 }
 
 async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
@@ -328,6 +392,41 @@ impl async_imap::Authenticator for XOAuth2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn folder(name: &str, special_use: Option<&str>) -> RemoteFolder {
+        RemoteFolder {
+            name: name.into(),
+            special_use: special_use.map(Into::into),
+            selectable: true,
+        }
+    }
+
+    #[test]
+    fn the_sent_folder_is_found_by_attribute_before_name() {
+        // A server that declares \\Sent on a folder named something else is
+        // right and the name list is wrong; trust the attribute.
+        let folders = vec![
+            folder("INBOX", None),
+            folder("Sent", None),
+            folder("Verschickt", Some("\\Sent")),
+        ];
+        assert_eq!(find_sent(&folders).unwrap().name, "Verschickt");
+    }
+
+    #[test]
+    fn the_sent_folder_falls_back_to_known_names() {
+        let folders = vec![
+            folder("INBOX", None),
+            folder("Gesendete Objekte", None),
+            folder("Trash", Some("\\Trash")),
+        ];
+        assert_eq!(find_sent(&folders).unwrap().name, "Gesendete Objekte");
+
+        // Rather than inventing one when there is nothing to go on: the caller
+        // has to decide whether to create a folder, not this function.
+        let bare = vec![folder("INBOX", None), folder("Archive", Some("\\Archive"))];
+        assert!(find_sent(&bare).is_none());
+    }
 
     #[test]
     fn a_tls_connector_can_be_built() {

@@ -633,3 +633,39 @@ fn setting_an_endpoint_on_an_unknown_account_is_an_error() {
     let store = Store::open_in_memory().unwrap();
     assert!(store.set_smtp(4242, None).is_err());
 }
+
+#[test]
+fn a_message_can_be_found_by_its_message_id_with_or_without_brackets() {
+    // How a reply finds the message it is answering.
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    let bare = "newsletter-2026-w36@news.rustweekly.example";
+    let found = store.message_by_rfc822_id(account, bare).unwrap().unwrap();
+    assert_eq!(found.subject.as_deref(), Some("Rust Weekly #612"));
+    assert!(found.body_path.is_none());
+
+    let bracketed = store
+        .message_by_rfc822_id(account, &format!("<{bare}>"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(bracketed.id, found.id);
+
+    assert!(store
+        .message_by_rfc822_id(account, "nope@example.com")
+        .unwrap()
+        .is_none());
+    // Scoped to the account, like every other lookup here.
+    assert!(store.message_by_rfc822_id(4242, bare).unwrap().is_none());
+}

@@ -13,6 +13,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
 use core_proto::{ImapClient, ImapConfig};
+use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
 use core_store::model::{ImapSecurity, NewAccount, SmtpConfig, SmtpSecurity};
 use core_store::{Blobs, Store};
 
@@ -90,6 +91,11 @@ enum Command {
         #[arg(long)]
         category: Option<String>,
     },
+    /// Compose and send a message.
+    ///
+    /// The body is read from stdin, so it composes with an editor or a
+    /// heredoc rather than needing one of its own.
+    Send(SendArgs),
     /// Configure (or clear) where an account submits outgoing mail.
     ///
     /// Accounts registered before sending existed have no endpoint; this is how
@@ -167,6 +173,42 @@ impl SmtpArgs {
             security,
         }))
     }
+}
+
+#[derive(Args)]
+struct SendArgs {
+    /// Which account to send from. Optional when only one is registered.
+    #[arg(long)]
+    email: Option<String>,
+    /// Repeat for several recipients.
+    #[arg(long)]
+    to: Vec<String>,
+    #[arg(long)]
+    cc: Vec<String>,
+    #[arg(long)]
+    bcc: Vec<String>,
+    #[arg(long)]
+    subject: Option<String>,
+    /// Reply to the message with this Message-ID. It must already be in the
+    /// local store, so `sync` first.
+    #[arg(long, conflicts_with = "forward")]
+    reply_to: Option<String>,
+    /// Reply to everyone on the original rather than only its author.
+    #[arg(long, requires = "reply_to")]
+    reply_all: bool,
+    /// Forward the message with this Message-ID. Needs at least one --to.
+    #[arg(long)]
+    forward: Option<String>,
+    /// Print the message and its envelope instead of sending it.
+    #[arg(long)]
+    dry_run: bool,
+    /// Do not file a copy in the Sent folder.
+    #[arg(long)]
+    no_save_to_sent: bool,
+    /// Read the password from this environment variable instead of the
+    /// keychain, as `sync` does.
+    #[arg(long)]
+    password_env: Option<String>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -250,6 +292,7 @@ async fn main() -> Result<()> {
             limit,
             category,
         } => triage(&store, email.as_deref(), limit, category.as_deref()),
+        Command::Send(args) => send(&store, &blobs, args).await,
         Command::SetSmtp { email, clear, smtp } => set_smtp(&store, &email, clear, &smtp),
         Command::Status => status(&store, &blobs),
     }
@@ -300,6 +343,164 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
         Auth::Oauth2 => println!("authorise it with: fuckmail login --email {}", args.email),
     }
     Ok(())
+}
+
+async fn send(store: &Store, blobs: &Blobs, args: SendArgs) -> Result<()> {
+    let account = match &args.email {
+        Some(email) => store
+            .account_by_email(email)?
+            .with_context(|| format!("no account {email}"))?,
+        None => {
+            let mut accounts = store.accounts()?;
+            match accounts.len() {
+                0 => bail!("no accounts registered; start with `fuckmail add-account`"),
+                1 => accounts.remove(0),
+                _ => bail!("several accounts registered; say which with --email"),
+            }
+        }
+    };
+
+    let smtp = account.smtp.clone().with_context(|| {
+        format!(
+            "account {} has no SMTP endpoint; configure one with:\n  \
+             fuckmail set-smtp --email {} --smtp-host <host> --smtp-port 587 \
+             --smtp-security starttls",
+            account.email, account.email
+        )
+    })?;
+
+    // The label doubles as the display name, unless it is just the address
+    // again — in which case a `Name <addr>` header would only repeat itself.
+    let from = if account.label == account.email {
+        Mailbox::new(account.email.clone())
+    } else {
+        Mailbox::named(account.label.clone(), account.email.clone())
+    };
+
+    let mut draft = match (&args.reply_to, &args.forward) {
+        (Some(message_id), _) => {
+            let source = source_for(store, blobs, account.id, message_id)?;
+            let mode = if args.reply_all {
+                ReplyMode::All
+            } else {
+                ReplyMode::Sender
+            };
+            Draft::reply(from, &source, mode)
+        }
+        (_, Some(message_id)) => {
+            let source = source_for(store, blobs, account.id, message_id)?;
+            Draft::forward(from, &source)
+        }
+        _ => Draft::new(from),
+    };
+
+    for address in &args.to {
+        draft = draft.to(Mailbox::parse(address)?);
+    }
+    for address in &args.cc {
+        draft = draft.cc(Mailbox::parse(address)?);
+    }
+    for address in &args.bcc {
+        draft = draft.bcc(Mailbox::parse(address)?);
+    }
+    if let Some(subject) = args.subject {
+        draft = draft.subject(subject);
+    }
+
+    // The typed text goes above whatever the reply or forward put there, which
+    // is where a reply is read from.
+    let typed = read_body()?;
+    draft.body = format!("{typed}{}", draft.body);
+
+    let built = draft.build()?;
+
+    if args.dry_run {
+        println!("-- envelope --");
+        println!("MAIL FROM: <{}>", built.sender);
+        for recipient in &built.recipients {
+            println!("RCPT TO:   <{recipient}>");
+        }
+        println!("-- message --");
+        print!("{}", String::from_utf8_lossy(&built.rfc822));
+        return Ok(());
+    }
+
+    let auth = provider_for(&account, args.password_env.as_deref())?;
+    core_smtp::submit(&smtp, &account.username, auth.as_ref(), &built).await?;
+    println!(
+        "sent to {} recipient(s) as <{}>",
+        built.recipients.len(),
+        built.message_id
+    );
+
+    if !args.no_save_to_sent {
+        // Deliberately not fatal, and reported separately: the message has
+        // already been accepted by the server at this point, and telling the
+        // user the send failed would invite them to send it twice.
+        if let Err(err) = save_to_sent(&account, auth.as_ref(), &built.rfc822).await {
+            eprintln!("warning: sent, but could not file a copy in Sent: {err:#}");
+        }
+    }
+
+    Ok(())
+}
+
+/// Loads a stored message and reads it back into the parts a reply needs.
+fn source_for(
+    store: &Store,
+    blobs: &Blobs,
+    account_id: i64,
+    message_id: &str,
+) -> Result<ReplySource> {
+    let stored = store
+        .message_by_rfc822_id(account_id, message_id)?
+        .with_context(|| format!("no message <{message_id}> in the store; sync first"))?;
+
+    let body_path = stored.body_path.as_deref().with_context(|| {
+        format!("message <{message_id}> was stored without its body, so it cannot be quoted")
+    })?;
+    let raw = blobs
+        .get(body_path)
+        .with_context(|| format!("reading the stored body of <{message_id}>"))?;
+
+    ReplySource::from_rfc822(&raw)
+        .with_context(|| format!("parsing the stored body of <{message_id}>"))
+}
+
+async fn save_to_sent(
+    account: &core_store::model::Account,
+    auth: &dyn AuthProvider,
+    raw: &[u8],
+) -> Result<()> {
+    let config = ImapConfig {
+        host: account.imap_host.clone(),
+        port: account.imap_port,
+        security: account.imap_security.clone(),
+        username: account.username.clone(),
+    };
+
+    let mut client = ImapClient::connect(&config, auth).await?;
+    let folders = client.folders().await?;
+    let sent = core_proto::client::find_sent(&folders)
+        .map(|folder| folder.name.clone())
+        .context("the server declares no Sent folder and none of the usual names exist")?;
+
+    // \Seen because the sender has by definition read it; without it every
+    // client shows Sent as full of unread mail.
+    client.append(&sent, &["\\Seen"], raw).await?;
+    client.logout().await.ok();
+
+    println!("filed a copy in {sent}");
+    Ok(())
+}
+
+fn read_body() -> Result<String> {
+    if std::io::stdin().is_terminal() {
+        eprintln!("Reading the message body from stdin. Type it and press Ctrl-D:");
+    }
+    let mut body = String::new();
+    std::io::Read::read_to_string(&mut std::io::stdin(), &mut body)?;
+    Ok(body)
 }
 
 fn set_smtp(store: &Store, email: &str, clear: bool, args: &SmtpArgs) -> Result<()> {
