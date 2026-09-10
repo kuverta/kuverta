@@ -66,6 +66,22 @@ pub struct RawMessage {
 pub struct ImapClient {
     session: Session<Transport>,
     condstore: bool,
+    /// Answers to `CAPABILITY`, cached per connection. The set does not change
+    /// mid-session once authenticated, and the move path would otherwise ask
+    /// twice per message.
+    capabilities: std::collections::HashMap<String, bool>,
+}
+
+/// How a move actually happened, since not every server can do it atomically.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveOutcome {
+    /// RFC 6851 `UID MOVE`.
+    Moved,
+    /// Copied, flagged `\\Deleted`, and expunged via RFC 4315 `UID EXPUNGE`.
+    CopiedAndExpunged,
+    /// Copied and flagged `\\Deleted`, but the source copy is still there:
+    /// the server offers neither extension. See [`ImapClient::uid_move`].
+    CopiedAndFlagged,
 }
 
 impl ImapClient {
@@ -107,7 +123,11 @@ impl ImapClient {
             tracing::info!(host = %config.host, "server did not accept ENABLE CONDSTORE");
         }
 
-        Ok(Self { session, condstore })
+        Ok(Self {
+            session,
+            condstore,
+            capabilities: std::collections::HashMap::new(),
+        })
     }
 
     pub fn condstore_enabled(&self) -> bool {
@@ -140,6 +160,123 @@ impl ImapClient {
             highest_modseq: mailbox.highest_modseq,
             exists: mailbox.exists,
         })
+    }
+
+    /// Opens a folder for writing.
+    ///
+    /// The counterpart to [`Self::examine`], and the point at which this client
+    /// stops being structurally incapable of changing a mailbox. Everything
+    /// that calls it goes through the executor in [`crate::mutate`], which
+    /// verifies what it is about to touch first.
+    pub async fn select(&mut self, folder: &str) -> Result<FolderState, ProtoError> {
+        let mailbox = self.session.select(folder).await?;
+        Ok(FolderState {
+            uid_validity: mailbox.uid_validity,
+            uid_next: mailbox.uid_next,
+            highest_modseq: mailbox.highest_modseq,
+            exists: mailbox.exists,
+        })
+    }
+
+    /// Reads back the Message-ID stored at `uid` in the open folder.
+    ///
+    /// This is the conflict check. UIDs are stable within a UIDVALIDITY, but
+    /// "stable" only means the server will not reissue one — it says nothing
+    /// about the message still being there, and a stale UID acted on blindly is
+    /// how a client archives the wrong mail. `None` means there is no message
+    /// at that UID any more.
+    ///
+    /// `BODY.PEEK` rather than `BODY`, so the check itself does not mark
+    /// anything read.
+    pub async fn uid_message_id(&mut self, uid: u32) -> Result<Option<String>, ProtoError> {
+        let mut stream = self
+            .session
+            .uid_fetch(uid.to_string(), "BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)]")
+            .await?;
+
+        let mut found = None;
+        while let Some(fetch) = stream.try_next().await? {
+            let Some(header) = fetch.header() else {
+                continue;
+            };
+            let text = String::from_utf8_lossy(header);
+            found = text
+                .split_once(':')
+                .map(|(_, value)| value.trim().trim_start_matches('<').trim_end_matches('>'))
+                .filter(|value| !value.is_empty())
+                .map(str::to_string);
+        }
+        Ok(found)
+    }
+
+    /// Moves `uid` out of the open folder and into `target`.
+    ///
+    /// Prefers RFC 6851 `UID MOVE`, which is atomic. Without it the move is a
+    /// copy, a `\\Deleted` flag, and — only if the server offers RFC 4315
+    /// `UIDPLUS` — a `UID EXPUNGE` of that one message.
+    ///
+    /// A bare `EXPUNGE` is deliberately never sent: it removes every
+    /// `\\Deleted` message in the folder, including ones another client marked,
+    /// so on a server with neither extension the copy is left behind flagged
+    /// rather than risk destroying mail this client was never asked to touch.
+    /// Both extensions are near-universal; Dovecot, Gmail and M365 all have
+    /// them.
+    pub async fn uid_move(&mut self, uid: u32, target: &str) -> Result<MoveOutcome, ProtoError> {
+        if self.capability("MOVE").await? {
+            self.session.uid_mv(uid.to_string(), target).await?;
+            return Ok(MoveOutcome::Moved);
+        }
+
+        self.session.uid_copy(uid.to_string(), target).await?;
+        self.uid_store_flag(uid, "\\Deleted", true).await?;
+
+        if self.capability("UIDPLUS").await? {
+            // Boxed because the expunge stream is not Unpin, and the
+            // response has to be drained before the next command goes out.
+            let mut stream = Box::pin(self.session.uid_expunge(uid.to_string()).await?);
+            while stream.try_next().await?.is_some() {}
+            Ok(MoveOutcome::CopiedAndExpunged)
+        } else {
+            tracing::warn!(
+                uid,
+                target,
+                "server has neither MOVE nor UIDPLUS; the copy in the source folder is \
+                 flagged \\Deleted but left in place"
+            );
+            Ok(MoveOutcome::CopiedAndFlagged)
+        }
+    }
+
+    /// Adds or removes one flag on `uid` in the open folder.
+    pub async fn uid_store_flag(
+        &mut self,
+        uid: u32,
+        flag: &str,
+        set: bool,
+    ) -> Result<(), ProtoError> {
+        let op = if set {
+            "+FLAGS.SILENT"
+        } else {
+            "-FLAGS.SILENT"
+        };
+        let mut stream = self
+            .session
+            .uid_store(uid.to_string(), format!("{op} ({flag})"))
+            .await?;
+        // .SILENT asks the server not to report the new flags, but the response
+        // still has to be drained before the next command can be sent.
+        while stream.try_next().await?.is_some() {}
+        Ok(())
+    }
+
+    /// Whether the server advertises `name`, asking it at most once.
+    async fn capability(&mut self, name: &str) -> Result<bool, ProtoError> {
+        if let Some(known) = self.capabilities.get(name) {
+            return Ok(*known);
+        }
+        let has = self.session.capabilities().await?.has_str(name);
+        self.capabilities.insert(name.to_string(), has);
+        Ok(has)
     }
 
     /// Fetches messages with a UID greater than `after`, or all of them when

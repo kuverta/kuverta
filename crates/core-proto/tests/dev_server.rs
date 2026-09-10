@@ -258,7 +258,17 @@ mod mutate {
 
     /// Empties INBOX so a re-run starts from a known state.
     pub async fn reset_inbox(session: &mut Session) {
-        session.select("INBOX").await.unwrap();
+        reset_folder(session, "INBOX").await;
+    }
+
+    /// Empties one folder.
+    ///
+    /// Mutation tests move mail *out* of INBOX, so resetting INBOX alone is
+    /// not enough to make them repeatable: the copy left in the destination
+    /// would still be there on the next run, and a queued operation would pick
+    /// up that stale location instead of the fresh one.
+    pub async fn reset_folder(session: &mut Session, folder: &str) {
+        session.select(folder).await.unwrap();
         let uids = session.uid_search("ALL").await.unwrap();
         if !uids.is_empty() {
             let set = uids
@@ -519,4 +529,402 @@ async fn a_sent_message_is_appended_to_the_sent_folder() {
     );
 
     client.logout().await.unwrap();
+}
+
+// -- the mutation queue (plan section 1a, stage 2) -------------------------
+
+use core_store::model::{NewOperation, OperationKind};
+
+/// Puts a single message in INBOX with every folder a mutation test might
+/// move it to emptied first, so the run starts from a known state.
+async fn seeded_inbox(user: &str, message_id: &str, subject: &str) -> mutate::Session {
+    let mut writer = mutate::login(user).await;
+    for folder in ["INBOX", "Archive", "Trash"] {
+        mutate::reset_folder(&mut writer, folder).await;
+    }
+    mutate::append(&mut writer, message_id, subject).await;
+    writer
+}
+
+/// Queues an operation on the message with `message_id`, as the CLI would.
+fn enqueue(
+    store: &Store,
+    account: i64,
+    message_id: &str,
+    kind: OperationKind,
+    expect: Option<&str>,
+) -> i64 {
+    let message = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .expect("message should be in the store");
+    let location = store.locations_of(message.id).unwrap().remove(0);
+    let folder = store.folder(location.folder_id).unwrap().unwrap();
+
+    store
+        .enqueue_operation(&NewOperation {
+            account_id: account,
+            message_id: message.id,
+            kind,
+            source_folder_id: location.folder_id,
+            source_uid: location.uid,
+            source_uid_validity: folder.uid_validity,
+            expect_message_id: expect.map(str::to_string),
+            // Due immediately: the undo window is the CLI's concern, and a
+            // test that slept through it would only be slower.
+            execute_after: 0,
+        })
+        .unwrap()
+}
+
+fn state_of(store: &Store, op: i64) -> (String, Option<String>) {
+    store
+        .connection()
+        .query_row(
+            "SELECT state, last_error FROM operation WHERE id = ?1",
+            [op],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
+}
+
+async fn synced(user: &str) -> (Store, i64, Blobs, tempdir::TempDir, ImapClient) {
+    let (store, account, blobs, dir, mut client) = isolated(user).await;
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    (store, account, blobs, dir, client)
+}
+
+#[tokio::test]
+async fn a_queued_move_reaches_the_server_and_the_next_sync_sees_it() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "move-op@fuckmail.test";
+    let message_id = "moveable-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "archive me").await;
+
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+    let op = enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        Some(message_id),
+    );
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.applied, 1, "{report:?}");
+    assert_eq!(state_of(&store, op).0, "done");
+
+    // The executor does not touch the local store; the sync that follows is
+    // what makes the move visible, by observing the server.
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let message = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    let locations = store.locations_of(message.id).unwrap();
+    assert_eq!(locations.len(), 1, "{locations:?}");
+    let folder = store.folder(locations[0].folder_id).unwrap().unwrap();
+    assert_eq!(folder.name, "Archive");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_queued_flag_change_reaches_the_server() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "flag-op@fuckmail.test";
+    let message_id = "flaggable-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "mark me read").await;
+
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+    enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Flag {
+            flag: "\\Seen".into(),
+            set: true,
+        },
+        Some(message_id),
+    );
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.applied, 1, "{report:?}");
+
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let message = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    let locations = store.locations_of(message.id).unwrap();
+    assert!(
+        locations[0].flags.contains("\\Seen"),
+        "flags were {:?}",
+        locations[0].flags
+    );
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn an_operation_is_refused_when_the_uid_no_longer_holds_the_expected_message() {
+    // The check the whole executor exists for. If this regresses, fuckmail
+    // archives whatever happens to sit at a stale UID — the exact failure the
+    // read-only design used to make impossible.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "conflict-op@fuckmail.test";
+    let message_id = "conflicted-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "do not touch me").await;
+
+    let (store, account, _blobs, _dir, mut client) = synced(user).await;
+    // Queued expecting a message that is not the one at this UID, which is
+    // what a stale queue entry looks like from the executor's side.
+    let op = enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        Some("something-else@example.com"),
+    );
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.conflicted, 1, "{report:?}");
+    assert_eq!(report.applied, 0);
+
+    let (state, error) = state_of(&store, op);
+    assert_eq!(state, "failed");
+    assert!(
+        error
+            .as_deref()
+            .unwrap()
+            .contains("something-else@example.com"),
+        "the reason should name what was expected, got {error:?}"
+    );
+
+    // And the message really was left where it was.
+    let mut inbox = mutate::login(user).await;
+    inbox.select("INBOX").await.unwrap();
+    assert_eq!(inbox.uid_search("ALL").await.unwrap().len(), 1);
+
+    client.logout().await.unwrap();
+    inbox.logout().await.ok();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn an_operation_on_a_message_someone_else_removed_is_obsolete_not_an_error() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "obsolete-op@fuckmail.test";
+    let message_id = "vanishing-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "gone by the time we get there").await;
+
+    let (store, account, _blobs, _dir, mut client) = synced(user).await;
+    let op = enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        Some(message_id),
+    );
+
+    // Another client gets there first — the ordinary case of a phone and a
+    // laptop touching the same mailbox.
+    let uids = mutate::uids(&mut writer).await;
+    mutate::expunge_uid(&mut writer, uids[0]).await;
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.obsolete, 1, "{report:?}");
+    assert_eq!(report.conflicted, 0);
+    assert_eq!(state_of(&store, op).0, "obsolete");
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_renumbered_folder_fails_its_operations_rather_than_acting_on_stale_uids() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "uidvalidity-op@fuckmail.test";
+    let message_id = "renumbered-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "renumber me").await;
+
+    let (store, account, _blobs, _dir, mut client) = synced(user).await;
+    let message = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    let location = store.locations_of(message.id).unwrap().remove(0);
+
+    // A UIDVALIDITY that never was. Forcing the server to renumber is awkward
+    // and slow; what matters is that a mismatch is caught and refused.
+    let op = store
+        .enqueue_operation(&NewOperation {
+            account_id: account,
+            message_id: message.id,
+            kind: OperationKind::Move {
+                target_folder: "Archive".into(),
+            },
+            source_folder_id: location.folder_id,
+            source_uid: location.uid,
+            source_uid_validity: Some(1),
+            expect_message_id: Some(message_id.into()),
+            execute_after: 0,
+        })
+        .unwrap();
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.conflicted, 1, "{report:?}");
+
+    let (state, error) = state_of(&store, op);
+    assert_eq!(state, "failed");
+    assert!(
+        error.as_deref().unwrap().contains("UIDVALIDITY"),
+        "got {error:?}"
+    );
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn an_operation_cancelled_before_the_flush_never_reaches_the_server() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "undo-op@fuckmail.test";
+    let message_id = "undone-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "changed my mind").await;
+
+    let (store, account, _blobs, _dir, mut client) = synced(user).await;
+    let op = enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Trash".into(),
+        },
+        Some(message_id),
+    );
+
+    assert!(store.cancel_operation(op).unwrap());
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert!(report.is_empty(), "{report:?}");
+
+    // Still in INBOX, and Trash never heard about it.
+    let mut check = mutate::login(user).await;
+    check.select("INBOX").await.unwrap();
+    assert_eq!(check.uid_search("ALL").await.unwrap().len(), 1);
+    check.select("Trash").await.unwrap();
+    assert_eq!(check.uid_search("ALL").await.unwrap().len(), 0);
+
+    client.logout().await.unwrap();
+    check.logout().await.ok();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn operations_on_one_message_are_applied_in_the_order_they_were_made() {
+    // A move followed by a flag change: if the flag went first against the
+    // post-move state, or the two were reordered, the flag would be applied in
+    // a folder the message had already left.
+    if !dev_server_available() {
+        return;
+    }
+    let user = "ordered-op@fuckmail.test";
+    let message_id = "ordered-1@example.com";
+
+    let mut writer = seeded_inbox(user, message_id, "flag then move").await;
+
+    let (store, account, blobs, _dir, mut client) = synced(user).await;
+    enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Flag {
+            flag: "\\Seen".into(),
+            set: true,
+        },
+        Some(message_id),
+    );
+    enqueue(
+        &store,
+        account,
+        message_id,
+        OperationKind::Move {
+            target_folder: "Archive".into(),
+        },
+        Some(message_id),
+    );
+
+    let report = core_proto::flush_operations(&mut client, &store, account, 0)
+        .await
+        .unwrap();
+    assert_eq!(report.applied, 2, "{report:?}");
+
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+
+    let message = store
+        .message_by_rfc822_id(account, message_id)
+        .unwrap()
+        .unwrap();
+    let locations = store.locations_of(message.id).unwrap();
+    assert_eq!(locations.len(), 1, "{locations:?}");
+    let folder = store.folder(locations[0].folder_id).unwrap().unwrap();
+    assert_eq!(folder.name, "Archive");
+    // The flag was set before the move, and MOVE preserves flags.
+    assert!(
+        locations[0].flags.contains("\\Seen"),
+        "flags were {:?}",
+        locations[0].flags
+    );
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
 }
