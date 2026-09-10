@@ -1,13 +1,16 @@
 //! IMAP transport, parsing, and synchronisation into the local store.
 //!
-//! Scope is deliberately read-only: see `client::ImapClient`.
+//! Reads are the bulk of it; the writes are `APPEND` (filing sent mail) and
+//! the mutation queue drained by `mutate`. See `client::ImapClient`.
 
 pub mod client;
+pub mod mutate;
 pub mod parse;
 mod stream;
 pub mod sync;
 
 pub use client::{FolderState, ImapClient, ImapConfig, RawMessage, RemoteFolder};
+pub use mutate::{flush_operations, FlushReport};
 pub use sync::{sync_account, SyncReport};
 
 #[derive(Debug, thiserror::Error)]

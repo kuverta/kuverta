@@ -250,9 +250,14 @@ pub enum OperationState {
     Pending,
     /// The server accepted it.
     Done,
-    /// Abandoned. Either the user cancelled it or it could not be applied —
-    /// `last_error` says which.
+    /// Abandoned. Either the user cancelled it or it was superseded by a
+    /// later change — `last_error` says which.
     Cancelled,
+    /// No longer applicable: the world moved on, and the intent was either
+    /// already satisfied or has nothing left to act on. Not an error.
+    Obsolete,
+    /// Refused. The server no longer matches what was recorded, so applying
+    /// the operation would act on the wrong message.
     Failed,
 }
 
@@ -262,6 +267,7 @@ impl OperationState {
             Self::Pending => "pending",
             Self::Done => "done",
             Self::Cancelled => "cancelled",
+            Self::Obsolete => "obsolete",
             Self::Failed => "failed",
         }
     }
@@ -271,6 +277,7 @@ impl OperationState {
             "pending" => Some(Self::Pending),
             "done" => Some(Self::Done),
             "cancelled" => Some(Self::Cancelled),
+            "obsolete" => Some(Self::Obsolete),
             "failed" => Some(Self::Failed),
             _ => None,
         }
