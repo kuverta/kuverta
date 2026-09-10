@@ -6,12 +6,13 @@
 //! entirely — on a quiet mailbox that is every folder, and a sync costs one
 //! `EXAMINE` each.
 
-use core_store::model::{AccountId, FolderId, Location};
+use core_store::model::{AccountId, FolderId, Location, MessageId};
 use core_store::{dedup_key, Blobs, Store, Upsert};
 
 use crate::client::{ImapClient, RemoteFolder};
-use crate::parse::parse_message;
+use crate::parse::{parse_message, Parsed};
 use crate::ProtoError;
+use core_rules::Classifier;
 
 #[derive(Debug, Default, Clone)]
 pub struct SyncReport {
@@ -38,6 +39,24 @@ struct Context<'a> {
     store: &'a Store,
     blobs: &'a Blobs,
     account_id: AccountId,
+    classifier: Classifier,
+}
+
+/// Builds the learned overrides from the corrections the user has made.
+fn load_history(store: &Store, account_id: AccountId) -> Result<core_rules::Learned, ProtoError> {
+    let mut learned = core_rules::Learned::new();
+    for row in store.learned_categories(account_id)? {
+        let Some(category) = core_rules::Category::parse(&row.category) else {
+            continue;
+        };
+        if let Some(sender) = row.sender {
+            learned.insert_sender(&sender, category);
+        }
+        if let Some(list_id) = row.list_id {
+            learned.insert_list(&list_id, category);
+        }
+    }
+    Ok(learned)
 }
 
 /// Syncs every selectable folder on the account.
@@ -48,10 +67,13 @@ pub async fn sync_account(
     account_id: AccountId,
 ) -> Result<SyncReport, ProtoError> {
     let mut report = SyncReport::default();
+    // The learned history is loaded once per sync. It changes only when the
+    // user files something, which cannot happen mid-sync.
     let ctx = Context {
         store,
         blobs,
         account_id,
+        classifier: Classifier::new(load_history(store, account_id)?),
     };
 
     for remote in client.folders().await? {
@@ -153,8 +175,8 @@ async fn fetch_new(
 
         // Blob path is keyed by the same identity the store dedups on, so one
         // message shared across folders keeps exactly one body on disk.
-        let key = dedup_key(&parsed);
-        parsed.body_path = Some(ctx.blobs.put(ctx.account_id, &key, &message.raw)?);
+        let key = dedup_key(&parsed.message);
+        parsed.message.body_path = Some(ctx.blobs.put(ctx.account_id, &key, &message.raw)?);
 
         let location = Location {
             folder_id,
@@ -162,13 +184,44 @@ async fn fetch_new(
             flags: message.flags,
         };
 
-        match store.upsert_message(ctx.account_id, &parsed, Some(&location))? {
-            (_, Upsert::Inserted) => report.inserted += 1,
-            (_, Upsert::Deduplicated) => report.deduplicated += 1,
+        let (message_id, outcome) =
+            store.upsert_message(ctx.account_id, &parsed.message, Some(&location))?;
+        match outcome {
+            Upsert::Inserted => {
+                report.inserted += 1;
+                // Classify only new messages: a deduplicated one already has a
+                // verdict, and the same mail seen in a second folder has not
+                // changed. The rules run on every message so that when the
+                // model lands its verdicts can be compared against a baseline
+                // that already exists for the whole mailbox — plan section 4.
+                record_rules_verdict(ctx, message_id, &parsed);
+            }
+            Upsert::Deduplicated => report.deduplicated += 1,
         }
     }
 
     Ok(())
+}
+
+/// Records the deterministic verdict for a freshly stored message.
+///
+/// A classification failure must never fail a sync — the mail is already
+/// safely stored, and an unclassified message simply shows as Unknown. So this
+/// logs and moves on rather than propagating.
+fn record_rules_verdict(ctx: &Context<'_>, message_id: MessageId, parsed: &Parsed) {
+    let classification = ctx.classifier.classify(&parsed.facts.as_message_facts());
+
+    let verdict = core_store::model::Verdict {
+        category: classification.category.as_str().to_string(),
+        confidence: Some(classification.confidence),
+        source: core_store::model::ClassifierSource::Rules,
+        model: None,
+        latency_ms: Some(0),
+    };
+
+    if let Err(err) = ctx.store.record_verdict(message_id, &verdict) {
+        tracing::warn!(message_id, %err, "failed to record rules verdict");
+    }
 }
 
 async fn apply_flag_changes(
