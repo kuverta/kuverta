@@ -72,39 +72,7 @@ pub async fn submit(
         return Err(SubmitError::InsecureTransport(config.host.clone()));
     }
 
-    let credentials = match auth.credential().await? {
-        Credential::Password(password) => Credentials::Plain {
-            username: username.to_string(),
-            secret: password,
-        },
-        // XOAUTH2 rather than OAUTHBEARER: it is what Microsoft 365 and Gmail
-        // implement for submission, and it is what the IMAP side already uses.
-        Credential::OAuthBearer { user, access_token } => Credentials::XOauth2 {
-            username: user,
-            secret: access_token,
-        },
-    };
-
-    // Built field by field rather than via `SmtpClientBuilder::new`, which
-    // constructs its own TLS connector eagerly — and panics doing so, for the
-    // reason `tls_connector` explains. Every field is part of mail-send's
-    // public API.
-    let builder = SmtpClientBuilder {
-        addr: format!("{}:{}", config.host, config.port),
-        timeout: SMTP_TIMEOUT,
-        tls_connector: tls_connector()?,
-        tls_hostname: config.host.clone(),
-        tls_implicit: config.security == SmtpSecurity::Tls,
-        credentials: Some(credentials),
-        is_lmtp: false,
-        say_ehlo: true,
-        // An address literal rather than this machine's hostname, which RFC
-        // 5321 section 4.1.3 allows and which keeps the sender's laptop name
-        // out of the Received chain. Submission is authenticated, so the
-        // server has no reason to care what we call ourselves; a relay would.
-        local_host: "[127.0.0.1]".to_string(),
-        local_ip: None,
-    };
+    let builder = client_builder(config, credentials_for(username, auth).await?)?;
 
     let envelope = Message::new(
         message.sender.clone(),
@@ -129,6 +97,25 @@ pub async fn submit(
         SmtpSecurity::Plaintext => deliver(builder.connect_plain().await?, envelope).await,
         _ => deliver(builder.connect().await?, envelope).await,
     }
+}
+
+/// Connects and authenticates, then hangs up without sending anything.
+///
+/// The preflight check for an account's submission endpoint: it proves the
+/// host, port, transport and credentials all work, which is everything that
+/// can go wrong before a message exists. Deliberately separate from [`submit`]
+/// so checking cannot accidentally deliver.
+pub async fn verify(config: &SmtpConfig, username: &str, auth: &dyn AuthProvider) -> Result<()> {
+    if config.security == SmtpSecurity::Plaintext && !is_loopback(&config.host) {
+        return Err(SubmitError::InsecureTransport(config.host.clone()));
+    }
+
+    let builder = client_builder(config, credentials_for(username, auth).await?)?;
+    match config.security {
+        SmtpSecurity::Plaintext => builder.connect_plain().await?.quit().await?,
+        _ => builder.connect().await?.quit().await?,
+    }
+    Ok(())
 }
 
 async fn deliver<T: AsyncRead + AsyncWrite + Unpin>(
@@ -169,6 +156,47 @@ fn tls_connector() -> Result<TlsConnector> {
             .with_no_client_auth();
 
     Ok(TlsConnector::from(Arc::new(config)))
+}
+
+async fn credentials_for(username: &str, auth: &dyn AuthProvider) -> Result<Credentials<String>> {
+    Ok(match auth.credential().await? {
+        Credential::Password(password) => Credentials::Plain {
+            username: username.to_string(),
+            secret: password,
+        },
+        // XOAUTH2 rather than OAUTHBEARER: it is what Microsoft 365 and Gmail
+        // implement for submission, and it is what the IMAP side already uses.
+        Credential::OAuthBearer { user, access_token } => Credentials::XOauth2 {
+            username: user,
+            secret: access_token,
+        },
+    })
+}
+
+/// Built field by field rather than via `SmtpClientBuilder::new`, which
+/// constructs its own TLS connector eagerly — and panics doing so, for the
+/// reason [`tls_connector`] explains. Every field is part of mail-send's public
+/// API.
+fn client_builder(
+    config: &SmtpConfig,
+    credentials: Credentials<String>,
+) -> Result<SmtpClientBuilder<String>> {
+    Ok(SmtpClientBuilder {
+        addr: format!("{}:{}", config.host, config.port),
+        timeout: SMTP_TIMEOUT,
+        tls_connector: tls_connector()?,
+        tls_hostname: config.host.clone(),
+        tls_implicit: config.security == SmtpSecurity::Tls,
+        credentials: Some(credentials),
+        is_lmtp: false,
+        say_ehlo: true,
+        // An address literal rather than this machine's hostname, which RFC
+        // 5321 section 4.1.3 allows and which keeps the sender's laptop name
+        // out of the Received chain. Submission is authenticated, so the
+        // server has no reason to care what we call ourselves; a relay would.
+        local_host: "[127.0.0.1]".to_string(),
+        local_ip: None,
+    })
 }
 
 fn is_loopback(host: &str) -> bool {
