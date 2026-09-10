@@ -114,6 +114,24 @@ pub fn plan_batches(sizes: &[(u32, u32)]) -> Vec<Vec<u32>> {
     batches
 }
 
+/// The IMAP extensions this client knows how to take advantage of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Extensions {
+    /// Turns a full folder scan into an incremental one.
+    pub condstore: bool,
+    /// Would replace the `UID SEARCH ALL` expunge reconciliation, which is
+    /// currently proportional to folder size. Not used yet.
+    pub qresync: bool,
+    /// Makes archiving and deleting atomic. Without it, see
+    /// [`ImapClient::uid_move`].
+    pub r#move: bool,
+    /// Lets a single message be expunged, which is what makes the fallback
+    /// move safe to complete.
+    pub uidplus: bool,
+    /// Push, rather than polling. Not used yet.
+    pub idle: bool,
+}
+
 /// What a [`ImapClient::uid_probe`] found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UidProbe {
@@ -149,15 +167,19 @@ pub enum MoveOutcome {
 impl ImapClient {
     /// Connects, authenticates, and enables CONDSTORE where available.
     pub async fn connect(config: &ImapConfig, auth: &dyn AuthProvider) -> Result<Self, ProtoError> {
-        let transport = open_transport(config).await?;
+        let opened = open_transport(config).await?;
 
-        let mut client = Client::new(transport);
-        // The server greeting must be consumed before any command is sent.
-        client
-            .read_response()
-            .await
-            .map_err(ProtoError::Io)?
-            .ok_or(ProtoError::NoGreeting)?;
+        let mut client = Client::new(opened.transport);
+        // The server greeting must be consumed before any command is sent —
+        // unless STARTTLS already did, since no second greeting follows the
+        // upgrade.
+        if !opened.greeting_consumed {
+            client
+                .read_response()
+                .await
+                .map_err(ProtoError::Io)?
+                .ok_or(ProtoError::NoGreeting)?;
+        }
 
         let credential = auth.credential().await?;
         let mut session = match credential {
@@ -331,6 +353,22 @@ impl ImapClient {
         Ok(())
     }
 
+    /// Which of the extensions this client can exploit the server actually has.
+    ///
+    /// Reported rather than assumed, because what a provider supports decides
+    /// how sync and the mutation queue behave: no CONDSTORE means every folder
+    /// is rescanned, and no MOVE means archiving is a copy-and-delete that
+    /// needs UIDPLUS to finish cleanly.
+    pub async fn extensions(&mut self) -> Result<Extensions, ProtoError> {
+        Ok(Extensions {
+            condstore: self.capability("CONDSTORE").await?,
+            qresync: self.capability("QRESYNC").await?,
+            r#move: self.capability("MOVE").await?,
+            uidplus: self.capability("UIDPLUS").await?,
+            idle: self.capability("IDLE").await?,
+        })
+    }
+
     /// Whether the server advertises `name`, asking it at most once.
     async fn capability(&mut self, name: &str) -> Result<bool, ProtoError> {
         if let Some(known) = self.capabilities.get(name) {
@@ -489,7 +527,7 @@ pub const SENT_NAMES: &[&str] = &[
     "Gesendete Elemente",
 ];
 
-pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived", "INBOX.Archive", "All Mail"];
+pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived"];
 
 pub const TRASH_NAMES: &[&str] = &[
     "Trash",
@@ -503,31 +541,68 @@ pub const TRASH_NAMES: &[&str] = &[
 
 /// Picks the folder behind a special-use attribute.
 ///
-/// The declared attribute wins outright: a server that puts `\\Sent` on a
-/// folder named something else is right and the name list is wrong. Takes
-/// `(name, special_use)` pairs so it works on both a `LIST` response and the
-/// folders already recorded in the store.
+/// Attributes are tried in the order given and win outright over names: a
+/// server that puts `\\Sent` on a folder called something else is right and the
+/// name list is wrong. Names are only the fallback, for servers — Dovecot in
+/// its default configuration among them — that declare no special use at all.
+///
+/// A name matches either in full or as the last path segment, because real
+/// servers nest these: Gmail has `[Gmail]/All Mail`, and a Dovecot configured
+/// with a `.` delimiter has `INBOX.Archive`. The delimiter is not asked for;
+/// the candidates are the three IMAP hierarchy delimiters in use, and since an
+/// attribute match has already been tried this is a fallback on a fallback.
+///
+/// Takes `(name, special_use)` pairs so it works on both a `LIST` response and
+/// the folders already recorded in the store.
 pub fn find_special<'a>(
     folders: impl IntoIterator<Item = (&'a str, Option<&'a str>)> + Clone,
-    attribute: &str,
+    attributes: &[&str],
     known_names: &[&str],
 ) -> Option<&'a str> {
-    if let Some((name, _)) = folders
-        .clone()
-        .into_iter()
-        .find(|(_, special)| *special == Some(attribute))
-    {
-        return Some(name);
+    for attribute in attributes {
+        if let Some((name, _)) = folders
+            .clone()
+            .into_iter()
+            .find(|(_, special)| *special == Some(*attribute))
+        {
+            return Some(name);
+        }
     }
 
     folders
         .into_iter()
-        .find(|(name, _)| {
-            known_names
-                .iter()
-                .any(|known| name.eq_ignore_ascii_case(known))
-        })
+        .find(|(name, _)| known_names.iter().any(|known| name_matches(name, known)))
         .map(|(name, _)| name)
+}
+
+/// Whether `name` is `known`, either outright or as its last path segment.
+fn name_matches(name: &str, known: &str) -> bool {
+    if name.eq_ignore_ascii_case(known) {
+        return true;
+    }
+    name.rsplit(['/', '.', '\\'])
+        .next()
+        .is_some_and(|leaf| leaf.eq_ignore_ascii_case(known))
+}
+
+/// Picks the folder that archived mail belongs in.
+pub fn find_archive<'a>(
+    folders: impl IntoIterator<Item = (&'a str, Option<&'a str>)> + Clone,
+) -> Option<&'a str> {
+    find_special(folders.clone(), &["\\Archive"], ARCHIVE_NAMES).or_else(|| {
+        // Gmail has no Archive folder at all. Archiving there means removing
+        // the INBOX label, which over IMAP is a move into All Mail — the
+        // folder it marks `\\All`. Tried last so a server with a real Archive
+        // folder is never sent here instead.
+        find_special(folders, &["\\All"], &[])
+    })
+}
+
+/// Picks the folder that deleted mail belongs in.
+pub fn find_trash<'a>(
+    folders: impl IntoIterator<Item = (&'a str, Option<&'a str>)> + Clone,
+) -> Option<&'a str> {
+    find_special(folders, &["\\Trash"], TRASH_NAMES)
 }
 
 /// Picks the folder that sent mail belongs in.
@@ -538,17 +613,34 @@ pub fn find_sent(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
         .map(|f| (f.name.as_str(), f.special_use.as_deref()))
         .collect();
 
-    let name = find_special(pairs, "\\Sent", SENT_NAMES)?.to_string();
+    let name = find_special(pairs, &["\\Sent"], SENT_NAMES)?.to_string();
     folders.iter().find(|f| f.selectable && f.name == name)
 }
 
-async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
+/// A connection, and whether opening it already consumed the server greeting.
+///
+/// STARTTLS has to read the greeting itself, before the IMAP client exists —
+/// and the server does not send a second one after the upgrade, so the caller
+/// must know not to wait for one.
+struct Opened {
+    transport: Transport,
+    greeting_consumed: bool,
+}
+
+async fn open_transport(config: &ImapConfig) -> Result<Opened, ProtoError> {
     let tcp = TcpStream::connect((config.host.as_str(), config.port)).await?;
     // Mail is many small commands; Nagle adds latency for no benefit.
     tcp.set_nodelay(true).ok();
 
     match config.security {
-        ImapSecurity::Plaintext => Ok(Transport::Plain(tcp)),
+        ImapSecurity::StartTls => Ok(Opened {
+            transport: negotiate_starttls(tcp, &config.host).await?,
+            greeting_consumed: true,
+        }),
+        ImapSecurity::Plaintext => Ok(Opened {
+            transport: Transport::Plain(tcp),
+            greeting_consumed: false,
+        }),
         ImapSecurity::Tls => {
             // Trust the OS trust store rather than a bundled root list, so the
             // user's own enterprise or pinned roots keep working.
@@ -564,12 +656,91 @@ async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
             let server_name = ServerName::try_from(config.host.clone())
                 .map_err(|_| ProtoError::InvalidHostname(config.host.clone()))?;
             let tls = connector.connect(server_name, tcp).await?;
-            Ok(Transport::Tls(Box::new(tls)))
+            Ok(Opened {
+                transport: Transport::Tls(Box::new(tls)),
+                greeting_consumed: false,
+            })
         }
-        ImapSecurity::StartTls => Err(ProtoError::Unsupported(
-            "STARTTLS is not implemented; use implicit TLS on port 993",
-        )),
     }
+}
+
+/// Upgrades a cleartext connection with RFC 2595 `STARTTLS`.
+///
+/// Hand-rolled because `async-imap` neither performs the upgrade nor hands back
+/// its stream so we could. It is three lines of protocol, and doing it here
+/// keeps the security properties in view:
+///
+/// * **No silent downgrade.** A server that refuses or cannot do `STARTTLS`
+///   ends the connection with an error. Nothing continues in cleartext, so no
+///   credential can be sent over one.
+/// * **Nothing learned before the upgrade is kept.** Pre-TLS capabilities are
+///   read and discarded rather than cached, so a stripped `CAPABILITY` cannot
+///   influence anything after the handshake.
+/// * **The certificate is verified** by the same platform verifier the implicit
+///   TLS path uses.
+async fn negotiate_starttls(mut tcp: TcpStream, host: &str) -> Result<Transport, ProtoError> {
+    use tokio::io::AsyncWriteExt;
+
+    let greeting = read_line(&mut tcp).await?;
+    if !greeting.starts_with("* OK") {
+        return Err(ProtoError::Login(format!(
+            "server did not greet us: {}",
+            greeting.trim()
+        )));
+    }
+
+    const TAG: &str = "fmtls";
+    tcp.write_all(format!("{TAG} STARTTLS\r\n").as_bytes())
+        .await?;
+
+    loop {
+        let line = read_line(&mut tcp).await?;
+        if line.is_empty() {
+            return Err(ProtoError::NoGreeting);
+        }
+        if let Some(rest) = line.strip_prefix(TAG) {
+            let rest = rest.trim();
+            if rest.starts_with("OK") {
+                break;
+            }
+            return Err(ProtoError::Tls(format!(
+                "server refused STARTTLS ({rest}); refusing to continue in cleartext"
+            )));
+        }
+        // An untagged line — a CAPABILITY listing, usually. Discarded on
+        // purpose: see the note about stripping above.
+    }
+
+    let connector = tls_connector()?;
+    let server_name = ServerName::try_from(host.to_string())
+        .map_err(|_| ProtoError::InvalidHostname(host.to_string()))?;
+    let tls = connector.connect(server_name, tcp).await?;
+    Ok(Transport::Tls(Box::new(tls)))
+}
+
+/// Reads one CRLF-terminated line, one byte at a time.
+///
+/// Deliberately unbuffered. A `BufReader` could read ahead past the `STARTTLS`
+/// response, and anything it swallowed would be lost when the socket is handed
+/// to the TLS connector. This is about thirty bytes of traffic, once per
+/// connection.
+async fn read_line(tcp: &mut TcpStream) -> Result<String, ProtoError> {
+    use tokio::io::AsyncReadExt;
+
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    while tcp.read(&mut byte).await? > 0 {
+        line.push(byte[0]);
+        if line.ends_with(b"\r\n") {
+            break;
+        }
+        // A server that never sends CRLF must not be able to grow this without
+        // bound.
+        if line.len() > 8192 {
+            return Err(ProtoError::Login("server sent an oversized line".into()));
+        }
+    }
+    Ok(String::from_utf8_lossy(&line).into_owned())
 }
 
 fn tls_connector() -> Result<TlsConnector, ProtoError> {
@@ -674,6 +845,81 @@ mod tests {
         // has to decide whether to create a folder, not this function.
         let bare = vec![folder("INBOX", None), folder("Archive", Some("\\Archive"))];
         assert!(find_sent(&bare).is_none());
+    }
+
+    /// Folder layouts as the real providers actually present them over IMAP.
+    /// The point of writing them out is that none of them can be reached from
+    /// the dev server, and all three are what this code exists to handle.
+    fn gmail() -> Vec<(&'static str, Option<&'static str>)> {
+        vec![
+            ("INBOX", None),
+            ("[Gmail]/All Mail", Some("\\All")),
+            ("[Gmail]/Sent Mail", Some("\\Sent")),
+            ("[Gmail]/Trash", Some("\\Trash")),
+            ("[Gmail]/Drafts", Some("\\Drafts")),
+            ("[Gmail]/Spam", Some("\\Junk")),
+        ]
+    }
+
+    fn microsoft365() -> Vec<(&'static str, Option<&'static str>)> {
+        vec![
+            ("INBOX", None),
+            ("Archive", Some("\\Archive")),
+            ("Sent Items", Some("\\Sent")),
+            ("Deleted Items", Some("\\Trash")),
+        ]
+    }
+
+    /// A Dovecot that declares nothing and nests under INBOX with a `.`
+    /// delimiter — the case the name fallback exists for.
+    fn bare_dovecot() -> Vec<(&'static str, Option<&'static str>)> {
+        vec![
+            ("INBOX", None),
+            ("INBOX.Archive", None),
+            ("INBOX.Sent", None),
+            ("INBOX.Trash", None),
+        ]
+    }
+
+    #[test]
+    fn gmail_archives_into_all_mail() {
+        // Gmail has no Archive folder: archiving is removing the INBOX label,
+        // which over IMAP is a move into All Mail. Before this, `archive`
+        // failed outright on the provider it matters most for.
+        assert_eq!(find_archive(gmail()), Some("[Gmail]/All Mail"));
+        assert_eq!(find_trash(gmail()), Some("[Gmail]/Trash"));
+    }
+
+    #[test]
+    fn a_real_archive_folder_is_never_passed_over_for_all_mail() {
+        // \All is the last resort, not a peer of \Archive.
+        let mixed = vec![
+            ("INBOX", None),
+            ("Everything", Some("\\All")),
+            ("Archive", Some("\\Archive")),
+        ];
+        assert_eq!(find_archive(mixed), Some("Archive"));
+    }
+
+    #[test]
+    fn microsoft_folders_resolve_by_attribute() {
+        assert_eq!(find_archive(microsoft365()), Some("Archive"));
+        assert_eq!(find_trash(microsoft365()), Some("Deleted Items"));
+    }
+
+    #[test]
+    fn nested_folders_match_on_their_last_segment() {
+        // Declares nothing, so everything here is the name fallback.
+        assert_eq!(find_archive(bare_dovecot()), Some("INBOX.Archive"));
+        assert_eq!(find_trash(bare_dovecot()), Some("INBOX.Trash"));
+    }
+
+    #[test]
+    fn a_server_with_nowhere_to_archive_says_so() {
+        // The caller has to tell the user rather than invent a folder.
+        let sparse = vec![("INBOX", None), ("Work", None)];
+        assert_eq!(find_archive(sparse.clone()), None);
+        assert_eq!(find_trash(sparse), None);
     }
 
     #[test]

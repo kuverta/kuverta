@@ -1119,3 +1119,36 @@ async fn asking_for_uids_past_the_end_of_a_folder_returns_nothing() {
     client.logout().await.unwrap();
     writer.logout().await.ok();
 }
+
+#[tokio::test]
+async fn starttls_negotiates_the_upgrade_and_then_verifies_the_certificate() {
+    // The dev server advertises STARTTLS with a self-signed certificate, which
+    // makes it exactly the right test: the negotiation has to get all the way
+    // to the TLS handshake, and the handshake has to reject the certificate.
+    // A failure here that mentioned STARTTLS rather than the certificate would
+    // mean the upgrade never happened.
+    if !dev_server_available() {
+        return;
+    }
+
+    let config = ImapConfig {
+        host: HOST.into(),
+        port: PORT,
+        security: ImapSecurity::StartTls,
+        username: USER.into(),
+    };
+
+    let message = match ImapClient::connect(&config, &auth()).await {
+        Ok(_) => panic!("a self-signed certificate must not be accepted"),
+        Err(err) => err.to_string(),
+    };
+
+    assert!(
+        !message.contains("refused STARTTLS") && !message.contains("not implemented"),
+        "the upgrade should have been negotiated, got: {message}"
+    );
+    assert!(
+        message.contains("certificate") || message.contains("tls") || message.contains("Tls"),
+        "expected a certificate failure, got: {message}"
+    );
+}

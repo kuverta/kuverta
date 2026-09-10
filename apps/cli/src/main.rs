@@ -93,6 +93,21 @@ enum Command {
         #[arg(long)]
         category: Option<String>,
     },
+    /// Connect to an account and report what the server actually supports.
+    ///
+    /// Run this before the first sync of a real account: it says which
+    /// extensions are available, where sent, archived and deleted mail will
+    /// go, and — with --measure — how much a first sync will download.
+    Check {
+        #[arg(long)]
+        email: Option<String>,
+        /// Also count messages and total bytes per folder. An extra pass over
+        /// the mailbox, so it is not the default.
+        #[arg(long)]
+        measure: bool,
+        #[arg(long)]
+        password_env: Option<String>,
+    },
     /// Move a message to the Archive folder.
     Archive(Mutation),
     /// Move a message to the Trash folder.
@@ -345,6 +360,11 @@ async fn main() -> Result<()> {
             limit,
             category,
         } => triage(&store, email.as_deref(), limit, category.as_deref()),
+        Command::Check {
+            email,
+            measure,
+            password_env,
+        } => check(&store, email.as_deref(), measure, password_env.as_deref()).await,
         Command::Archive(args) => mutate(&store, args, Intent::Archive),
         Command::Delete(args) => mutate(&store, args, Intent::Trash),
         Command::Move { common, to } => mutate(&store, common, Intent::MoveTo(to)),
@@ -405,6 +425,178 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
     Ok(())
 }
 
+/// Reports what a server actually offers, before anything depends on it.
+async fn check(
+    store: &Store,
+    email: Option<&str>,
+    measure: bool,
+    password_env: Option<&str>,
+) -> Result<()> {
+    let account = match email {
+        Some(email) => store
+            .account_by_email(email)?
+            .with_context(|| format!("no account {email}"))?,
+        None => {
+            let mut accounts = store.accounts()?;
+            match accounts.len() {
+                0 => bail!("no accounts registered; start with `fuckmail add-account`"),
+                1 => accounts.remove(0),
+                _ => bail!("several accounts registered; say which with --email"),
+            }
+        }
+    };
+
+    println!("{}", account.email);
+    let auth = provider_for(&account, password_env)?;
+
+    println!(
+        "  IMAP  {}:{} ({})",
+        account.imap_host,
+        account.imap_port,
+        account.imap_security.as_str()
+    );
+    let config = ImapConfig {
+        host: account.imap_host.clone(),
+        port: account.imap_port,
+        security: account.imap_security.clone(),
+        username: account.username.clone(),
+    };
+    let mut client = ImapClient::connect(&config, auth.as_ref())
+        .await
+        .with_context(|| format!("connecting to {}", account.imap_host))?;
+    println!("        connected and logged in as {}", account.username);
+
+    let ext = client.extensions().await?;
+    println!(
+        "        CONDSTORE {}  MOVE {}  UIDPLUS {}  QRESYNC {}  IDLE {}",
+        yes_no(ext.condstore),
+        yes_no(ext.r#move),
+        yes_no(ext.uidplus),
+        yes_no(ext.qresync),
+        yes_no(ext.idle),
+    );
+    if !ext.condstore {
+        println!("        note: without CONDSTORE every sync rescans every folder");
+    }
+    if !ext.r#move && !ext.uidplus {
+        println!("        note: without MOVE or UIDPLUS, archiving leaves a flagged copy behind");
+    }
+
+    let folders = client.folders().await?;
+    let selectable: Vec<_> = folders.iter().filter(|f| f.selectable).collect();
+    println!("  folders ({})", selectable.len());
+
+    let mut total_messages = 0u64;
+    let mut total_bytes = 0u64;
+    for folder in &selectable {
+        let special = folder.special_use.as_deref().unwrap_or("");
+        if measure {
+            client.examine(&folder.name).await?;
+            let sizes = client.uid_sizes(1).await?;
+            let bytes: u64 = sizes.iter().map(|(_, size)| *size as u64).sum();
+            total_messages += sizes.len() as u64;
+            total_bytes += bytes;
+            println!(
+                "    {:<32} {:<10} {:>7} messages  {}",
+                folder.name,
+                special,
+                sizes.len(),
+                human_bytes(bytes)
+            );
+        } else {
+            let state = client.examine(&folder.name).await?;
+            total_messages += state.exists as u64;
+            println!(
+                "    {:<32} {:<10} {:>7} messages",
+                folder.name, special, state.exists
+            );
+        }
+    }
+
+    let pairs: Vec<(&str, Option<&str>)> = selectable
+        .iter()
+        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+        .collect();
+    println!("  where mail will go");
+    report_target(
+        "sent",
+        core_proto::client::find_sent(&folders).map(|f| f.name.as_str()),
+        "`send` will not be able to file a copy",
+    );
+    report_target(
+        "archived",
+        core_proto::client::find_archive(pairs.iter().copied()),
+        "`archive` will fail; use `move --to <folder>`",
+    );
+    report_target(
+        "deleted",
+        core_proto::client::find_trash(pairs.iter().copied()),
+        "`delete` will fail; use `move --to <folder>`",
+    );
+
+    println!("  first sync");
+    if measure {
+        println!(
+            "    {total_messages} messages, {} to download",
+            human_bytes(total_bytes)
+        );
+    } else {
+        println!("    {total_messages} messages (pass --measure for the download size)");
+    }
+
+    client.logout().await.ok();
+
+    match &account.smtp {
+        Some(smtp) => {
+            println!(
+                "  SMTP  {}:{} ({})",
+                smtp.host,
+                smtp.port,
+                smtp.security.as_str()
+            );
+            match core_smtp::verify(smtp, &account.username, auth.as_ref()).await {
+                Ok(()) => println!("        connected and authenticated"),
+                // Not fatal: everything above still holds, and a broken
+                // submission endpoint should not hide a working mailbox.
+                Err(err) => println!("        FAILED: {err}"),
+            }
+        }
+        None => println!("  SMTP  not configured — this account cannot send"),
+    }
+
+    Ok(())
+}
+
+fn report_target(what: &str, folder: Option<&str>, consequence: &str) {
+    match folder {
+        Some(name) => println!("    {what:<10} {name}"),
+        None => println!("    {what:<10} (none found) — {consequence}"),
+    }
+}
+
+fn yes_no(present: bool) -> &'static str {
+    if present {
+        "yes"
+    } else {
+        "NO "
+    }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KiB", "MiB", "GiB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.1} {}", UNITS[unit])
+    }
+}
+
 /// Queues a mailbox mutation.
 ///
 /// Nothing is sent here. The change is recorded, the undo window starts, and
@@ -415,15 +607,18 @@ fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
     let message = resolve_message(store, account, &args.message)?;
     let folders = store.folders(account)?;
 
+    let pairs = folder_pairs(&folders);
     let kind = match &intent {
         Intent::Archive => OperationKind::Move {
-            target_folder: special_folder(&folders, "\\Archive", core_proto::client::ARCHIVE_NAMES)
+            target_folder: core_proto::client::find_archive(pairs.iter().copied())
+                .map(str::to_string)
                 .context(
                     "this account has no Archive folder; use `move --to <folder>` to say where",
                 )?,
         },
         Intent::Trash => OperationKind::Move {
-            target_folder: special_folder(&folders, "\\Trash", core_proto::client::TRASH_NAMES)
+            target_folder: core_proto::client::find_trash(pairs.iter().copied())
+                .map(str::to_string)
                 .context("this account has no Trash folder; use `move --to <folder>`")?,
         },
         Intent::MoveTo(folder) => OperationKind::Move {
@@ -519,17 +714,12 @@ fn show_queue(store: &Store, email: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// Resolves the folder behind a special-use attribute, from what sync recorded.
-fn special_folder(
-    folders: &[core_store::model::Folder],
-    attribute: &str,
-    known_names: &[&str],
-) -> Option<String> {
-    let pairs: Vec<(&str, Option<&str>)> = folders
+/// The shape `core-proto`'s folder resolvers take, from what sync recorded.
+fn folder_pairs(folders: &[core_store::model::Folder]) -> Vec<(&str, Option<&str>)> {
+    folders
         .iter()
         .map(|f| (f.name.as_str(), f.special_use.as_deref()))
-        .collect();
-    core_proto::client::find_special(pairs, attribute, known_names).map(str::to_string)
+        .collect()
 }
 
 /// Chooses which copy of a message to act on.
