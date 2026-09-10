@@ -16,8 +16,8 @@ use futures::TryStreamExt;
 use tokio::net::TcpStream;
 use tokio_rustls::rustls::{pki_types::ServerName, ClientConfig};
 use tokio_rustls::TlsConnector;
-// Brings `ClientConfig::with_platform_verifier` into scope.
-use rustls_platform_verifier::ConfigVerifierExt as _;
+// Brings `with_platform_verifier` into scope on the config builder.
+use rustls_platform_verifier::BuilderVerifierExt as _;
 
 use crate::stream::Transport;
 use crate::ProtoError;
@@ -240,9 +240,15 @@ async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
         ImapSecurity::Tls => {
             // Trust the OS trust store rather than a bundled root list, so the
             // user's own enterprise or pinned roots keep working.
-            let tls_config = ClientConfig::with_platform_verifier()
-                .map_err(|e| ProtoError::Tls(e.to_string()))?;
-            let connector = TlsConnector::from(Arc::new(tls_config));
+            //
+            // The crypto provider is named rather than left to rustls to infer.
+            // Since `core-smtp` arrived the workspace links two of them —
+            // reqwest's rustls pulls aws-lc-rs, mail-send pulls ring — and with
+            // both present rustls cannot choose a process-wide default, so
+            // `ClientConfig::with_platform_verifier()` panics at the first
+            // handshake. `core_smtp::submit::tls_connector` is the same code
+            // for the same reason; keep the two in step.
+            let connector = tls_connector()?;
             let server_name = ServerName::try_from(config.host.clone())
                 .map_err(|_| ProtoError::InvalidHostname(config.host.clone()))?;
             let tls = connector.connect(server_name, tcp).await?;
@@ -252,6 +258,21 @@ async fn open_transport(config: &ImapConfig) -> Result<Transport, ProtoError> {
             "STARTTLS is not implemented; use implicit TLS on port 993",
         )),
     }
+}
+
+fn tls_connector() -> Result<TlsConnector, ProtoError> {
+    let tls = |e: tokio_rustls::rustls::Error| ProtoError::Tls(e.to_string());
+
+    let config = ClientConfig::builder_with_provider(Arc::new(
+        tokio_rustls::rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(tls)?
+    .with_platform_verifier()
+    .map_err(tls)?
+    .with_no_client_auth();
+
+    Ok(TlsConnector::from(Arc::new(config)))
 }
 
 /// Renders flags back into their IMAP wire form for storage.
@@ -301,5 +322,20 @@ impl async_imap::Authenticator for XOAuth2 {
             "user={}\x01auth=Bearer {}\x01\x01",
             self.user, self.access_token
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tls_connector_can_be_built() {
+        // Regression test with no server in it. Two crypto providers are linked
+        // into this workspace, so any rustls config that leaves the choice to
+        // the process-wide default panics here rather than returning an error —
+        // and it would do so at the first real TLS sync, which is exactly the
+        // path no test reaches (the dev server is plaintext).
+        assert!(tls_connector().is_ok());
     }
 }

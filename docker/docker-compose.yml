@@ -2,7 +2,7 @@ name: fuckmail-dev
 
 # Local development stack. Nothing here is hardened; see docker/README.md.
 #
-#   docker compose up -d                      # test IMAP server + fixtures
+#   docker compose up -d                      # IMAP server + fixtures + SMTP sink
 #   docker compose --profile ai up -d         # + Ollama
 #   docker compose --profile paperless up -d  # + Paperless-ngx
 
@@ -35,6 +35,25 @@ services:
       - ./dovecot/seed:/seed:ro
       - ./dovecot/seed-imap.py:/seed-imap.py:ro
     command: ["python3", "/seed-imap.py"]
+
+  # SMTP sink for the send path: accepts submissions and exposes a REST API so
+  # tests can assert on exactly what went over the wire.
+  #
+  # There is no round trip back into Dovecot on purpose. Delivering for real
+  # would mean running a full MTA alongside, and the thing under test is our
+  # submission, not the internet's routing. The Sent-folder copy is a separate
+  # concern and is tested against Dovecot directly.
+  mailpit:
+    image: axllent/mailpit:v1.31.1
+    ports:
+      - "1025:1025"   # SMTP submission
+      - "8025:8025"   # REST API and web UI
+    environment:
+      # Mailpit offers no AUTH by default, and a client configured to
+      # authenticate correctly refuses to silently skip it — so the sink has to
+      # advertise AUTH over cleartext and accept whatever it is given.
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
 
   # On Apple Silicon this container has no GPU access (no Metal passthrough), so
   # it is slow. Use it for CI and parity; run Ollama natively for real dev work.
