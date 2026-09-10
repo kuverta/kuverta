@@ -13,7 +13,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
 use core_proto::{ImapClient, ImapConfig};
-use core_store::model::{ImapSecurity, NewAccount};
+use core_store::model::{ImapSecurity, NewAccount, SmtpConfig, SmtpSecurity};
 use core_store::{Blobs, Store};
 
 #[derive(Parser)]
@@ -90,6 +90,19 @@ enum Command {
         #[arg(long)]
         category: Option<String>,
     },
+    /// Configure (or clear) where an account submits outgoing mail.
+    ///
+    /// Accounts registered before sending existed have no endpoint; this is how
+    /// they gain one without being re-created.
+    SetSmtp {
+        #[arg(long)]
+        email: String,
+        /// Remove the endpoint, turning sending off for this account.
+        #[arg(long, conflicts_with = "smtp_host")]
+        clear: bool,
+        #[command(flatten)]
+        smtp: SmtpArgs,
+    },
     /// Summarise what is in the store.
     Status,
 }
@@ -119,6 +132,41 @@ struct AddAccount {
     /// Directory id, or "common" for personal Microsoft accounts.
     #[arg(long, default_value = "common")]
     tenant: String,
+    #[command(flatten)]
+    smtp: SmtpArgs,
+}
+
+/// Submission endpoint. Optional: an account with no `--smtp-host` syncs but
+/// cannot send, which is every account registered before send existed.
+#[derive(Args, Clone)]
+struct SmtpArgs {
+    #[arg(long)]
+    smtp_host: Option<String>,
+    #[arg(long, default_value_t = 465)]
+    smtp_port: u16,
+    #[arg(long, value_enum, default_value_t = Security::Tls)]
+    smtp_security: Security,
+}
+
+impl SmtpArgs {
+    /// Validates and resolves the endpoint, if one was given.
+    fn resolve(&self) -> Result<Option<SmtpConfig>> {
+        let Some(host) = self.smtp_host.clone() else {
+            return Ok(None);
+        };
+        let security: SmtpSecurity = self.smtp_security.into();
+        if security == SmtpSecurity::Plaintext && !is_loopback(&host) {
+            bail!(
+                "refusing to configure plaintext SMTP for remote host {host}; \
+                 cleartext is only allowed against localhost"
+            );
+        }
+        Ok(Some(SmtpConfig {
+            host,
+            port: self.smtp_port,
+            security,
+        }))
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
@@ -141,6 +189,16 @@ enum Security {
     Tls,
     Starttls,
     Plaintext,
+}
+
+impl From<Security> for SmtpSecurity {
+    fn from(value: Security) -> Self {
+        match value {
+            Security::Tls => Self::Tls,
+            Security::Starttls => Self::StartTls,
+            Security::Plaintext => Self::Plaintext,
+        }
+    }
 }
 
 impl From<Security> for ImapSecurity {
@@ -192,6 +250,7 @@ async fn main() -> Result<()> {
             limit,
             category,
         } => triage(&store, email.as_deref(), limit, category.as_deref()),
+        Command::SetSmtp { email, clear, smtp } => set_smtp(&store, &email, clear, &smtp),
         Command::Status => status(&store, &blobs),
     }
 }
@@ -217,6 +276,8 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
         );
     }
 
+    let smtp = args.smtp.resolve()?;
+
     let id = store.add_account(&NewAccount {
         label: args.label.unwrap_or_else(|| args.email.clone()),
         email: args.email.clone(),
@@ -227,6 +288,7 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
         auth_method: args.auth.as_str().into(),
         oauth_client_id: args.client_id,
         oauth_tenant: (args.auth == Auth::Oauth2).then_some(args.tenant),
+        smtp,
     })?;
 
     println!("added account {} (id {id})", args.email);
@@ -236,6 +298,29 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
             args.email
         ),
         Auth::Oauth2 => println!("authorise it with: fuckmail login --email {}", args.email),
+    }
+    Ok(())
+}
+
+fn set_smtp(store: &Store, email: &str, clear: bool, args: &SmtpArgs) -> Result<()> {
+    let account = store
+        .account_by_email(email)?
+        .with_context(|| format!("no account {email}"))?;
+
+    let smtp = if clear { None } else { args.resolve()? };
+    if smtp.is_none() && !clear {
+        bail!("give --smtp-host to configure an endpoint, or --clear to remove one");
+    }
+
+    store.set_smtp(account.id, smtp.as_ref())?;
+    match &smtp {
+        Some(config) => println!(
+            "{email} now submits via {}:{} ({})",
+            config.host,
+            config.port,
+            config.security.as_str()
+        ),
+        None => println!("{email} can no longer send"),
     }
     Ok(())
 }

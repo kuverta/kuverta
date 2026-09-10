@@ -5,6 +5,7 @@ members = [
     "crates/core-proto",
     "crates/core-accounts",
     "crates/core-rules",
+    "crates/core-smtp",
     "apps/cli",
     "apps/desktop",
 ]
@@ -21,6 +22,7 @@ core-store = { path = "crates/core-store" }
 core-proto = { path = "crates/core-proto" }
 core-accounts = { path = "crates/core-accounts" }
 core-rules = { path = "crates/core-rules" }
+core-smtp = { path = "crates/core-smtp" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.20"
@@ -37,6 +39,10 @@ clap = { version = "4.6.6", features = ["derive", "env"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
 mail-parser = "0.11.9"
+mail-builder = "0.5.0"
+# rustls throughout; ring rather than aws-lc to match the rest of the tree and
+# keep the C toolchain out of the build.
+mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12", "builder"] }
 sha2 = "0.11.0"
 async-trait = "0.1.92"
 # rustls rather than the platform's native TLS, matching the IMAP transport.
@@ -48,7 +54,12 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls", 
 # API is stable; revisit when there is a reason to.
 keyring = { version = "3.6.3", features = ["apple-native", "sync-secret-service", "windows-native"] }
 tokio-rustls = "0.26.5"
-rustls = "0.23.44"
+# `ring` explicitly: reqwest's rustls feature pulls aws-lc-rs, mail-send pulls
+# ring, and with both present rustls refuses to pick a process-wide default
+# provider. Every TLS config in this workspace names its provider instead of
+# relying on that default, so the feature is requested here rather than
+# inherited by accident.
+rustls = { version = "0.23.44", features = ["ring"] }
 rustls-platform-verifier = "0.7.0"
 
 [profile.dev]
