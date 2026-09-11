@@ -198,6 +198,19 @@ CREATE TABLE folder_exclusion (
     PRIMARY KEY (account_id, pattern)
 );
 "#,
+    // v6 — which OAuth2 provider an account authorises against.
+    //
+    // Not cosmetic: the grant differs. Microsoft uses the device flow, and
+    // Google cannot — it does not issue `https://mail.google.com/` to the
+    // limited-input device grant at all, so Gmail needs the loopback redirect
+    // instead. Inferring this from the hostname would work until somebody used
+    // a custom domain in front of Google.
+    //
+    // Still no secret here. Google issues a client secret even for desktop
+    // clients, and it goes in the keychain with everything else.
+    r#"
+ALTER TABLE account ADD COLUMN oauth_provider TEXT;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

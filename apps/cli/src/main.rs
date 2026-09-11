@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use chrono::{Local, TimeZone};
 use clap::{Args, Parser, Subcommand, ValueEnum};
+use core_accounts::loopback::{LoopbackConfig, OAuth2Loopback};
 use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
 use core_proto::{ImapClient, ImapConfig};
@@ -49,6 +50,11 @@ enum Command {
     Login {
         #[arg(long)]
         email: String,
+        /// Google issues one for "Desktop app" OAuth clients and requires it
+        /// even from an installed app. Stored in the keychain; only needed the
+        /// first time.
+        #[arg(long)]
+        client_secret: Option<String>,
     },
     /// Forget a stored OAuth2 login.
     Logout {
@@ -217,8 +223,27 @@ struct AddAccount {
     /// Directory id, or "common" for personal Microsoft accounts.
     #[arg(long, default_value = "common")]
     tenant: String,
+    /// Which OAuth2 provider, for --auth oauth2. The grants differ: Microsoft
+    /// uses the device flow, Gmail cannot and needs a loopback redirect.
+    #[arg(long, value_enum, default_value_t = OauthProvider::Microsoft)]
+    oauth_provider: OauthProvider,
     #[command(flatten)]
     smtp: SmtpArgs,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, ValueEnum)]
+enum OauthProvider {
+    Microsoft,
+    Google,
+}
+
+impl OauthProvider {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Microsoft => "microsoft",
+            Self::Google => "google",
+        }
+    }
 }
 
 /// Submission endpoint. Optional: an account with no `--smtp-host` syncs but
@@ -375,7 +400,10 @@ async fn main() -> Result<()> {
     match cli.command {
         Command::AddAccount(args) => add_account(&store, args),
         Command::SetPassword { email } => set_password(&email),
-        Command::Login { email } => login(&store, &email).await,
+        Command::Login {
+            email,
+            client_secret,
+        } => login(&store, &email, client_secret).await,
         Command::Logout { email } => logout(&store, &email),
         Command::Accounts => list_accounts(&store),
         Command::Sync {
@@ -466,6 +494,7 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
         oauth_client_id: args.client_id,
         oauth_tenant: (args.auth == Auth::Oauth2).then_some(args.tenant),
         smtp,
+        oauth_provider: (args.auth == Auth::Oauth2).then(|| args.oauth_provider.as_str().into()),
     })?;
 
     println!("added account {} (id {id})", args.email);
@@ -1169,8 +1198,50 @@ fn provider_for(
     }
 
     match account.auth_method.as_str() {
+        "oauth2" if is_google(account) => {
+            Ok(Box::new(OAuth2Loopback::new(google_config(account)?)))
+        }
         "oauth2" => Ok(Box::new(OAuth2Device::new(oauth_config(account)?))),
         _ => Ok(Box::new(KeychainPassword::new(&account.email))),
+    }
+}
+
+fn is_google(account: &core_store::model::Account) -> bool {
+    account.oauth_provider.as_deref() == Some("google")
+}
+
+/// Where Google's client secret lives.
+///
+/// The keychain, like everything else: RFC 8252 is clear it is not really a
+/// secret for an installed app, but it is still a credential and the rule in
+/// this project is that credentials never touch a config file. It has to
+/// persist because Google wants it on the refresh grant too, not just at login.
+fn google_client_secret(email: &str) -> KeychainPassword {
+    KeychainPassword::new(format!("{email} (google oauth client secret)"))
+}
+
+fn google_config(account: &core_store::model::Account) -> Result<LoopbackConfig> {
+    let client_id = account
+        .oauth_client_id
+        .as_deref()
+        .with_context(|| format!("account {} has no OAuth client id", account.email))?;
+
+    // Absent is not an error here: a client configured without one still works
+    // if Google accepts the exchange on PKCE alone, and saying so at the point
+    // of failure is more useful than refusing up front.
+    let secret = futures_lite_block(google_client_secret(&account.email));
+
+    Ok(LoopbackConfig::google(&account.username, client_id, secret))
+}
+
+/// Reads a keychain entry without an async context.
+///
+/// `KeychainPassword::credential` is async because the trait is; the keychain
+/// itself is not, so there is nothing to await on.
+fn futures_lite_block(entry: KeychainPassword) -> Option<String> {
+    match futures::executor::block_on(entry.credential()) {
+        Ok(core_accounts::Credential::Password(secret)) => Some(secret),
+        _ => None,
     }
 }
 
@@ -1187,7 +1258,7 @@ fn oauth_config(account: &core_store::model::Account) -> Result<OAuth2Config> {
     ))
 }
 
-async fn login(store: &Store, email: &str) -> Result<()> {
+async fn login(store: &Store, email: &str, client_secret: Option<String>) -> Result<()> {
     let account = store
         .account_by_email(email)?
         .with_context(|| format!("no account {email}"))?;
@@ -1200,21 +1271,45 @@ async fn login(store: &Store, email: &str) -> Result<()> {
         );
     }
 
-    let device = OAuth2Device::new(oauth_config(&account)?);
+    if is_google(&account) {
+        if let Some(secret) = client_secret {
+            google_client_secret(email).store(&secret)?;
+        }
 
-    println!("Waiting for authorization…");
-    device
-        .device_login(|prompt| {
-            println!();
-            println!("  1. open {}", prompt.verification_uri);
-            println!("  2. enter the code: {}", prompt.user_code);
-            println!(
-                "  (the code is valid for about {} minutes)",
-                prompt.expires_in.as_secs() / 60
-            );
-            println!();
-        })
-        .await?;
+        let client = OAuth2Loopback::new(google_config(&account)?);
+        println!("Waiting for authorization…");
+        client
+            .login(|prompt| {
+                println!();
+                println!("  1. open this in a browser signed in as {email}:");
+                println!();
+                println!("     {}", prompt.authorization_url);
+                println!();
+                println!(
+                    "  2. approve it. Google will redirect to {}, which is this",
+                    prompt.redirect_uri
+                );
+                println!("     process listening on your own machine — nothing leaves it.");
+                println!();
+            })
+            .await?;
+    } else {
+        let device = OAuth2Device::new(oauth_config(&account)?);
+
+        println!("Waiting for authorization…");
+        device
+            .device_login(|prompt| {
+                println!();
+                println!("  1. open {}", prompt.verification_uri);
+                println!("  2. enter the code: {}", prompt.user_code);
+                println!(
+                    "  (the code is valid for about {} minutes)",
+                    prompt.expires_in.as_secs() / 60
+                );
+                println!();
+            })
+            .await?;
+    }
 
     println!("authorised {email}; the refresh token is in the OS keychain");
     Ok(())

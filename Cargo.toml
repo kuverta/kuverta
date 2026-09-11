@@ -44,6 +44,11 @@ mail-builder = "0.5.0"
 # keep the C toolchain out of the build.
 mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12", "builder"] }
 sha2 = "0.11.0"
+# PKCE, for the OAuth2 loopback flow: a code verifier and a `state` value are
+# security parameters and must be unguessable, so they come from the OS rather
+# than from the clock.
+getrandom = "0.4.3"
+base64 = "0.23.1"
 async-trait = "0.1.92"
 # rustls rather than the platform's native TLS, matching the IMAP transport.
 # 0.13 renamed the TLS features and split `form` out of the default set; the

@@ -165,11 +165,173 @@ struct ErrorResponse {
     error_description: Option<String>,
 }
 
-pub struct OAuth2Device {
-    config: OAuth2Config,
-    http: reqwest::Client,
+/// Everything about an OAuth2 client that does not depend on how the user
+/// first authorised.
+///
+/// Refreshing, caching and rotating the stored token are the same whether the
+/// grant was a device code or an authorization code — and they are the subtle
+/// part, so they live in one place rather than once per flow.
+pub(crate) struct TokenSession {
+    pub(crate) user: String,
+    pub(crate) client_id: String,
+    /// Google issues one even for installed apps, where it is not actually
+    /// secret, and requires it in the token exchange anyway. Absent for
+    /// public-client grants like the device flow.
+    pub(crate) client_secret: Option<String>,
+    pub(crate) token_url: String,
+    pub(crate) scopes: Vec<String>,
+    pub(crate) http: reqwest::Client,
     tokens: Box<dyn TokenStore>,
     cached: Mutex<Option<CachedToken>>,
+}
+
+impl TokenSession {
+    pub(crate) fn new(
+        user: String,
+        client_id: String,
+        client_secret: Option<String>,
+        token_url: String,
+        scopes: Vec<String>,
+        tokens: Box<dyn TokenStore>,
+    ) -> Self {
+        Self {
+            user,
+            client_id,
+            client_secret,
+            token_url,
+            scopes,
+            http: reqwest::Client::new(),
+            tokens,
+            cached: Mutex::new(None),
+        }
+    }
+
+    pub(crate) fn scope(&self) -> String {
+        self.scopes.join(" ")
+    }
+
+    pub(crate) fn user(&self) -> &str {
+        &self.user
+    }
+
+    pub(crate) fn client_id(&self) -> &str {
+        &self.client_id
+    }
+
+    pub(crate) fn token_url(&self) -> &str {
+        &self.token_url
+    }
+
+    pub(crate) fn http(&self) -> &reqwest::Client {
+        &self.http
+    }
+
+    /// Completes a token-endpoint form with the client identity.
+    ///
+    /// Every grant sends `client_id`, and sends `client_secret` too when the
+    /// provider issued one — which Google does even for installed apps.
+    pub(crate) fn token_form<'a>(
+        &'a self,
+        mut form: Vec<(&'a str, &'a str)>,
+    ) -> Vec<(&'a str, &'a str)> {
+        form.push(("client_id", self.client_id.as_str()));
+        if let Some(secret) = &self.client_secret {
+            form.push(("client_secret", secret.as_str()));
+        }
+        form
+    }
+
+    pub(crate) fn logout(&self) -> Result<()> {
+        *self.cached.lock().unwrap() = None;
+        self.tokens.clear(&self.user)
+    }
+
+    pub(crate) async fn refresh(&self) -> Result<()> {
+        let Some(refresh_token) = self.tokens.load(&self.user)? else {
+            return Err(AuthError::NotLoggedIn(self.user.clone()));
+        };
+
+        let scope = self.scope();
+        let form = self.token_form(vec![
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token.as_str()),
+            ("scope", scope.as_str()),
+        ]);
+
+        let response = self.http.post(&self.token_url).form(&form).send().await?;
+
+        match self.read_token_response(response).await {
+            Ok(()) => Ok(()),
+            // A refresh token that the provider rejects will never work again;
+            // dropping it turns every later sync into one clear "log in" error
+            // rather than a repeating failed round trip.
+            Err(AuthError::Provider {
+                error, description, ..
+            }) if matches!(
+                error.as_str(),
+                "invalid_grant" | "invalid_client" | "unauthorized_client"
+            ) =>
+            {
+                self.tokens.clear(&self.user)?;
+                Err(AuthError::LoginExpired {
+                    user: self.user.clone(),
+                    reason: description.unwrap_or(error),
+                })
+            }
+            Err(other) => Err(other),
+        }
+    }
+
+    /// Reads a token response, caching the access token and persisting any
+    /// refresh token that came with it.
+    pub(crate) async fn read_token_response(&self, response: reqwest::Response) -> Result<()> {
+        let token: TokenResponse = parse_json(response).await?;
+
+        // Providers may rotate the refresh token; when they do, the old one
+        // stops working, so the new one has to replace it.
+        if let Some(refresh_token) = token.refresh_token.as_deref() {
+            self.tokens.save(&self.user, refresh_token)?;
+        }
+
+        let lifetime = Duration::from_secs(token.expires_in.unwrap_or(3600));
+        *self.cached.lock().unwrap() = Some(CachedToken {
+            access_token: token.access_token,
+            expires_at: SystemTime::now() + lifetime,
+        });
+
+        Ok(())
+    }
+
+    pub(crate) async fn credential(&self) -> Result<Credential> {
+        // Fast path: a token already in hand and not near expiry.
+        if let Some(cached) = self.cached.lock().unwrap().clone() {
+            if cached.usable() {
+                return Ok(Credential::OAuthBearer {
+                    user: self.user.clone(),
+                    access_token: cached.access_token,
+                });
+            }
+        }
+
+        self.refresh().await?;
+
+        let cached = self
+            .cached
+            .lock()
+            .unwrap()
+            .clone()
+            .expect("refresh stores a token or returns an error");
+
+        Ok(Credential::OAuthBearer {
+            user: self.user.clone(),
+            access_token: cached.access_token,
+        })
+    }
+}
+
+pub struct OAuth2Device {
+    session: TokenSession,
+    device_code_url: String,
 }
 
 impl OAuth2Device {
@@ -179,15 +341,21 @@ impl OAuth2Device {
 
     pub fn with_store(config: OAuth2Config, tokens: Box<dyn TokenStore>) -> Self {
         Self {
-            config,
-            http: reqwest::Client::new(),
-            tokens,
-            cached: Mutex::new(None),
+            device_code_url: config.device_code_url,
+            session: TokenSession::new(
+                config.user,
+                config.client_id,
+                // The device grant is a public-client flow: no secret exists.
+                None,
+                config.token_url,
+                config.scopes,
+                tokens,
+            ),
         }
     }
 
     pub fn user(&self) -> &str {
-        &self.config.user
+        &self.session.user
     }
 
     /// Runs the interactive device flow and stores the resulting refresh token.
@@ -196,12 +364,13 @@ impl OAuth2Device {
     /// then continues until they authorise, the code expires, or the provider
     /// refuses.
     pub async fn device_login(&self, prompt: impl FnOnce(&DeviceCodePrompt)) -> Result<()> {
-        let scope = self.config.scopes.join(" ");
+        let scope = self.session.scope();
         let response = self
+            .session
             .http
-            .post(&self.config.device_code_url)
+            .post(&self.device_code_url)
             .form(&[
-                ("client_id", self.config.client_id.as_str()),
+                ("client_id", self.session.client_id.as_str()),
                 ("scope", scope.as_str()),
             ])
             .send()
@@ -226,17 +395,18 @@ impl OAuth2Device {
             }
 
             let response = self
+                .session
                 .http
-                .post(&self.config.token_url)
+                .post(&self.session.token_url)
                 .form(&[
-                    ("client_id", self.config.client_id.as_str()),
+                    ("client_id", self.session.client_id.as_str()),
                     ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
                     ("device_code", device.device_code.as_str()),
                 ])
                 .send()
                 .await?;
 
-            match self.read_token_response(response).await {
+            match self.session.read_token_response(response).await {
                 Ok(()) => return Ok(()),
                 // The user has not finished authorising. Expected, keep polling.
                 Err(AuthError::Provider { error, .. }) if error == "authorization_pending" => {}
@@ -255,97 +425,14 @@ impl OAuth2Device {
 
     /// Forgets the stored login.
     pub fn logout(&self) -> Result<()> {
-        *self.cached.lock().unwrap() = None;
-        self.tokens.clear(&self.config.user)
-    }
-
-    async fn refresh(&self) -> Result<()> {
-        let Some(refresh_token) = self.tokens.load(&self.config.user)? else {
-            return Err(AuthError::NotLoggedIn(self.config.user.clone()));
-        };
-
-        let scope = self.config.scopes.join(" ");
-        let response = self
-            .http
-            .post(&self.config.token_url)
-            .form(&[
-                ("client_id", self.config.client_id.as_str()),
-                ("grant_type", "refresh_token"),
-                ("refresh_token", refresh_token.as_str()),
-                ("scope", scope.as_str()),
-            ])
-            .send()
-            .await?;
-
-        match self.read_token_response(response).await {
-            Ok(()) => Ok(()),
-            // A refresh token that the provider rejects will never work again;
-            // dropping it turns every later sync into one clear "log in" error
-            // rather than a repeating failed round trip.
-            Err(AuthError::Provider {
-                error, description, ..
-            }) if matches!(
-                error.as_str(),
-                "invalid_grant" | "invalid_client" | "unauthorized_client"
-            ) =>
-            {
-                self.tokens.clear(&self.config.user)?;
-                Err(AuthError::LoginExpired {
-                    user: self.config.user.clone(),
-                    reason: description.unwrap_or(error),
-                })
-            }
-            Err(other) => Err(other),
-        }
-    }
-
-    /// Reads a token response, caching the access token and persisting any
-    /// refresh token that came with it.
-    async fn read_token_response(&self, response: reqwest::Response) -> Result<()> {
-        let token: TokenResponse = parse_json(response).await?;
-
-        // Providers may rotate the refresh token; when they do, the old one
-        // stops working, so the new one has to replace it.
-        if let Some(refresh_token) = token.refresh_token.as_deref() {
-            self.tokens.save(&self.config.user, refresh_token)?;
-        }
-
-        let lifetime = Duration::from_secs(token.expires_in.unwrap_or(3600));
-        *self.cached.lock().unwrap() = Some(CachedToken {
-            access_token: token.access_token,
-            expires_at: SystemTime::now() + lifetime,
-        });
-
-        Ok(())
+        self.session.logout()
     }
 }
 
 #[async_trait::async_trait]
 impl AuthProvider for OAuth2Device {
     async fn credential(&self) -> Result<Credential> {
-        // Fast path: a token already in hand and not near expiry.
-        if let Some(cached) = self.cached.lock().unwrap().clone() {
-            if cached.usable() {
-                return Ok(Credential::OAuthBearer {
-                    user: self.config.user.clone(),
-                    access_token: cached.access_token,
-                });
-            }
-        }
-
-        self.refresh().await?;
-
-        let cached = self
-            .cached
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("refresh stores a token or returns an error");
-
-        Ok(Credential::OAuthBearer {
-            user: self.config.user.clone(),
-            access_token: cached.access_token,
-        })
+        self.session.credential().await
     }
 
     fn method(&self) -> &'static str {

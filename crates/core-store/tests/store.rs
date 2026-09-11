@@ -537,11 +537,15 @@ fn an_oauth_account_round_trips_its_app_registration() {
             oauth_client_id: Some("11111111-2222-3333-4444-555555555555".into()),
             oauth_tenant: Some("common".into()),
             smtp: None,
+            oauth_provider: Some("microsoft".into()),
         })
         .unwrap();
 
     let account = store.account_by_email("work@example.com").unwrap().unwrap();
     assert_eq!(account.auth_method, "oauth2");
+    // Which grant to use is not guessable from the rest of the row: Microsoft
+    // takes the device flow and Google cannot.
+    assert_eq!(account.oauth_provider.as_deref(), Some("microsoft"));
     assert_eq!(account.oauth_tenant.as_deref(), Some("common"));
     assert_eq!(
         account.oauth_client_id.as_deref(),
