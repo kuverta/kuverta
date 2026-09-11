@@ -114,6 +114,19 @@ impl KeychainPassword {
         Ok(keyring::Entry::new(&self.service, &self.account)?)
     }
 
+    /// Reads the entry without the async ceremony of [`AuthProvider`].
+    ///
+    /// The keychain is not async and never was; the trait is, because token
+    /// refresh is. A caller that only wants to know whether something is
+    /// stored should not have to reach for a runtime to find out.
+    pub fn peek(&self) -> Result<Option<String>> {
+        match self.entry()?.get_password() {
+            Ok(password) => Ok(Some(password)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
     pub fn store(&self, password: &str) -> Result<()> {
         self.entry()?.set_password(password)?;
         Ok(())

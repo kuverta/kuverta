@@ -27,6 +27,8 @@ const toast = el("toast");
 
 const state = {
   account: null,
+  email: null,
+  syncing: false,
   archive: null,
   trash: null,
   filter: { category: null, unreadOnly: false },
@@ -318,6 +320,35 @@ async function undo() {
   }
 }
 
+// -- sync ------------------------------------------------------------------
+
+/// Sends queued changes and fetches new mail.
+///
+/// The button is disabled while it runs rather than queueing a second pass:
+/// two syncs of one account racing each other is a way to discover locking
+/// behaviour, not a feature.
+async function sync() {
+  if (state.syncing) return;
+  state.syncing = true;
+  statusBar.textContent = `${state.email} — syncing…`;
+
+  try {
+    const s = await invoke("sync", { email: state.email });
+    const parts = [];
+    if (s.changes_sent) parts.push(`${s.changes_sent} change(s) sent`);
+    if (s.changes_refused) parts.push(`${s.changes_refused} refused`);
+    if (s.inserted) parts.push(`${s.inserted} new`);
+    if (s.expunged) parts.push(`${s.expunged} gone`);
+    say(parts.length ? parts.join(", ") : "nothing new");
+    await reload();
+  } catch (err) {
+    say(String(err), true);
+  } finally {
+    state.syncing = false;
+    statusBar.textContent = state.email;
+  }
+}
+
 // -- search ----------------------------------------------------------------
 
 async function runSearch(query) {
@@ -360,6 +391,7 @@ const KEYS = {
   Delete: trash,
   u: toggleRead,
   z: undo,
+  r: sync,
 };
 
 document.addEventListener("keydown", async (event) => {
@@ -414,7 +446,8 @@ async function start() {
   }
 
   state.account = accounts[0].id;
-  statusBar.textContent = accounts[0].email;
+  state.email = accounts[0].email;
+  statusBar.textContent = state.email;
 
   const special = await invoke("special_folders", { account: state.account });
   state.archive = special.archive;
