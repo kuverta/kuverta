@@ -291,3 +291,59 @@ fn accounts_say_whether_they_can_send() {
         .unwrap();
     assert!(core.accounts().unwrap()[0].can_send);
 }
+
+#[test]
+fn html_only_mail_is_readable_as_text() {
+    // A large share of real mail carries no text/plain part at all. The
+    // reading pane has no HTML renderer, so the question is whether such a
+    // message is readable anyway or just blank — and the answer decides
+    // whether "no plain-text body" is a placeholder or a wall.
+    let (core, account, inbox, _, _dir) = core_with("htmlonly", 0);
+    let raw = b"Message-ID: <html-only@example.com>\r\n\
+                From: Shop <deals@example.com>\r\n\
+                Subject: HTML only\r\n\
+                MIME-Version: 1.0\r\n\
+                Content-Type: text/html; charset=utf-8\r\n\
+                \r\n\
+                <html><body><h1>Sale</h1><p>20% off <b>everything</b>.</p>\r\n\
+                <a href=\"https://example.com/sale\">Shop now</a></body></html>\r\n";
+
+    let blob = core
+        .blobs()
+        .put(account, "mid:html-only@example.com", raw)
+        .unwrap();
+    core.store()
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("html-only@example.com".into()),
+                subject: Some("HTML only".into()),
+                body_path: Some(blob),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    let id = core
+        .messages(account, 0, 1, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+    let body = core
+        .message(account, id)
+        .unwrap()
+        .body_text
+        .expect("HTML-only mail must still be readable");
+
+    assert!(body.contains("Sale"), "{body}");
+    assert!(body.contains("20% off"), "{body}");
+    assert!(body.contains("everything"), "{body}");
+    // Rendered, not dumped: no tags survive into the reading pane.
+    assert!(!body.contains("<h1>"), "{body}");
+    assert!(!body.contains("<body>"), "{body}");
+}
