@@ -81,6 +81,9 @@ pub struct MessageRow {
     pub has_attachments: bool,
     pub list_id: Option<String>,
     pub category: Option<String>,
+    /// First line or so of the body. A list showing only sender and subject
+    /// makes you open mail to find out what it is.
+    pub snippet: Option<String>,
 }
 
 impl From<ListedMessage> for MessageRow {
@@ -98,8 +101,22 @@ impl From<ListedMessage> for MessageRow {
             has_attachments: summary.has_attachments,
             list_id: summary.list_id,
             category: listed.category,
+            snippet: summary.snippet,
         }
     }
+}
+
+/// A folder as the sidebar draws it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderView {
+    pub id: i64,
+    pub name: String,
+    /// The last path segment, for a nested name like `[Gmail]/All Mail`. What
+    /// a sidebar shows; `name` is what IMAP commands take.
+    pub label: String,
+    pub special_use: Option<String>,
+    pub total: usize,
+    pub unread: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +204,33 @@ impl Core {
             .collect())
     }
 
+    /// Every folder on the account, with what is in it, in the order a
+    /// sidebar should list them.
+    pub fn folders(&self, account: AccountId) -> Result<Vec<FolderView>> {
+        Ok(self
+            .store
+            .folder_summaries(account)?
+            .into_iter()
+            .map(|folder| FolderView {
+                // Gmail nests everything under `[Gmail]/`; showing that prefix
+                // on every row would be five wasted characters and no
+                // information. The full name is kept because it is what the
+                // server answers to.
+                label: folder
+                    .name
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or(&folder.name)
+                    .to_string(),
+                id: folder.id,
+                name: folder.name,
+                special_use: folder.special_use,
+                total: folder.total,
+                unread: folder.unread,
+            })
+            .collect())
+    }
+
     /// One window of the message list.
     pub fn messages(
         &self,
@@ -227,6 +271,7 @@ impl Core {
                 has_attachments: summary.has_attachments,
                 list_id: summary.list_id,
                 category: None,
+                snippet: summary.snippet,
             })
             .collect())
     }

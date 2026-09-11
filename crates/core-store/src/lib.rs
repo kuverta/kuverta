@@ -683,7 +683,8 @@ impl Store {
     /// Most recent messages for an account, newest first.
     pub fn recent(&self, account_id: AccountId, limit: usize) -> Result<Vec<MessageSummary>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, subject, from_name, from_addr, date_utc, list_id, has_attachments
+            "SELECT id, subject, from_name, from_addr, date_utc, list_id, has_attachments,
+                    snippet
              FROM message WHERE account_id = ?1
              ORDER BY COALESCE(date_utc, 0) DESC, id DESC
              LIMIT ?2",
@@ -713,16 +714,31 @@ impl Store {
         limit: usize,
         filter: &ListFilter,
     ) -> Result<MessageWindow> {
-        let category_clause = match &filter.category {
-            Some(_) => "AND c.category = ?2",
-            None => "AND (?2 IS NULL OR 1)",
-        };
-        let unread_clause = if filter.unread_only {
-            "AND NOT EXISTS (SELECT 1 FROM message_location l
-                             WHERE l.message_id = m.id AND l.flags LIKE '%\\Seen%')"
-        } else {
-            ""
-        };
+        // Built as a list rather than a fixed template because the filters are
+        // independent and combine: folder, category and unread are three
+        // questions, not one enum. Positional `?` placeholders are numbered in
+        // the order they are pushed, so the clause and its parameter are
+        // written together and cannot drift apart.
+        let mut clauses = vec!["m.account_id = ?".to_string()];
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(account_id)];
+
+        if let Some(category) = &filter.category {
+            clauses.push("c.category = ?".into());
+            args.push(Box::new(category.clone()));
+        }
+        if let Some(folder_id) = filter.folder {
+            // A message is "in" a folder if any of its copies is. On Gmail a
+            // message is routinely in several at once.
+            clauses.push(
+                "EXISTS (SELECT 1 FROM message_location fl
+                         WHERE fl.message_id = m.id AND fl.folder_id = ?)"
+                    .into(),
+            );
+            args.push(Box::new(folder_id));
+        }
+        if filter.unread_only {
+            clauses.push(UNREAD_PREDICATE.into());
+        }
 
         let from = format!(
             "FROM message m
@@ -733,42 +749,75 @@ impl Store {
                   SELECT MAX(c2.id) FROM classification c2
                   WHERE c2.message_id = m.id AND c2.source = 'rules'
               )
-             WHERE m.account_id = ?1 {category_clause} {unread_clause}"
+             WHERE {}",
+            clauses.join(" AND ")
         );
 
         let total: i64 = self.conn.query_row(
             &format!("SELECT COUNT(*) {from}"),
-            params![account_id, filter.category],
+            rusqlite::params_from_iter(args.iter()),
             |row| row.get(0),
         )?;
 
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
-                    m.has_attachments, c.category, c.confidence,
-                    NOT EXISTS (SELECT 1 FROM message_location l
-                                WHERE l.message_id = m.id AND l.flags LIKE '%\\Seen%')
+                    m.has_attachments, m.snippet, c.category, c.confidence,
+                    {UNREAD_PREDICATE}
              {from}
              ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
-             LIMIT ?3 OFFSET ?4"
+             LIMIT ? OFFSET ?"
         ))?;
 
-        let rows = stmt.query_map(
-            params![account_id, filter.category, limit as i64, offset as i64],
-            |row| {
-                Ok(ListedMessage {
-                    summary: row_to_summary(row)?,
-                    category: row.get(7)?,
-                    confidence: row.get(8)?,
-                    unread: row.get(9)?,
-                })
-            },
-        )?;
+        args.push(Box::new(limit as i64));
+        args.push(Box::new(offset as i64));
+
+        let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| {
+            Ok(ListedMessage {
+                summary: row_to_summary(row)?,
+                category: row.get(8)?,
+                confidence: row.get(9)?,
+                unread: row.get(10)?,
+            })
+        })?;
 
         Ok(MessageWindow {
             total: total as usize,
             offset,
             messages: rows.collect::<rusqlite::Result<Vec<_>>>()?,
         })
+    }
+
+    /// Every folder on the account, with what is in it.
+    ///
+    /// Counts are of messages, not locations: one message carrying three Gmail
+    /// labels is one message in each of those folders, and a sidebar that said
+    /// otherwise would be adding up to more than the mailbox holds.
+    pub fn folder_summaries(&self, account_id: AccountId) -> Result<Vec<FolderSummary>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT f.id, f.name, f.special_use,
+                    COUNT(DISTINCT l.message_id),
+                    COUNT(DISTINCT CASE WHEN {UNREAD_PREDICATE} THEN m.id END)
+             FROM folder f
+             LEFT JOIN message_location l ON l.folder_id = f.id
+             LEFT JOIN message m ON m.id = l.message_id
+             WHERE f.account_id = ?1
+             GROUP BY f.id, f.name, f.special_use
+             ORDER BY f.name"
+        ))?;
+
+        let rows = stmt.query_map(params![account_id], |row| {
+            Ok(FolderSummary {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                special_use: row.get(2)?,
+                total: row.get::<_, i64>(3)? as usize,
+                unread: row.get::<_, i64>(4)? as usize,
+            })
+        })?;
+
+        let mut folders = rows.collect::<rusqlite::Result<Vec<_>>>()?;
+        folders.sort_by_key(|folder| (folder.rank(), folder.name.to_lowercase()));
+        Ok(folders)
     }
 
     /// How many messages fall in each rules category, commonest first.
@@ -798,7 +847,7 @@ impl Store {
     ) -> Result<Vec<CategorizedMessage>> {
         let mut stmt = self.conn.prepare(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
-                    m.has_attachments, c.category, c.confidence
+                    m.has_attachments, m.snippet, c.category, c.confidence
              FROM message m
              LEFT JOIN classification c
                ON c.message_id = m.id
@@ -814,8 +863,8 @@ impl Store {
         let rows = stmt.query_map(params![account_id, limit as i64], |row| {
             Ok(CategorizedMessage {
                 summary: row_to_summary(row)?,
-                category: row.get(7)?,
-                confidence: row.get(8)?,
+                category: row.get(8)?,
+                confidence: row.get(9)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -834,7 +883,8 @@ impl Store {
         let phrase = format!("\"{}\"", query.replace('"', "\"\""));
 
         let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id, m.has_attachments
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, m.snippet
              FROM message_fts f
              JOIN message m ON m.id = f.rowid
              WHERE message_fts MATCH ?1 AND m.account_id = ?2
@@ -944,6 +994,9 @@ pub struct MessageSummary {
     pub date_utc: Option<i64>,
     pub list_id: Option<String>,
     pub has_attachments: bool,
+    /// First line or so of the body, recorded at parse time. A list that shows
+    /// only sender and subject makes you open mail to find out what it is.
+    pub snippet: Option<String>,
 }
 
 /// A category the user assigned by correcting a message. Either key may be set.
@@ -968,6 +1021,14 @@ pub struct Disagreement {
     pub rules_category: String,
     pub model_category: String,
 }
+
+/// Whether a message is unread: no copy of it anywhere carries `\\Seen`.
+///
+/// Written once because the list, the counts and the filter all have to agree.
+/// Two spellings of this would show as a badge that never matches the rows.
+const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
+                                            WHERE ul.message_id = m.id
+                                              AND ul.flags LIKE '%\\Seen%')";
 
 const MESSAGE_COLUMNS: &str =
     "SELECT id, rfc822_message_id, subject, from_addr, date_utc, body_path FROM message";
@@ -1060,6 +1121,7 @@ fn row_to_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageSummary> {
         date_utc: row.get(4)?,
         list_id: row.get(5)?,
         has_attachments: row.get(6)?,
+        snippet: row.get(7)?,
     })
 }
 

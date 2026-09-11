@@ -58,10 +58,12 @@ fn messages(
     limit: usize,
     category: Option<String>,
     unread_only: bool,
+    folder: Option<i64>,
 ) -> Result<MessagePage, String> {
     let filter = ListFilter {
         category,
         unread_only,
+        folder,
     };
     app.core
         .lock()
@@ -87,6 +89,11 @@ fn search(
         .unwrap()
         .search(account, &query, limit)
         .map_err(fail)
+}
+
+#[tauri::command]
+fn folders(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::FolderView>, String> {
+    app.core.lock().unwrap().folders(account).map_err(fail)
 }
 
 #[tauri::command]
@@ -268,6 +275,7 @@ fn main() {
             messages,
             message,
             search,
+            folders,
             category_counts,
             move_to,
             set_read,
