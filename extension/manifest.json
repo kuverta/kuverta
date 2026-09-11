@@ -1,0 +1,44 @@
+{
+  "manifest_version": 2,
+  "name": "fuckbird",
+  "version": "0.1.0",
+  "description": "Files mail into six categories, and says why.",
+  "author": "niczem",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "fuckbird@kuverta.github.io",
+      "strict_min_version": "128.0"
+    }
+  },
+
+  "permissions": [
+    "accountsRead",
+    "messagesRead",
+    "messagesUpdate",
+    "messagesTags",
+    "menus",
+    "notifications",
+    "storage"
+  ],
+
+  "background": {
+    "page": "background.html"
+  },
+
+  "message_display_action": {
+    "default_title": "Why this category?",
+    "default_popup": "ui/why.html",
+    "default_icon": "icon.svg"
+  },
+
+  "options_ui": {
+    "page": "ui/options.html",
+    "open_in_tab": true
+  },
+
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  }
+}
