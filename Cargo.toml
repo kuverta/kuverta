@@ -6,6 +6,7 @@ members = [
     "crates/core-accounts",
     "crates/core-rules",
     "crates/core-smtp",
+    "crates/core-rpc",
     "apps/cli",
     "apps/desktop",
 ]
@@ -23,6 +24,7 @@ core-proto = { path = "crates/core-proto" }
 core-accounts = { path = "crates/core-accounts" }
 core-rules = { path = "crates/core-rules" }
 core-smtp = { path = "crates/core-smtp" }
+core-rpc = { path = "crates/core-rpc" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.20"
