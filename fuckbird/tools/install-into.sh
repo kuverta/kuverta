@@ -2,12 +2,12 @@
 #
 # Copy the shared core and the fuckmail adapter into that app's UI directory.
 #
-#   tools/install-into.sh ../fuckmail/apps/desktop/ui
+#   fuckbird/tools/install-into.sh apps/desktop/ui
 #
-# The two repositories are separate and there is no version of this worth
-# publishing to a registry yet, so the files are copied rather than imported.
-# The copy is verbatim and verified with `diff -r`: if it has gone stale, this
-# says so rather than letting the app run against files nobody edited.
+# Copied rather than referenced because Tauri serves one directory as the web
+# root, and nothing outside `apps/desktop/ui/` is reachable from the page. The
+# copy is verbatim and verified with `diff -r`: if it has gone stale, this says
+# so rather than letting the app run against files nobody edited.
 #
 # The layout under the target mirrors this repository exactly —
 #
@@ -25,7 +25,7 @@ set -euo pipefail
 TARGET="${1:-}"
 if [[ -z $TARGET ]]; then
     echo "usage: tools/install-into.sh <path-to-ui-directory>" >&2
-    echo "   eg: tools/install-into.sh ../fuckmail/apps/desktop/ui" >&2
+    echo "   eg: fuckbird/tools/install-into.sh apps/desktop/ui" >&2
     exit 1
 fi
 
