@@ -222,6 +222,11 @@ pub enum Upsert {
 pub enum ClassifierSource {
     Rules,
     Model,
+    /// The user said so. Outranks both of the above, and is kept apart from
+    /// them on purpose: a correction is not something the classifier worked
+    /// out, and filing it as a rules verdict would put the answers into the
+    /// baseline the model is supposed to be measured against.
+    User,
 }
 
 impl ClassifierSource {
@@ -229,6 +234,7 @@ impl ClassifierSource {
         match self {
             Self::Rules => "rules",
             Self::Model => "model",
+            Self::User => "user",
         }
     }
 }
