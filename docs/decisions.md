@@ -383,3 +383,61 @@ a fourth reference host, `ReadOnlyMailbox`, which declares almost nothing and
 refuses what it declared it could not do. Most of its conformance run is skips,
 and that is the point: something has to exercise the path a future host will
 take, and "an account with no Archive folder" is not a hypothetical.
+
+---
+
+## 8. Keyboard-first is not the same thing as undiscoverable
+
+**2026-09-11.** The first time anyone opened the triage surface.
+
+The report was: *"I opened triage but as a user I actually have no clue what I
+am supposed to do."*
+
+The list was working — eight messages, all classified, five categories. It
+simply said nothing. Every action was a key, no key was written down anywhere,
+and the only hint was a `?` that you had to already know about.
+
+That is a misreading of the brief, and mine. §3.1 asks for a list you act on
+from the keyboard; it does not ask for a window that withholds what the keys
+are. The two rules in that section are not in tension — "a filtered list says
+what it is showing" is the same instinct applied to state, and the surface was
+failing that one too, from the other side: `drawScope` *hid* the scope bar
+unless the list was filtered, so an unfiltered list announced nothing at all.
+A list that only explains itself once it has been narrowed leaves you working
+out where you are from the rows.
+
+### What changed
+
+- **A legend along the bottom, always on screen.** `j k` move, `↵` read, `e`
+  archive, `#` trash, `1-6` file, `u` unread, `z` undo, `/` search, `?` more.
+  `?` is now for the rest rather than for the basics.
+- **The scope bar is always shown**, saying what the list holds and how many.
+  The way out still appears only when there is something to get out of.
+- **The empty list says why it is empty** and what to do — silence there is
+  indistinguishable from mail having gone missing, which is the one thing a
+  mail client may never look like.
+- **The reading pane says `Press ↵ to read this message`** when a row is
+  selected. A highlighted row beside a pane reading "select a message" looks
+  like the selection did not take.
+- **The surface says which mailbox it is.** `mountTriage` takes a `title` the
+  host supplies, because the core has no idea which account it is looking at
+  and the person reading it very much does.
+- **An account picker**, in the `fuckmail` mount rather than in `core/` —
+  which account is a `fuckmail` idea, not a mail idea. The store held two
+  accounts and the surface silently opened the first, which was the
+  eight-message test one.
+
+### And a bug the picker exposed
+
+`mountTriage` returned a teardown that removed only the key handler. Mounting
+twice — which an account switcher does — would have left the previous surface
+subscribed to its model and listening on `window`, and **every keystroke would
+have acted twice**: once on a list nobody could see. With `e` and `#` bound to
+archive and trash, that is a message disappearing that the user never looked
+at. The teardown now gives back the resize listener and the subscription too.
+
+Worth noting how that was found. It was not found by using the account picker;
+it was found by writing one and asking what the old mount was still holding.
+The first user test bought a design fix, and the design fix bought a data-loss
+bug — neither of which any of the 181 tests was going to raise, because none of
+them can open a window.

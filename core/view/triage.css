@@ -29,6 +29,12 @@
 
   display: grid;
   grid-template-columns: 200px minmax(320px, 1fr) minmax(0, 1.2fr);
+  /* The legend is a row of its own, spanning everything, so it stays put
+     while all three columns scroll independently behind it. */
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'sidebar list detail'
+    'legend legend legend';
   height: 100%;
   min-height: 0;
   color: var(--fb-text);
@@ -41,6 +47,9 @@
 @media (max-width: 900px) {
   .fb-triage {
     grid-template-columns: 160px 1fr;
+    grid-template-areas:
+      'sidebar list'
+      'legend legend';
   }
   .fb-triage .fb-detail {
     display: none;
@@ -54,6 +63,7 @@
 /* -- sidebar -------------------------------------------------------------- */
 
 .fb-sidebar {
+  grid-area: sidebar;
   border-right: 1px solid var(--fb-line);
   overflow-y: auto;
   padding: 8px 0;
@@ -86,6 +96,7 @@
 /* -- list ----------------------------------------------------------------- */
 
 .fb-main {
+  grid-area: list;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -94,9 +105,19 @@
 
 .fb-head {
   display: flex;
-  gap: 6px;
+  align-items: center;
+  gap: 8px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--fb-line);
+}
+
+/* Which mailbox this is. The core does not know; the host tells it. */
+.fb-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
 }
 
 .fb-search {
@@ -116,9 +137,10 @@
 }
 
 /*
-  The scope bar. Shown only when the list is filtered, and it carries the way
-  out — a filtered list that does not say so looks exactly like mail going
-  missing.
+  The scope bar. Always there, saying what the list is showing and how many —
+  a list that only explains itself once it has been narrowed leaves you working
+  out where you are from the rows. The way out appears only when there is
+  something to get out of.
 */
 .fb-scopebar {
   display: flex;
@@ -126,8 +148,15 @@
   justify-content: space-between;
   gap: 8px;
   padding: 5px 10px;
-  background: color-mix(in srgb, Highlight 12%, Window);
+  background: color-mix(in srgb, Highlight 8%, Window);
   border-bottom: 1px solid var(--fb-line);
+}
+
+/* An empty list says why it is empty. Silence reads as mail gone missing. */
+.fb-empty-list {
+  padding: 24px 16px;
+  margin: 0;
+  text-align: center;
 }
 
 .fb-viewport {
@@ -219,6 +248,7 @@
 /* -- reading -------------------------------------------------------------- */
 
 .fb-detail {
+  grid-area: detail;
   overflow-y: auto;
   padding: 16px;
   min-width: 0;
@@ -281,4 +311,50 @@
 
 .fb-triage [hidden] {
   display: none !important;
+}
+
+/* -- the legend ----------------------------------------------------------- */
+
+/*
+  Always on screen. A keyboard-first list is not the same thing as an
+  undiscoverable one, and the first person to open this had no idea what they
+  were meant to do — which was a fair reading of a window that showed rows and
+  said nothing.
+*/
+.fb-legend {
+  grid-area: legend;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 6px 12px;
+  border-top: 1px solid var(--fb-line);
+  background: color-mix(in srgb, WindowText 4%, Window);
+  color: var(--fb-muted);
+}
+
+.fb-legend span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.fb-legend kbd,
+.fb-help kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--fb-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--fb-ground);
+  color: var(--fb-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.fb-help kbd {
+  border: 0;
+  background: none;
+  font-size: 12px;
 }
