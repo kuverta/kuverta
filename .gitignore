@@ -1,0 +1,5 @@
+node_modules/
+*.xpi
+corpus.jsonl
+facts.jsonl
+.DS_Store

@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Six categories, one of them still undecided. -->
+  <rect width="32" height="32" rx="7" fill="#2C3440"/>
+  <rect x="7"  y="7"  width="8" height="4" rx="2" fill="#3B7DD8"/>
+  <rect x="17" y="7"  width="8" height="4" rx="2" fill="#7A5FB0"/>
+  <rect x="7"  y="14" width="8" height="4" rx="2" fill="#2E8B57"/>
+  <rect x="17" y="14" width="8" height="4" rx="2" fill="#C4552D"/>
+  <rect x="7"  y="21" width="8" height="4" rx="2" fill="#6E7B85"/>
+  <rect x="17" y="21" width="8" height="4" rx="2" fill="none" stroke="#9A9A9A" stroke-width="1.5" stroke-dasharray="2 2"/>
+</svg>
