@@ -347,3 +347,80 @@ fn html_only_mail_is_readable_as_text() {
     assert!(!body.contains("<h1>"), "{body}");
     assert!(!body.contains("<body>"), "{body}");
 }
+
+// -- filing by category ----------------------------------------------------
+
+#[test]
+fn filing_a_message_changes_what_the_list_shows() {
+    // The gate for stage 3 on this host: the store and the sync path have had
+    // the machinery for corrections since the first commit, and until now
+    // nothing could reach it.
+    let (core, account, _inbox, _archive, _dir) = core_with("set-category", 3);
+    let page = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    let id = page.rows[0].id;
+
+    core.set_category(account, id, "marketing").unwrap();
+
+    let after = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    assert_eq!(after.rows[0].category.as_deref(), Some("marketing"));
+}
+
+#[test]
+fn filing_a_message_records_the_correction_for_the_classifier() {
+    // The correction is what the next sync loads, so filing once is what makes
+    // the same sender land in the same place next time.
+    let (core, account, _inbox, _archive, _dir) = core_with("set-category-learns", 2);
+    let page = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    let id = page.rows[0].id;
+
+    core.set_category(account, id, "transactional").unwrap();
+
+    let learned = core.store().learned_categories(account).unwrap();
+    assert_eq!(learned.len(), 1);
+    assert_eq!(learned[0].category, "transactional");
+}
+
+#[test]
+fn a_category_that_is_not_one_is_refused() {
+    // The column is free text. A typo would file the message into a bucket the
+    // sidebar never offers and the classifier can never return, which is a
+    // message nobody can find again.
+    let (core, account, _inbox, _archive, _dir) = core_with("set-category-bad", 1);
+    let page = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+
+    let err = core
+        .set_category(account, page.rows[0].id, "invoices")
+        .unwrap_err();
+    assert!(matches!(err, RpcError::Rejected(_)), "got {err:?}");
+}
+
+#[test]
+fn filing_a_message_that_is_already_filed_there_records_nothing() {
+    // A correction that corrects nothing is noise in the one dataset being
+    // kept deliberately clean.
+    let (core, account, _inbox, _archive, _dir) = core_with("set-category-twice", 1);
+    let page = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    let id = page.rows[0].id;
+
+    core.set_category(account, id, "marketing").unwrap();
+    core.set_category(account, id, "marketing").unwrap();
+
+    assert_eq!(core.store().learned_categories(account).unwrap().len(), 1);
+}
+
+#[test]
+fn filing_a_message_on_another_account_is_refused() {
+    let (core, _account, _inbox, _archive, _dir) = core_with("set-category-other", 1);
+    let err = core.set_category(9999, 1, "personal").unwrap_err();
+    assert!(matches!(err, RpcError::UnknownMessage(_)), "got {err:?}");
+}

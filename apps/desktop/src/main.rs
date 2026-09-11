@@ -123,6 +123,21 @@ fn set_read(app: State<'_, App>, account: i64, id: i64, read: bool) -> Result<i6
         .map_err(fail)
 }
 
+/// Files a message under a category. Local only — never sent to a server.
+#[tauri::command]
+fn set_category(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    category: String,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_category(account, id, &category)
+        .map_err(fail)
+}
+
 #[tauri::command]
 fn undo(app: State<'_, App>, account: i64) -> Result<Option<QueuedChange>, String> {
     app.core.lock().unwrap().undo(account).map_err(fail)
@@ -348,6 +363,7 @@ fn main() {
             category_counts,
             move_to,
             set_read,
+            set_category,
             undo,
             queue,
             sync,

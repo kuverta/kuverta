@@ -1347,3 +1347,206 @@ fn deleting_an_account_takes_its_mail_and_its_queue_with_it() {
 
     assert!(store.delete_account(account).is_err());
 }
+
+// -- the category a message is shown under ---------------------------------
+
+/// A message in the inbox with one rules verdict recorded against it.
+fn classified(store: &Store, account: AccountId, category: &str) -> MessageId {
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    store
+        .record_verdict(
+            id,
+            &Verdict {
+                category: category.into(),
+                confidence: Some(0.9),
+                source: ClassifierSource::Rules,
+                model: None,
+                latency_ms: Some(0),
+            },
+        )
+        .unwrap();
+    id
+}
+
+fn user_says(store: &Store, id: MessageId, category: &str) {
+    store
+        .record_verdict(
+            id,
+            &Verdict {
+                category: category.into(),
+                confidence: Some(1.0),
+                source: ClassifierSource::User,
+                model: None,
+                latency_ms: None,
+            },
+        )
+        .unwrap();
+}
+
+#[test]
+fn a_correction_outranks_the_rules_verdict_in_the_list() {
+    // Filing a message has to change what the list shows straight away.
+    // Waiting for the next sync to agree would make the act of filing look
+    // like it had not worked.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    user_says(&store, id, "marketing");
+
+    let window = store
+        .message_window(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    assert_eq!(window.messages[0].category.as_deref(), Some("marketing"));
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("marketing")
+    );
+}
+
+#[test]
+fn a_later_rules_verdict_does_not_overturn_the_user() {
+    // The next sync reclassifies, and with the correction loaded it should
+    // reach the same answer anyway. But if it ever does not — a rule changes,
+    // the sender starts sending something else — the user's decision is still
+    // the one that stands.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+    user_says(&store, id, "marketing");
+
+    store
+        .record_verdict(
+            id,
+            &Verdict {
+                category: "notification".into(),
+                confidence: Some(0.8),
+                source: ClassifierSource::Rules,
+                model: None,
+                latency_ms: Some(0),
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("marketing")
+    );
+}
+
+#[test]
+fn the_most_recent_correction_is_the_one_that_counts() {
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    user_says(&store, id, "marketing");
+    user_says(&store, id, "transactional");
+
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("transactional")
+    );
+}
+
+#[test]
+fn a_model_verdict_never_changes_what_the_list_shows() {
+    // The model is recorded beside the rules so `disagreements` can compare
+    // them. A model that quietly moved messages would take that measurement
+    // with it, and there would be nothing left to answer "was it worth the
+    // latency" with.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    store
+        .record_verdict(
+            id,
+            &Verdict {
+                category: "marketing".into(),
+                confidence: Some(0.7),
+                source: ClassifierSource::Model,
+                model: Some("qwen3:8b".into()),
+                latency_ms: Some(400),
+            },
+        )
+        .unwrap();
+
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("newsletter")
+    );
+}
+
+#[test]
+fn a_reclassified_message_is_counted_under_one_category_only() {
+    // Every verdict is kept, so a message classified twice has several rows.
+    // Joining all of them counted it under every category it had ever been
+    // given, and the sidebar added up to more messages than the mailbox held.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+    user_says(&store, id, "marketing");
+
+    let counts = store.category_counts(account).unwrap();
+    let total: usize = counts.iter().map(|(_, n)| n).sum();
+
+    assert_eq!(total, 1, "one message should be counted once: {counts:?}");
+    assert_eq!(counts, vec![("marketing".to_string(), 1)]);
+}
+
+#[test]
+fn a_category_filter_follows_the_correction() {
+    // Otherwise filing a message into a category and then opening that
+    // category would not show it.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+    user_says(&store, id, "marketing");
+
+    let filter = ListFilter {
+        category: Some("marketing".into()),
+        ..Default::default()
+    };
+    let window = store.message_window(account, 0, 10, &filter).unwrap();
+    assert_eq!(window.total, 1);
+    assert_eq!(window.messages[0].summary.id, id);
+
+    let gone = ListFilter {
+        category: Some("newsletter".into()),
+        ..Default::default()
+    };
+    assert_eq!(
+        store.message_window(account, 0, 10, &gone).unwrap().total,
+        0,
+        "it should have left the category it was filed out of"
+    );
+}
+
+#[test]
+fn an_unclassified_message_has_no_category() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+
+    assert_eq!(store.current_category(id).unwrap(), None);
+    let window = store
+        .message_window(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    assert_eq!(window.messages[0].category, None);
+}

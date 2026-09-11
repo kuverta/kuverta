@@ -13,6 +13,7 @@ serde_json.workspace = true
 [dependencies]
 core-store.workspace = true
 core-proto.workspace = true
+core-rules.workspace = true
 core-accounts.workspace = true
 core-smtp.workspace = true
 
