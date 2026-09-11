@@ -8,8 +8,10 @@
 
 use std::fmt;
 
+pub mod loopback;
 pub mod oauth;
 
+pub use loopback::{LoopbackConfig, LoopbackPrompt, OAuth2Loopback};
 pub use oauth::{DeviceCodePrompt, OAuth2Config, OAuth2Device, TokenStore};
 
 #[derive(Debug, thiserror::Error)]

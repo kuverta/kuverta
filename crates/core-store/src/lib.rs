@@ -84,8 +84,9 @@ impl Store {
         self.conn.execute(
             "INSERT INTO account
                  (label, email, imap_host, imap_port, imap_security, username, auth_method,
-                  oauth_client_id, oauth_tenant, smtp_host, smtp_port, smtp_security, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                  oauth_client_id, oauth_tenant, smtp_host, smtp_port, smtp_security,
+                  oauth_provider, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             params![
                 account.label,
                 account.email,
@@ -99,6 +100,7 @@ impl Store {
                 account.smtp.as_ref().map(|s| s.host.as_str()),
                 account.smtp.as_ref().map(|s| s.port),
                 account.smtp.as_ref().map(|s| s.security.as_str()),
+                account.oauth_provider,
                 now(),
             ],
         )?;
@@ -131,7 +133,7 @@ impl Store {
             .query_row(
                 "SELECT id, label, email, imap_host, imap_port, imap_security, username,
                         auth_method, oauth_client_id, oauth_tenant,
-                        smtp_host, smtp_port, smtp_security
+                        smtp_host, smtp_port, smtp_security, oauth_provider
                  FROM account WHERE email = ?1",
                 params![email],
                 row_to_account,
@@ -144,7 +146,7 @@ impl Store {
         let mut stmt = self.conn.prepare(
             "SELECT id, label, email, imap_host, imap_port, imap_security, username,
                     auth_method, oauth_client_id, oauth_tenant,
-                    smtp_host, smtp_port, smtp_security
+                    smtp_host, smtp_port, smtp_security, oauth_provider
              FROM account ORDER BY id",
         )?;
         let rows = stmt.query_map([], row_to_account)?;
@@ -949,6 +951,7 @@ fn row_to_account(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
         oauth_client_id: row.get(8)?,
         oauth_tenant: row.get(9)?,
         smtp,
+        oauth_provider: row.get(13)?,
     })
 }
 
