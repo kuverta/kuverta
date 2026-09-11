@@ -72,7 +72,86 @@
     <span>R reply</span>
     <span>r sync</span>
     <span>/ search</span>
+    <span>, settings</span>
   </footer>
+
+  <!-- Settings covers the window rather than replacing the panes, so leaving
+       it puts you back exactly where you were. -->
+  <div id="settings" class="sheet" hidden>
+    <div class="sheet-panel">
+      <div class="sheet-head">
+        <strong>Accounts</strong>
+        <button id="settings-add">Add account</button>
+        <button id="settings-close">Done</button>
+      </div>
+
+      <div class="sheet-body">
+        <nav id="settings-list"></nav>
+
+        <form id="settings-form" autocomplete="off">
+          <label>Description<input name="label" placeholder="Work"></label>
+          <label>Email address<input name="email" required spellcheck="false"></label>
+          <label>Username<input name="username" placeholder="same as the email address" spellcheck="false"></label>
+
+          <div class="form-heading">Incoming — IMAP</div>
+          <div class="row3">
+            <label>Server<input name="imap_host" required spellcheck="false"></label>
+            <label>Port<input name="imap_port" type="number" min="1" max="65535" required></label>
+            <label>Security<select name="imap_security">
+              <option value="tls">TLS</option>
+              <option value="starttls">STARTTLS</option>
+              <option value="plaintext">None (localhost only)</option>
+            </select></label>
+          </div>
+
+          <div class="form-heading">Outgoing — SMTP <span class="hint">optional; without it the account cannot send</span></div>
+          <div class="row3">
+            <label>Server<input name="smtp_host" spellcheck="false"></label>
+            <label>Port<input name="smtp_port" type="number" min="1" max="65535"></label>
+            <label>Security<select name="smtp_security">
+              <option value="tls">TLS</option>
+              <option value="starttls">STARTTLS</option>
+              <option value="plaintext">None (localhost only)</option>
+            </select></label>
+          </div>
+
+          <div class="form-heading">Authentication</div>
+          <label>Method<select name="auth_method">
+            <option value="app_password">App password</option>
+            <option value="oauth2">OAuth2</option>
+          </select></label>
+
+          <div id="oauth-fields" hidden>
+            <div class="row3">
+              <label>Provider<select name="oauth_provider">
+                <option value="microsoft">Microsoft 365</option>
+                <option value="google">Google</option>
+              </select></label>
+              <label>Client id<input name="oauth_client_id" spellcheck="false"></label>
+              <label>Tenant<input name="oauth_tenant" placeholder="common" spellcheck="false"></label>
+            </div>
+            <p class="hint">Authorise with <code>fuckmail login --email …</code>; the browser step needs a terminal.</p>
+          </div>
+
+          <div id="password-fields">
+            <label>Password<input name="password" type="password" placeholder="leave blank to keep the stored one"></label>
+            <p class="hint" id="password-state"></p>
+          </div>
+
+          <div class="form-heading">Folders not synced <span class="hint">one per line — a name, or an attribute like \All</span></div>
+          <textarea name="excluded_folders" rows="2" spellcheck="false"></textarea>
+
+          <div class="form-actions">
+            <button type="submit" id="settings-save">Save</button>
+            <button type="button" id="settings-verify">Verify</button>
+            <button type="button" id="settings-delete" class="danger">Remove account</button>
+          </div>
+        </form>
+
+        <pre id="settings-report" hidden></pre>
+      </div>
+    </div>
+  </div>
 
   <div id="toast" class="toast" hidden></div>
 

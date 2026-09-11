@@ -412,3 +412,144 @@ footer {
 }
 
 .toast.error { color: var(--error); border-color: var(--error); }
+
+/* -- settings ------------------------------------------------------------ */
+
+/* A sheet over the window rather than a replacement for the panes, so leaving
+   it puts you back exactly where you were. */
+.sheet {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.35);
+  z-index: 10;
+}
+
+.sheet[hidden] { display: none !important; }
+
+.sheet-panel {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  width: min(860px, 92vw);
+  height: min(680px, 88vh);
+  background: var(--bg);
+  border-radius: 12px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
+  overflow: hidden;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--sidebar-bg);
+}
+
+.sheet-head strong { flex: 1; }
+
+.sheet-head button,
+.form-actions button {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+#settings-close,
+#settings-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.form-actions .danger { color: var(--error); border-color: var(--error); }
+
+/* The account list beside the form it edits, the same shape as the sidebar. */
+.sheet-body {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#settings-list {
+  border-right: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  padding: 8px;
+  overflow-y: auto;
+}
+
+#settings-form {
+  padding: 16px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+#settings-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+#settings-form input,
+#settings-form select,
+#settings-form textarea {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 inherit;
+}
+
+#settings-form textarea { resize: vertical; font-family: ui-monospace, Menlo, monospace; }
+
+.row3 {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.2fr;
+  gap: 8px;
+}
+
+.form-heading {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.form-heading .hint { font-weight: 400; }
+.hint { color: var(--muted); font-size: 11.5px; }
+#settings-form p.hint { margin: 2px 0 0; }
+
+.form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+#settings-report {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font: 12px/1.5 ui-monospace, Menlo, monospace;
+}
+
+#settings-report[hidden] { display: none !important; }

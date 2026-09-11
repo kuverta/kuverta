@@ -351,6 +351,27 @@ list that quietly narrows looks exactly like mail going missing. Acting on a
 message keeps the cursor where it was, so the next one slides under it instead
 of the list jumping back to the top.
 
+Accounts can now be configured from the window rather than only from the CLI:
+a settings sheet with the account list beside the form it edits, IMAP and SMTP
+endpoints, the auth method, the excluded folders, and a **Verify** button that
+connects without changing anything and reports what it found — credentials,
+extensions, where mail will be filed, and what a first sync would fetch. That
+is the same answer `fuckmail check` gives, as a structure rather than as
+printed lines, so neither has to be learned separately.
+
+Two rules live in the core rather than the form. A password goes one way: it
+is written to the keychain and never read back, so `AccountSettings` carries
+`has_password` and no secret — a form that cannot display a password cannot
+leak one into a screenshot. And plaintext is refused for anything but
+localhost, because a password sent in the clear is a password disclosed
+whichever front end collected it.
+
+Two bugs turned up in the doing. `Core::open` never created its data
+directory, so the very first run — the one the settings pane exists to serve —
+died before the window appeared. And the exclusions textarea had to *replace*
+the set rather than add to it, or a folder could be excluded and never
+restored.
+
 Still open: the model layer (local Ollama, section 4), IDLE for push, QRESYNC,
 and attachments.
 

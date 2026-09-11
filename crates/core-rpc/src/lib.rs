@@ -20,8 +20,12 @@
 //! docs/spike-tauri-list.md.
 
 pub mod session;
+pub mod settings;
 
-pub use session::{DraftInput, DraftPreview, SentSummary, Session, SyncSummary};
+pub use session::{
+    DraftInput, DraftPreview, SentSummary, Session, SyncSummary, VerifiedFolder, VerifyReport,
+};
+pub use settings::{AccountInput, AccountSettings};
 
 use std::path::Path;
 
@@ -41,6 +45,9 @@ pub enum RpcError {
 
     #[error("no message {0}")]
     UnknownMessage(MessageId),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 
     #[error("{0}")]
     Rejected(String),
@@ -175,6 +182,10 @@ pub struct Core {
 impl Core {
     pub fn open(data_dir: impl AsRef<Path>) -> Result<Self> {
         let dir = data_dir.as_ref();
+        // Created here rather than expected to exist. A first run has no data
+        // directory by definition, and failing before the window opens is the
+        // worst possible moment to say so — there is nowhere to say it.
+        std::fs::create_dir_all(dir)?;
         Ok(Self {
             store: Store::open(dir.join("fuckmail.db"))?,
             blobs: Blobs::new(dir.join("blobs")),
