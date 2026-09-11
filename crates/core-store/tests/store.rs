@@ -1257,3 +1257,60 @@ fn the_window_can_be_narrowed_to_one_folder_and_combined_with_the_rest() {
         Some("message 1")
     );
 }
+
+#[test]
+fn an_account_can_be_edited_without_restating_what_did_not_change() {
+    // How a settings form works: load, change one field, write back.
+    let (store, account) = store_with_account();
+    let before = store
+        .account_by_email("dev@fuckmail.test")
+        .unwrap()
+        .unwrap();
+
+    let mut edit = NewAccount::from(&before);
+    edit.imap_port = 993;
+    edit.imap_security = ImapSecurity::Tls;
+    store.update_account(account, &edit).unwrap();
+
+    let after = store
+        .account_by_email("dev@fuckmail.test")
+        .unwrap()
+        .unwrap();
+    assert_eq!(after.imap_port, 993);
+    assert_eq!(after.imap_security, ImapSecurity::Tls);
+    // Untouched fields survive.
+    assert_eq!(after.label, before.label);
+    assert_eq!(after.username, before.username);
+    assert_eq!(after.id, before.id);
+
+    assert!(store.update_account(4242, &edit).is_err());
+}
+
+#[test]
+fn deleting_an_account_takes_its_mail_and_its_queue_with_it() {
+    let (store, account, message, inbox) = store_with_message();
+    store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+    store.exclude_folder(account, "\\All").unwrap();
+    store
+        .record_correction(message, Some("notification"), "personal")
+        .unwrap();
+    assert_eq!(store.message_count(account).unwrap(), 1);
+
+    store.delete_account(account).unwrap();
+
+    assert!(store.accounts().unwrap().is_empty());
+    assert_eq!(store.message_count(account).unwrap(), 0);
+    assert!(store.folders(account).unwrap().is_empty());
+    assert!(store.pending_operations(account).unwrap().is_empty());
+    assert!(store.folder_exclusions(account).unwrap().is_empty());
+
+    let corrections: i64 = store
+        .connection()
+        .query_row("SELECT COUNT(*) FROM correction", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(corrections, 0, "corrections cascade with their message");
+
+    assert!(store.delete_account(account).is_err());
+}

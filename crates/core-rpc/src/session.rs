@@ -132,6 +132,42 @@ pub struct SentSummary {
     pub filing_error: Option<String>,
 }
 
+/// What a connection test found.
+///
+/// A structure rather than printed lines, so a settings dialog can show the
+/// same answer the CLI does without parsing it back out of text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifyReport {
+    pub email: String,
+    /// `host:port (security)`, so the report says what it actually tried.
+    pub imap_target: String,
+    pub imap_ok: bool,
+    pub imap_error: Option<String>,
+
+    pub smtp_target: Option<String>,
+    pub smtp_ok: bool,
+    pub smtp_error: Option<String>,
+
+    /// Extensions the client can exploit, and whether this server has them.
+    pub extensions: Vec<(String, bool)>,
+    pub folders: Vec<VerifiedFolder>,
+    /// Where mail would go, resolved the way the app resolves it.
+    pub sent_folder: Option<String>,
+    pub archive_folder: Option<String>,
+    pub trash_folder: Option<String>,
+    pub total_messages: u64,
+    /// Things that will work but not the way the user probably expects.
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerifiedFolder {
+    pub name: String,
+    pub special_use: Option<String>,
+    pub messages: u32,
+    pub excluded: bool,
+}
+
 /// Runs the operations that need a server.
 pub struct Session {
     data_dir: PathBuf,
@@ -157,6 +193,7 @@ impl Session {
 
     /// Opens a connection of this session's own. See the module note.
     fn open(&self) -> Result<(Store, Blobs)> {
+        std::fs::create_dir_all(&self.data_dir)?;
         Ok((
             Store::open(self.data_dir.join("fuckmail.db"))?,
             Blobs::new(self.data_dir.join("blobs")),
@@ -207,6 +244,157 @@ impl Session {
             unparseable: report.unparseable,
             invalidated: report.invalidated,
         })
+    }
+
+    /// Connects to an account without changing anything, and reports what it
+    /// found.
+    ///
+    /// The one call worth making before a first sync: it answers whether the
+    /// credentials work, which extensions the server has, where mail will be
+    /// filed, and how much a sync would fetch — all of which are cheaper to
+    /// learn now than after downloading a mailbox.
+    ///
+    /// A failure to connect is part of the report rather than an error. "Your
+    /// password is wrong" is exactly the answer the caller asked for, and a
+    /// dialog that shows it next to the field is more use than one that throws.
+    pub async fn verify(&self, email: &str) -> Result<VerifyReport> {
+        let (store, _) = self.open()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+
+        let mut report = VerifyReport {
+            email: account.email.clone(),
+            imap_target: format!(
+                "{}:{} ({})",
+                account.imap_host,
+                account.imap_port,
+                account.imap_security.as_str()
+            ),
+            imap_ok: false,
+            imap_error: None,
+            smtp_target: account
+                .smtp
+                .as_ref()
+                .map(|s| format!("{}:{} ({})", s.host, s.port, s.security.as_str())),
+            smtp_ok: false,
+            smtp_error: None,
+            extensions: Vec::new(),
+            folders: Vec::new(),
+            sent_folder: None,
+            archive_folder: None,
+            trash_folder: None,
+            total_messages: 0,
+            warnings: Vec::new(),
+        };
+
+        let auth = match provider_for(&account, self.password_env.as_deref()) {
+            Ok(auth) => auth,
+            Err(err) => {
+                report.imap_error = Some(err.to_string());
+                return Ok(report);
+            }
+        };
+
+        match self
+            .probe_imap(&store, &account, auth.as_ref(), &mut report)
+            .await
+        {
+            Ok(()) => report.imap_ok = true,
+            Err(err) => report.imap_error = Some(err.to_string()),
+        }
+
+        if let Some(smtp) = &account.smtp {
+            match core_smtp::verify(smtp, &account.username, auth.as_ref()).await {
+                Ok(()) => report.smtp_ok = true,
+                Err(err) => report.smtp_error = Some(err.to_string()),
+            }
+        }
+
+        Ok(report)
+    }
+
+    async fn probe_imap(
+        &self,
+        store: &Store,
+        account: &Account,
+        auth: &dyn AuthProvider,
+        report: &mut VerifyReport,
+    ) -> Result<()> {
+        let config = core_proto::ImapConfig {
+            host: account.imap_host.clone(),
+            port: account.imap_port,
+            security: account.imap_security.clone(),
+            username: account.username.clone(),
+        };
+        let mut client = core_proto::ImapClient::connect(&config, auth).await?;
+
+        let ext = client.extensions().await?;
+        report.extensions = vec![
+            ("CONDSTORE".into(), ext.condstore),
+            ("MOVE".into(), ext.r#move),
+            ("UIDPLUS".into(), ext.uidplus),
+            ("QRESYNC".into(), ext.qresync),
+            ("IDLE".into(), ext.idle),
+        ];
+        if !ext.condstore {
+            report
+                .warnings
+                .push("without CONDSTORE every sync rescans every folder".into());
+        }
+        if !ext.r#move && !ext.uidplus {
+            report
+                .warnings
+                .push("without MOVE or UIDPLUS, archiving leaves a flagged copy behind".into());
+        }
+
+        let folders = client.folders().await?;
+        let exclusions = store.folder_exclusions(account.id)?;
+        let pairs: Vec<(&str, Option<&str>)> = folders
+            .iter()
+            .filter(|f| f.selectable)
+            .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+            .collect();
+
+        report.sent_folder = core_proto::client::find_sent(&folders).map(|f| f.name.clone());
+        report.archive_folder =
+            core_proto::client::find_archive(pairs.iter().copied()).map(str::to_string);
+        report.trash_folder =
+            core_proto::client::find_trash(pairs.iter().copied()).map(str::to_string);
+
+        if report.archive_folder.is_none() {
+            report
+                .warnings
+                .push("no Archive folder — archiving will fail until one is created".into());
+        }
+
+        for folder in folders.iter().filter(|f| f.selectable) {
+            let excluded = core_store::folder_is_excluded(
+                &exclusions,
+                &folder.name,
+                folder.special_use.as_deref(),
+            );
+            let state = client.examine(&folder.name).await?;
+            if !excluded {
+                report.total_messages += state.exists as u64;
+            }
+            if folder.special_use.as_deref() == Some("\\All") && !excluded && state.exists > 0 {
+                report.warnings.push(format!(
+                    "{} holds a copy of every message, so a sync fetches most mail twice; \
+                     excluding \\All syncs it once",
+                    folder.name
+                ));
+            }
+            report.folders.push(VerifiedFolder {
+                name: folder.name.clone(),
+                special_use: folder.special_use.clone(),
+                messages: state.exists,
+                excluded,
+            });
+        }
+
+        client.logout().await.ok();
+        Ok(())
     }
 
     /// Builds a draft without sending it.

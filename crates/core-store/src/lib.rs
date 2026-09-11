@@ -107,6 +107,56 @@ impl Store {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Changes an existing account's settings.
+    ///
+    /// Everything except the submission endpoint, which has its own call
+    /// because it is the one part that can be absent entirely. The email
+    /// address is part of the identity the keychain and the message rows hang
+    /// off, so it is settable but a caller changing it has to move the
+    /// credential too.
+    pub fn update_account(&self, id: AccountId, account: &NewAccount) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE account
+             SET label = ?2, email = ?3, imap_host = ?4, imap_port = ?5, imap_security = ?6,
+                 username = ?7, auth_method = ?8, oauth_client_id = ?9, oauth_tenant = ?10,
+                 oauth_provider = ?11
+             WHERE id = ?1",
+            params![
+                id,
+                account.label,
+                account.email,
+                account.imap_host,
+                account.imap_port,
+                account.imap_security.as_str(),
+                account.username,
+                account.auth_method,
+                account.oauth_client_id,
+                account.oauth_tenant,
+                account.oauth_provider,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(StoreError::UnknownAccount(id));
+        }
+        Ok(())
+    }
+
+    /// Removes an account and everything hanging off it.
+    ///
+    /// Folders, messages, locations, classifications, corrections and queued
+    /// operations all cascade. The blobs on disk do not — they are addressed
+    /// by content and shared, so removing them is a sweep of its own rather
+    /// than something to do while deleting a row.
+    pub fn delete_account(&self, id: AccountId) -> Result<()> {
+        let changed = self
+            .conn
+            .execute("DELETE FROM account WHERE id = ?1", params![id])?;
+        if changed == 0 {
+            return Err(StoreError::UnknownAccount(id));
+        }
+        Ok(())
+    }
+
     /// Attaches (or replaces) the submission endpoint for an existing account.
     ///
     /// Separate from `add_account` because accounts registered before send

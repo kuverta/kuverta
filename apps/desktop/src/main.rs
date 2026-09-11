@@ -207,6 +207,75 @@ fn preview(
         .map_err(fail)
 }
 
+// -- settings ---------------------------------------------------------------
+
+#[tauri::command]
+fn account_settings(app: State<'_, App>) -> Result<Vec<core_rpc::AccountSettings>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .all_account_settings()
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn save_account(app: State<'_, App>, input: core_rpc::AccountInput) -> Result<i64, String> {
+    app.core.lock().unwrap().save_account(&input).map_err(fail)
+}
+
+#[tauri::command]
+fn delete_account(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_account(id).map_err(fail)
+}
+
+/// Stores an app password in the OS keychain.
+///
+/// One way only: nothing here reads a password back out. See the note on
+/// `core_rpc::settings`.
+#[tauri::command]
+fn set_password(app: State<'_, App>, email: String, password: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_password(&email, &password)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn clear_password(app: State<'_, App>, email: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .clear_password(&email)
+        .map_err(fail)
+}
+
+/// Connects without changing anything and reports what it found.
+///
+/// Own thread, for the reason [`sync`] explains.
+#[tauri::command]
+async fn verify_account(
+    app: State<'_, App>,
+    email: String,
+) -> Result<core_rpc::VerifyReport, String> {
+    let data_dir = app.data_dir.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(fail)?;
+        runtime.block_on(async {
+            core_rpc::Session::new(data_dir)
+                .verify(&email)
+                .await
+                .map_err(fail)
+        })
+    })
+    .await
+    .map_err(|err| format!("the verify thread did not finish: {err}"))?
+}
+
 /// Where Archive and Trash are for this account, resolved from what sync
 /// recorded rather than guessed in JavaScript.
 #[tauri::command]
@@ -285,6 +354,12 @@ fn main() {
             send,
             preview,
             special_folders,
+            account_settings,
+            save_account,
+            delete_account,
+            set_password,
+            clear_password,
+            verify_account,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

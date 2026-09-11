@@ -108,6 +108,26 @@ pub struct NewAccount {
     pub oauth_provider: Option<String>,
 }
 
+impl From<&Account> for NewAccount {
+    /// So a settings form can be loaded, edited and written back without
+    /// restating every field it did not touch.
+    fn from(account: &Account) -> Self {
+        Self {
+            label: account.label.clone(),
+            email: account.email.clone(),
+            imap_host: account.imap_host.clone(),
+            imap_port: account.imap_port,
+            imap_security: account.imap_security.clone(),
+            username: account.username.clone(),
+            auth_method: account.auth_method.clone(),
+            oauth_client_id: account.oauth_client_id.clone(),
+            oauth_tenant: account.oauth_tenant.clone(),
+            smtp: account.smtp.clone(),
+            oauth_provider: account.oauth_provider.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Account {
     pub id: AccountId,
