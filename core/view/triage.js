@@ -13,7 +13,7 @@
  */
 
 import { CATEGORY_LABELS, ALL_CATEGORIES } from '../category.js';
-import { CHEAT_SHEET, INTENT, INTENT_ACTIONS, intentFor, isTyping } from '../keys.js';
+import { CHEAT_SHEET, INTENT, INTENT_ACTIONS, PRIMARY_KEYS, intentFor, isTyping } from '../keys.js';
 
 const ROW_HEIGHT = 56;
 /** Rows drawn above and below the visible window, so scrolling is not blank. */
@@ -24,15 +24,18 @@ const OVERSCAN = 6;
  * @param {HTMLElement} options.root   Where to build the surface.
  * @param {import('../triage.js').Triage} options.triage
  * @param {Function} [options.onCompose]  Host-specific; hidden when absent.
+ * @param {string} [options.title]  What this mailbox is — an account address,
+ *   usually. The core has no idea which account it is looking at, and the
+ *   person reading it very much needs to.
  */
-export function mountTriage({ root, triage, onCompose = null }) {
+export function mountTriage({ root, triage, onCompose = null, title = '' }) {
   root.classList.add('fb-triage');
   root.innerHTML = LAYOUT;
 
   const el = (id) => root.querySelector(`#fb-${id}`);
-  const scopeBar = el('scope');
   const scopeLabel = el('scope-label');
   const scopeOut = el('scope-out');
+  const emptyList = el('empty-list');
   const sidebar = el('sidebar');
   const viewport = el('viewport');
   const spacer = el('spacer');
@@ -42,27 +45,35 @@ export function mountTriage({ root, triage, onCompose = null }) {
   const toast = el('toast');
   const help = el('help');
   const search = el('search');
+  const legend = el('legend');
 
   /** Reused row elements. Rebuilt only when the window is resized. */
   let pool = [];
   let firstRendered = -1;
   let lastNotice = 0;
 
+  el('title').textContent = title;
   buildHelp();
+  buildLegend();
   buildPool();
   drawSidebar();
 
-  triage.subscribe(() => {
+  const unsubscribe = triage.subscribe(() => {
     draw(true);
     drawNotice();
     drawReading();
   });
 
   viewport.addEventListener('scroll', () => draw(false), { passive: true });
-  window.addEventListener('resize', () => {
+
+  // Everything else is attached to elements inside `root`, which the next
+  // mount replaces wholesale. These two outlive it, so they are the two that
+  // have to be given back.
+  const onResize = () => {
     buildPool();
     draw(true);
-  });
+  };
+  window.addEventListener('resize', onResize);
 
   content.addEventListener('click', (event) => {
     const row = event.target.closest('.fb-row');
@@ -101,8 +112,18 @@ export function mountTriage({ root, triage, onCompose = null }) {
 
   draw(true);
 
+  /**
+   * Lets go of the document.
+   *
+   * A host that can switch mailboxes mounts this more than once. Without a
+   * teardown the old surface keeps listening, and every keystroke acts twice —
+   * once on a list nobody can see, which with `e` and `#` bound means archiving
+   * a message the user never looked at.
+   */
   return () => {
     document.removeEventListener('keydown', onKey);
+    window.removeEventListener('resize', onResize);
+    unsubscribe();
   };
 
   // -- keys ---------------------------------------------------------------
@@ -255,10 +276,24 @@ export function mountTriage({ root, triage, onCompose = null }) {
   }
 
   function drawScope() {
-    // The way out is shown only when there is something to get out of, so an
+    // Always shown, never hidden. §3.1 asks a filtered list to say what it is
+    // showing; a list that says nothing when unfiltered leaves you working out
+    // where you are from the rows, which is the same problem in a milder form.
+    const count = triage.total === 1 ? '1 message' : `${triage.total} messages`;
+    scopeLabel.textContent = `${triage.scopeLabel} · ${count}`;
+
+    // The way out appears only when there is something to get out of, so an
     // unfiltered list does not carry a button that does nothing.
-    scopeBar.hidden = !triage.isFiltered;
-    scopeLabel.textContent = `${triage.scopeLabel} — ${triage.total} message(s)`;
+    scopeOut.hidden = !triage.isFiltered;
+
+    // An empty list has to say why it is empty and what to do about it.
+    // Otherwise it is indistinguishable from mail having gone missing.
+    emptyList.hidden = triage.total !== 0;
+    if (triage.total === 0) {
+      emptyList.textContent = triage.isFiltered
+        ? `Nothing in ${triage.scopeLabel}. Press Escape, or use “Show everything”.`
+        : 'No messages here yet. Sync with r, or pick a folder on the left.';
+    }
   }
 
   function drawSidebar() {
@@ -285,7 +320,14 @@ export function mountTriage({ root, triage, onCompose = null }) {
     const open = triage.open;
     reading.hidden = !open;
     empty.hidden = Boolean(open);
-    if (!open) return;
+    if (!open) {
+      // A highlighted row beside a pane saying "select a message" reads as
+      // though the selection did not take. Say what to press instead.
+      empty.textContent = triage.selectedRow
+        ? 'Press ↵ to read this message'
+        : 'Nothing selected';
+      return;
+    }
 
     reading.querySelector('.fb-read-subject').textContent = open.row.subject || '(no subject)';
     reading.querySelector('.fb-read-meta').textContent =
@@ -307,6 +349,20 @@ export function mountTriage({ root, triage, onCompose = null }) {
     toast._timer = setTimeout(() => {
       toast.hidden = true;
     }, 4000);
+  }
+
+  function buildLegend() {
+    legend.replaceChildren(
+      ...PRIMARY_KEYS.map(([keys, what]) => {
+        const item = document.createElement('span');
+        const kbd = document.createElement('kbd');
+        kbd.textContent = keys;
+        const text = document.createElement('span');
+        text.textContent = what;
+        item.append(kbd, text);
+        return item;
+      }),
+    );
   }
 
   function buildHelp() {
@@ -348,26 +404,29 @@ const LAYOUT = `
   <aside id="fb-sidebar" class="fb-sidebar"></aside>
   <section class="fb-main">
     <div class="fb-head">
+      <span id="fb-title" class="fb-title"></span>
       <input id="fb-search" class="fb-search" type="search" placeholder="/ to search" spellcheck="false">
       <button id="fb-helpbtn" class="fb-ghost" title="Shortcuts (?)">?</button>
     </div>
-    <div id="fb-scope" class="fb-scopebar" hidden>
+    <div class="fb-scopebar">
       <span id="fb-scope-label"></span>
-      <button id="fb-scope-out" class="fb-ghost">Show everything</button>
+      <button id="fb-scope-out" class="fb-ghost" hidden>Show everything</button>
     </div>
     <div id="fb-viewport" class="fb-viewport">
       <div id="fb-spacer"></div>
       <div id="fb-content"></div>
+      <p id="fb-empty-list" class="fb-empty-list fb-muted" hidden></p>
     </div>
   </section>
   <section class="fb-detail">
-    <div id="fb-empty" class="fb-muted">Select a message</div>
+    <div id="fb-empty" class="fb-muted">Nothing selected</div>
     <article id="fb-reading" hidden>
       <h2 class="fb-read-subject"></h2>
       <p class="fb-read-meta fb-muted"></p>
       <pre class="fb-read-body"></pre>
     </article>
   </section>
+  <footer id="fb-legend" class="fb-legend"></footer>
   <div id="fb-toast" class="fb-toast" hidden></div>
   <div id="fb-help" class="fb-help" hidden></div>
 `;
