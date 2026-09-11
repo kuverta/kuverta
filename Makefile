@@ -12,9 +12,10 @@ help: ## Show this help
 
 ## -- dev services ----------------------------------------------------------
 
-dev-up: ## Start the dev IMAP servers and SMTP sink, and load the fixtures
+dev-up: ## Start the dev stack: IMAP + fixtures + SMTP sink + Paperless-ngx
 	$(COMPOSE) up -d
 	@$(COMPOSE) logs mailseed --no-log-prefix | tail -3
+	@echo "  Paperless-ngx: http://localhost:8000  (admin/admin, slow on first start)"
 
 dev-down: ## Stop the dev services (keeps the mailbox)
 	$(COMPOSE) down
@@ -32,8 +33,8 @@ ai-up: ## Start Ollama in a container (see docker/README.md before using this)
 ai-model: ## Pull the classification model into the Ollama container
 	$(COMPOSE) --profile ai exec ollama ollama pull qwen3:8b
 
-paperless-up: ## Start Paperless-ngx on http://localhost:8000 (admin/admin)
-	$(COMPOSE) --profile paperless up -d
+# Kept as a name people already type; Paperless is in the default stack now.
+paperless-up: dev-up ## Start Paperless-ngx on http://localhost:8000 (admin/admin)
 
 ## -- build and test --------------------------------------------------------
 

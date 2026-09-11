@@ -131,6 +131,38 @@ of everything, so `check` will suggest `exclude '\All'` and say what that costs.
 **Microsoft 365** needs an Azure app registration and
 `--auth oauth2 --client-id …`, then `login`.
 
+## Paper
+
+A physical address is an account, and [Paperless-ngx](https://docs.paperless-ngx.com/)
+is its server. Post that arrives at it is mail: the correspondent wrote it, the
+title is the subject, the OCR text is the body, and the date on the letter is
+when it arrived. The same classifier files it — the rules read a sender, a
+subject and some text, and a letter has all three.
+
+It runs in the dev stack, so there is post to work with as well as mail:
+
+```sh
+make dev-up     # ...including Paperless-ngx on http://localhost:8000 (admin/admin)
+```
+
+Against that, or any existing instance:
+
+```sh
+export PAPERLESS_TOKEN=...          # Paperless: settings → users → create token
+fuckmail paper --check              # what is there, before anything depends on it
+fuckmail paper                      # list it, classified, like `fuckmail list`
+fuckmail paper --tag home           # one address of several in one instance
+fuckmail paper --query rechnung     # full-text, over the OCR'd text
+```
+
+`--tag`, `--correspondent` and `--storage-path` are how one Paperless serves
+several addresses. `--check` exists because a selector that matches nothing
+looks exactly like an address that has had no post, which is the §3.6 lesson
+applied to paper.
+
+Not done yet: post does not appear in the triage window beside mail. That is the
+next step, and the reason the shapes already match.
+
 ## Layout
 
 | Path | What |
@@ -143,6 +175,7 @@ of everything, so `check` will suggest `exclude '\All'` and say what that costs.
 | `crates/core-rpc` | The typed surface both front ends talk to |
 | `apps/cli` | Development driver — not the product |
 | `apps/desktop` | The triage window |
+| `crates/core-paper` | Paperless-ngx read as a mailbox: post, in the shape mail has |
 | `fuckbird/core` | The shared triage surface and the classifier, in JavaScript |
 | `fuckbird/hosts` | One adapter per host: this client, and Thunderbird |
 | `docker/` | Dev stack: Dovecot, an SMTP sink, a Gmail shape, Ollama, Paperless |

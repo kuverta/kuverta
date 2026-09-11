@@ -4,11 +4,31 @@ Everything here is for local development. Nothing is hardened, nothing should be
 exposed beyond localhost.
 
 ```sh
-make dev-up          # Dovecot + fixtures        (default)
-make ai-up           # + Ollama                  (profile: ai)
-make paperless-up    # + Paperless-ngx           (profile: paperless)
+make dev-up          # Dovecot + fixtures + Paperless-ngx    (default)
+make ai-up           # + Ollama                              (profile: ai)
 make dev-reset       # destroy the mailbox and reseed
 ```
+
+Paperless-ngx is in the default stack rather than behind a profile. Post is not
+a separate feature to switch on — it is half of what this client is for, and a
+dev environment with only mail in it quietly makes the paper half something you
+remember to test rather than something you use. It costs a Redis and a Django,
+and the first start is slow while it builds its index.
+
+## Paperless-ngx — test document archive
+
+`http://localhost:8000`, user `admin`, password `admin`.
+
+For an API token: **Settings → Users & Groups → admin → Create token**, or
+
+```sh
+curl -X POST http://localhost:8000/api/token/ \
+  -d username=admin -d password=admin
+```
+
+Then `PAPERLESS_TOKEN=... fuckmail paper --check`. Drop PDFs or images into
+`docker/paperless/consume/` and Paperless will OCR and file them; that is the
+directory `scannerd` will write to from the Pi.
 
 ## Dovecot — test IMAP server
 

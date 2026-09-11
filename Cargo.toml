@@ -5,6 +5,7 @@ members = [
     "crates/core-proto",
     "crates/core-accounts",
     "crates/core-rules",
+    "crates/core-paper",
     "crates/core-smtp",
     "crates/core-rpc",
     "apps/cli",
@@ -23,6 +24,7 @@ core-store = { path = "crates/core-store" }
 core-proto = { path = "crates/core-proto" }
 core-accounts = { path = "crates/core-accounts" }
 core-rules = { path = "crates/core-rules" }
+core-paper = { path = "crates/core-paper" }
 core-smtp = { path = "crates/core-smtp" }
 core-rpc = { path = "crates/core-rpc" }
 

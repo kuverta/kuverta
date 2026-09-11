@@ -557,3 +557,68 @@ The contract. `fuckbird/core/` still may not name a host, and
 one of the two hosts is exactly the circumstance in which that rule stops being
 obvious and starts being load-bearing: the Rust client is now a directory away,
 and reaching into it would work.
+
+---
+
+## 11. A physical address is an account
+
+**2026-09-11.** Brief §4.2, and a reframing of it.
+
+The brief describes the paper half as a pipeline: `scannerd` captures,
+Paperless-ngx does OCR and archiving, and "the fork shows documents and mail as
+one item type in one list". True, but it describes the plumbing and leaves the
+model unsaid. The model is simpler than the pipeline:
+
+**A physical address is an account, and Paperless is its server.**
+
+Post that arrives at it is mail. The correspondent wrote it, the title is the
+subject, the OCR text is the body, the date on the letter is when it arrived.
+Which makes `core-paper` the exact counterpart of `core-proto`: a client for a
+protocol that happens to be REST instead of IMAP, for a mailbox that happens to
+be made of paper.
+
+### What that framing buys immediately
+
+**The classifier needs no teaching.** `Document::facts()` returns the same
+`MessageFacts` the IMAP path builds, so post is filed by the rules that file
+mail — no paper-specific classifier, no second taxonomy, and a correction made
+on a letter teaches the same table a correction made on an email does. An
+invoice is transactional whether it arrived as a PDF attachment or through a
+letterbox, and nothing had to be written twice to make that true.
+
+**Several addresses, one instance.** A selector — a Paperless tag,
+correspondent or storage path — is what separates a home from an office. It is
+a Paperless concept rather than one invented here, so an address is set up by
+tagging in Paperless rather than by configuring the same thing in two places.
+
+### Two mappings worth arguing about
+
+**The correspondent doubles as the address.** Paper has no `From` to key on,
+and the learned overrides need something stable to remember a correction
+against. "Everything from the Stadtwerke is transactional" is exactly the rule
+a person wants to teach, and the correspondent is what carries it.
+
+**A document always counts as carrying an attachment**, because it is one.
+There is a PDF, and a scanned invoice is no less an invoice than an emailed one.
+
+### The client is in Rust, not in the shared surface
+
+The triage surface is JavaScript and reaches its host through a port, so a
+Paperless client in `fuckbird/core/` would have been the obvious symmetry. Two
+things say otherwise. The desktop app's CSP is `default-src 'self'`, so its
+webview cannot reach `localhost:8000` at all — the request has to go through
+Rust regardless. And `core-rpc` is already the place "both front ends talk to",
+built Tauri-free on purpose so it can double as the MCP surface: an agent
+asking about post should ask the same layer a window does.
+
+### What is not done
+
+Post does not yet appear in the triage window beside mail, which is the brief's
+actual promise. What exists is the client, the classification, and a CLI that
+reads an address the way `fuckmail list` reads a mailbox — verifiable against
+the dev stack today. The shapes already match, which is what makes the merged
+list a display problem rather than a modelling one.
+
+The other open piece is where an address's configuration lives. The CLI takes
+it as arguments and environment; the window will need it stored, which means a
+table and a keychain entry for the token, alongside the accounts.

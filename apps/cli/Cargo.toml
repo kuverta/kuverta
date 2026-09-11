@@ -16,6 +16,8 @@ core-proto.workspace = true
 core-accounts.workspace = true
 core-smtp.workspace = true
 core-rpc.workspace = true
+core-paper.workspace = true
+core-rules.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true
