@@ -36,6 +36,19 @@ services:
       - ./dovecot/seed-imap.py:/seed-imap.py:ro
     command: ["python3", "/seed-imap.py"]
 
+  # A second Dovecot wearing Gmail's folder layout. Not seeded — the tests that
+  # use it create what they need, because what is being tested is the shape of
+  # the mailbox rather than its contents. See dovecot-gmail.conf.
+  dovecot-gmail:
+    image: dovecot/dovecot:2.4.4
+    environment:
+      USER_PASSWORD: devpass
+    ports:
+      - "10144:31143"
+    volumes:
+      - gmaildata:/srv/vmail
+      - ./dovecot/dovecot-gmail.conf:/etc/dovecot/conf.d/90-fuckmail-gmail.conf:ro
+
   # SMTP sink for the send path: accepts submissions and exposes a REST API so
   # tests can assert on exactly what went over the wire.
   #
@@ -96,6 +109,7 @@ services:
 
 volumes:
   maildata:
+  gmaildata:
   ollama:
   paperless-redis:
   paperless-data:

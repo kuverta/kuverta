@@ -198,34 +198,8 @@ async fn sync_decodes_headers_and_populates_search() {
 }
 
 /// Minimal scratch directory helper; not worth a dependency.
-mod tempdir {
-    use std::path::{Path, PathBuf};
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    static COUNTER: AtomicU32 = AtomicU32::new(0);
-
-    pub struct TempDir(PathBuf);
-
-    impl TempDir {
-        #[allow(clippy::new_without_default)]
-        pub fn new() -> Self {
-            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-            let path = std::env::temp_dir().join(format!("fuckmail-it-{}-{n}", std::process::id()));
-            std::fs::create_dir_all(&path).unwrap();
-            Self(path)
-        }
-
-        pub fn path(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-}
+mod common;
+use common as tempdir;
 
 // ---------------------------------------------------------------------------
 // Incremental sync

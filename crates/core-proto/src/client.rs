@@ -638,7 +638,12 @@ pub fn find_archive<'a>(
         // the INBOX label, which over IMAP is a move into All Mail — the
         // folder it marks `\\All`. Tried last so a server with a real Archive
         // folder is never sent here instead.
-        find_special(folders, &["\\All"], &[])
+        //
+        // The name is a fallback on that fallback: Gmail's pre-login
+        // CAPABILITY offers the older `XLIST` and not `SPECIAL-USE`, and while
+        // it does report `\\All` over `LIST` in practice, having archiving on
+        // the largest provider hinge on that is not worth the one string.
+        find_special(folders, &["\\All"], &["All Mail"])
     })
 }
 
@@ -932,6 +937,19 @@ mod tests {
         // failed outright on the provider it matters most for.
         assert_eq!(find_archive(gmail()), Some("[Gmail]/All Mail"));
         assert_eq!(find_trash(gmail()), Some("[Gmail]/Trash"));
+    }
+
+    #[test]
+    fn all_mail_is_found_by_name_when_the_attribute_is_missing() {
+        // A server that nests like Gmail but reports no special use at all —
+        // which is what happens if only the older XLIST is offered.
+        let bare = vec![
+            ("INBOX", None),
+            ("[Gmail]/All Mail", None),
+            ("[Gmail]/Trash", None),
+        ];
+        assert_eq!(find_archive(bare.clone()), Some("[Gmail]/All Mail"));
+        assert_eq!(find_trash(bare), Some("[Gmail]/Trash"));
     }
 
     #[test]
