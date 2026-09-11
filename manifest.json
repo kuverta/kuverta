@@ -16,10 +16,14 @@
     "accountsRead",
     "messagesRead",
     "messagesUpdate",
+    "messagesMove",
     "messagesTags",
+    "messagesTagsList",
+    "compose",
     "menus",
     "notifications",
-    "storage"
+    "storage",
+    "tabs"
   ],
 
   "background": {

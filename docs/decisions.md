@@ -208,3 +208,85 @@ with no way to tell why. The contract has a test for exactly that
 
 `hosts/fuckmail/readme.md` has the command that closes it. Once it exists, one
 boolean changes here and the keys appear.
+
+---
+
+## 6. What a documentation pass found before the first load
+
+**2026-09-11.** Checked against the Manifest V2 API reference and the
+MailExtensions supported-API list.
+
+The previous entries all ended with the same caveat: the adapters are written
+from the documented API and tested against fakes, and a fake answers whatever
+it is asked. So before loading the add-on for the first time, every API call
+the Thunderbird adapter makes — twenty-five of them — was checked against the
+documentation. This is what that turned up.
+
+### Four missing permissions
+
+Each would have failed at runtime, and three of them silently enough to be
+annoying to find.
+
+| Missing | Needed by | What would have happened |
+|---|---|---|
+| `messagesMove` | `messages.move` | archive and trash fail — the two most-used keys |
+| `messagesTagsList` | `messages.tags.list` | `ensureTags` throws on startup, so no tags are ever created |
+| `compose` | `compose.beginNew` | `c` does nothing |
+| `tabs` | `tabs.query({url})` | the query returns nothing, so a *second* triage tab opens every time |
+
+`messagesTagsList` is the instructive one. `tags.create` needs `messagesTags`
+and `tags.list` needs `messagesTagsList`; they are two permissions with almost
+the same name guarding two halves of the same job, and having one made it look
+as though the pair was covered.
+
+`tabs` is the instructive failure mode: without it the call does not throw, it
+returns an empty list. The code would have concluded no triage tab was open and
+cheerfully opened another one on every click.
+
+### Three assumptions that were wrong
+
+**`MessageHeader` carries no attachment information.** `toRow` was reading
+`header.attachments?.length` and `header.hasAttachments`; neither exists in any
+version. The row's paperclip was always going to be false. Knowing properly
+costs either a `listAttachments` per message — thousands of round trips for an
+icon — or a second `query({attachment: true})` per scope, which doubles the
+cost of the operation already named as this adapter's scaling limit. So it
+stays false, with a comment saying why, and the list does not show a paperclip
+in Thunderbird. The classifier is unaffected: it reads attachments off the part
+tree when a message is opened, which is a path that does have the answer.
+
+**Header keys were being matched by exact spelling.** `getFull` promises "the
+header name as key" and Thunderbird lowercases in practice, but the lookup
+asked for `list-id` and would have found nothing had the key been `List-Id` —
+and a missing header does not fail, it silently switches off a signal.
+`firstHeader` now matches case-insensitively.
+
+**`menus.onClicked`'s `selectedFolder` is deprecated**, replaced by
+`selectedFolders` in TB 128 — which is the minimum version this targets. Both
+are read now.
+
+### Three assumptions that were right
+
+Worth recording, because they were guesses and are no longer:
+
+- `QueryInfo.tags` really is `{mode: 'all' | 'any' | 'none', tags: {key: boolean}}`.
+- `messages.query` resolves to a `MessageList` with `id` and `messages`, and
+  `folderId` (TB 121) and `headerMessageId` (TB 85) are both accepted — both
+  older than the 128 minimum.
+- **Message ids do not survive a move.** The docs say an id "does not follow an
+  email that has been moved to a different folder", which is what §4 above
+  designed the contract around, from the Thunderbird behaviour rather than from
+  a document. Good to have the document agree.
+
+### The table is now a test
+
+`test/permissions.test.js` holds the API-to-permission table and checks three
+things: that the manifest grants everything the code needs, that it grants
+nothing it does not — a mail client asking for more than it uses is asking to
+be trusted for no reason — and that every `messenger.*` call the code makes has
+an entry in the table at all, so using a new API forces the table to be
+updated rather than letting it rot into a snapshot of what was once true.
+
+It is the assumption made explicit, not a second source of truth. If
+Thunderbird disagrees with it, Thunderbird is right and the table is what gets
+corrected.
