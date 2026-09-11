@@ -120,13 +120,16 @@ notification 61, personal 33, marketing 18. Note that bulk marketing carrying
 `List-Id` and `Precedence: bulk` reads as a newsletter to the rules — a real
 weakness, and a good first target for the model.
 
-> **Since (2026-09-11):** these counts do not reproduce. Running `core-rules`
-> itself over `fill-mailbox.py --dump 250` gives newsletter 79, transactional
-> 62, notification 59, personal 32, marketing 18 — so the corpus behind the
-> quoted figures was not the one that generator produces today. The weakness
-> the paragraph names is real and larger than it suggests: 27 of those 79
-> newsletters are a marketing fixture whose subject carries no keyword the
-> rules know. See [decisions.md](decisions.md).
+> **Since (2026-09-11):** these counts are exactly right, and they describe one
+> mailbox rather than the generator. That mailbox is still in `fuckmail`'s
+> scratch store — 251 messages, 77/62/61/33/18 — and it is `fill-mailbox.py`
+> output from an earlier run plus one real message from the provider. A fresh
+> `--dump 250` gives 79/62/59/32/18 instead, because the draw differs; every
+> sender is filed under the same category in both. So cite it as a fact about
+> that mailbox, not as a baseline. The weakness the paragraph names is real and
+> larger than it suggests: a quarter of those newsletters are a marketing
+> fixture whose subject carries no keyword the rules know. See
+> [decisions.md](decisions.md).
 
 ### 3.3 The local model, and how to avoid fooling yourself about it
 
