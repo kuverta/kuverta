@@ -27,15 +27,15 @@ UI yet.
 - Full-text search
 - Credentials in the OS keychain, behind a pluggable auth trait
 - A Docker dev stack with a seeded Dovecot, so nothing needs a real mailbox
-- A Tauri v2 UI spike that scrolls 200k rows at 59.8 fps
-  ([findings](docs/spike-tauri-list.md))
+- A keyboard-first triage window, built on a virtualized list that scrolls
+  200k rows at 59.8 fps ([findings](docs/spike-tauri-list.md))
 
 ## Quick start
 
 ```sh
-make dev-up     # Dovecot with nine fixture messages
+make dev-up     # Dovecot with nine fixture messages, plus an SMTP sink
 make e2e        # register the dev account, sync it, show the result
-make spike      # Tauri list benchmark; prints frame timings and a verdict
+./run.sh --dev  # open the window on that scratch store
 ```
 
 Expected: **9 fixtures, 8 messages, 9 locations.** The newsletter appears in both

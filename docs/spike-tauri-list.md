@@ -1,7 +1,11 @@
 # Spike: can a Tauri v2 webview render a mail-sized list?
 
 Run 2026-09-10 on macOS (Apple Silicon, 59Hz display), release build.
-Code: [`apps/desktop`](../apps/desktop). Reproduce with `make spike`.
+Code: [`apps/desktop`](../apps/desktop).
+
+The harness has since been replaced by the real window, so there is no
+`make spike` any more — the benchmark code is in the history, at the commit
+that removed it. The finding stands, and the list is still built on it.
 
 ## The question
 
