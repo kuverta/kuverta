@@ -35,17 +35,20 @@ paperless-up: ## Start Paperless-ngx on http://localhost:8000 (admin/admin)
 
 ## -- build and test --------------------------------------------------------
 
+# -j 2 throughout: a full-parallelism build of this workspace gets OOM-killed on
+# this machine, and a killed build reads as a mystery rather than as running out
+# of memory.
 build: ## Build everything
-	cargo build --workspace
+	cargo build -j 2 --workspace
 
 test: ## Run tests (integration tests skip if the dev server is down)
-	cargo test --workspace
+	cargo test -j 2 --workspace
 
 test-all: dev-up ## Run tests with the dev server required, as CI does
-	FUCKMAIL_REQUIRE_DEV_SERVER=1 cargo test --workspace
+	FUCKMAIL_REQUIRE_DEV_SERVER=1 cargo test -j 2 --workspace
 
 lint: ## Clippy with warnings as errors
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy -j 2 --workspace --all-targets -- -D warnings
 
 fmt: ## Format
 	cargo fmt --all
@@ -61,12 +64,10 @@ check: ## What CI runs
 # across the Rust/JS bridge, which is the one thing the spike found to be tight.
 # See docs/spike-tauri-list.md.
 app: ## Open the triage window on the scratch store
-	cargo build --release -p fuckmail-desktop
-	FUCKMAIL_DATA_DIR=.devdata ./target/release/fuckmail-desktop
+	./run.sh --dev
 
 app-real: ## Open it on the real data directory
-	cargo build --release -p fuckmail-desktop
-	./target/release/fuckmail-desktop
+	./run.sh
 
 ## -- manual smoke test -----------------------------------------------------
 
