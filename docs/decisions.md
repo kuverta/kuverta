@@ -581,10 +581,18 @@ be made of paper.
 
 **The classifier needs no teaching.** `Document::facts()` returns the same
 `MessageFacts` the IMAP path builds, so post is filed by the rules that file
-mail — no paper-specific classifier, no second taxonomy, and a correction made
-on a letter teaches the same table a correction made on an email does. An
-invoice is transactional whether it arrived as a PDF attachment or through a
-letterbox, and nothing had to be written twice to make that true.
+mail — no paper-specific classifier and no second taxonomy. An invoice is
+transactional whether it arrived as a PDF attachment or through a letterbox,
+and nothing had to be written twice to make that true.
+
+> **Correction (2026-09-12):** an earlier version of this entry said a
+> correction made on a letter teaches the same table a correction on an email
+> does. That is the intent and it is not yet true. Corrections made on *mail*
+> do reach post — `paper_classifier` loads every account's learned overrides,
+> so a correspondent already filed once on the mail side is filed the same way
+> on paper. The reverse does not work: `correction` hangs off a message row and
+> a document is not one, so filing post by hand needs a table of its own. Until
+> it has one the surface refuses, out loud, rather than appearing to accept.
 
 **Several addresses, one instance.** A selector — a Paperless tag,
 correspondent or storage path — is what separates a home from an office. It is
@@ -622,3 +630,43 @@ list a display problem rather than a modelling one.
 The other open piece is where an address's configuration lives. The CLI takes
 it as arguments and environment; the window will need it stored, which means a
 table and a keychain entry for the token, alongside the accounts.
+
+---
+
+## 12. A row may allow less than its host
+
+**2026-09-12.** Found by the host contract, the moment post joined the list.
+
+`capabilities` answers "what can this host do". That was enough while every
+row in a list was the same kind of thing. It stopped being enough the moment
+post from Paperless sat beside mail: the host can archive, and that particular
+row cannot be archived, because Paperless owns the document and this only reads
+it.
+
+The contract caught it immediately and in the right way. `undo unwinds one
+change at a time` archives the first two rows of the list; one of them was now
+a letter, and the adapter refused. The test was not wrong — the port was. It
+had no way to express a row that allows less than its host.
+
+So `Row.actions` is an optional list of what a row permits. Absent means
+"whatever the host can do", which keeps every adapter written before this
+correct without a line changing. Documents declare `[]`.
+
+Three things follow, and all three are the point:
+
+- **The model checks before it asks.** `Triage.act` refuses a disallowed row
+  itself rather than making a round trip to be told no, so the answer is
+  immediate and names the row rather than the host: *"this cannot be archived
+  from here"*, not *"this host cannot archive"*.
+- **The contract picks a row that allows the action** instead of whatever
+  sorted first, and gained a rule of its own: a row that declares it allows
+  nothing must refuse loudly rather than quietly accept.
+- **The adapter says no in one place.** Paper ids are namespaced
+  (`paper:<address>:<document>`), so one `parsePaperId` guard at the top of
+  each write is the whole of it.
+
+This is the second time the contract has paid for itself by being wrong in a
+useful way — the first was message ids not surviving a move (§4). Both times
+the fix was in the port, both times it was found by adding a host rather than
+by thinking harder about the port, and both times a test that assumed too much
+was the thing that said so.

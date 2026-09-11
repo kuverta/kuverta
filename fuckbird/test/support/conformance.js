@@ -20,6 +20,18 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { ALL_CATEGORIES } from '../../core/category.js';
+import { ACTIONS } from '../../core/host.js';
+
+/**
+ * The first row that allows an action.
+ *
+ * A list can hold more than one kind of thing — post read from Paperless sits
+ * beside mail and allows none of these — so a suite that acted on whatever was
+ * at index 0 would be testing whichever source happened to sort first.
+ */
+function actionable(rows, action) {
+  return rows.find((row) => !Array.isArray(row.actions) || row.actions.includes(action));
+}
 
 /**
  * @param {string} name        What to call this host in the test output.
@@ -174,8 +186,9 @@ export function runConformance(name, makeHost) {
     if (!host.capabilities.archive) return t.skip('host cannot archive');
 
     const before = await host.page({ scope: everything(), offset: 0, limit: 50 });
-    const subject = before.rows[0].subject;
-    await host.archive(before.rows[0].id);
+    const target = actionable(before.rows, ACTIONS.Archive);
+    const subject = target.subject;
+    await host.archive(target.id);
     const after = await host.page({ scope: everything(), offset: 0, limit: 50 });
 
     assert.equal(after.total, before.total - 1, 'the list should be one shorter');
@@ -200,9 +213,10 @@ export function runConformance(name, makeHost) {
     if (!host.capabilities.trash || !host.capabilities.undo) return t.skip('host cannot trash or has no undo');
 
     const before = await host.page({ scope: everything(), offset: 0, limit: 50 });
-    const subject = before.rows[0].subject;
+    const target = actionable(before.rows, ACTIONS.Trash);
+    const subject = target.subject;
 
-    await host.trash(before.rows[0].id);
+    await host.trash(target.id);
     await host.undo();
 
     const after = await host.page({ scope: everything(), offset: 0, limit: 50 });
@@ -219,10 +233,13 @@ export function runConformance(name, makeHost) {
     const host = await makeHost();
     if (!host.capabilities.setRead) return t.skip('host cannot set read state');
 
-    const first = await host.page({ scope: everything(), offset: 0, limit: 1 });
-    const id = first.rows[0].id;
+    const first = await host.page({ scope: everything(), offset: 0, limit: 50 });
+    const target = actionable(first.rows, ACTIONS.ToggleRead);
+    const id = target.id;
     const unreadNow = async () =>
-      (await host.page({ scope: everything(), offset: 0, limit: 1 })).rows[0].unread;
+      (await host.page({ scope: everything(), offset: 0, limit: 50 })).rows.find(
+        (row) => row.id === id,
+      ).unread;
 
     await host.setRead(id, true);
     assert.equal(await unreadNow(), false);
@@ -235,10 +252,12 @@ export function runConformance(name, makeHost) {
     const host = await makeHost();
     if (!host.capabilities.setCategory) return t.skip('host cannot file by category');
 
-    const { rows } = await host.page({ scope: everything(), offset: 0, limit: 1 });
-    const id = rows[0].id;
+    const { rows } = await host.page({ scope: everything(), offset: 0, limit: 50 });
+    const id = actionable(rows, ACTIONS.SetCategory).id;
     const categoryNow = async () =>
-      (await host.page({ scope: everything(), offset: 0, limit: 1 })).rows[0].category;
+      (await host.page({ scope: everything(), offset: 0, limit: 50 })).rows.find(
+        (row) => row.id === id,
+      ).category;
 
     for (const category of ALL_CATEGORIES) {
       await host.setCategory(id, category);
@@ -250,12 +269,13 @@ export function runConformance(name, makeHost) {
     const host = await makeHost();
     if (!host.capabilities.setCategory) return t.skip('host cannot file by category');
 
-    const { rows } = await host.page({ scope: everything(), offset: 0, limit: 1 });
-    await host.setCategory(rows[0].id, 'newsletter');
-    await host.setCategory(rows[0].id, 'marketing');
+    const { rows } = await host.page({ scope: everything(), offset: 0, limit: 50 });
+    const id = actionable(rows, ACTIONS.SetCategory).id;
+    await host.setCategory(id, 'newsletter');
+    await host.setCategory(id, 'marketing');
 
-    const after = await host.page({ scope: everything(), offset: 0, limit: 1 });
-    assert.equal(after.rows[0].category, 'marketing');
+    const after = await host.page({ scope: everything(), offset: 0, limit: 50 });
+    assert.equal(after.rows.find((row) => row.id === id).category, 'marketing');
   });
 
   // -- undo ---------------------------------------------------------------
@@ -294,7 +314,10 @@ export function runConformance(name, makeHost) {
     if (!host.capabilities.undo || !host.capabilities.archive) return t.skip('host has no undo or no archive');
 
     const before = await host.page({ scope: everything(), offset: 0, limit: 50 });
-    const [first, second] = before.rows;
+    const actionables = before.rows.filter(
+      (row) => !Array.isArray(row.actions) || row.actions.includes(ACTIONS.Archive),
+    );
+    const [first, second] = actionables;
 
     await host.archive(first.id);
     // The second row's id survives the first archive here only because nothing
@@ -319,6 +342,18 @@ export function runConformance(name, makeHost) {
 
     const { rows } = await host.page({ scope: everything(), offset: 0, limit: 1 });
     await assert.rejects(() => host.setCategory(rows[0].id, 'marketing'));
+  });
+
+  suite('a row that allows less than its host does is refused, not ignored', async (t) => {
+    // A list can hold more than one kind of thing. A row that quietly accepted
+    // an action it had declared it did not allow would be the worst of both:
+    // the key appears to work, and nothing happens.
+    const host = await makeHost();
+    const { rows } = await host.page({ scope: everything(), offset: 0, limit: 50 });
+    const limited = rows.find((row) => Array.isArray(row.actions) && row.actions.length === 0);
+    if (!limited) return t.skip('every row in this host allows everything');
+
+    await assert.rejects(() => host.archive(limited.id));
   });
 
   // -- scoped lists -------------------------------------------------------

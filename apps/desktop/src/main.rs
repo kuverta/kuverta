@@ -138,6 +138,83 @@ fn set_category(
         .map_err(fail)
 }
 
+// -- postal addresses -------------------------------------------------------
+//
+// The reads are async and the store is behind a `Mutex`, so each one takes the
+// lock only long enough to build a session — the client, the selector and the
+// classifier — and releases it before touching the network. A guard held
+// across an `await` is not `Send`, and would deadlock the window besides.
+
+#[tauri::command]
+fn paper_mailboxes(app: State<'_, App>) -> Result<Vec<core_rpc::PaperMailboxView>, String> {
+    app.core.lock().unwrap().paper_mailboxes().map_err(fail)
+}
+
+#[tauri::command]
+fn save_paper_mailbox(
+    app: State<'_, App>,
+    input: core_rpc::PaperMailboxInput,
+) -> Result<i64, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_paper_mailbox(&input)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_paper_mailbox(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .delete_paper_mailbox(id)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_paper_token(app: State<'_, App>, id: i64, token: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_paper_token(id, &token)
+        .map_err(fail)
+}
+
+fn paper_session(app: &State<'_, App>, id: i64) -> Result<core_rpc::PaperSession, String> {
+    app.core.lock().unwrap().paper_session(id).map_err(fail)
+}
+
+#[tauri::command]
+async fn paper_documents(
+    app: State<'_, App>,
+    id: i64,
+    offset: usize,
+    limit: usize,
+    query: Option<String>,
+) -> Result<core_rpc::PaperPage, String> {
+    let session = paper_session(&app, id)?;
+    session
+        .documents(offset, limit, query.as_deref())
+        .await
+        .map_err(fail)
+}
+
+#[tauri::command]
+async fn paper_document(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+) -> Result<core_rpc::PaperDetail, String> {
+    let session = paper_session(&app, id)?;
+    session.document(document_id).await.map_err(fail)
+}
+
+#[tauri::command]
+async fn paper_check(app: State<'_, App>, id: i64) -> Result<core_rpc::PaperReport, String> {
+    let session = paper_session(&app, id)?;
+    session.check().await.map_err(fail)
+}
+
 #[tauri::command]
 fn undo(app: State<'_, App>, account: i64) -> Result<Option<QueuedChange>, String> {
     app.core.lock().unwrap().undo(account).map_err(fail)
@@ -364,6 +441,13 @@ fn main() {
             move_to,
             set_read,
             set_category,
+            paper_mailboxes,
+            save_paper_mailbox,
+            delete_paper_mailbox,
+            set_paper_token,
+            paper_documents,
+            paper_document,
+            paper_check,
             undo,
             queue,
             sync,

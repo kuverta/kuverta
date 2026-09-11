@@ -937,6 +937,66 @@ impl Store {
             .map_err(Into::into)
     }
 
+    // -- postal addresses --------------------------------------------------
+
+    /// Every configured physical address, oldest first.
+    pub fn paper_mailboxes(&self) -> Result<Vec<StoredPaperMailbox>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, label, base_url, selector_kind, selector_value
+             FROM paper_mailbox ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], row_to_paper_mailbox)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn paper_mailbox(&self, id: i64) -> Result<Option<StoredPaperMailbox>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, label, base_url, selector_kind, selector_value
+                 FROM paper_mailbox WHERE id = ?1",
+                params![id],
+                row_to_paper_mailbox,
+            )
+            .optional()?)
+    }
+
+    /// Adds an address, or updates the one already pointing at those documents.
+    pub fn upsert_paper_mailbox(&self, mailbox: &NewPaperMailbox) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO paper_mailbox
+                 (label, base_url, selector_kind, selector_value, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (base_url, selector_kind, IFNULL(selector_value, ''))
+             DO UPDATE SET label = excluded.label",
+            params![
+                mailbox.label,
+                mailbox.base_url.trim_end_matches('/'),
+                mailbox.selector_kind,
+                mailbox.selector_value,
+                now(),
+            ],
+        )?;
+        Ok(self.conn.query_row(
+            "SELECT id FROM paper_mailbox
+             WHERE base_url = ?1 AND selector_kind = ?2
+               AND IFNULL(selector_value, '') = IFNULL(?3, '')",
+            params![
+                mailbox.base_url.trim_end_matches('/'),
+                mailbox.selector_kind,
+                mailbox.selector_value
+            ],
+            |row| row.get(0),
+        )?)
+    }
+
+    pub fn delete_paper_mailbox(&self, id: i64) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM paper_mailbox WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
     // -- classification ---------------------------------------------------
 
     pub fn record_verdict(&self, message_id: MessageId, verdict: &Verdict) -> Result<()> {
@@ -1058,6 +1118,35 @@ pub struct MessageSummary {
     /// First line or so of the body, recorded at parse time. A list that shows
     /// only sender and subject makes you open mail to find out what it is.
     pub snippet: Option<String>,
+}
+
+/// A physical address, as stored. The API token lives in the keychain.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredPaperMailbox {
+    pub id: i64,
+    pub label: String,
+    pub base_url: String,
+    pub selector_kind: String,
+    pub selector_value: Option<String>,
+}
+
+/// A physical address, as configured.
+#[derive(Debug, Clone, Default)]
+pub struct NewPaperMailbox {
+    pub label: String,
+    pub base_url: String,
+    pub selector_kind: String,
+    pub selector_value: Option<String>,
+}
+
+fn row_to_paper_mailbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredPaperMailbox> {
+    Ok(StoredPaperMailbox {
+        id: row.get(0)?,
+        label: row.get(1)?,
+        base_url: row.get(2)?,
+        selector_kind: row.get(3)?,
+        selector_value: row.get(4)?,
+    })
 }
 
 /// A category the user assigned by correcting a message. Either key may be set.

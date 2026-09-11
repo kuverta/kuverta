@@ -709,6 +709,7 @@ name = "core-rpc"
 version = "0.1.0"
 dependencies = [
  "core-accounts",
+ "core-paper",
  "core-proto",
  "core-rules",
  "core-smtp",

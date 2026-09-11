@@ -246,3 +246,37 @@ function capabilitiesWith(undo, overrides = {}) {
     ...overrides,
   };
 }
+
+// -- rows that allow less than their host --------------------------------
+
+test('a row that cannot be archived says so without a round trip', async () => {
+  // A list can hold more than one kind of thing: post read from Paperless sits
+  // beside mail and cannot be archived, because Paperless owns it. The answer
+  // has to be immediate and specific, not a request that comes back refused.
+  const host = new MemoryMailbox();
+  let asked = false;
+  host.archive = async () => {
+    asked = true;
+  };
+
+  const triage = new Triage(host);
+  await triage.start();
+  // The row under the cursor declares that nothing may be done to it.
+  const row = triage.selectedRow;
+  Object.assign(row, { actions: [] });
+
+  await triage.act(ACTIONS.Archive);
+
+  assert.equal(asked, false, 'the host should not have been asked');
+  assert.match(triage.notice.text, /cannot be archived from here/);
+  assert.equal(triage.notice.tone, 'error');
+});
+
+test('a row that says nothing allows whatever its host can do', async () => {
+  // Every adapter written before rows could refuse stays correct.
+  const triage = await started();
+  assert.equal(triage.selectedRow.actions, undefined);
+
+  await triage.act(ACTIONS.Archive);
+  assert.equal(triage.total, 9);
+});

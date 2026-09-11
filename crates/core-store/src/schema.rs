@@ -211,6 +211,27 @@ CREATE TABLE folder_exclusion (
     r#"
 ALTER TABLE account ADD COLUMN oauth_provider TEXT;
 "#,
+    // v7 — postal addresses. A physical address is an account and Paperless is
+    // its server, so this is the paper counterpart of `account`: where the
+    // instance lives, and which of its documents belong to this address. The
+    // API token is not here — it goes in the OS keychain, exactly as an
+    // account's password does.
+    r#"
+CREATE TABLE paper_mailbox (
+    id             INTEGER PRIMARY KEY,
+    label          TEXT NOT NULL,
+    base_url       TEXT NOT NULL,
+    -- 'everything' | 'tag' | 'correspondent' | 'storage_path'
+    selector_kind  TEXT NOT NULL,
+    selector_value TEXT,
+    created_at     INTEGER NOT NULL
+);
+
+-- One address per instance-and-selector. Two mailboxes pointing at the same
+-- documents would show the same post twice in one list.
+CREATE UNIQUE INDEX paper_mailbox_target
+    ON paper_mailbox (base_url, selector_kind, IFNULL(selector_value, ''));
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
