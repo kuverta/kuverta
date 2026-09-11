@@ -140,12 +140,20 @@ test('every script and stylesheet an html page loads exists', () => {
   };
   findPages(ROOT);
 
+  // Scripts and stylesheets only. An `<a href>` is a navigation target, not a
+  // resource, and one may legitimately point outside this repository — the
+  // fuckmail mount links back to that app's own page, which exists only once
+  // the surface has been installed into it.
+  const RESOURCES = [/<link\b[^>]*\bhref="([^"]+)"/g, /\bsrc="([^"]+)"/g];
+
   for (const page of pages) {
     const text = readFileSync(page, 'utf8');
-    for (const [, src] of text.matchAll(/(?:src|href)="([^"]+)"/g)) {
-      if (src.startsWith('http') || src.startsWith('data:')) continue;
-      const target = resolve(dirname(page), src);
-      if (!existsSync(target)) missing.push(`${relative(ROOT, page)} -> ${src}`);
+    for (const pattern of RESOURCES) {
+      for (const [, src] of text.matchAll(pattern)) {
+        if (src.startsWith('http') || src.startsWith('data:')) continue;
+        const target = resolve(dirname(page), src);
+        if (!existsSync(target)) missing.push(`${relative(ROOT, page)} -> ${src}`);
+      }
     }
   }
 

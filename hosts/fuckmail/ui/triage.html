@@ -5,11 +5,29 @@
     <title>fuckmail — triage</title>
     <link rel="stylesheet" href="../../../core/view/triage.css" />
     <style>
-      html, body { height: 100%; margin: 0; }
+      html, body { height: 100%; margin: 0; font: message-box; }
+      body { display: grid; grid-template-rows: auto 1fr; }
+      /*
+        The way back lives here rather than in the shared surface: the surface
+        does not know it is inside this app, and a "back to fuckmail" button in
+        `core/` would be the first crack in that.
+      */
+      #bar {
+        display: flex; align-items: center; gap: 10px;
+        padding: 5px 10px;
+        border-bottom: 1px solid color-mix(in srgb, WindowText 15%, transparent);
+      }
+      #bar a { color: inherit; }
+      #root { min-height: 0; }
     </style>
   </head>
   <body>
-    <div id="root" style="height: 100%"></div>
-    <script type="module" src="triage.js"></script>
+    <div id="bar">
+      <a href="../../../../index.html">← fuckmail</a>
+      <strong>triage</strong>
+      <span style="color: GrayText">shared surface · ? for shortcuts</span>
+    </div>
+    <div id="root"></div>
   </body>
+  <script type="module" src="triage.js"></script>
 </html>

@@ -87,3 +87,31 @@ a folder id rather than a name, and an unknown command throwing rather than
 returning null. A command that drifts in `core-rpc` will not be caught by that
 fake — only by running it — so the fake is a guard against this adapter
 drifting, not against the client changing underneath it.
+
+## Installing it
+
+```sh
+tools/install-into.sh ../fuckmail/apps/desktop/ui
+```
+
+or, from that repository, `make triage-ui` (set `FUCKBIRD=` if it is not a
+sibling). Then open the app and click **triage** in the header.
+
+The copy lands as `apps/desktop/ui/fuckbird/`, mirroring this repository's
+layout exactly:
+
+```
+apps/desktop/ui/fuckbird/core/...
+apps/desktop/ui/fuckbird/hosts/fuckmail/...
+```
+
+That mirroring is the point. Every relative import then resolves unchanged, so
+the files the app loads are byte for byte the files the tests here run —
+verified by `diff -r` at the end of the install rather than assumed. Rewriting
+paths on the way in would be a build step, and a build step between the tested
+code and the running code is the seam worth not having. It is the same reason
+the Thunderbird manifest sits at that repository's root.
+
+The copy is gitignored in `fuckmail`: it is generated, and a second copy of
+these files in that history would rot. Re-run the install after changing
+anything in `core/`.
