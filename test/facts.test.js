@@ -10,7 +10,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { buildFacts, cleanListId, splitAuthor, snippet } from '../extension/src/facts.js';
+import { buildFacts, cleanListId, splitAuthor, snippet } from '../core/facts.js';
 
 test('extracts the bracketed list id', () => {
   assert.equal(cleanListId('Rust Weekly <news.rustweekly.example>'), 'news.rustweekly.example');

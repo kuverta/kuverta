@@ -23,22 +23,27 @@
   ],
 
   "background": {
-    "page": "background.html"
+    "page": "hosts/thunderbird/background.html"
+  },
+
+  "browser_action": {
+    "default_title": "fuckbird triage",
+    "default_icon": "hosts/thunderbird/icon.svg"
   },
 
   "message_display_action": {
     "default_title": "Why this category?",
-    "default_popup": "ui/why.html",
-    "default_icon": "icon.svg"
+    "default_popup": "hosts/thunderbird/ui/why.html",
+    "default_icon": "hosts/thunderbird/icon.svg"
   },
 
   "options_ui": {
-    "page": "ui/options.html",
+    "page": "hosts/thunderbird/ui/options.html",
     "open_in_tab": true
   },
 
   "icons": {
-    "48": "icon.svg",
-    "96": "icon.svg"
+    "48": "hosts/thunderbird/icon.svg",
+    "96": "hosts/thunderbird/icon.svg"
   }
 }

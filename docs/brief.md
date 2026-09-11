@@ -91,6 +91,11 @@ primary axis rather than folders.
 *Where:* a MailExtension providing a tab, using `mailTabs`, `messages`,
 `folders` and `menus`. No core patch needed.
 
+> **Since (2026-09-11):** built, and built once for two hosts rather than for
+> Thunderbird alone — the surface is `core/view/triage.js`, driven by
+> `core/triage.js`, over the port in `core/host.js`. Thunderbird and `fuckmail`
+> are both adapters behind it. See [decisions.md](decisions.md) §4.
+
 ### 3.2 The deterministic classifier
 
 Six categories — personal, newsletter, marketing, transactional, notification,
@@ -289,10 +294,16 @@ add-on genuinely cannot do.
 3. **Embeddings or prompting** for classification — spike both, briefly. (§3.3)
 4. **Licence**, once §5 has been checked properly.
 5. **Name**, needed before stage 4.
-6. **What to do with `fuckmail`.** It syncs, sends, triages and has 171 passing
-   tests. Options: archive it as a reference, keep it as the native-messaging
-   backend, or keep running it alongside — it and Thunderbird coexist on the
-   same IMAP account today.
+6. ~~**What to do with `fuckmail`.** It syncs, sends, triages and has 171
+   passing tests. Options: archive it as a reference, keep it as the
+   native-messaging backend, or keep running it alongside — it and Thunderbird
+   coexist on the same IMAP account today.~~
+   **Closed 2026-09-11: neither.** There was a fourth answer the list missed.
+   `fuckmail` is a *host*, and so is Thunderbird; the product is the triage
+   surface and the classifier, which now run on both from one core behind a
+   tested contract. That also takes the weight out of decision 1 above: whether
+   the fork happens stops being load-bearing when the thing that matters runs
+   either way. See [decisions.md](decisions.md) §4.
 
 ---
 

@@ -1,0 +1,284 @@
+/*
+  The triage surface.
+
+  One stylesheet for both hosts. Colours come from the system where they can,
+  because this runs inside Thunderbird's chrome in one host and inside a Tauri
+  window in the other, and a surface that ignores the theme around it looks
+  like something bolted on — which it is, and which is exactly what it should
+  not look like.
+
+  Every selector is prefixed `fb-`. In Thunderbird this is mounted in a tab
+  that carries the client's own stylesheets, so anything unprefixed would be a
+  collision waiting to happen.
+*/
+
+.fb-triage {
+  --fb-personal: #3b7dd8;
+  --fb-newsletter: #7a5fb0;
+  --fb-marketing: #c4552d;
+  --fb-transactional: #2e8b57;
+  --fb-notification: #6e7b85;
+  --fb-unknown: #9a9a9a;
+
+  --fb-text: WindowText;
+  --fb-ground: Window;
+  --fb-muted: GrayText;
+  --fb-line: color-mix(in srgb, WindowText 15%, transparent);
+  --fb-selected: color-mix(in srgb, Highlight 28%, Window);
+  --fb-row: 56px;
+
+  display: grid;
+  grid-template-columns: 200px minmax(320px, 1fr) minmax(0, 1.2fr);
+  height: 100%;
+  min-height: 0;
+  color: var(--fb-text);
+  background: var(--fb-ground);
+  font: message-box;
+  font-size: 13px;
+}
+
+/* At a narrow width the reading pane goes; the list is the thing. */
+@media (max-width: 900px) {
+  .fb-triage {
+    grid-template-columns: 160px 1fr;
+  }
+  .fb-triage .fb-detail {
+    display: none;
+  }
+}
+
+.fb-muted {
+  color: var(--fb-muted);
+}
+
+/* -- sidebar -------------------------------------------------------------- */
+
+.fb-sidebar {
+  border-right: 1px solid var(--fb-line);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.fb-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fb-scope:hover {
+  background: var(--fb-line);
+}
+
+.fb-count {
+  margin-left: auto;
+  color: var(--fb-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- list ----------------------------------------------------------------- */
+
+.fb-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--fb-line);
+}
+
+.fb-head {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--fb-line);
+}
+
+.fb-search {
+  flex: 1;
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.fb-ghost {
+  border: 1px solid var(--fb-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/*
+  The scope bar. Shown only when the list is filtered, and it carries the way
+  out — a filtered list that does not say so looks exactly like mail going
+  missing.
+*/
+.fb-scopebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  background: color-mix(in srgb, Highlight 12%, Window);
+  border-bottom: 1px solid var(--fb-line);
+}
+
+.fb-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#fb-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.fb-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'cat from clip date' 'cat subject subject subject';
+  align-items: center;
+  gap: 2px 8px;
+  height: var(--fb-row);
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--fb-line);
+  cursor: default;
+}
+
+.fb-row.fb-selected {
+  background: var(--fb-selected);
+}
+
+.fb-row.fb-pending {
+  opacity: 0.4;
+}
+
+.fb-cat {
+  grid-area: cat;
+  width: 6px;
+  height: 34px;
+  border-radius: 3px;
+  overflow: hidden;
+  /* The label is for screen readers and the title; the colour is the signal. */
+  text-indent: -999px;
+  background: transparent;
+}
+
+.fb-cat[data-category='personal'] { background: var(--fb-personal); }
+.fb-cat[data-category='newsletter'] { background: var(--fb-newsletter); }
+.fb-cat[data-category='marketing'] { background: var(--fb-marketing); }
+.fb-cat[data-category='transactional'] { background: var(--fb-transactional); }
+.fb-cat[data-category='notification'] { background: var(--fb-notification); }
+.fb-cat[data-category='unknown'] { background: var(--fb-unknown); }
+
+.fb-from {
+  grid-area: from;
+  color: var(--fb-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-subject {
+  grid-area: subject;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-row.fb-unread .fb-subject,
+.fb-row.fb-unread .fb-from {
+  font-weight: 600;
+  color: var(--fb-text);
+}
+
+.fb-clip {
+  grid-area: clip;
+}
+
+.fb-date {
+  grid-area: date;
+  color: var(--fb-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* -- reading -------------------------------------------------------------- */
+
+.fb-detail {
+  overflow-y: auto;
+  padding: 16px;
+  min-width: 0;
+}
+
+.fb-read-subject {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.fb-read-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin-top: 12px;
+}
+
+/* -- toast and help ------------------------------------------------------- */
+
+.fb-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--fb-text);
+  color: var(--fb-ground);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 25%);
+  z-index: 10;
+}
+
+.fb-toast.fb-error {
+  background: #b3261e;
+  color: #fff;
+}
+
+.fb-help {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-content: center;
+  gap: 6px 16px;
+  grid-template-columns: auto auto;
+  padding: 32px;
+  background: color-mix(in srgb, Window 92%, transparent);
+  z-index: 20;
+}
+
+.fb-help div {
+  display: contents;
+}
+
+.fb-help kbd {
+  font-family: ui-monospace, monospace;
+  text-align: right;
+  color: var(--fb-muted);
+}
+
+.fb-triage [hidden] {
+  display: none !important;
+}

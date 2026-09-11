@@ -6,8 +6,8 @@
  * to look at and to take away.
  */
 
-import { Corrections, learnedFrom } from '../src/corrections.js';
-import { CATEGORY_LABELS } from '../src/category.js';
+import { Corrections, learnedFrom } from '../../../core/corrections.js';
+import { CATEGORY_LABELS } from '../../../core/category.js';
 
 const corrections = new Corrections(messenger.storage.local);
 const events = await corrections.all();

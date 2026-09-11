@@ -6,7 +6,7 @@
  * version changes an API shape, this is the only file that should need to know.
  */
 
-import { buildFacts } from './facts.js';
+import { buildFacts } from '../../core/facts.js';
 
 /**
  * Longest body read for the snippet. The classifier only looks at the first

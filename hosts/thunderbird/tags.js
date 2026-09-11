@@ -12,7 +12,7 @@
  * first time another client touches them.
  */
 
-import { ALL_CATEGORIES, CATEGORY_LABELS } from './category.js';
+import { ALL_CATEGORIES, CATEGORY_LABELS } from '../../core/category.js';
 
 /**
  * Every tag this add-on owns starts with this.

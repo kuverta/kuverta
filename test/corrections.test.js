@@ -10,10 +10,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { Corrections, learnedFrom } from '../extension/src/corrections.js';
-import { Classifier } from '../extension/src/classify.js';
-import { Category } from '../extension/src/category.js';
-import { EMPTY_FACTS } from '../extension/src/facts.js';
+import { Corrections, learnedFrom } from '../core/corrections.js';
+import { Classifier } from '../core/classify.js';
+import { Category } from '../core/category.js';
+import { EMPTY_FACTS } from '../core/facts.js';
 
 /** A `storage.local`-shaped area backed by an object. */
 function fakeStorage(initial = {}) {
