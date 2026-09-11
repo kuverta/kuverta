@@ -1,54 +1,100 @@
-/* No inline styles anywhere: the CSP is strict (no 'unsafe-inline'), matching
-   the posture the real message renderer will need. */
+/* Dense and quiet. A triage surface is read in glances, so the row is the
+   unit of design and everything else gets out of its way. */
 
 :root {
-  --row-height: 28px;
-  --bg: #ffffff;
-  --fg: #1a1a1a;
-  --muted: #6b7280;
-  --line: #e5e7eb;
-  --accent: #2563eb;
+  --row-height: 30px;
+  --bg: #fbfbfa;
+  --fg: #1b1b1a;
+  --muted: #6b6b68;
+  --line: #e4e3e0;
+  --accent: #2f6f4f;
+  --selected: #e8efe9;
+  --error: #8c2f2f;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16181d;
-    --fg: #e5e7eb;
-    --muted: #9ca3af;
-    --line: #2a2e37;
-    --accent: #60a5fa;
+    --bg: #16171a;
+    --fg: #e6e6e4;
+    --muted: #8b8b88;
+    --line: #2a2c31;
+    --accent: #7fbf9a;
+    --selected: #22302a;
+    --error: #e08a8a;
   }
 }
 
 * { box-sizing: border-box; }
 
-body {
+html, body {
   margin: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
+  height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+body {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto auto;
+  height: 100vh;
 }
 
 header {
   display: flex;
+  align-items: center;
   gap: 12px;
-  align-items: baseline;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
-  flex: 0 0 auto;
 }
 
-#status { color: var(--muted); }
+header strong { letter-spacing: -0.01em; }
+header #status { color: var(--muted); flex: 1; }
 
+#search {
+  width: 260px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+nav#filters {
+  display: flex;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+}
+
+.filter {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  padding: 2px 10px;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* The virtualized list. `content` is absolutely positioned and translated so
+   that moving it costs a transform rather than a reflow. */
 #viewport {
   position: relative;
-  flex: 1 1 auto;
   overflow-y: auto;
   contain: strict;
 }
+
+#spacer { width: 1px; }
 
 #content {
   position: absolute;
@@ -59,31 +105,69 @@ header {
 }
 
 .row {
-  height: var(--row-height);
-  display: grid;
-  grid-template-columns: 128px 200px 1fr auto;
-  gap: 12px;
+  display: flex;
   align-items: center;
+  gap: 10px;
+  height: var(--row-height);
   padding: 0 12px;
   border-bottom: 1px solid var(--line);
+  cursor: default;
   white-space: nowrap;
-  overflow: hidden;
 }
 
-.row.unread { font-weight: 600; }
+.row.selected { background: var(--selected); }
+.row.pending { opacity: 0.4; }
 
-.date, .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
-.sender, .subject { overflow: hidden; text-overflow: ellipsis; }
-.meta { font-size: 11px; }
-
-#results {
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
   flex: 0 0 auto;
-  margin: 0;
-  padding: 10px 12px;
+  background: transparent;
+}
+.dot.on { background: var(--accent); }
+
+.date { color: var(--muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.sender { width: 180px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; }
+.subject { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.tag { color: var(--muted); flex: 0 0 auto; }
+
+#reading {
   border-top: 1px solid var(--line);
-  color: var(--fg);
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  white-space: pre-wrap;
+  padding: 10px 14px;
+  max-height: 45vh;
+  overflow-y: auto;
 }
 
-#results[hidden] { display: none; }
+#reading h2 { margin: 0 0 4px; font-size: 14px; }
+#reading p { margin: 0 0 10px; color: var(--muted); }
+
+#reading-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+footer {
+  display: flex;
+  gap: 14px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
+}
+
+.toast.error { color: var(--error); border-color: var(--error); }
