@@ -320,6 +320,151 @@ async function undo() {
   }
 }
 
+// -- compose ---------------------------------------------------------------
+
+const compose = {
+  pane: el("compose"),
+  what: el("compose-what"),
+  envelope: el("compose-envelope"),
+  to: el("compose-to"),
+  cc: el("compose-cc"),
+  bcc: el("compose-bcc"),
+  subject: el("compose-subject"),
+  body: el("compose-body"),
+  send: el("compose-send"),
+  cancel: el("compose-cancel"),
+  // The message being replied to or forwarded, by row id.
+  replyTo: null,
+  replyAll: false,
+  forward: null,
+  sending: false,
+};
+
+function addresses(field) {
+  return field.value
+    .split(",")
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
+function draftInput() {
+  return {
+    to: addresses(compose.to),
+    cc: addresses(compose.cc),
+    bcc: addresses(compose.bcc),
+    subject: compose.subject.value,
+    body: compose.body.value,
+    reply_to: compose.replyTo,
+    reply_all: compose.replyAll,
+    forward: compose.forward,
+  };
+}
+
+function closeCompose() {
+  compose.pane.hidden = true;
+  compose.replyTo = null;
+  compose.forward = null;
+  compose.replyAll = false;
+  compose.envelope.textContent = "";
+  for (const field of [compose.to, compose.cc, compose.bcc, compose.subject, compose.body]) {
+    field.value = "";
+  }
+}
+
+/// Opens compose. With `replyAll`, the recipients and quoted body come from
+/// the core rather than being assembled here — reply-all has rules (drop
+/// yourself, honour Reply-To) that belong in one place.
+async function openCompose({ replyAll = null, forward = false } = {}) {
+  const row = state.rows.get(state.selected);
+  closeCompose();
+
+  if (replyAll !== null || forward) {
+    if (!row) {
+      say("select a message first", true);
+      return;
+    }
+    if (forward) {
+      compose.forward = row.id;
+      compose.what.textContent = "Forward";
+    } else {
+      compose.replyTo = row.id;
+      compose.replyAll = replyAll;
+      compose.what.textContent = replyAll ? "Reply all" : "Reply";
+    }
+
+    // Ask the core what the draft looks like, so the recipients and the
+    // quoting shown are the ones that would actually be sent.
+    try {
+      const preview = await invoke("preview", {
+        email: state.email,
+        draft: draftInput(),
+      });
+      compose.subject.value = preview.subject;
+      compose.to.value = preview.recipients.join(", ");
+    } catch (err) {
+      // A forward has no recipients yet, which the core rejects. That is not
+      // an error here — it is the point of the empty To: field.
+      compose.subject.value = forward ? `Fwd: ${row.subject}` : `Re: ${row.subject}`;
+    }
+  } else {
+    compose.what.textContent = "New message";
+  }
+
+  compose.pane.hidden = false;
+  reading.hidden = true;
+  (compose.to.value ? compose.body : compose.to).focus();
+  await refreshEnvelope();
+}
+
+/// Shows who would actually receive it, Bcc included.
+///
+/// The envelope is the only place a blind recipient appears, and the one thing
+/// worth checking before committing — so it is on screen rather than implied.
+async function refreshEnvelope() {
+  if (compose.pane.hidden) return;
+  try {
+    const preview = await invoke("preview", {
+      email: state.email,
+      draft: draftInput(),
+    });
+    compose.envelope.textContent = `${preview.recipients.length} recipient(s): ${preview.recipients.join(", ")}`;
+  } catch (err) {
+    compose.envelope.textContent = String(err);
+  }
+}
+
+async function sendDraft() {
+  if (compose.sending) return;
+  compose.sending = true;
+  compose.send.disabled = true;
+  compose.send.textContent = "Sending…";
+
+  try {
+    const sent = await invoke("send", { email: state.email, draft: draftInput() });
+    if (sent.filing_error) {
+      // Sent is sent. Saying it failed would invite sending it twice.
+      say(`sent to ${sent.recipients.length} — but not filed: ${sent.filing_error}`, true);
+    } else {
+      const filed = sent.filed_in ? `, filed in ${sent.filed_in}` : "";
+      say(`sent to ${sent.recipients.length} recipient(s)${filed}`);
+    }
+    closeCompose();
+    await reload();
+  } catch (err) {
+    say(String(err), true);
+  } finally {
+    compose.sending = false;
+    compose.send.disabled = false;
+    compose.send.textContent = "Send";
+  }
+}
+
+compose.send.onclick = sendDraft;
+compose.cancel.onclick = closeCompose;
+for (const field of [compose.to, compose.cc, compose.bcc]) {
+  field.addEventListener("change", refreshEnvelope);
+}
+
 // -- sync ------------------------------------------------------------------
 
 /// Sends queued changes and fetches new mail.
@@ -392,9 +537,21 @@ const KEYS = {
   u: toggleRead,
   z: undo,
   r: sync,
+  c: () => openCompose(),
+  R: () => openCompose({ replyAll: false }),
+  A: () => openCompose({ replyAll: true }),
+  f: () => openCompose({ forward: true }),
 };
 
 document.addEventListener("keydown", async (event) => {
+  // While composing, the keys belong to the fields — otherwise typing "e"
+  // into a subject line would archive something.
+  if (compose.pane.contains(event.target)) {
+    if (event.key === "Escape") closeCompose();
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) await sendDraft();
+    return;
+  }
+
   if (event.target === searchBox) {
     if (event.key === "Enter") await runSearch(searchBox.value);
     if (event.key === "Escape") {

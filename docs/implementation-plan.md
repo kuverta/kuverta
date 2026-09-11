@@ -310,8 +310,22 @@ not `Sync`, so the future is not `Send` either — which is what Tauri's async
 commands require. Giving it one thread it never leaves satisfies that without
 pretending the store is something it is not.
 
-Still open: the model layer (local Ollama, section 4), compose from the window,
-IDLE for push, QRESYNC, and attachments.
+Compose followed the same route. `Session::send` builds the draft, submits it
+and files the copy in Sent; `Session::preview` builds the same draft and stops,
+which is what the CLI's `--dry-run` prints and what the compose pane asks for
+before drawing anything. That matters for reply-all in particular: dropping
+yourself from the recipients and honouring `Reply-To` are rules, and they are
+applied in one place rather than re-implemented in JavaScript. `c`, `R`, `A`
+and `f` open it.
+
+The pane shows the SMTP envelope as you type, because that is the only place a
+blind recipient appears and the one thing worth checking before committing.
+
+With that the CLI's `send` and `sync` are both thin: every decision either
+front end makes now lives in `core-rpc`, which is the point of the layer.
+
+Still open: the model layer (local Ollama, section 4), IDLE for push, QRESYNC,
+and attachments.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
