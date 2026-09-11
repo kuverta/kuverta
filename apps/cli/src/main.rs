@@ -101,6 +101,12 @@ enum Command {
         #[arg(long)]
         category: Option<String>,
     },
+    /// Read a physical address's post, the way `list` reads a mailbox.
+    ///
+    /// A postal address is an account and Paperless-ngx is its server: the
+    /// correspondent wrote it, the title is the subject, the OCR text is the
+    /// body. The same classifier files it.
+    Paper(Paper),
     /// Connect to an account and report what the server actually supports.
     ///
     /// Run this before the first sync of a real account: it says which
@@ -381,6 +387,120 @@ impl From<Security> for ImapSecurity {
     }
 }
 
+/// Where an address's post lives, and which of it is that address's.
+#[derive(Args)]
+struct Paper {
+    /// The Paperless-ngx instance, e.g. http://localhost:8000
+    #[arg(long, env = "PAPERLESS_URL", default_value = "http://localhost:8000")]
+    url: String,
+
+    /// An API token. Taken from the environment by preference so it never
+    /// lands in a shell history the way an argument does.
+    #[arg(long, env = "PAPERLESS_TOKEN")]
+    token: String,
+
+    /// Only post carrying this tag — one address of several in one instance.
+    #[arg(long, group = "selector")]
+    tag: Option<String>,
+
+    /// Only post from this correspondent.
+    #[arg(long, group = "selector")]
+    correspondent: Option<String>,
+
+    /// Only post filed under this storage path.
+    #[arg(long, group = "selector")]
+    storage_path: Option<String>,
+
+    /// Report what is there instead of listing it.
+    #[arg(long)]
+    check: bool,
+
+    /// Full-text search, over the OCR'd text.
+    #[arg(long)]
+    query: Option<String>,
+
+    #[arg(short = 'n', long, default_value_t = 25)]
+    limit: usize,
+}
+
+impl Paper {
+    fn selector(&self) -> core_paper::Selector {
+        if let Some(tag) = &self.tag {
+            core_paper::Selector::Tag(tag.clone())
+        } else if let Some(name) = &self.correspondent {
+            core_paper::Selector::Correspondent(name.clone())
+        } else if let Some(path) = &self.storage_path {
+            core_paper::Selector::StoragePath(path.clone())
+        } else {
+            core_paper::Selector::Everything
+        }
+    }
+}
+
+/// Post, listed like mail and classified like mail.
+async fn paper(args: &Paper) -> Result<()> {
+    let client = core_paper::Paperless::new(&args.url, &args.token)
+        .with_context(|| format!("{} is not a usable Paperless URL", args.url))?;
+    let selector = args.selector();
+
+    if args.check {
+        let report = client.check(&selector).await?;
+        println!("{}", args.url);
+        println!("  documents      {}", report.documents_total);
+        println!("  this address   {}", report.documents_matching);
+        println!("  tags           {}", join(&report.tags));
+        println!("  correspondents {}", join(&report.correspondents));
+        for note in &report.notes {
+            println!("  ! {note}");
+        }
+        return Ok(());
+    }
+
+    let page = client
+        .documents(&selector, 0, args.limit, args.query.as_deref())
+        .await?;
+
+    // Without history: the CLI has no store to load corrections from, and a
+    // verdict that silently differed from the app's would be worse than one
+    // that is plainly the rules alone.
+    let classifier = core_rules::Classifier::without_history();
+
+    println!("{} of {} document(s)", page.documents.len(), page.total);
+    for document in &page.documents {
+        let verdict = classifier.classify(&document.facts());
+        let when = document
+            .created_utc
+            .and_then(|secs| Local.timestamp_opt(secs, 0).single())
+            .map(|date| date.format("%Y-%m-%d").to_string())
+            .unwrap_or_else(|| "          ".to_string());
+
+        println!(
+            "{:<14} {when}  {:<26} {}",
+            verdict.category.as_str(),
+            truncate(document.correspondent.as_deref().unwrap_or("—"), 26),
+            truncate(&document.title, 58),
+        );
+    }
+    Ok(())
+}
+
+fn join(names: &[String]) -> String {
+    if names.is_empty() {
+        "none".to_string()
+    } else {
+        names.join(", ")
+    }
+}
+
+/// Cuts on a character boundary, because correspondents have umlauts in them.
+fn truncate(value: &str, width: usize) -> String {
+    if value.chars().count() <= width {
+        return value.to_string();
+    }
+    let cut: String = value.chars().take(width.saturating_sub(1)).collect();
+    format!("{cut}…")
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -423,6 +543,7 @@ async fn main() -> Result<()> {
             limit,
             category,
         } => triage(&store, email.as_deref(), limit, category.as_deref()),
+        Command::Paper(args) => paper(&args).await,
         Command::Check {
             email,
             measure,

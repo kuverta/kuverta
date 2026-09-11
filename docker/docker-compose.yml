@@ -2,9 +2,14 @@ name: fuckmail-dev
 
 # Local development stack. Nothing here is hardened; see docker/README.md.
 #
-#   docker compose up -d                      # IMAP server + fixtures + SMTP sink
-#   docker compose --profile ai up -d         # + Ollama
-#   docker compose --profile paperless up -d  # + Paperless-ngx
+#   docker compose up -d                 # IMAP + fixtures + SMTP sink + Paperless
+#   docker compose --profile ai up -d    # + Ollama
+#
+# Paperless-ngx is part of the default stack rather than behind a profile: post
+# is not a separate feature to switch on, it is half of what this client is for,
+# and a dev environment that only has mail in it quietly makes the paper half
+# something you remember to test rather than something you use. It costs a Redis
+# and a Django, and the first start is slow while it builds its index.
 
 services:
   # Dovecot 2.4: the 2.3 images are amd64-only and crash under Rosetta on Apple
@@ -80,13 +85,11 @@ services:
 
   paperless-redis:
     image: redis:7-alpine
-    profiles: ["paperless"]
     volumes:
       - paperless-redis:/data
 
   paperless:
     image: ghcr.io/paperless-ngx/paperless-ngx:latest
-    profiles: ["paperless"]
     depends_on:
       - paperless-redis
     ports:

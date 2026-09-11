@@ -673,6 +673,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-paper"
+version = "0.1.0"
+dependencies = [
+ "core-rules",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "core-proto"
 version = "0.1.0"
 dependencies = [
@@ -1327,8 +1340,10 @@ dependencies = [
  "chrono",
  "clap",
  "core-accounts",
+ "core-paper",
  "core-proto",
  "core-rpc",
+ "core-rules",
  "core-smtp",
  "core-store",
  "futures",
