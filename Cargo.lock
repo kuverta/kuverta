@@ -697,6 +697,7 @@ version = "0.1.0"
 dependencies = [
  "core-accounts",
  "core-proto",
+ "core-smtp",
  "core-store",
  "mail-parser",
  "serde",

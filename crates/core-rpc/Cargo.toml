@@ -13,6 +13,7 @@ tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 core-store.workspace = true
 core-proto.workspace = true
 core-accounts.workspace = true
+core-smtp.workspace = true
 
 serde.workspace = true
 mail-parser.workspace = true

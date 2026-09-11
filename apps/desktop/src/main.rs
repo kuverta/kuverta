@@ -158,6 +158,48 @@ async fn sync(app: State<'_, App>, email: String) -> Result<core_rpc::SyncSummar
     .map_err(|err| format!("the sync thread did not finish: {err}"))?
 }
 
+/// Sends a message and files a copy in Sent.
+///
+/// On its own thread for the same reason [`sync`] is: the send path holds a
+/// `Store` across awaits, so its future is not `Send`.
+#[tauri::command]
+async fn send(
+    app: State<'_, App>,
+    email: String,
+    draft: core_rpc::DraftInput,
+) -> Result<core_rpc::SentSummary, String> {
+    let data_dir = app.data_dir.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(fail)?;
+        runtime.block_on(async {
+            core_rpc::Session::new(data_dir)
+                .send(&email, &draft)
+                .await
+                .map_err(fail)
+        })
+    })
+    .await
+    .map_err(|err| format!("the send thread did not finish: {err}"))?
+}
+
+/// Builds a draft without sending it, so compose can show the envelope.
+///
+/// Synchronous and lock-free: it reads the store but talks to nothing.
+#[tauri::command]
+fn preview(
+    app: State<'_, App>,
+    email: String,
+    draft: core_rpc::DraftInput,
+) -> Result<core_rpc::DraftPreview, String> {
+    core_rpc::Session::new(&app.data_dir)
+        .preview(&email, &draft)
+        .map_err(fail)
+}
+
 /// Where Archive and Trash are for this account, resolved from what sync
 /// recorded rather than guessed in JavaScript.
 #[tauri::command]
@@ -232,6 +274,8 @@ fn main() {
             undo,
             queue,
             sync,
+            send,
+            preview,
             special_folders,
         ])
         .run(tauri::generate_context!())

@@ -28,6 +28,23 @@
     <pre id="reading-body"></pre>
   </section>
 
+  <section id="compose" hidden>
+    <div class="compose-head">
+      <strong id="compose-what">New message</strong>
+      <span id="compose-envelope"></span>
+    </div>
+    <input id="compose-to" placeholder="to — comma separated" spellcheck="false">
+    <input id="compose-cc" placeholder="cc" spellcheck="false">
+    <input id="compose-bcc" placeholder="bcc (never appears in the message)" spellcheck="false">
+    <input id="compose-subject" placeholder="subject">
+    <textarea id="compose-body" rows="10" spellcheck="false"></textarea>
+    <div class="compose-actions">
+      <button id="compose-send">Send</button>
+      <button id="compose-cancel">Cancel</button>
+      <span class="hint">ctrl/cmd+enter sends · escape cancels</span>
+    </div>
+  </section>
+
   <footer>
     <span>j/k move</span>
     <span>enter read</span>
@@ -35,6 +52,8 @@
     <span># trash</span>
     <span>u unread</span>
     <span>z undo</span>
+    <span>c compose</span>
+    <span>R reply</span>
     <span>r sync</span>
     <span>/ search</span>
   </footer>

@@ -12,10 +12,9 @@ use chrono::{Local, TimeZone};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use core_accounts::loopback::OAuth2Loopback;
 use core_accounts::oauth::OAuth2Device;
-use core_accounts::{AuthProvider, KeychainPassword};
+use core_accounts::KeychainPassword;
 use core_proto::{ImapClient, ImapConfig};
 use core_rpc::session::{google_client_secret, google_config, microsoft_config, provider_for};
-use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
 use core_store::model::{
     ImapSecurity, NewAccount, NewOperation, OperationKind, SmtpConfig, SmtpSecurity,
 };
@@ -455,7 +454,7 @@ async fn main() -> Result<()> {
         Command::Unread(args) => mutate(&store, args, Intent::Seen(false)),
         Command::Undo { email } => undo(&store, email.as_deref()),
         Command::Queue { email } => show_queue(&store, email.as_deref()),
-        Command::Send(args) => send(&store, &blobs, args).await,
+        Command::Send(args) => send(&store, &data_dir, args).await,
         Command::SetSmtp { email, clear, smtp } => set_smtp(&store, &email, clear, &smtp),
         Command::Status => status(&store, &blobs),
     }
@@ -987,7 +986,7 @@ fn now_utc() -> i64 {
         .unwrap_or(0)
 }
 
-async fn send(store: &Store, blobs: &Blobs, args: SendArgs) -> Result<()> {
+async fn send(store: &Store, data_dir: &std::path::Path, args: SendArgs) -> Result<()> {
     let account = match &args.email {
         Some(email) => store
             .account_by_email(email)?
@@ -1002,137 +1001,49 @@ async fn send(store: &Store, blobs: &Blobs, args: SendArgs) -> Result<()> {
         }
     };
 
-    let smtp = account.smtp.clone().with_context(|| {
-        format!(
-            "account {} has no SMTP endpoint; configure one with:\n  \
-             fuckmail set-smtp --email {} --smtp-host <host> --smtp-port 587 \
-             --smtp-security starttls",
-            account.email, account.email
-        )
-    })?;
+    // The flags take a Message-ID because that is what a person can copy out
+    // of `list`; the core addresses messages by row id, so resolve here.
+    let resolve =
+        |handle: &String| -> Result<i64> { Ok(resolve_message(store, account.id, handle)?.id) };
 
-    // The label doubles as the display name, unless it is just the address
-    // again — in which case a `Name <addr>` header would only repeat itself.
-    let from = if account.label == account.email {
-        Mailbox::new(account.email.clone())
-    } else {
-        Mailbox::named(account.label.clone(), account.email.clone())
+    let input = core_rpc::DraftInput {
+        to: args.to,
+        cc: args.cc,
+        bcc: args.bcc,
+        subject: args.subject.unwrap_or_default(),
+        body: read_body()?,
+        reply_to: args.reply_to.as_ref().map(resolve).transpose()?,
+        reply_all: args.reply_all,
+        forward: args.forward.as_ref().map(resolve).transpose()?,
     };
 
-    let mut draft = match (&args.reply_to, &args.forward) {
-        (Some(message_id), _) => {
-            let source = source_for(store, blobs, account.id, message_id)?;
-            let mode = if args.reply_all {
-                ReplyMode::All
-            } else {
-                ReplyMode::Sender
-            };
-            Draft::reply(from, &source, mode)
-        }
-        (_, Some(message_id)) => {
-            let source = source_for(store, blobs, account.id, message_id)?;
-            Draft::forward(from, &source)
-        }
-        _ => Draft::new(from),
-    };
-
-    for address in &args.to {
-        draft = draft.to(Mailbox::parse(address)?);
-    }
-    for address in &args.cc {
-        draft = draft.cc(Mailbox::parse(address)?);
-    }
-    for address in &args.bcc {
-        draft = draft.bcc(Mailbox::parse(address)?);
-    }
-    if let Some(subject) = args.subject {
-        draft = draft.subject(subject);
-    }
-
-    // The typed text goes above whatever the reply or forward put there, which
-    // is where a reply is read from.
-    let typed = read_body()?;
-    draft.body = format!("{typed}{}", draft.body);
-
-    let built = draft.build()?;
+    let session = core_rpc::Session::new(data_dir).with_password_env(args.password_env.clone());
 
     if args.dry_run {
+        let preview = session.preview(&account.email, &input)?;
         println!("-- envelope --");
-        println!("MAIL FROM: <{}>", built.sender);
-        for recipient in &built.recipients {
+        println!("MAIL FROM: <{}>", preview.from);
+        for recipient in &preview.recipients {
             println!("RCPT TO:   <{recipient}>");
         }
         println!("-- message --");
-        print!("{}", String::from_utf8_lossy(&built.rfc822));
+        print!("{}", preview.rfc822);
         return Ok(());
     }
 
-    let auth = provider_for(&account, args.password_env.as_deref())?;
-    core_smtp::submit(&smtp, &account.username, auth.as_ref(), &built).await?;
+    let sent = session.send(&account.email, &input).await?;
     println!(
         "sent to {} recipient(s) as <{}>",
-        built.recipients.len(),
-        built.message_id
+        sent.recipients.len(),
+        sent.message_id
     );
-
-    if !args.no_save_to_sent {
-        // Deliberately not fatal, and reported separately: the message has
-        // already been accepted by the server at this point, and telling the
-        // user the send failed would invite them to send it twice.
-        if let Err(err) = save_to_sent(&account, auth.as_ref(), &built.rfc822).await {
-            eprintln!("warning: sent, but could not file a copy in Sent: {err:#}");
+    match (&sent.filed_in, &sent.filing_error) {
+        (Some(folder), _) if !args.no_save_to_sent => println!("filed a copy in {folder}"),
+        (_, Some(err)) if !args.no_save_to_sent => {
+            eprintln!("warning: sent, but could not file a copy in Sent: {err}")
         }
+        _ => {}
     }
-
-    Ok(())
-}
-
-/// Loads a stored message and reads it back into the parts a reply needs.
-fn source_for(
-    store: &Store,
-    blobs: &Blobs,
-    account_id: i64,
-    message_id: &str,
-) -> Result<ReplySource> {
-    let stored = store
-        .message_by_rfc822_id(account_id, message_id)?
-        .with_context(|| format!("no message <{message_id}> in the store; sync first"))?;
-
-    let body_path = stored.body_path.as_deref().with_context(|| {
-        format!("message <{message_id}> was stored without its body, so it cannot be quoted")
-    })?;
-    let raw = blobs
-        .get(body_path)
-        .with_context(|| format!("reading the stored body of <{message_id}>"))?;
-
-    ReplySource::from_rfc822(&raw)
-        .with_context(|| format!("parsing the stored body of <{message_id}>"))
-}
-
-async fn save_to_sent(
-    account: &core_store::model::Account,
-    auth: &dyn AuthProvider,
-    raw: &[u8],
-) -> Result<()> {
-    let config = ImapConfig {
-        host: account.imap_host.clone(),
-        port: account.imap_port,
-        security: account.imap_security.clone(),
-        username: account.username.clone(),
-    };
-
-    let mut client = ImapClient::connect(&config, auth).await?;
-    let folders = client.folders().await?;
-    let sent = core_proto::client::find_sent(&folders)
-        .map(|folder| folder.name.clone())
-        .context("the server declares no Sent folder and none of the usual names exist")?;
-
-    // \Seen because the sender has by definition read it; without it every
-    // client shows Sent as full of unread mail.
-    client.append(&sent, &["\\Seen"], raw).await?;
-    client.logout().await.ok();
-
-    println!("filed a copy in {sent}");
     Ok(())
 }
 

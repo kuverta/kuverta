@@ -21,7 +21,7 @@
 
 pub mod session;
 
-pub use session::{Session, SyncSummary};
+pub use session::{DraftInput, DraftPreview, SentSummary, Session, SyncSummary};
 
 use std::path::Path;
 

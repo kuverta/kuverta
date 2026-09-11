@@ -26,7 +26,8 @@ use std::path::{Path, PathBuf};
 use core_accounts::loopback::{LoopbackConfig, OAuth2Loopback};
 use core_accounts::oauth::{OAuth2Config, OAuth2Device};
 use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
-use core_store::model::Account;
+use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
+use core_store::model::{Account, AccountId, MessageId};
 use core_store::{Blobs, Store};
 use serde::{Deserialize, Serialize};
 
@@ -75,6 +76,60 @@ pub struct SyncSummary {
     pub deleted: usize,
     pub unparseable: usize,
     pub invalidated: usize,
+}
+
+/// A message to send, as the caller describes it.
+///
+/// Addresses are strings because that is what a person types and what a UI
+/// holds; parsing and validating them is `core-smtp`'s job, and doing it there
+/// means the window and the CLI reject the same things for the same reasons.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DraftInput {
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
+    pub bcc: Vec<String>,
+    pub subject: String,
+    /// What the sender typed. For a reply this goes above the quoted original.
+    pub body: String,
+    /// Reply to this stored message, by row id.
+    pub reply_to: Option<MessageId>,
+    pub reply_all: bool,
+    /// Forward this stored message, by row id.
+    pub forward: Option<MessageId>,
+}
+
+/// What a draft will look like, without sending it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftPreview {
+    pub from: String,
+    /// To, Cc and Bcc together, deduplicated — the SMTP envelope. Worth
+    /// showing: it is the only place a blind recipient appears, and the one
+    /// number a sender should check before committing.
+    pub recipients: Vec<String>,
+    pub subject: String,
+    /// The body as it will be sent, quoted original included.
+    pub body: String,
+    /// The whole message, exactly as it would go out.
+    ///
+    /// Not what a compose window draws, but what a dry run is for: the
+    /// threading headers, the encoding, and the absence of a Bcc line are all
+    /// only visible here.
+    pub rfc822: String,
+}
+
+/// What happened when a message went out.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SentSummary {
+    pub message_id: String,
+    pub recipients: Vec<String>,
+    /// The folder the copy was filed in, when it was.
+    pub filed_in: Option<String>,
+    /// Set when the message was sent but the copy could not be filed.
+    ///
+    /// Separate from an error on purpose: by this point the server has
+    /// accepted the message, and reporting a failure would invite the sender
+    /// to send it twice.
+    pub filing_error: Option<String>,
 }
 
 /// Runs the operations that need a server.
@@ -154,6 +209,74 @@ impl Session {
         })
     }
 
+    /// Builds a draft without sending it.
+    ///
+    /// The same construction the send path uses, so a preview cannot disagree
+    /// with what would actually go out.
+    pub fn preview(&self, email: &str, input: &DraftInput) -> Result<DraftPreview> {
+        let (store, blobs) = self.open()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+
+        let draft = build_draft(&store, &blobs, &account, input)?;
+        let built = draft
+            .build()
+            .map_err(|e| RpcError::Rejected(e.to_string()))?;
+
+        Ok(DraftPreview {
+            from: built.sender,
+            recipients: built.recipients,
+            subject: draft.subject.clone(),
+            body: draft.body.clone(),
+            rfc822: String::from_utf8_lossy(&built.rfc822).into_owned(),
+        })
+    }
+
+    /// Sends a message and files a copy in Sent.
+    pub async fn send(&self, email: &str, input: &DraftInput) -> Result<SentSummary> {
+        let (store, blobs) = self.open()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+
+        let smtp = account.smtp.clone().ok_or_else(|| {
+            RpcError::Rejected(format!(
+                "account {} has no SMTP endpoint; configure one with \
+                 `fuckmail set-smtp --email {} --smtp-host <host> --smtp-port 587 \
+                 --smtp-security starttls`",
+                account.email, account.email
+            ))
+        })?;
+
+        let draft = build_draft(&store, &blobs, &account, input)?;
+        let built = draft
+            .build()
+            .map_err(|e| RpcError::Rejected(e.to_string()))?;
+
+        let auth = provider_for(&account, self.password_env.as_deref())?;
+        core_smtp::submit(&smtp, &account.username, auth.as_ref(), &built)
+            .await
+            .map_err(|e| RpcError::Network(e.to_string()))?;
+
+        // Everything past this point is best-effort. The message has gone.
+        let mut summary = SentSummary {
+            message_id: built.message_id.clone(),
+            recipients: built.recipients.clone(),
+            filed_in: None,
+            filing_error: None,
+        };
+
+        match file_in_sent(&account, auth.as_ref(), &built.rfc822).await {
+            Ok(folder) => summary.filed_in = Some(folder),
+            Err(err) => {
+                tracing::warn!(%err, "sent, but could not file a copy in Sent");
+                summary.filing_error = Some(err.to_string());
+            }
+        }
+        Ok(summary)
+    }
+
     /// Syncs every registered account, in order.
     ///
     /// One account failing does not stop the rest: a provider being down is
@@ -178,6 +301,105 @@ impl Session {
         }
         results
     }
+}
+
+/// Assembles the draft, resolving a reply or forward from the store.
+fn build_draft(
+    store: &Store,
+    blobs: &Blobs,
+    account: &Account,
+    input: &DraftInput,
+) -> Result<Draft> {
+    // The label doubles as the display name, unless it is just the address
+    // again — in which case a `Name <addr>` header would only repeat itself.
+    let from = if account.label == account.email {
+        Mailbox::new(account.email.clone())
+    } else {
+        Mailbox::named(account.label.clone(), account.email.clone())
+    };
+
+    let mut draft = match (input.reply_to, input.forward) {
+        (Some(id), _) => {
+            let source = reply_source(store, blobs, account.id, id)?;
+            let mode = if input.reply_all {
+                ReplyMode::All
+            } else {
+                ReplyMode::Sender
+            };
+            Draft::reply(from, &source, mode)
+        }
+        (_, Some(id)) => Draft::forward(from, &reply_source(store, blobs, account.id, id)?),
+        _ => Draft::new(from),
+    };
+
+    let parse =
+        |address: &String| Mailbox::parse(address).map_err(|e| RpcError::Rejected(e.to_string()));
+    for address in &input.to {
+        draft = draft.to(parse(address)?);
+    }
+    for address in &input.cc {
+        draft = draft.cc(parse(address)?);
+    }
+    for address in &input.bcc {
+        draft = draft.bcc(parse(address)?);
+    }
+    if !input.subject.is_empty() {
+        draft = draft.subject(input.subject.clone());
+    }
+
+    // What was typed goes above whatever the reply or forward put there, which
+    // is where a reply is read from.
+    draft.body = format!("{}{}", input.body, draft.body);
+    Ok(draft)
+}
+
+/// Reads a stored message back into the parts a reply needs.
+fn reply_source(
+    store: &Store,
+    blobs: &Blobs,
+    account: AccountId,
+    id: MessageId,
+) -> Result<ReplySource> {
+    let stored = store
+        .message_by_id(account, id)?
+        .ok_or(RpcError::UnknownMessage(id))?;
+    let path = stored.body_path.as_deref().ok_or_else(|| {
+        RpcError::Rejected(format!(
+            "message {id} was stored without its body, so it cannot be quoted"
+        ))
+    })?;
+    let raw = blobs
+        .get(path)
+        .map_err(|e| RpcError::Rejected(format!("reading the stored body of {id}: {e}")))?;
+
+    ReplySource::from_rfc822(&raw)
+        .ok_or_else(|| RpcError::Rejected(format!("the stored body of {id} is not a message")))
+}
+
+/// Files the sent copy, returning the folder it went to.
+async fn file_in_sent(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) -> Result<String> {
+    let config = core_proto::ImapConfig {
+        host: account.imap_host.clone(),
+        port: account.imap_port,
+        security: account.imap_security.clone(),
+        username: account.username.clone(),
+    };
+
+    let mut client = core_proto::ImapClient::connect(&config, auth).await?;
+    let folders = client.folders().await?;
+    let sent = core_proto::client::find_sent(&folders)
+        .map(|folder| folder.name.clone())
+        .ok_or_else(|| {
+            RpcError::Rejected(
+                "the server declares no Sent folder and none of the usual names exist".into(),
+            )
+        })?;
+
+    // \Seen because the sender has, by definition, read it; without it every
+    // client shows Sent as full of unread mail.
+    client.append(&sent, &["\\Seen"], raw).await?;
+    client.logout().await.ok();
+    Ok(sent)
 }
 
 /// Builds the auth provider an account is configured for.

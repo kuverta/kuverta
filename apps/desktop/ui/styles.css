@@ -171,3 +171,69 @@ footer {
 }
 
 .toast.error { color: var(--error); border-color: var(--error); }
+
+/* Compose. Same density as the list: this is a mail client, not a document
+   editor, and a reply is usually two lines. */
+
+/* An id selector setting `display` beats the user agent's `[hidden]` rule, so
+   the attribute stops working and the pane is simply always open. Anything
+   here that sets `display` has to say this too. */
+#compose[hidden],
+#reading[hidden],
+.toast[hidden] {
+  display: none !important;
+}
+
+#compose {
+  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.compose-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.compose-head span { color: var(--muted); font-size: 12px; }
+
+#compose input,
+#compose textarea {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+#compose textarea {
+  resize: vertical;
+  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compose-actions button {
+  padding: 4px 14px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+#compose-send { border-color: var(--accent); color: var(--accent); }
+#compose-send:disabled { opacity: 0.5; cursor: default; }
+.compose-actions .hint { color: var(--muted); font-size: 12px; }
