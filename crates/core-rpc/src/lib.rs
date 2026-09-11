@@ -19,9 +19,14 @@
 //! single thing that would undo the 59.8 fps it otherwise reaches. See
 //! docs/spike-tauri-list.md.
 
+pub mod paper;
 pub mod session;
 pub mod settings;
 
+pub use core_paper::PaperReport;
+pub use paper::{
+    PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
+};
 pub use session::{
     DraftInput, DraftPreview, SentSummary, Session, SyncSummary, VerifiedFolder, VerifyReport,
 };

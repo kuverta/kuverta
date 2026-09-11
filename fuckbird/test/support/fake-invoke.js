@@ -26,7 +26,8 @@ const CATEGORIES = [
   'unknown',
 ];
 
-export function fakeInvoke({ seed = defaultSeed() } = {}) {
+export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}) {
+  const { paperMailboxes, documents } = paper;
   const messages = new Map();
   const queue = [];
   let nextId = 1;
@@ -140,6 +141,28 @@ export function fakeInvoke({ seed = defaultSeed() } = {}) {
       m.category = category;
     },
 
+    // -- post ------------------------------------------------------------
+
+    paper_mailboxes: async () => paperMailboxes,
+
+    paper_documents: async ({ id, offset, limit, query }) => {
+      const box = paperMailboxes.find((m) => m.id === id);
+      if (!box) throw new Error(`no postal address ${id}`);
+      let rows = documents.filter((d) => d.mailbox === id);
+      if (query) {
+        const needle = String(query).toLowerCase();
+        rows = rows.filter((d) => d.subject.toLowerCase().includes(needle));
+      }
+      rows = [...rows].sort((a, b) => b.date_utc - a.date_utc);
+      return { total: rows.length, offset, rows: rows.slice(offset, offset + limit) };
+    },
+
+    paper_document: async ({ id, documentId }) => {
+      const found = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!found) throw new Error(`no such document: ${documentId}`);
+      return { row: found, body_text: found.snippet, download_url: 'http://x/1/download/' };
+    },
+
     undo: async () => {
       const change = queue.pop();
       if (!change) return null;
@@ -190,4 +213,55 @@ export function defaultSeed() {
     snippet: `Body of message ${i}.`,
     body: `Body of message ${i}.`,
   }));
+}
+
+/**
+ * One physical address with two pieces of post.
+ *
+ * Dated between the seeded messages on purpose: if post only sorted correctly
+ * when it was all newer or all older than the mail, the merge would look right
+ * and be wrong.
+ */
+export function defaultPaper() {
+  const base = Math.floor(Date.UTC(2026, 8, 11, 12, 0, 0) / 1000);
+  return {
+    paperMailboxes: [
+      {
+        id: 1,
+        label: 'Home',
+        base_url: 'http://localhost:8000',
+        selector_kind: 'everything',
+        selector_value: null,
+        has_token: true,
+      },
+    ],
+    documents: [
+      {
+        id: 41,
+        mailbox: 1,
+        date_utc: base - 1800,
+        from: 'Stadtwerke München',
+        subject: 'Ihre Abschlagszahlung für April',
+        unread: false,
+        has_attachments: true,
+        category: 'transactional',
+        snippet: 'Ihr monatlicher Abschlag beträgt ab April 84,00 EUR.',
+        tags: ['home'],
+        page_count: 2,
+      },
+      {
+        id: 40,
+        mailbox: 1,
+        date_utc: base - 9000,
+        from: 'Finanzamt',
+        subject: 'Bescheid über Einkommensteuer',
+        unread: false,
+        has_attachments: true,
+        category: 'transactional',
+        snippet: 'Ihr Steuerbescheid liegt bei.',
+        tags: [],
+        page_count: 4,
+      },
+    ],
+  };
 }

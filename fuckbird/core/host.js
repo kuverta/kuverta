@@ -34,6 +34,15 @@
  * @property {boolean} unread
  * @property {boolean} hasAttachments
  * @property {?string} category  As filed; null if this message was never classified.
+ * @property {string[]} [actions]  Which of `ACTIONS` this row allows, when it
+ *   allows less than its host can do. Absent means "everything the host can
+ *   do", which is the case for mail.
+ *
+ *   This exists because a list can hold more than one kind of thing. Post read
+ *   from Paperless sits in the same list as mail and cannot be archived,
+ *   trashed or marked read — Paperless owns those documents. Capabilities
+ *   answer "what can this host do"; this answers "what can be done to this
+ *   row", and a mixed list needs both.
  */
 
 /**
@@ -99,6 +108,7 @@ export const ACTIONS = Object.freeze({
   Archive: 'archive',
   Trash: 'trash',
   ToggleRead: 'toggleRead',
+  SetCategory: 'setCategory',
   Open: 'open',
 });
 
