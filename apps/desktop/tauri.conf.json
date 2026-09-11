@@ -2,14 +2,14 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "fuckmail",
   "version": "0.1.0",
-  "identifier": "local.fuckmail.spike",
+  "identifier": "local.triage.desktop",
   "build": {
     "frontendDist": "ui"
   },
   "app": {
     "windows": [
       {
-        "title": "fuckmail \u2014 list spike",
+        "title": "fuckmail",
         "width": 1200,
         "height": 800
       }

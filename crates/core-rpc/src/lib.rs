@@ -109,10 +109,17 @@ pub struct MessageDetail {
     pub subject: Option<String>,
     pub from: Option<String>,
     pub date_utc: Option<i64>,
+    pub to: Vec<String>,
+    pub cc: Vec<String>,
     /// Folders this message is in. On Gmail this is its labels.
     pub folders: Vec<String>,
-    /// The raw RFC 5322 message, when its body is on disk.
-    pub raw: Option<Vec<u8>>,
+    /// The plain-text body.
+    ///
+    /// Text rather than the raw message: parsing MIME is not the shell's job,
+    /// and sending bytes it would only have to decode wastes the bridge the
+    /// whole list design is built around conserving. An HTML-only message
+    /// yields `None` here — rendering that is a UI question, and a later one.
+    pub body_text: Option<String>,
 }
 
 /// A change that has been asked for but not yet sent.
@@ -247,14 +254,44 @@ impl Core {
                 }
             });
 
+        let parsed = raw
+            .as_deref()
+            .and_then(|bytes| mail_parser::MessageParser::default().parse(bytes));
+
+        let addresses = |field: Option<&mail_parser::Address<'_>>| -> Vec<String> {
+            match field {
+                Some(mail_parser::Address::List(addrs)) => addrs
+                    .iter()
+                    .filter_map(|a| a.address().map(str::to_string))
+                    .collect(),
+                Some(mail_parser::Address::Group(groups)) => groups
+                    .iter()
+                    .flat_map(|g| g.addresses.iter())
+                    .filter_map(|a| a.address().map(str::to_string))
+                    .collect(),
+                None => Vec::new(),
+            }
+        };
+
         Ok(MessageDetail {
             id: stored.id,
             message_id: stored.rfc822_message_id,
             subject: stored.subject,
             from: stored.from_addr,
             date_utc: stored.date_utc,
+            to: parsed
+                .as_ref()
+                .map(|p| addresses(p.to()))
+                .unwrap_or_default(),
+            cc: parsed
+                .as_ref()
+                .map(|p| addresses(p.cc()))
+                .unwrap_or_default(),
             folders,
-            raw,
+            body_text: parsed
+                .as_ref()
+                .and_then(|p| p.body_text(0))
+                .map(|text| text.into_owned()),
         })
     }
 

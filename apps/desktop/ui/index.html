@@ -2,23 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>fuckmail — list spike</title>
+  <title>fuckmail</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <header>
-    <strong>Virtualized list spike</strong>
+    <strong>fuckmail</strong>
     <span id="status">starting…</span>
+    <input id="search" type="search" placeholder="/ to search" spellcheck="false">
   </header>
 
+  <nav id="filters"></nav>
+
   <!-- The scroll container. `spacer` gives it the full scrollable height while
-       only a screenful of rows actually exists in the DOM. -->
+       only a screenful of rows exists in the DOM; `content` is translated to
+       meet the scroll offset. -->
   <div id="viewport">
     <div id="spacer"></div>
     <div id="content"></div>
   </div>
 
-  <pre id="results" hidden></pre>
+  <section id="reading" hidden>
+    <h2 id="reading-subject"></h2>
+    <p id="reading-meta"></p>
+    <pre id="reading-body"></pre>
+  </section>
+
+  <footer>
+    <span>j/k move</span>
+    <span>enter read</span>
+    <span>e archive</span>
+    <span># trash</span>
+    <span>u unread</span>
+    <span>z undo</span>
+    <span>/ search</span>
+  </footer>
+
+  <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
 </body>

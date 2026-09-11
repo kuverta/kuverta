@@ -1,226 +1,433 @@
-// Virtualized list + a self-measuring scroll benchmark.
+// The triage surface.
 //
-// The list recycles a fixed pool of DOM nodes rather than rebuilding markup on
-// every frame. That is what any real virtualizer does, so it is the fair test
-// of the achievable ceiling — measuring a naive innerHTML rewrite would tell us
-// about our own laziness rather than about Tauri.
+// The virtualizer is the one from the spike and works the same way: a fixed
+// pool of DOM nodes is recycled as the viewport moves, so the node count stays
+// proportional to the window rather than to the mailbox. What changed is where
+// the rows come from. The spike held all of them in memory; here the list owns
+// only the pages it has asked for, because the bridge that made the spike
+// worth running is the same bridge a whole mailbox would have to cross.
 
 const { invoke } = window.__TAURI__.core;
 
-const ROW_HEIGHT = 28;
-const OVERSCAN = 6; // rows rendered above and below the viewport
+const ROW_HEIGHT = 30;
+const OVERSCAN = 8;
+// One page is several screenfuls, so scrolling at a normal speed stays ahead
+// of the fetch without asking for much that is never shown.
+const PAGE = 200;
 
-const viewport = document.getElementById("viewport");
-const spacer = document.getElementById("spacer");
-const content = document.getElementById("content");
-const status = document.getElementById("status");
-const results = document.getElementById("results");
+const el = (id) => document.getElementById(id);
+const viewport = el("viewport");
+const spacer = el("spacer");
+const content = el("content");
+const statusBar = el("status");
+const reading = el("reading");
+const filters = el("filters");
+const searchBox = el("search");
+const toast = el("toast");
 
-let rows = [];
-let pool = [];
-let firstRendered = -1;
+const state = {
+  account: null,
+  archive: null,
+  trash: null,
+  filter: { category: null, unreadOnly: false },
+  total: 0,
+  // Sparse: offset -> row. Only what has been fetched.
+  rows: new Map(),
+  // Page offsets already requested, so a slow fetch is not asked for twice.
+  requested: new Set(),
+  selected: -1,
+  searching: false,
+  pool: [],
+  firstRendered: -1,
+};
 
-/** Builds the recycled node pool, sized to the viewport. */
+// -- data ------------------------------------------------------------------
+
+async function loadPage(offset) {
+  if (state.requested.has(offset)) return;
+  state.requested.add(offset);
+
+  try {
+    const page = await invoke("messages", {
+      account: state.account,
+      offset,
+      limit: PAGE,
+      category: state.filter.category,
+      unreadOnly: state.filter.unreadOnly,
+    });
+
+    // The total can move under us while a sync is running, so it is taken
+    // from every page rather than once at the start.
+    if (page.total !== state.total) {
+      state.total = page.total;
+      spacer.style.height = `${state.total * ROW_HEIGHT}px`;
+    }
+    page.rows.forEach((row, i) => state.rows.set(page.offset + i, row));
+    render(true);
+  } catch (err) {
+    state.requested.delete(offset);
+    say(`could not load messages: ${err}`, true);
+  }
+}
+
+/** Throws away everything fetched, e.g. after a filter change. */
+async function reload() {
+  state.rows.clear();
+  state.requested.clear();
+  state.firstRendered = -1;
+  state.selected = -1;
+  state.searching = false;
+  reading.hidden = true;
+  viewport.scrollTop = 0;
+  await loadPage(0);
+  await refreshFilters();
+}
+
+async function refreshFilters() {
+  const counts = await invoke("category_counts", { account: state.account });
+  filters.textContent = "";
+
+  const add = (label, count, active, onClick) => {
+    const button = document.createElement("button");
+    button.className = active ? "filter active" : "filter";
+    button.textContent = count === null ? label : `${label} ${count}`;
+    button.onclick = onClick;
+    filters.append(button);
+  };
+
+  add("all", state.total, !state.filter.category && !state.filter.unreadOnly, async () => {
+    state.filter = { category: null, unreadOnly: false };
+    await reload();
+  });
+  add("unread", null, state.filter.unreadOnly, async () => {
+    state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
+    await reload();
+  });
+  for (const [category, count] of counts) {
+    add(category, count, state.filter.category === category, async () => {
+      const next = state.filter.category === category ? null : category;
+      state.filter = { ...state.filter, category: next };
+      await reload();
+    });
+  }
+}
+
+// -- rendering -------------------------------------------------------------
+
 function buildPool() {
   const visible = Math.ceil(viewport.clientHeight / ROW_HEIGHT);
   const size = visible + OVERSCAN * 2;
+  if (state.pool.length === size) return;
 
   content.textContent = "";
-  pool = [];
-
+  state.pool = [];
   for (let i = 0; i < size; i++) {
     const row = document.createElement("div");
     row.className = "row";
 
+    const unread = document.createElement("span");
+    unread.className = "dot";
     const date = document.createElement("span");
     date.className = "date";
     const sender = document.createElement("span");
     sender.className = "sender";
     const subject = document.createElement("span");
     subject.className = "subject";
-    const meta = document.createElement("span");
-    meta.className = "meta";
+    const tag = document.createElement("span");
+    tag.className = "tag";
 
-    row.append(date, sender, subject, meta);
+    row.append(unread, date, sender, subject, tag);
     content.append(row);
-    pool.push({ row, date, sender, subject, meta });
+    state.pool.push({ row, unread, date, sender, subject, tag });
   }
+  state.firstRendered = -1;
 }
 
-/** Renders the slice of rows visible at the current scroll offset. */
-function render() {
+const dateFormat = new Intl.DateTimeFormat(undefined, {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function formatDate(seconds) {
+  if (!seconds) return "";
+  return dateFormat.format(new Date(seconds * 1000));
+}
+
+/** Draws the slice of rows at the current scroll offset. */
+function render(force = false) {
+  const maxFirst = Math.max(0, state.total - state.pool.length);
   const first = Math.max(
     0,
-    Math.min(
-      Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN,
-      Math.max(0, rows.length - pool.length),
-    ),
+    Math.min(Math.floor(viewport.scrollTop / ROW_HEIGHT) - OVERSCAN, maxFirst),
   );
+  if (first === state.firstRendered && !force) return;
+  state.firstRendered = first;
 
-  if (first === firstRendered) return;
-  firstRendered = first;
-
-  // One transform for the whole window instead of positioning each row.
   content.style.transform = `translateY(${first * ROW_HEIGHT}px)`;
 
-  for (let i = 0; i < pool.length; i++) {
-    const slot = pool[i];
-    const item = rows[first + i];
+  for (let i = 0; i < state.pool.length; i++) {
+    const index = first + i;
+    const node = state.pool[i];
+    const row = state.rows.get(index);
 
-    if (!item) {
-      slot.row.hidden = true;
+    if (index >= state.total) {
+      node.row.hidden = true;
       continue;
     }
-    slot.row.hidden = false;
+    node.row.hidden = false;
+    node.row.classList.toggle("selected", index === state.selected);
 
-    // textContent, never innerHTML: subjects are attacker-controlled strings.
-    slot.date.textContent = item.date;
-    slot.sender.textContent = item.sender;
-    slot.subject.textContent = item.subject;
-
-    const marks = [];
-    if (item.has_attachments) marks.push("attachment");
-    if (item.list_id) marks.push(item.list_id);
-    slot.meta.textContent = marks.join(" · ");
-
-    slot.row.classList.toggle("unread", item.unread);
-  }
-}
-
-viewport.addEventListener("scroll", render, { passive: true });
-
-/**
- * Scrolls the whole list under requestAnimationFrame, recording how long each
- * frame took. Frame deltas are what a user perceives as smooth or janky.
- */
-function measureScroll() {
-  return new Promise((resolve, reject) => {
-    // requestAnimationFrame stops firing when the window is occluded or the
-    // display sleeps, so without this the run hangs indefinitely rather than
-    // reporting anything. The spike needs a visible, frontmost window.
-    let lastProgress = performance.now();
-    const watchdog = setInterval(() => {
-      if (performance.now() - lastProgress > 5000) {
-        clearInterval(watchdog);
-        reject(new Error(
-          "no frames for 5s — the window is probably occluded or the display " +
-          "slept. requestAnimationFrame only runs while the window is visible.",
-        ));
-      }
-    }, 1000);
-
-    const maxScroll = viewport.scrollHeight - viewport.clientHeight;
-    // ~700 frames over the full list: enough samples for a stable p95 without
-    // making the run take longer than a few seconds.
-    const step = Math.max(1, maxScroll / 700);
-
-    const deltas = [];
-    let last = performance.now();
-    const started = last;
-    viewport.scrollTop = 0;
-
-    function frame(now) {
-      lastProgress = performance.now();
-      deltas.push(now - last);
-      last = now;
-
-      viewport.scrollTop += step;
-      render();
-
-      if (viewport.scrollTop < maxScroll - step) {
-        requestAnimationFrame(frame);
-      } else {
-        clearInterval(watchdog);
-        // Drop the first frame: it includes scheduling noise from the caller.
-        resolve({ deltas: deltas.slice(1), elapsedMs: now - started });
-      }
+    if (!row) {
+      // The page is still in flight. A placeholder keeps the row height
+      // correct so the scrollbar does not jump when it lands.
+      node.row.classList.add("pending");
+      node.unread.className = "dot";
+      node.date.textContent = "";
+      node.sender.textContent = "";
+      node.subject.textContent = "…";
+      node.tag.textContent = "";
+      continue;
     }
 
-    requestAnimationFrame(frame);
-  });
-}
-
-function percentile(sorted, p) {
-  if (sorted.length === 0) return 0;
-  const index = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
-  return sorted[index];
-}
-
-async function run() {
-  const config = await invoke("spike_config");
-
-  status.textContent = `loading ${config.rows.toLocaleString()} rows…`;
-
-  const ipcStart = performance.now();
-  rows = await invoke("load_rows", { count: config.rows });
-  const ipcMs = performance.now() - ipcStart;
-
-  // Approximates what crossed the bridge. Measured after the fact so it does
-  // not inflate ipcMs.
-  const payloadBytes = new TextEncoder().encode(JSON.stringify(rows)).length;
-
-  const paintStart = performance.now();
-  spacer.style.height = `${rows.length * ROW_HEIGHT}px`;
-  buildPool();
-  render();
-  const firstPaintMs = performance.now() - paintStart;
-
-  status.textContent = "measuring scroll…";
-  // Let the first paint settle so it is not attributed to the scroll.
-  await new Promise((r) => setTimeout(r, 250));
-
-  const { deltas, elapsedMs } = await measureScroll();
-  const sorted = [...deltas].sort((a, b) => a - b);
-
-  // WKWebView clamps performance.now() to 1ms as a Spectre mitigation, so a
-  // perfect 60fps frame (16.67ms) is reported as 17ms. Comparing against a
-  // hardcoded 16.7ms therefore flags every healthy frame as late. Instead take
-  // the median as the display's frame budget — during a steady scroll most
-  // frames hit vsync exactly — and count a frame as dropped only when it took
-  // long enough to have missed a whole vsync interval.
-  const budgetMs = percentile(sorted, 50);
-  const droppedThreshold = budgetMs * 1.5;
-  const dropped = deltas.filter((d) => d >= droppedThreshold).length;
-  const achievedFps = deltas.length / (elapsedMs / 1000);
-
-  const metrics = {
-    rows: rows.length,
-    ipc_ms: ipcMs,
-    payload_bytes: payloadBytes,
-    first_paint_ms: firstPaintMs,
-    frames: deltas.length,
-    p50_ms: percentile(sorted, 50),
-    p95_ms: percentile(sorted, 95),
-    worst_ms: sorted[sorted.length - 1] ?? 0,
-    budget_ms: budgetMs,
-    dropped,
-    achieved_fps: achievedFps,
-    elapsed_ms: elapsedMs,
-    dom_nodes: content.querySelectorAll("*").length,
-  };
-
-  status.textContent = "done";
-  results.hidden = false;
-  results.textContent =
-    `rows ${metrics.rows}  |  IPC ${metrics.ipc_ms.toFixed(0)} ms ` +
-    `(${(metrics.payload_bytes / 1048576).toFixed(1)} MiB)  |  ` +
-    `first paint ${metrics.first_paint_ms.toFixed(0)} ms\n` +
-    `p50 ${metrics.p50_ms.toFixed(1)} ms  p95 ${metrics.p95_ms.toFixed(1)} ms  ` +
-    `worst ${metrics.worst_ms.toFixed(1)} ms  ` +
-    `dropped ${metrics.dropped}/${metrics.frames}  ` +
-    `${metrics.achieved_fps.toFixed(1)} fps\n` +
-    `DOM nodes in list: ${metrics.dom_nodes}`;
-
-  await invoke("report", { metrics });
-}
-
-run().catch(async (err) => {
-  status.textContent = `failed: ${err}`;
-  console.error(err);
-  // Report to the terminal as well; the window may not be where anyone looks.
-  try {
-    await invoke("report_failure", { message: String(err) });
-  } catch (_) {
-    // Nothing more we can do from here.
+    node.row.classList.remove("pending");
+    node.unread.className = row.unread ? "dot on" : "dot";
+    node.date.textContent = formatDate(row.date_utc);
+    node.sender.textContent = row.from;
+    node.subject.textContent = row.subject;
+    node.tag.textContent = [row.category, row.has_attachments ? "📎" : ""]
+      .filter(Boolean)
+      .join(" ");
   }
+
+  ensureLoaded(first, first + state.pool.length);
+}
+
+/** Requests any page covering the visible range that is not in hand. */
+function ensureLoaded(from, to) {
+  if (state.searching) return;
+  const firstPage = Math.floor(Math.max(0, from) / PAGE) * PAGE;
+  const lastPage = Math.floor(Math.min(to, Math.max(0, state.total - 1)) / PAGE) * PAGE;
+  for (let offset = firstPage; offset <= lastPage; offset += PAGE) {
+    if (!state.rows.has(offset)) loadPage(offset);
+  }
+}
+
+// -- reading ---------------------------------------------------------------
+
+async function openSelected() {
+  const row = state.rows.get(state.selected);
+  if (!row) return;
+
+  try {
+    const detail = await invoke("message", { account: state.account, id: row.id });
+    reading.hidden = false;
+    el("reading-subject").textContent = detail.subject ?? "(no subject)";
+    el("reading-meta").textContent = [
+      detail.from,
+      formatDate(detail.date_utc),
+      detail.folders.join(", "),
+    ]
+      .filter(Boolean)
+      .join("  ·  ");
+    el("reading-body").textContent =
+      detail.body_text ?? "(no plain-text body — HTML rendering is not built yet)";
+  } catch (err) {
+    say(`could not open: ${err}`, true);
+  }
+}
+
+function select(index) {
+  if (state.total === 0) return;
+  state.selected = Math.max(0, Math.min(index, state.total - 1));
+
+  // Keep the selection in view, which is what makes j/k usable at all.
+  const top = state.selected * ROW_HEIGHT;
+  const bottom = top + ROW_HEIGHT;
+  if (top < viewport.scrollTop) viewport.scrollTop = top;
+  else if (bottom > viewport.scrollTop + viewport.clientHeight) {
+    viewport.scrollTop = bottom - viewport.clientHeight;
+  }
+  render(true);
+  if (!reading.hidden) openSelected();
+}
+
+// -- changes ---------------------------------------------------------------
+
+let toastTimer = null;
+
+function say(message, isError = false) {
+  toast.textContent = message;
+  toast.className = isError ? "toast error" : "toast";
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    toast.hidden = true;
+  }, 4000);
+}
+
+/// Applies a queued change and takes the row out of the list straight away.
+///
+/// The change has not reached the server yet — it is sitting in the undo
+/// window — so this is the list agreeing with what was asked for rather than
+/// with the store. The next sync reconciles, and `undo` puts the row back.
+async function act(command, args, describe) {
+  const row = state.rows.get(state.selected);
+  if (!row) return;
+
+  try {
+    await invoke(command, { account: state.account, id: row.id, ...args });
+    say(`${describe} — z to undo`);
+    await reload();
+  } catch (err) {
+    say(String(err), true);
+  }
+}
+
+async function archive() {
+  if (!state.archive) {
+    say("this account has no Archive folder", true);
+    return;
+  }
+  await act("move_to", { target: state.archive }, `archived`);
+}
+
+async function trash() {
+  if (!state.trash) {
+    say("this account has no Trash folder", true);
+    return;
+  }
+  await act("move_to", { target: state.trash }, `moved to ${state.trash}`);
+}
+
+async function toggleRead() {
+  const row = state.rows.get(state.selected);
+  if (!row) return;
+  await act("set_read", { read: row.unread }, row.unread ? "marked read" : "marked unread");
+}
+
+async function undo() {
+  try {
+    const change = await invoke("undo", { account: state.account });
+    say(change ? `undone: ${change.what}` : "nothing to undo");
+    if (change) await reload();
+  } catch (err) {
+    say(String(err), true);
+  }
+}
+
+// -- search ----------------------------------------------------------------
+
+async function runSearch(query) {
+  if (!query.trim()) {
+    await reload();
+    return;
+  }
+  try {
+    const rows = await invoke("search", {
+      account: state.account,
+      query,
+      limit: 200,
+    });
+    state.rows.clear();
+    state.requested.clear();
+    state.searching = true;
+    rows.forEach((row, i) => state.rows.set(i, row));
+    state.total = rows.length;
+    state.selected = rows.length ? 0 : -1;
+    spacer.style.height = `${state.total * ROW_HEIGHT}px`;
+    viewport.scrollTop = 0;
+    render(true);
+    say(`${rows.length} result(s) — Escape to go back`);
+  } catch (err) {
+    say(String(err), true);
+  }
+}
+
+// -- keys ------------------------------------------------------------------
+
+const KEYS = {
+  j: () => select(state.selected + 1),
+  ArrowDown: () => select(state.selected + 1),
+  k: () => select(state.selected - 1),
+  ArrowUp: () => select(state.selected - 1),
+  Enter: openSelected,
+  o: openSelected,
+  e: archive,
+  "#": trash,
+  Delete: trash,
+  u: toggleRead,
+  z: undo,
+};
+
+document.addEventListener("keydown", async (event) => {
+  if (event.target === searchBox) {
+    if (event.key === "Enter") await runSearch(searchBox.value);
+    if (event.key === "Escape") {
+      searchBox.value = "";
+      searchBox.blur();
+      await reload();
+    }
+    return;
+  }
+
+  if (event.key === "/") {
+    event.preventDefault();
+    searchBox.focus();
+    return;
+  }
+  if (event.key === "Escape") {
+    reading.hidden = true;
+    return;
+  }
+
+  const action = KEYS[event.key];
+  if (action) {
+    event.preventDefault();
+    await action();
+  }
+});
+
+viewport.addEventListener("scroll", () => render(), { passive: true });
+window.addEventListener("resize", () => {
+  buildPool();
+  render(true);
+});
+
+content.addEventListener("click", (event) => {
+  const index = state.pool.findIndex((node) => node.row === event.target.closest(".row"));
+  if (index >= 0) {
+    select(state.firstRendered + index);
+    openSelected();
+  }
+});
+
+// -- start -----------------------------------------------------------------
+
+async function start() {
+  const accounts = await invoke("accounts");
+  if (!accounts.length) {
+    statusBar.textContent = "no accounts — run `fuckmail add-account` first";
+    return;
+  }
+
+  state.account = accounts[0].id;
+  statusBar.textContent = accounts[0].email;
+
+  const special = await invoke("special_folders", { account: state.account });
+  state.archive = special.archive;
+  state.trash = special.trash;
+
+  buildPool();
+  await reload();
+  select(0);
+
+  const pending = await invoke("queue", { account: state.account });
+  if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);
+}
+
+start().catch((err) => {
+  statusBar.textContent = `failed to start: ${err}`;
 });

@@ -267,7 +267,7 @@ fn a_message_whose_body_is_missing_still_opens() {
         .id;
     let detail = core.message(account, id).unwrap();
     assert_eq!(detail.subject.as_deref(), Some("body went missing"));
-    assert!(detail.raw.is_none());
+    assert!(detail.body_text.is_none());
     assert_eq!(detail.folders, vec!["INBOX"]);
 }
 

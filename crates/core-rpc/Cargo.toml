@@ -10,5 +10,6 @@ publish.workspace = true
 core-store.workspace = true
 
 serde.workspace = true
+mail-parser.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
