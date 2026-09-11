@@ -43,25 +43,40 @@ Declared in `capabilities`, and the surface reads it rather than assuming:
 | search | yes |
 | sync | yes, and it reports refused changes |
 | undo | **`queued`** — a change waits in the undo window, so undoing cancels something that never happened |
-| **file by category** | **no** |
+| file by category | yes, since `set_category` |
 
-The last one is the gap. `core-rules` classifies during sync and no command
-exposes a correction, so `setCategory` is declared false, the surface hides the
-category keys, and the corrections log of brief §3.4 collects nothing on this
-host.
+Filing is the one change that is *not* queued, and deliberately: a category
+lives in the store and never reaches a server, so there is no round trip to
+hold back and nothing for the undo window to protect. Changing your mind is
+another correction — an event, not an edit, which is what the log wants anyway.
 
-Closing it is one command in `fuckmail`:
+### How filing got here
 
-```rust
-#[tauri::command]
-fn set_category(app: State<'_, App>, account: i64, id: i64, category: String)
-    -> Result<(), String>
-```
+`fuckmail` had the whole of stage 3 built and unreachable. The `correction`
+table, `record_correction`, `learned_categories`, and the `Learned` →
+`Classifier` loop at the top of every sync had all been there since early on,
+with end-to-end tests — and `record_correction` was called by nothing but those
+tests. There was no CLI command, no RPC method and no UI path to it.
 
-writing the category to the message row and appending the correction to a
-table. Once it exists, flip `setCategory` to true here and the keys appear —
-nothing else in the surface changes, which is the point of the capability
-object.
+What was added is the exposure, plus one thing the exposure needed:
+
+- `ClassifierSource::User`, so a correction is not recorded as a rules verdict.
+  Filing it as `rules` would have been a line shorter and would have put the
+  user's answers into the baseline the model of brief §3.3 is supposed to be
+  measured against.
+- `CURRENT_CATEGORY_JOIN` in `core-store`, one definition of "the category a
+  message is shown under" — a user verdict if there is one, else the most
+  recent rules verdict — shared by the three queries that need to agree, while
+  `disagreements` deliberately still reads `rules` only.
+- `Core::set_category`, which validates against `core-rules`, records the
+  correction and the verdict, and does nothing at all if the message is already
+  filed there.
+- The `set_category` Tauri command.
+
+That join also fixed a counting bug on the way past: `category_counts` joined
+every classification row, so a message reclassified between syncs was counted
+under every category it had ever been given, and the sidebar added up to more
+messages than the mailbox held.
 
 ## Keeping the adapter honest
 

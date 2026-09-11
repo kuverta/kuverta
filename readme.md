@@ -77,9 +77,10 @@ hosts/fuckmail/      an adapter over the client's Tauri commands
 
 Everything a host can do that the other cannot is **declared** in a
 `capabilities` object, so the surface hides what is unavailable instead of
-offering it and failing. Today that matters in one place: `fuckmail` has no
-command to file a message by category, so it says so and the category keys do
-not appear there. See [hosts/fuckmail/readme.md](hosts/fuckmail/readme.md).
+offering it and failing. All three adapters now declare every capability, so a fourth reference host —
+`ReadOnlyMailbox`, which declares almost nothing — exists to keep the "refused,
+not quietly ignored" rule and the skip machinery exercised. Most of its
+conformance run is skips, and that is the point.
 
 ### The contract
 
@@ -115,7 +116,7 @@ See [hosts/fuckmail/readme.md](hosts/fuckmail/readme.md).
 ## Working on it
 
 ```sh
-npm test       # 157 tests, no mail client required
+npm test       # 181 tests, no mail client required
 npm run corpus # the classifier over 250 generated messages, with the rules that fired
 ```
 
@@ -154,7 +155,6 @@ written down. That is now the most useful thing that can happen to this code.
   for an offset into a list sorted newest first. Capped at 20,000 messages. A
   large folder will pause the first time it is opened. Making it lazy is worth
   doing against a real mailbox and not before.
-- **`fuckmail` cannot file by category** until it grows one command.
 - **Manifest V2**, for the reason in [decisions.md §3](docs/decisions.md).
 - Bulk marketing carrying `List-Id` and `Precedence: bulk` is filed as a
   newsletter — a third of that category on the test corpus. The brief's §3.2

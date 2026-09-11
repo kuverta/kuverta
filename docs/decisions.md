@@ -290,3 +290,62 @@ updated rather than letting it rot into a snapshot of what was once true.
 It is the assumption made explicit, not a second source of truth. If
 Thunderbird disagrees with it, Thunderbird is right and the table is what gets
 corrected.
+
+---
+
+## 7. Stage 3 was already built in `fuckmail`, and unreachable
+
+**2026-09-11.** Supersedes §5.
+
+§5 recorded that `fuckmail` could not file a message by category and declared
+`setCategory: false`. That was right about the symptom and wrong about the
+cause, which turned out to be more interesting.
+
+The machinery was all there. `correction` as a table, `record_correction`,
+`learned_categories`, and — at the top of `sync_account` — `load_history`
+folding those corrections into a `core_rules::Learned` and handing it to the
+`Classifier`. Tested end to end, including against the dev IMAP server.
+
+And `record_correction` was called by nothing except tests. No CLI command, no
+RPC method, no path from any interface. Stage 3's gate — "filing once changes
+what happens next time" — was satisfied by the code and unreachable by a user.
+
+This is what building the second host was for. Nothing about writing the
+Thunderbird adapter would have found it; it took writing an adapter for
+`fuckmail` against a contract that asks a host what it can do, and having to
+answer "not that".
+
+### What the exposure cost
+
+Not just a command, because of where the list reads a category from.
+
+**`ClassifierSource::User`.** The list joined `source = 'rules'`, so a
+correction stored as a user decision would not have shown until the next sync
+re-classified. The cheap fix was to record corrections as rules verdicts, one
+line shorter and quietly corrosive: the rules-versus-model comparison of brief
+§3.3 reads the `rules` rows, and filling them with the user's answers would
+make the baseline unbeatable and meaningless. So corrections are a third
+source, and `disagreements` still reads `rules` only.
+
+**`CURRENT_CATEGORY_JOIN`.** One definition of "the category a message is shown
+under" — the user's if there is one, else the most recent rules verdict, and
+never the model's — shared by the three queries that have to agree on it. A
+model that started changing what the list showed would take §3.3's measurement
+with it, so it is excluded here by the same rule that includes corrections.
+
+**A counting bug, found on the way past.** `category_counts` joined every
+classification row for a message. `COUNT(DISTINCT m.id)` stopped that inflating
+a single category, but a message reclassified between syncs was counted under
+*every* category it had ever been given — so the sidebar could add up to more
+messages than the mailbox held. The shared join fixes it by construction, and
+there is now a test that the totals equal the message count.
+
+### What it bought
+
+All three adapters now declare every capability, which left the contract's
+"a capability it does not have is refused, not quietly ignored" test running
+against nothing at all, and the skip machinery itself untested. So there is now
+a fourth reference host, `ReadOnlyMailbox`, which declares almost nothing and
+refuses what it declared it could not do. Most of its conformance run is skips,
+and that is the point: something has to exercise the path a future host will
+take, and "an account with no Archive folder" is not a hypothetical.

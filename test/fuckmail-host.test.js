@@ -28,12 +28,28 @@ test('fuckmail: undo is queued, which is a different promise from compensating',
   assert.equal(host.capabilities.undo, 'queued');
 });
 
-test('fuckmail: it cannot file by category, and says so rather than pretending', async () => {
-  // `core-rules` classifies during sync and no command exposes a correction.
-  // Declaring it false is what makes the surface hide those keys.
+test('fuckmail: filing a message is not queued, so undo does not reverse it', async () => {
+  // A category lives in the store and never reaches a server, so there is no
+  // round trip for the undo window to protect. Changing your mind is another
+  // correction — which is what the log wants anyway, an event and not an edit.
   const host = await new FuckmailHost(fakeInvoke(), account).open();
-  assert.equal(host.capabilities.setCategory, false);
-  await assert.rejects(() => host.setCategory('1', 'marketing'), /cannot file by category/);
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 1 });
+
+  await host.setCategory(rows[0].id, 'marketing');
+  assert.equal(await host.undo(), null, 'filing should not have gone on the queue');
+
+  const after = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 1 });
+  assert.equal(after.rows[0].category, 'marketing');
+});
+
+test('fuckmail: a category that is not one is refused by the store, not the adapter', async () => {
+  // `core-rpc` validates against `core-rules`. The adapter deliberately does
+  // not second-guess it: two places deciding what a category is would be two
+  // places to disagree.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 1 });
+
+  await assert.rejects(() => host.setCategory(rows[0].id, 'invoices'), /not a category/);
 });
 
 test('fuckmail: an account with no Archive folder cannot archive', async () => {
@@ -74,7 +90,10 @@ test('fuckmail: a refused change is called out in the sync line', async () => {
 });
 
 test('fuckmail: an unknown command is an error, not a silent null', async () => {
-  // Guards the adapter against drifting from core-rpc's registered commands.
+  // Guards the adapter against drifting from the commands core-rpc registers.
+  // Tauri throws for a command that was never registered, so the fake must
+  // too — otherwise an adapter calling a command that does not exist would
+  // look like a command that returned nothing.
   const invoke = fakeInvoke();
-  await assert.rejects(() => invoke('set_category', {}), /unknown command/);
+  await assert.rejects(() => invoke('set_flag', {}), /unknown command/);
 });

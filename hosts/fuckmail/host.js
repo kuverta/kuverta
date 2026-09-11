@@ -16,13 +16,13 @@
  *   surface says so in different words.
  * - **The store pages and sorts**, so nothing here has to materialise a scope
  *   to answer an offset — where the Thunderbird adapter does.
- * - **There is no way to file a message by category.** `core-rules` classifies
- *   during sync and no command exposes a correction, so `setCategory` is
- *   declared false and the surface hides those keys. That is the one gap worth
- *   closing in `fuckmail` itself; see this directory's readme.
+ * - **Filing a message is not queued.** A category lives in the store and is
+ *   never sent to a server, so there is no round trip to hold back and nothing
+ *   for the undo window to protect. Changing your mind is another correction,
+ *   which is what the log wants anyway — an event, not an edit.
  */
 
-import { MailHost, Unsupported } from '../../core/host.js';
+import { MailHost } from '../../core/host.js';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from '../../core/category.js';
 
 export class FuckmailHost extends MailHost {
@@ -59,7 +59,7 @@ export class FuckmailHost extends MailHost {
       archive: Boolean(this.#special.archive),
       trash: Boolean(this.#special.trash),
       setRead: true,
-      setCategory: false,
+      setCategory: true,
       search: true,
       sync: true,
       undo: 'queued',
@@ -162,8 +162,12 @@ export class FuckmailHost extends MailHost {
     await this.#invoke('set_read', { account: this.#account, id: Number(id), read });
   }
 
-  async setCategory() {
-    throw new Unsupported('file by category');
+  async setCategory(id, category) {
+    await this.#invoke('set_category', {
+      account: this.#account,
+      id: Number(id),
+      category,
+    });
   }
 
   async undo() {
