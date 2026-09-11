@@ -16,6 +16,16 @@ const ARCHIVE = 'Archive';
 const TRASH = 'Trash';
 const INBOX = 'INBOX';
 
+/** The six `core-rules` knows. `set_category` refuses anything else. */
+const CATEGORIES = [
+  'personal',
+  'newsletter',
+  'marketing',
+  'transactional',
+  'notification',
+  'unknown',
+];
+
 export function fakeInvoke({ seed = defaultSeed() } = {}) {
   const messages = new Map();
   const queue = [];
@@ -119,6 +129,15 @@ export function fakeInvoke({ seed = defaultSeed() } = {}) {
       m.unread = !read;
       queue.push({ what: read ? 'mark read' : 'mark unread', undo: () => { m.unread = was; } });
       return m.id;
+    },
+
+    set_category: async ({ id, category }) => {
+      // core-rpc validates against core-rules and refuses anything else; a
+      // fake that accepted any string would hide an adapter sending one.
+      if (!CATEGORIES.includes(category)) throw new Error(`not a category: ${category}`);
+      const m = need(id);
+      // Not queued, and so not undoable — matching the real command.
+      m.category = category;
     },
 
     undo: async () => {

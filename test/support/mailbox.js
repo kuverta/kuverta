@@ -10,7 +10,7 @@
  * suite's capability gates never hide a test from itself.
  */
 
-import { MailHost } from '../../core/host.js';
+import { MailHost, Unsupported } from '../../core/host.js';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from '../../core/category.js';
 
 const INBOX = 'inbox';
@@ -194,4 +194,51 @@ export function defaultSeed() {
     unread: i % 2 === 0,
     body: `Body of message ${i}.`,
   }));
+}
+
+/**
+ * A host that can barely do anything.
+ *
+ * Every real adapter now declares every capability, which left the contract's
+ * "a capability it does not have is refused, not quietly ignored" test running
+ * against nothing at all — and the skip logic itself untested. This exists so
+ * both keep being exercised: it declares almost nothing, and it refuses rather
+ * than silently accepting what it declared it could not do.
+ *
+ * A host like this is not hypothetical. It is what an IMAP account with no
+ * Archive folder looks like, and what a read-only mailbox would look like.
+ */
+export class ReadOnlyMailbox extends MemoryMailbox {
+  get capabilities() {
+    return {
+      archive: false,
+      trash: false,
+      setRead: false,
+      setCategory: false,
+      search: false,
+      sync: false,
+      undo: false,
+      compose: false,
+    };
+  }
+
+  async archive() {
+    throw new Unsupported('archive');
+  }
+
+  async trash() {
+    throw new Unsupported('trash');
+  }
+
+  async setRead() {
+    throw new Unsupported('set read state');
+  }
+
+  async setCategory() {
+    throw new Unsupported('file by category');
+  }
+
+  async undo() {
+    throw new Unsupported('undo');
+  }
 }
