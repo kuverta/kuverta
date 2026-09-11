@@ -5,32 +5,34 @@ Tauri commands its own UI already uses.
 
 ## Mounting it
 
-The desktop app loads `apps/desktop/ui/index.html` from its own tree, so the
-shared files have to be where that page can reach them:
+From the repository root:
 
 ```sh
-# from this repository
-cp -R core            ../fuckmail/apps/desktop/ui/fuckbird-core
-cp -R hosts/fuckmail  ../fuckmail/apps/desktop/ui/fuckbird-host
+make triage-ui
 ```
 
-Then point a page at `fuckbird-host/ui/triage.html`, or import the surface from
-the existing `app.js`:
+That copies `fuckbird/core/` and this directory into
+`apps/desktop/ui/fuckbird/`, where the desktop app can serve them. Then open
+the app and click **triage** in the header.
 
-```js
-import { Triage } from './fuckbird-core/triage.js';
-import { mountTriage } from './fuckbird-core/view/triage.js';
-import { FuckmailHost } from './fuckbird-host/host.js';
+The copy exists because Tauri serves one directory as the web root, and files
+outside `apps/desktop/ui/` are not reachable from the page. It is not a build
+step: the layout under the target mirrors this directory exactly —
 
-const host = await new FuckmailHost(invoke, account).open();
-const triage = new Triage(host);
-mountTriage({ root: document.getElementById('triage'), triage });
-await triage.start();
+```
+apps/desktop/ui/fuckbird/core/...
+apps/desktop/ui/fuckbird/hosts/fuckmail/...
 ```
 
-Copying rather than importing across repositories is deliberate for now: the
-alternative is a package step, and there is no version of this worth publishing
-yet. The copy is verbatim, so `diff -r` says whether it has gone stale.
+— so every relative import resolves unchanged and the files the app loads are
+byte for byte the files the tests run, which the install verifies with
+`diff -r` rather than assuming. Rewriting paths on the way in *would* be a
+build step, and a build step between the tested code and the running code is
+the seam worth not having. It is the same reason the Thunderbird manifest sits
+at `fuckbird/manifest.json` rather than one directory further in.
+
+The copy is gitignored. Re-run `make triage-ui` after changing anything under
+`fuckbird/core/`.
 
 ## What this host can and cannot do
 
@@ -87,31 +89,3 @@ a folder id rather than a name, and an unknown command throwing rather than
 returning null. A command that drifts in `core-rpc` will not be caught by that
 fake — only by running it — so the fake is a guard against this adapter
 drifting, not against the client changing underneath it.
-
-## Installing it
-
-```sh
-tools/install-into.sh ../fuckmail/apps/desktop/ui
-```
-
-or, from that repository, `make triage-ui` (set `FUCKBIRD=` if it is not a
-sibling). Then open the app and click **triage** in the header.
-
-The copy lands as `apps/desktop/ui/fuckbird/`, mirroring this repository's
-layout exactly:
-
-```
-apps/desktop/ui/fuckbird/core/...
-apps/desktop/ui/fuckbird/hosts/fuckmail/...
-```
-
-That mirroring is the point. Every relative import then resolves unchanged, so
-the files the app loads are byte for byte the files the tests here run —
-verified by `diff -r` at the end of the install rather than assumed. Rewriting
-paths on the way in would be a build step, and a build step between the tested
-code and the running code is the seam worth not having. It is the same reason
-the Thunderbird manifest sits at that repository's root.
-
-The copy is gitignored in `fuckmail`: it is generated, and a second copy of
-these files in that history would rot. Re-run the install after changing
-anything in `core/`.

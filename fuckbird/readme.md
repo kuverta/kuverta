@@ -3,14 +3,19 @@
 A keyboard-first triage surface for mail, with a classifier that files
 everything into six categories and tells you why.
 
+This directory is the JavaScript half of the project: the classifier, the
+triage model, the surface, and one adapter per host. The Rust half — IMAP,
+SMTP, the store, the accounts — is the rest of the repository. They were two
+repositories for a day; see [decisions.md §10](../docs/decisions.md).
+
 It runs in two places from the same code:
 
 - **as a Thunderbird extension**, which is what makes the add-on ecosystem
   available;
-- **inside [`fuckmail`](../fuckmail)**, the standalone client, through the Tauri
+- **inside `fuckmail`**, the standalone client in this repository, through the Tauri
   commands its desktop app already speaks.
 
-Eventually, per [the brief](docs/brief.md), possibly a Thunderbird fork. That
+Eventually, per [the brief](../docs/thunderbird-fork-brief.md), possibly a Thunderbird fork. That
 is stage 4 and it is not the point. The brief's §7.1 allows that "if stages 1–3
 deliver the idea as a plain add-on, the honest answer may be no, and that would
 be a good outcome" — and building for two hosts is what makes that answer
@@ -115,6 +120,8 @@ See [hosts/fuckmail/readme.md](hosts/fuckmail/readme.md).
 
 ## Working on it
 
+From this directory:
+
 ```sh
 npm test       # 181 tests, no mail client required
 npm run corpus # the classifier over 250 generated messages, with the rules that fired
@@ -137,7 +144,7 @@ That found four missing permissions — `messagesMove`, `messagesTagsList`,
 `compose`, `tabs` — and three wrong assumptions, all now fixed, and all of them
 invisible to a fake, which answers whatever it is asked. The table now lives in
 `test/permissions.test.js`, which also fails if the manifest asks for a
-permission nothing uses. See [decisions.md §6](docs/decisions.md).
+permission nothing uses. See [decisions.md §6](../docs/decisions.md).
 
 **Not verified.** Neither host has been run. The classifier and the model are
 proven and the API surface is checked, but documentation is not a client:
@@ -161,7 +168,7 @@ written down. That is now the most useful thing that can happen to this code.
   for an offset into a list sorted newest first. Capped at 20,000 messages. A
   large folder will pause the first time it is opened. Making it lazy is worth
   doing against a real mailbox and not before.
-- **Manifest V2**, for the reason in [decisions.md §3](docs/decisions.md).
+- **Manifest V2**, for the reason in [decisions.md §3](../docs/decisions.md).
 - Bulk marketing carrying `List-Id` and `Precedence: bulk` is filed as a
   newsletter — a third of that category on the test corpus. The brief's §3.2
   weakness, measured, and the best argument for the corrections log: one

@@ -1,9 +1,18 @@
 # Brief: a triage-first Thunderbird fork
 
-Written 2026-09-11, to be moved into the new repository as its first document.
+Written 2026-09-11.
+
+Kept as written. What has changed since is marked inline with **Since:** rather
+than edited into the reasoning, and recorded in [decisions.md](decisions.md).
+
+> **Since (2026-09-11):** this brief assumes a new repository, and there was one
+> for a day. It has been merged back: the triage surface and the classifier live
+> in [`fuckbird/`](../fuckbird/) alongside the Rust client, because they are one
+> product with two hosts rather than two projects. See
+> [decisions.md](decisions.md) §4 and §10.
 
 This is the starting brief for building the same idea as
-[`fuckmail`](../readme.md) on top of Thunderbird instead of from scratch. The
+`fuckmail` on top of Thunderbird instead of from scratch. The
 motivation is the add-on ecosystem: Thunderbird extensions need Gecko, Gecko
 cannot be embedded outside Mozilla's own applications, and so running them means
 *being* a Thunderbird rather than talking to one.
@@ -85,6 +94,11 @@ primary axis rather than folders.
 *Where:* a MailExtension providing a tab, using `mailTabs`, `messages`,
 `folders` and `menus`. No core patch needed.
 
+> **Since (2026-09-11):** built, and built once for two hosts rather than for
+> Thunderbird alone — the surface is `core/view/triage.js`, driven by
+> `core/triage.js`, over the port in `core/host.js`. Thunderbird and `fuckmail`
+> are both adapters behind it. See [decisions.md](decisions.md) §4.
+
 ### 3.2 The deterministic classifier
 
 Six categories — personal, newsletter, marketing, transactional, notification,
@@ -108,6 +122,17 @@ be ported to JS or kept as Rust behind a native-messaging host (§3.7).
 notification 61, personal 33, marketing 18. Note that bulk marketing carrying
 `List-Id` and `Precedence: bulk` reads as a newsletter to the rules — a real
 weakness, and a good first target for the model.
+
+> **Since (2026-09-11):** these counts are exactly right, and they describe one
+> mailbox rather than the generator. That mailbox is still in `fuckmail`'s
+> scratch store — 251 messages, 77/62/61/33/18 — and it is `fill-mailbox.py`
+> output from an earlier run plus one real message from the provider. A fresh
+> `--dump 250` gives 79/62/59/32/18 instead, because the draw differs; every
+> sender is filed under the same category in both. So cite it as a fact about
+> that mailbox, not as a baseline. The weakness the paragraph names is real and
+> larger than it suggests: a quarter of those newsletters are a marketing
+> fixture whose subject carries no keyword the rules know. See
+> [decisions.md](decisions.md).
 
 ### 3.3 The local model, and how to avoid fooling yourself about it
 
@@ -267,18 +292,28 @@ add-on genuinely cannot do.
 1. **Does the fork ever actually happen?** If stages 1–3 deliver the idea as a
    plain add-on, the honest answer may be no — and that would be a good
    outcome, not a failure.
-2. **Rust behind native messaging, or port the classifier to JS?** (§3.7)
+2. ~~**Rust behind native messaging, or port the classifier to JS?** (§3.7)~~
+   **Closed 2026-09-11: ported to JS.** Stages 1–3 are supposed to run on stock
+   Thunderbird so they still stand if the fork never happens, and a second
+   executable to install breaks exactly that. The port is verified against the
+   Rust line for line — see [decisions.md](decisions.md).
 3. **Embeddings or prompting** for classification — spike both, briefly. (§3.3)
 4. **Licence**, once §5 has been checked properly.
 5. **Name**, needed before stage 4.
-6. **What to do with `fuckmail`.** It syncs, sends, triages and has 171 passing
-   tests. Options: archive it as a reference, keep it as the native-messaging
-   backend, or keep running it alongside — it and Thunderbird coexist on the
-   same IMAP account today.
+6. ~~**What to do with `fuckmail`.** It syncs, sends, triages and has 171
+   passing tests. Options: archive it as a reference, keep it as the
+   native-messaging backend, or keep running it alongside — it and Thunderbird
+   coexist on the same IMAP account today.~~
+   **Closed 2026-09-11: neither.** There was a fourth answer the list missed.
+   `fuckmail` is a *host*, and so is Thunderbird; the product is the triage
+   surface and the classifier, which now run on both from one core behind a
+   tested contract. That also takes the weight out of decision 1 above: whether
+   the fork happens stops being load-bearing when the thing that matters runs
+   either way. See [decisions.md](decisions.md) §4.
 
 ---
 
-## 8. Worth reading from the old repo
+## 8. Worth reading alongside this
 
 - [`readme.md`](../readme.md) — the design decisions section in particular
 - [`docs/implementation-plan.md`](implementation-plan.md) — §1a on the two
