@@ -875,3 +875,48 @@ fn a_message_that_leaves_the_store_takes_its_queued_operations_with_it() {
         .unwrap();
     assert!(store.pending_operations(account).unwrap().is_empty());
 }
+
+#[test]
+fn exclusions_match_a_folder_by_name_or_by_attribute() {
+    let patterns = vec!["\\All".to_string(), "Report spam".to_string()];
+
+    // By attribute, whatever the provider calls the folder.
+    assert!(folder_is_excluded(
+        &patterns,
+        "[Gmail]/All Mail",
+        Some("\\All")
+    ));
+    assert!(folder_is_excluded(
+        &patterns,
+        "Alle Nachrichten",
+        Some("\\All")
+    ));
+
+    // By name, case-insensitively, as every other folder comparison here is.
+    assert!(folder_is_excluded(&patterns, "report spam", None));
+
+    // And nothing else.
+    assert!(!folder_is_excluded(&patterns, "INBOX", None));
+    assert!(!folder_is_excluded(
+        &patterns,
+        "[Gmail]/Trash",
+        Some("\\Trash")
+    ));
+    // A name that looks like the attribute's folder must not match the
+    // attribute pattern: `\All` means the attribute, not the word.
+    assert!(!folder_is_excluded(&["\\All".to_string()], "All", None));
+}
+
+#[test]
+fn excluding_a_folder_is_idempotent_and_reversible() {
+    let (store, account) = store_with_account();
+    assert!(store.folder_exclusions(account).unwrap().is_empty());
+
+    assert!(store.exclude_folder(account, "\\All").unwrap());
+    assert!(!store.exclude_folder(account, "\\All").unwrap());
+    assert_eq!(store.folder_exclusions(account).unwrap(), vec!["\\All"]);
+
+    assert!(store.include_folder(account, "\\All").unwrap());
+    assert!(!store.include_folder(account, "\\All").unwrap());
+    assert!(store.folder_exclusions(account).unwrap().is_empty());
+}

@@ -224,9 +224,32 @@ everything above had only ever met Dovecot and nine synthetic fixtures:
   depends on it: extensions, folder layout, where sent/archived/deleted mail
   will go, and with `--measure` how much a first sync will download.
 
+A real account is connected and the whole loop runs against it — sync, send,
+archive, undo — which turned up one bug worth recording: expunge reconciliation
+collected orphaned messages as it went, so a message crossing folders was
+destroyed and rebuilt in between, taking its classifier verdict, its queued
+operations and the user's corrections with it. Whether that happened depended
+on the order the server listed the two folders in, which is why the dev server
+never showed it. Orphans are now collected once, after every folder has been
+seen.
+
+Gmail is covered without a Google account: a second Dovecot in `docker/` wears
+Gmail's layout — `[Gmail]/` hierarchy, `\All` instead of `\Archive`, and the
+same message under several folders, which is what labels look like over IMAP.
+That last one is the store's load-bearing invariant in its native habitat.
+
+Folders can be excluded from sync, by name or by special-use attribute. Gmail
+is the reason: its All Mail holds a copy of every message, so a mailbox whose
+mail averages two labels crosses the wire twice over. Deduplication keeps one
+row and one body, but it cannot give the bytes back. `fuckmail check` measures
+the difference and names the command; excluding costs visibility of archived
+mail, which lives only there, and says so.
+
 Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, attachments in compose, and connecting the three
-real accounts.
+UI, IDLE for push, QRESYNC, attachments in compose, and OAuth2 for Gmail —
+app passwords work today but Google is phasing them out during 2026, and the
+device flow already implemented for M365 is probably not the right grant for
+Gmail's restricted scope.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
