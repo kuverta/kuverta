@@ -1,0 +1,14 @@
+{
+  "name": "fuckbird",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A triage-first Thunderbird MailExtension, and eventually a fork.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "package": "cd extension && zip -qr -FS ../fuckbird.xpi . -x '.*' && cd .. && echo 'built fuckbird.xpi'"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
