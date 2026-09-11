@@ -3,8 +3,8 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
-        triage-ui test-js \
-        fill-mailbox clean
+        triage-ui triage test-js \
+        fill-mailbox fill-dev clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -78,6 +78,13 @@ app: ## Open the triage window on the scratch store
 triage-ui: ## Copy the shared triage surface into the desktop app
 	fuckbird/tools/install-into.sh apps/desktop/ui
 
+triage: triage-ui ## Open the window on the scratch store, ready to triage
+	@echo
+	@echo "  Opening on .devdata. Click 'triage' in the header."
+	@echo "  No mail in there yet?  make dev-up && make e2e"
+	@echo
+	./run.sh --dev
+
 app-real: ## Open it on the real data directory
 	./run.sh
 
@@ -115,6 +122,14 @@ e2e: dev-up build ## Register the dev account in a scratch store, sync it, and s
 fill-mailbox: ## Put ~250 varied messages in a test mailbox (HOST= USER= PASS=)
 	@test -n "$(HOST)" || (echo "usage: make fill-mailbox HOST=imap.example.de USER=you@example.de PASS=…" && false)
 	python3 docker/fill-mailbox.py "$(HOST)" "$(USER)" "$(PASS)" $(or $(COUNT),250)
+
+# Nine fixtures prove sync works and are nowhere near enough to feel like a
+# mailbox — which is what triage needs in order to be worth looking at.
+fill-dev: dev-up ## Put ~250 varied messages in the dev mailbox, then sync them
+	python3 docker/fill-mailbox.py 127.0.0.1:10143 dev@fuckmail.test devpass \
+	    $(or $(COUNT),250) --plain
+	FUCKMAIL_DEV_PASSWORD=devpass FUCKMAIL_DATA_DIR=.devdata \
+	    ./target/debug/fuckmail sync --password-env FUCKMAIL_DEV_PASSWORD
 
 clean: ## Remove build output and the scratch store
 	cargo clean

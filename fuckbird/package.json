@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test test/",
     "package": "rm -f fuckbird.xpi && zip -qr -FS fuckbird.xpi manifest.json core hosts/thunderbird -x '*/.*' && echo 'built fuckbird.xpi'",
-    "corpus": "python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons"
+    "corpus": "python3 ../docker/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons"
   },
   "engines": {
     "node": ">=18"

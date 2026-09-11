@@ -1,5 +1,5 @@
 /**
- * Classifies a corpus dumped by `fill-mailbox.py --dump` and reports the
+ * Classifies a corpus dumped by `../docker/fill-mailbox.py --dump` and reports the
  * distribution.
  *
  * This exists to keep the JS port honest. The brief quotes what the Rust
@@ -7,7 +7,7 @@
  * else, the port has drifted and the corrections collected under it stop being
  * comparable with anything measured before.
  *
- *   python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js
+ *   python3 ../docker/fill-mailbox.py --dump 250 | node tools/classify-corpus.js
  *
  * Pass `--reasons` to also see which rules fired how often, which is the
  * quickest way to find a signal that has stopped matching.
@@ -26,7 +26,7 @@ const rows = input
   .map((line) => JSON.parse(line));
 
 if (rows.length === 0) {
-  console.error('no messages on stdin — pipe `fill-mailbox.py --dump` in');
+  console.error('no messages on stdin — pipe `../docker/fill-mailbox.py --dump` in');
   process.exit(1);
 }
 

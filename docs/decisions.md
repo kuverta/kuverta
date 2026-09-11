@@ -39,8 +39,8 @@ implementations that disagree everywhere the assertions do not look.
 So both were run over the same 250 messages and diffed:
 
 ```
-python3 tools/fill-mailbox.py --dump 250 > corpus.jsonl
-node tools/dump-facts.js < corpus.jsonl > facts.jsonl
+python3 docker/fill-mailbox.py --dump 250 > corpus.jsonl
+node fuckbird/tools/dump-facts.js < corpus.jsonl > facts.jsonl
 # and the same facts through core-rules
 diff rust.tsv js.tsv
 ```
@@ -78,7 +78,7 @@ Nothing is broken. The number in the brief is just not a baseline, and should
 not be cited as one. The reproducible command is:
 
 ```
-python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons
+python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/classify-corpus.js --reasons
 ```
 
 ### Resolved: the corpus was real, and it is still on disk
