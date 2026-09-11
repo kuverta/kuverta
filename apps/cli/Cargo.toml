@@ -15,6 +15,7 @@ core-store.workspace = true
 core-proto.workspace = true
 core-accounts.workspace = true
 core-smtp.workspace = true
+core-rpc.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true

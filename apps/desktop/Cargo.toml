@@ -16,6 +16,7 @@ core-rpc.workspace = true
 core-proto.workspace = true
 
 tauri = "2.11.5"
+tokio = { workspace = true, features = ["rt"] }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
