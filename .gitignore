@@ -9,3 +9,8 @@
 *.db-wal
 .DS_Store
 /.devdata
+
+# The shared triage surface, copied in from the fuckbird repository by
+# `make triage-ui`. Generated, so it is not source here — keeping a second
+# copy of those files in this history would rot.
+/apps/desktop/ui/fuckbird

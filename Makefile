@@ -3,6 +3,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
+        triage-ui \
         fill-mailbox clean
 
 help: ## Show this help
@@ -66,6 +67,16 @@ check: ## What CI runs
 # See docs/spike-tauri-list.md.
 app: ## Open the triage window on the scratch store
 	./run.sh --dev
+
+# The shared surface lives in the fuckbird repository; this copies it in. The
+# copy is verbatim and the script verifies it, so the files the app loads are
+# the files that repository's tests run.
+FUCKBIRD ?= ../fuckbird
+
+triage-ui: ## Install the shared triage surface from the fuckbird repo
+	@test -x $(FUCKBIRD)/tools/install-into.sh || \
+	  (echo "fuckbird not found at $(FUCKBIRD) — set FUCKBIRD=/path/to/fuckbird" && false)
+	$(FUCKBIRD)/tools/install-into.sh apps/desktop/ui
 
 app-real: ## Open it on the real data directory
 	./run.sh
