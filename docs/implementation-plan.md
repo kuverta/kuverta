@@ -324,6 +324,33 @@ blind recipient appears and the one thing worth checking before committing.
 With that the CLI's `send` and `sync` are both thin: every decision either
 front end makes now lives in `core-rpc`, which is the point of the layer.
 
+The window then grew a sidebar and took its visual cues from Apple Mail, which
+is the reference the user named. Concretely that meant three panes side by side
+rather than stacked, a recessed sidebar with rounded selection pills and drawn
+icons, and list rows of three lines — sender and date, subject, preview —
+instead of a dense single-line table. Dates are relative at the resolution you
+want at each distance: the time today, the weekday this week, the date beyond.
+
+The sidebar is the only place navigation happens: accounts, then their folders
+with unread counts, then the classifier's categories. Folders come back in the
+conventional order rather than alphabetically — INBOX, Drafts, Sent, Archive,
+the user's own folders, then Junk and Trash — because people find these by
+position, not by name. Counts are of messages rather than locations, so a
+message carrying three Gmail labels counts once in each folder and the sidebar
+never adds up to more than the mailbox holds.
+
+Two things came out of actually looking at the window rather than the code. The
+list preview needed a `snippet` the summary had never carried, which the parse
+layer had been recording since the first commit and nothing had ever read. And
+`#compose { display: flex }` is an id selector, so it beat the user agent's
+`[hidden]` rule and the compose pane was simply always open — invisible in the
+source, obvious on screen.
+
+A filtered list now says what it is showing and offers a way out, because a
+list that quietly narrows looks exactly like mail going missing. Acting on a
+message keeps the cursor where it was, so the next one slides under it instead
+of the list jumping back to the top.
+
 Still open: the model layer (local Ollama, section 4), IDLE for push, QRESYNC,
 and attachments.
 

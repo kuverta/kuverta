@@ -1072,6 +1072,7 @@ fn the_window_can_be_narrowed_by_category_and_by_unread() {
             &ListFilter {
                 category: Some("transactional".into()),
                 unread_only: false,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -1089,6 +1090,7 @@ fn the_window_can_be_narrowed_by_category_and_by_unread() {
             &ListFilter {
                 category: None,
                 unread_only: true,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -1105,12 +1107,153 @@ fn the_window_can_be_narrowed_by_category_and_by_unread() {
             &ListFilter {
                 category: Some("transactional".into()),
                 unread_only: true,
+                ..Default::default()
             },
         )
         .unwrap();
     assert_eq!(both.total, 1);
     assert_eq!(
         both.messages[0].summary.subject.as_deref(),
+        Some("message 1")
+    );
+}
+
+#[test]
+fn folder_summaries_count_messages_and_read_in_the_conventional_order() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let archive = store
+        .upsert_folder(account, "Archive", Some("\\Archive"))
+        .unwrap();
+    let trash = store
+        .upsert_folder(account, "Trash", Some("\\Trash"))
+        .unwrap();
+    let project = store.upsert_folder(account, "Projekte", None).unwrap();
+
+    // One message in INBOX and Archive at once — the Gmail case. It counts
+    // once in each, never twice in either.
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: archive,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    assert_eq!(store.locations_of(id).unwrap().len(), 2);
+
+    // A second message, already read.
+    store
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("read@example.com".into()),
+                subject: Some("already read".into()),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: inbox,
+                uid: 2,
+                flags: "\\Seen".into(),
+            }),
+        )
+        .unwrap();
+
+    let folders = store.folder_summaries(account).unwrap();
+    let names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+    // INBOX first, the user's own folder above the bins, Trash last.
+    assert_eq!(names, vec!["INBOX", "Archive", "Projekte", "Trash"]);
+
+    let by = |name: &str| folders.iter().find(|f| f.name == name).unwrap();
+    assert_eq!(by("INBOX").total, 2);
+    assert_eq!(by("INBOX").unread, 1, "one of the two has been read");
+    assert_eq!(by("Archive").total, 1);
+    assert_eq!(by("Archive").unread, 1);
+    // An empty folder is still listed: it is somewhere to file to.
+    assert_eq!(by("Trash").total, 0);
+    assert_eq!(by("Trash").unread, 0);
+    let _ = trash;
+    let _ = project;
+}
+
+#[test]
+fn the_window_can_be_narrowed_to_one_folder_and_combined_with_the_rest() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+
+    for (n, folder) in [(0, inbox), (1, inbox), (2, archive)] {
+        store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("f-{n}@example.com")),
+                    subject: Some(format!("message {n}")),
+                    date_utc: Some(1_700_000_000 + n),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: folder,
+                    uid: n as u32 + 1,
+                    flags: if n == 0 {
+                        "\\Seen".into()
+                    } else {
+                        String::new()
+                    },
+                }),
+            )
+            .unwrap();
+    }
+
+    let in_folder = |folder| ListFilter {
+        folder: Some(folder),
+        ..Default::default()
+    };
+    assert_eq!(
+        store
+            .message_window(account, 0, 10, &in_folder(inbox))
+            .unwrap()
+            .total,
+        2
+    );
+    assert_eq!(
+        store
+            .message_window(account, 0, 10, &in_folder(archive))
+            .unwrap()
+            .total,
+        1
+    );
+
+    // Folder and unread narrow together rather than one replacing the other.
+    let unread_in_inbox = store
+        .message_window(
+            account,
+            0,
+            10,
+            &ListFilter {
+                folder: Some(inbox),
+                unread_only: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(unread_in_inbox.total, 1);
+    assert_eq!(
+        unread_in_inbox.messages[0].summary.subject.as_deref(),
         Some("message 1")
     );
 }
