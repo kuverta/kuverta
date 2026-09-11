@@ -80,7 +80,7 @@ The remaining risk is honest and unshrinkable: fuckmail can now move your mail, 
 | `core-rules` | 4 | Deterministic baseline classifier |
 | `core-smtp` | 5–6 | Compose, MIME construction, SMTP submission (§1a stage 1) |
 | `core-ai` | 5 | Provider trait → Ollama; embeddings or prompting |
-| `core-rpc` | 4 | Stable surface for the shell (and later, agents) |
+| `core-rpc` | 4–6 | Stable surface for the shell (and later, agents) |
 | `scannerd` | 6–7 | Pi capture daemon (separate binary, cross-compiled) |
 
 ### Lean on, don't rewrite
@@ -260,8 +260,21 @@ Decision 4 still holds, and the loopback flow is why: the restricted scope
 needs Google's CASA assessment only for a *published* client. One left in
 testing, with your own address as a test user, sidesteps it.
 
-Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, and attachments in compose.
+`core-rpc` exists now — the typed surface the shell will talk to, and
+deliberately ignorant of Tauri, since section 2 has it doubling as the
+MCP/agent surface later and a layer that has taken a dependency on one shell
+is no longer a surface.
+
+Its one non-obvious shape is that the list is windowed: `messages` takes an
+offset and a limit and returns a total. That is not a preference. The spike
+measured the Rust/JS bridge at about 78 MiB/s of JSON, so handing a whole
+mailbox across it is the single thing that would undo the 59.8 fps it
+otherwise reaches. `unread` is derived rather than stored — a message is
+unread when no copy of it anywhere carries `\Seen` — which keeps one answer
+for a message that sits in several folders, as most of them do on Gmail.
+
+Still open: the triage UI itself, the model layer (local Ollama, section 4),
+IDLE for push, QRESYNC, and attachments in compose.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 

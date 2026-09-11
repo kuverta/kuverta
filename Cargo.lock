@@ -692,6 +692,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-rpc"
+version = "0.1.0"
+dependencies = [
+ "core-store",
+ "serde",
+ "thiserror 2.0.20",
+ "tracing",
+]
+
+[[package]]
 name = "core-rules"
 version = "0.1.0"
 dependencies = [

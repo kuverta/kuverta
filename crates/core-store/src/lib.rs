@@ -695,6 +695,102 @@ impl Store {
 
     /// Recent messages, each with the most recent rules verdict recorded for
     /// it. Messages never classified come back with `category: None`.
+    /// One window of the message list, newest first, with a total to size the
+    /// scrollbar against.
+    ///
+    /// Windowed because the list has to be: the Tauri spike measured the
+    /// Rust/JS bridge at roughly 78 MiB/s of JSON, so handing the whole
+    /// mailbox across it is the one thing that would undo the 59.8 fps it
+    /// otherwise reaches. See docs/spike-tauri-list.md.
+    ///
+    /// `unread` is derived rather than stored: a message is unread when no
+    /// copy of it anywhere carries `\Seen`. Deriving it keeps one answer for a
+    /// message that sits in several folders, which on Gmail is most of them.
+    pub fn message_window(
+        &self,
+        account_id: AccountId,
+        offset: usize,
+        limit: usize,
+        filter: &ListFilter,
+    ) -> Result<MessageWindow> {
+        let category_clause = match &filter.category {
+            Some(_) => "AND c.category = ?2",
+            None => "AND (?2 IS NULL OR 1)",
+        };
+        let unread_clause = if filter.unread_only {
+            "AND NOT EXISTS (SELECT 1 FROM message_location l
+                             WHERE l.message_id = m.id AND l.flags LIKE '%\\Seen%')"
+        } else {
+            ""
+        };
+
+        let from = format!(
+            "FROM message m
+             LEFT JOIN classification c
+               ON c.message_id = m.id
+              AND c.source = 'rules'
+              AND c.id = (
+                  SELECT MAX(c2.id) FROM classification c2
+                  WHERE c2.message_id = m.id AND c2.source = 'rules'
+              )
+             WHERE m.account_id = ?1 {category_clause} {unread_clause}"
+        );
+
+        let total: i64 = self.conn.query_row(
+            &format!("SELECT COUNT(*) {from}"),
+            params![account_id, filter.category],
+            |row| row.get(0),
+        )?;
+
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, c.category, c.confidence,
+                    NOT EXISTS (SELECT 1 FROM message_location l
+                                WHERE l.message_id = m.id AND l.flags LIKE '%\\Seen%')
+             {from}
+             ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
+             LIMIT ?3 OFFSET ?4"
+        ))?;
+
+        let rows = stmt.query_map(
+            params![account_id, filter.category, limit as i64, offset as i64],
+            |row| {
+                Ok(ListedMessage {
+                    summary: row_to_summary(row)?,
+                    category: row.get(7)?,
+                    confidence: row.get(8)?,
+                    unread: row.get(9)?,
+                })
+            },
+        )?;
+
+        Ok(MessageWindow {
+            total: total as usize,
+            offset,
+            messages: rows.collect::<rusqlite::Result<Vec<_>>>()?,
+        })
+    }
+
+    /// How many messages fall in each rules category, commonest first.
+    ///
+    /// `DISTINCT` because a message reclassified on a later sync has more than
+    /// one row, and counting those would inflate every category quietly.
+    pub fn category_counts(&self, account_id: AccountId) -> Result<Vec<(String, usize)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT c.category, COUNT(DISTINCT m.id)
+             FROM message m
+             JOIN classification c ON c.message_id = m.id AND c.source = 'rules'
+             WHERE m.account_id = ?1
+             GROUP BY c.category
+             ORDER BY 2 DESC, 1",
+        )?;
+        let rows = stmt.query_map(params![account_id], |row| {
+            Ok((row.get(0)?, row.get::<_, i64>(1)? as usize))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn recent_with_category(
         &self,
         account_id: AccountId,

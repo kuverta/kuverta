@@ -924,3 +924,193 @@ fn excluding_a_folder_is_idempotent_and_reversible() {
     assert!(!store.include_folder(account, "\\All").unwrap());
     assert!(store.folder_exclusions(account).unwrap().is_empty());
 }
+
+/// Five messages, alternating read/unread, with categories on two of them.
+fn store_with_a_list() -> (Store, AccountId) {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+
+    for n in 0..5 {
+        let (id, _) = store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("list-{n}@example.com")),
+                    subject: Some(format!("message {n}")),
+                    from_addr: Some("sender@example.com".into()),
+                    date_utc: Some(1_700_000_000 + n as i64),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: inbox,
+                    uid: n as u32 + 1,
+                    // Even ones have been read.
+                    flags: if n % 2 == 0 {
+                        "\\Seen".into()
+                    } else {
+                        String::new()
+                    },
+                }),
+            )
+            .unwrap();
+
+        if n < 2 {
+            store
+                .record_verdict(
+                    id,
+                    &Verdict {
+                        category: "transactional".into(),
+                        confidence: Some(0.9),
+                        source: ClassifierSource::Rules,
+                        model: None,
+                        latency_ms: None,
+                    },
+                )
+                .unwrap();
+        }
+    }
+    (store, account)
+}
+
+#[test]
+fn a_message_window_pages_newest_first_and_reports_the_total() {
+    // The total has to come back with the window: it is what a virtualized
+    // list sizes its scrollbar against, and a second round trip for it could
+    // disagree with the rows it was meant to describe.
+    let (store, account) = store_with_a_list();
+    let all = ListFilter::default();
+
+    let first = store.message_window(account, 0, 2, &all).unwrap();
+    assert_eq!(first.total, 5);
+    assert_eq!(first.offset, 0);
+    let subjects: Vec<&str> = first
+        .messages
+        .iter()
+        .map(|m| m.summary.subject.as_deref().unwrap())
+        .collect();
+    assert_eq!(subjects, vec!["message 4", "message 3"]);
+
+    let second = store.message_window(account, 2, 2, &all).unwrap();
+    assert_eq!(second.total, 5, "the total does not shrink with the window");
+    let subjects: Vec<&str> = second
+        .messages
+        .iter()
+        .map(|m| m.summary.subject.as_deref().unwrap())
+        .collect();
+    assert_eq!(subjects, vec!["message 2", "message 1"]);
+
+    // Past the end is empty rather than an error, because a list can be
+    // scrolled while a sync is removing rows underneath it.
+    let past = store.message_window(account, 99, 2, &all).unwrap();
+    assert!(past.messages.is_empty());
+    assert_eq!(past.total, 5);
+}
+
+#[test]
+fn the_window_reports_unread_from_the_flags_of_every_copy() {
+    let (store, account) = store_with_a_list();
+    let window = store
+        .message_window(account, 0, 10, &ListFilter::default())
+        .unwrap();
+
+    let unread: Vec<bool> = window.messages.iter().map(|m| m.unread).collect();
+    // Newest first: 4 (read), 3 (unread), 2 (read), 1 (unread), 0 (read).
+    assert_eq!(unread, vec![false, true, false, true, false]);
+}
+
+#[test]
+fn a_message_read_in_one_folder_is_not_unread_because_of_another() {
+    // The Gmail case: one message, several folders. Two answers to "is this
+    // unread" would show as a count that never settles.
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+
+    let (id, _) = store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: "\\Seen".into(),
+            }),
+        )
+        .unwrap();
+    store
+        .upsert_message(
+            account,
+            &newsletter(),
+            Some(&Location {
+                folder_id: archive,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    assert_eq!(store.locations_of(id).unwrap().len(), 2);
+
+    let window = store
+        .message_window(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    assert_eq!(window.total, 1);
+    assert!(
+        !window.messages[0].unread,
+        "read anywhere means read everywhere"
+    );
+}
+
+#[test]
+fn the_window_can_be_narrowed_by_category_and_by_unread() {
+    let (store, account) = store_with_a_list();
+
+    let filed = store
+        .message_window(
+            account,
+            0,
+            10,
+            &ListFilter {
+                category: Some("transactional".into()),
+                unread_only: false,
+            },
+        )
+        .unwrap();
+    assert_eq!(filed.total, 2);
+    assert!(filed
+        .messages
+        .iter()
+        .all(|m| m.category.as_deref() == Some("transactional")));
+
+    let unread = store
+        .message_window(
+            account,
+            0,
+            10,
+            &ListFilter {
+                category: None,
+                unread_only: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(unread.total, 2);
+    assert!(unread.messages.iter().all(|m| m.unread));
+
+    // Filters combine rather than override: message 1 is the only unread one
+    // that was also classified.
+    let both = store
+        .message_window(
+            account,
+            0,
+            10,
+            &ListFilter {
+                category: Some("transactional".into()),
+                unread_only: true,
+            },
+        )
+        .unwrap();
+    assert_eq!(both.total, 1);
+    assert_eq!(
+        both.messages[0].summary.subject.as_deref(),
+        Some("message 1")
+    );
+}
