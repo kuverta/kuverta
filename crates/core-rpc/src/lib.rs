@@ -411,6 +411,54 @@ impl Core {
         )
     }
 
+    /// Files a message under a category, and records the correction.
+    ///
+    /// Not queued, and that is the point rather than an omission: a category
+    /// lives in the store and is never sent to a server, so there is no round
+    /// trip to hold back and nothing for the undo window to protect. Changing
+    /// your mind is another correction, which is what the log wants anyway —
+    /// an event, not an edit.
+    ///
+    /// Two rows are written. The correction is the training data of §3.4, and
+    /// the verdict is what the list reads, recorded as `User` so that the
+    /// rules-versus-model comparison never sees the answers.
+    pub fn set_category(&self, account: AccountId, id: MessageId, category: &str) -> Result<()> {
+        // Validated here rather than trusted: the column is free text, and a
+        // typo would create a bucket the sidebar never offers and the
+        // classifier can never return, holding a message nobody can find.
+        let category = core_rules::Category::parse(category)
+            .ok_or_else(|| RpcError::Rejected(format!("not a category: {category}")))?;
+
+        // Confirms the message is this account's before writing anything about
+        // it — ids are global to the store.
+        self.store
+            .message_by_id(account, id)?
+            .ok_or(RpcError::UnknownMessage(id))?;
+
+        let was = self.store.current_category(id)?;
+        if was.as_deref() == Some(category.as_str()) {
+            // Already filed there. Recording it would put a correction in the
+            // log that corrects nothing, which is noise in the one dataset
+            // being kept deliberately clean.
+            return Ok(());
+        }
+
+        self.store
+            .record_correction(id, was.as_deref(), category.as_str())?;
+        self.store.record_verdict(
+            id,
+            &core_store::model::Verdict {
+                category: category.as_str().to_string(),
+                // Not a probability. The user is not guessing.
+                confidence: Some(1.0),
+                source: core_store::model::ClassifierSource::User,
+                model: None,
+                latency_ms: None,
+            },
+        )?;
+        Ok(())
+    }
+
     /// Cancels the most recent change that has not been sent.
     ///
     /// `Ok(None)` means there was nothing to undo, which is an answer rather

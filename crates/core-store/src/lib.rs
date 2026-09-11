@@ -792,13 +792,7 @@ impl Store {
 
         let from = format!(
             "FROM message m
-             LEFT JOIN classification c
-               ON c.message_id = m.id
-              AND c.source = 'rules'
-              AND c.id = (
-                  SELECT MAX(c2.id) FROM classification c2
-                  WHERE c2.message_id = m.id AND c2.source = 'rules'
-              )
+             {CURRENT_CATEGORY_JOIN}
              WHERE {}",
             clauses.join(" AND ")
         );
@@ -870,19 +864,22 @@ impl Store {
         Ok(folders)
     }
 
-    /// How many messages fall in each rules category, commonest first.
+    /// How many messages fall in each category, commonest first.
     ///
-    /// `DISTINCT` because a message reclassified on a later sync has more than
-    /// one row, and counting those would inflate every category quietly.
+    /// Counts each message once, under the one category it is shown as. The
+    /// join is what makes that true: a message reclassified on a later sync
+    /// has several rows, and joining them all counted it under every category
+    /// it had ever been given — which `DISTINCT` hid within a category but not
+    /// across them.
     pub fn category_counts(&self, account_id: AccountId) -> Result<Vec<(String, usize)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT c.category, COUNT(DISTINCT m.id)
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT c.category, COUNT(m.id)
              FROM message m
-             JOIN classification c ON c.message_id = m.id AND c.source = 'rules'
-             WHERE m.account_id = ?1
+             {CURRENT_CATEGORY_JOIN}
+             WHERE m.account_id = ?1 AND c.category IS NOT NULL
              GROUP BY c.category
-             ORDER BY 2 DESC, 1",
-        )?;
+             ORDER BY 2 DESC, 1"
+        ))?;
         let rows = stmt.query_map(params![account_id], |row| {
             Ok((row.get(0)?, row.get::<_, i64>(1)? as usize))
         })?;
@@ -895,21 +892,15 @@ impl Store {
         account_id: AccountId,
         limit: usize,
     ) -> Result<Vec<CategorizedMessage>> {
-        let mut stmt = self.conn.prepare(
+        let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
                     m.has_attachments, m.snippet, c.category, c.confidence
              FROM message m
-             LEFT JOIN classification c
-               ON c.message_id = m.id
-              AND c.source = 'rules'
-              AND c.id = (
-                  SELECT MAX(c2.id) FROM classification c2
-                  WHERE c2.message_id = m.id AND c2.source = 'rules'
-              )
+             {CURRENT_CATEGORY_JOIN}
              WHERE m.account_id = ?1
              ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
-             LIMIT ?2",
-        )?;
+             LIMIT ?2"
+        ))?;
         let rows = stmt.query_map(params![account_id, limit as i64], |row| {
             Ok(CategorizedMessage {
                 summary: row_to_summary(row)?,
@@ -964,6 +955,26 @@ impl Store {
             ],
         )?;
         Ok(())
+    }
+
+    /// The category a message is currently shown under, if any.
+    ///
+    /// The same preference `CURRENT_CATEGORY_JOIN` applies, expressed for one
+    /// message. Kept beside it so the two cannot drift: a correction recorded
+    /// against a different "before" than the list was showing would make the
+    /// log disagree with what the user saw.
+    pub fn current_category(&self, message_id: MessageId) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT c.category FROM classification c
+                 WHERE c.message_id = ?1 AND c.source IN ('rules', 'user')
+                 ORDER BY (c.source = 'user') DESC, c.id DESC
+                 LIMIT 1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()?)
     }
 
     pub fn record_correction(
@@ -1076,6 +1087,25 @@ pub struct Disagreement {
 ///
 /// Written once because the list, the counts and the filter all have to agree.
 /// Two spellings of this would show as a badge that never matches the rows.
+/// The category a message is *shown* under.
+///
+/// A correction the user made wins; failing that, the most recent rules
+/// verdict. Model verdicts are deliberately not consulted: they are recorded
+/// beside the rules ones so `disagreements` can compare the two, and a model
+/// that started changing what the list shows would take that measurement with
+/// it.
+///
+/// Written once and shared, because three queries have to agree about this and
+/// a fourth — `disagreements` — has to deliberately not.
+const CURRENT_CATEGORY_JOIN: &str = "\
+    LEFT JOIN classification c
+      ON c.id = (
+          SELECT c2.id FROM classification c2
+          WHERE c2.message_id = m.id AND c2.source IN ('rules', 'user')
+          ORDER BY (c2.source = 'user') DESC, c2.id DESC
+          LIMIT 1
+      )";
+
 const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
                                             WHERE ul.message_id = m.id
                                               AND ul.flags LIKE '%\\Seen%')";
