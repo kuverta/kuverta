@@ -23,6 +23,24 @@ import { ACTIONS, Unsupported, describeScope } from './host.js';
 /** How many rows to ask a host for at once. */
 const PAGE_SIZE = 100;
 
+/** How each action reads when a row refuses it. */
+const VERBS = Object.freeze({
+  [ACTIONS.Archive]: 'archived',
+  [ACTIONS.Trash]: 'moved to Trash',
+  [ACTIONS.ToggleRead]: 'marked read',
+  [ACTIONS.SetCategory]: 'filed by category',
+});
+
+/**
+ * Whether a row allows an action.
+ *
+ * A row that says nothing allows whatever its host can do, which keeps every
+ * existing adapter correct without changing a line of it.
+ */
+function allows(row, action) {
+  return !Array.isArray(row.actions) || row.actions.includes(action);
+}
+
 /** The scope shown before anything is chosen. */
 const EVERYTHING = Object.freeze({ kind: 'all', label: 'Everything' });
 
@@ -245,6 +263,11 @@ export class Triage {
     if (action === ACTIONS.Trash && !can.trash) return this.#cannot('move to Trash');
     if (action === ACTIONS.ToggleRead && !can.setRead) return this.#cannot('change read state');
 
+    // The host may be able to do it and this particular row still not allow
+    // it — post in a list of mail. Checked here so the answer is immediate and
+    // specific rather than a round trip that comes back refused.
+    if (!allows(row, action)) return this.#refuses(row, action);
+
     this.#busy = true;
     this.#changed();
     try {
@@ -281,6 +304,7 @@ export class Triage {
     const row = this.selectedRow;
     if (!row) return;
     if (!this.#host.capabilities.setCategory) return this.#cannot('file by category');
+    if (!allows(row, ACTIONS.SetCategory)) return this.#refuses(row, ACTIONS.SetCategory);
 
     try {
       await this.#host.setCategory(row.id, category);
@@ -366,6 +390,12 @@ export class Triage {
 
   #cannot(what) {
     this.#say(`this host cannot ${what}`, 'error');
+  }
+
+  /** This row, specifically, does not allow that. */
+  #refuses(row, action) {
+    const what = VERBS[action] ?? action;
+    this.#say(`${row.subject ? 'this' : 'that'} cannot be ${what} from here`, 'error');
   }
 
   #explain(error) {

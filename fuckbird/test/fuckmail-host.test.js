@@ -97,3 +97,101 @@ test('fuckmail: an unknown command is an error, not a silent null', async () => 
   const invoke = fakeInvoke();
   await assert.rejects(() => invoke('set_flag', {}), /unknown command/);
 });
+
+// -- post, in the same list ------------------------------------------------
+
+test('fuckmail: post appears in the same list as mail, in date order', async () => {
+  // The brief's §4.2 promise, and the reason the shapes were made to match:
+  // documents and mail as one item type in one list.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+
+  const post = rows.filter((row) => row.id.startsWith('paper:'));
+  assert.equal(post.length, 2, 'both documents should be in the list');
+
+  // Interleaved by date rather than appended, which is the whole difference
+  // between one list and two lists drawn on top of each other.
+  const dates = rows.map((row) => row.date);
+  assert.deepEqual(dates, [...dates].sort((a, b) => b - a));
+  assert.ok(
+    rows.findIndex((row) => row.id.startsWith('paper:')) > 0,
+    'post dated between messages should not sort to the top',
+  );
+});
+
+test('fuckmail: a document reads like a message', async () => {
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  const letter = rows.find((row) => row.id.startsWith('paper:'));
+
+  assert.equal(letter.from, 'Stadtwerke München');
+  assert.equal(letter.category, 'transactional');
+  assert.equal(letter.hasAttachments, true, 'a document is its own attachment');
+
+  const opened = await host.message(letter.id);
+  assert.equal(opened.row.id, letter.id);
+  assert.match(opened.body, /Abschlag/);
+});
+
+test('fuckmail: an address can be read on its own', async () => {
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const scopes = await host.scopes();
+  const post = scopes.find((scope) => scope.kind === 'paper');
+
+  assert.ok(post, 'there should be a scope per address');
+  assert.equal(post.label, 'Home (post)');
+
+  const page = await host.page({ scope: post, offset: 0, limit: 50 });
+  assert.equal(page.total, 2);
+  assert.ok(page.rows.every((row) => row.id.startsWith('paper:')));
+});
+
+test('fuckmail: a category scope takes in post as well as mail', async () => {
+  // Both are filed by the same rules, so "everything transactional" should not
+  // care which of them carried it.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const page = await host.page({
+    scope: { kind: 'category', value: 'transactional' },
+    offset: 0,
+    limit: 50,
+  });
+
+  assert.equal(page.rows.length, 2);
+  assert.ok(page.rows.every((row) => row.category === 'transactional'));
+});
+
+test('fuckmail: acting on post is refused rather than quietly doing nothing', async () => {
+  // Paperless owns its documents. Appearing to archive one would be far worse
+  // than saying no.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  const letter = rows.find((row) => row.id.startsWith('paper:'));
+
+  await assert.rejects(() => host.archive(letter.id), /cannot archive post/);
+  await assert.rejects(() => host.trash(letter.id), /cannot move post to Trash/);
+  await assert.rejects(() => host.setRead(letter.id, true), /cannot mark post read/);
+  await assert.rejects(() => host.setCategory(letter.id, 'personal'), /cannot file post/);
+});
+
+test('fuckmail: a Paperless that is down does not take the mail with it', async () => {
+  // Post is an addition, not a prerequisite.
+  const invoke = fakeInvoke();
+  const broken = async (command, args) => {
+    if (command.startsWith('paper_')) throw new Error('connection refused');
+    return invoke(command, args);
+  };
+
+  const host = await new FuckmailHost(broken, account).open();
+  const page = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+
+  assert.ok(page.rows.length > 0, 'the mail should still be readable');
+  assert.ok(!page.rows.some((row) => row.id.startsWith('paper:')));
+});
+
+test('fuckmail: an address with no token is not offered', async () => {
+  // A scope that can only ever fail is worse than one that is not there.
+  const paper = { paperMailboxes: [], documents: [] };
+  const host = await new FuckmailHost(fakeInvoke({ paper }), account).open();
+
+  assert.ok(!(await host.scopes()).some((scope) => scope.kind === 'paper'));
+});
