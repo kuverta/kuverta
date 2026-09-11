@@ -2,7 +2,8 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
-        paperless-up build test test-all lint fmt check e2e app app-real clean
+        paperless-up build test test-all lint fmt check e2e app app-real \
+        fill-mailbox clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -99,6 +100,10 @@ e2e: dev-up build ## Register the dev account in a scratch store, sync it, and s
 	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail queue
 	@FUCKMAIL_DATA_DIR=.devdata ./target/debug/fuckmail undo
 
+
+fill-mailbox: ## Put ~250 varied messages in a test mailbox (HOST= USER= PASS=)
+	@test -n "$(HOST)" || (echo "usage: make fill-mailbox HOST=imap.example.de USER=you@example.de PASS=…" && false)
+	python3 docker/fill-mailbox.py "$(HOST)" "$(USER)" "$(PASS)" $(or $(COUNT),250)
 
 clean: ## Remove build output and the scratch store
 	cargo clean
