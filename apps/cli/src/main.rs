@@ -108,6 +108,23 @@ enum Command {
         #[arg(long)]
         password_env: Option<String>,
     },
+    /// Stop syncing a folder.
+    ///
+    /// Takes a folder name, or an RFC 6154 attribute like '\All'. On Gmail,
+    /// excluding \All (its "All Mail") is the difference between downloading
+    /// your mailbox once and downloading it once per label.
+    Exclude {
+        /// Folder name, or an attribute such as '\All' or '\Junk'.
+        pattern: String,
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Start syncing a folder again. The next sync fetches it.
+    Include {
+        pattern: String,
+        #[arg(long)]
+        email: Option<String>,
+    },
     /// Create a folder on the server.
     ///
     /// Needed on servers that ship without an Archive folder — plain Dovecot
@@ -381,6 +398,12 @@ async fn main() -> Result<()> {
             measure,
             password_env,
         } => check(&store, email.as_deref(), measure, password_env.as_deref()).await,
+        Command::Exclude { pattern, email } => {
+            set_exclusion(&store, email.as_deref(), &pattern, true)
+        }
+        Command::Include { pattern, email } => {
+            set_exclusion(&store, email.as_deref(), &pattern, false)
+        }
         Command::CreateFolder {
             name,
             r#use,
@@ -515,33 +538,57 @@ async fn check(
 
     let folders = client.folders().await?;
     let selectable: Vec<_> = folders.iter().filter(|f| f.selectable).collect();
+    let exclusions = store.folder_exclusions(account.id)?;
     println!("  folders ({})", selectable.len());
 
     let mut total_messages = 0u64;
     let mut total_bytes = 0u64;
+    // What excluding All Mail would save, which is the number that makes the
+    // Gmail trade-off concrete rather than theoretical.
+    let mut all_mail: Option<(String, u64, u64)> = None;
+
     for folder in &selectable {
         let special = folder.special_use.as_deref().unwrap_or("");
-        if measure {
+        let skipped = core_store::folder_is_excluded(
+            &exclusions,
+            &folder.name,
+            folder.special_use.as_deref(),
+        );
+        let marker = if skipped { "  (excluded)" } else { "" };
+
+        let (count, bytes) = if measure {
             client.examine(&folder.name).await?;
             let sizes = client.uid_sizes(1).await?;
             let bytes: u64 = sizes.iter().map(|(_, size)| *size as u64).sum();
-            total_messages += sizes.len() as u64;
-            total_bytes += bytes;
             println!(
-                "    {:<32} {:<10} {:>7} messages  {}",
+                "    {:<32} {:<10} {:>7} messages  {}{marker}",
                 folder.name,
                 special,
                 sizes.len(),
                 human_bytes(bytes)
             );
+            (sizes.len() as u64, bytes)
         } else {
             let state = client.examine(&folder.name).await?;
-            total_messages += state.exists as u64;
             println!(
-                "    {:<32} {:<10} {:>7} messages",
+                "    {:<32} {:<10} {:>7} messages{marker}",
                 folder.name, special, state.exists
             );
+            (state.exists as u64, 0)
+        };
+
+        // Only worth mentioning if there is actually something in it.
+        if special == "\\All" && !skipped && count > 0 {
+            all_mail = Some((folder.name.clone(), count, bytes));
         }
+        if !skipped {
+            total_messages += count;
+            total_bytes += bytes;
+        }
+    }
+
+    if !exclusions.is_empty() {
+        println!("    not synced: {}", exclusions.join(", "));
     }
 
     let pairs: Vec<(&str, Option<&str>)> = selectable
@@ -573,6 +620,26 @@ async fn check(
         );
     } else {
         println!("    {total_messages} messages (pass --measure for the download size)");
+    }
+
+    if let Some((name, count, bytes)) = all_mail {
+        // Gmail's All Mail holds a copy of everything, so a mailbox whose mail
+        // averages two labels is fetched twice over. Dedup keeps one row and
+        // one body; the bytes still cross the wire.
+        println!(
+            "    {name} holds a copy of every message ({count}{}), so most of the above \
+             is downloaded twice.",
+            if measure {
+                format!(", {}", human_bytes(bytes))
+            } else {
+                String::new()
+            }
+        );
+        println!(
+            "    `fuckmail exclude '\\All' --email {}` syncs it once instead — at the cost \
+             that archived mail, which lives only there, drops out of the local store.",
+            account.email
+        );
     }
 
     client.logout().await.ok();
@@ -626,6 +693,39 @@ fn human_bytes(bytes: u64) -> String {
     } else {
         format!("{value:.1} {}", UNITS[unit])
     }
+}
+
+fn set_exclusion(store: &Store, email: Option<&str>, pattern: &str, exclude: bool) -> Result<()> {
+    let account = resolve_account(store, email)?;
+
+    if exclude {
+        if store.exclude_folder(account, pattern)? {
+            println!("{pattern} will no longer be synced");
+            // Saying this once, here, is the difference between a deliberate
+            // trade-off and a surprise later.
+            if pattern.eq_ignore_ascii_case("\\All") {
+                println!(
+                    "  note: archived mail lives only in All Mail, so it will drop out of \
+                     the local store — along with any corrections recorded against it"
+                );
+            }
+            println!("  already-synced messages stay until the next sync drops them");
+        } else {
+            println!("{pattern} was already excluded");
+        }
+    } else if store.include_folder(account, pattern)? {
+        println!("{pattern} will be synced again from the next `fuckmail sync`");
+    } else {
+        println!("{pattern} was not excluded");
+    }
+
+    let remaining = store.folder_exclusions(account)?;
+    if remaining.is_empty() {
+        println!("nothing is excluded");
+    } else {
+        println!("excluded: {}", remaining.join(", "));
+    }
+    Ok(())
 }
 
 async fn create_folder(
@@ -1221,7 +1321,7 @@ async fn sync(
 
         println!(
             "{}: {} folders synced, {} unchanged | {} new, {} deduplicated, \
-             {} flag changes, {} expunged, {} unparseable{}{}",
+             {} flag changes, {} expunged, {} unparseable{}{}{}",
             account.email,
             report.folders_synced,
             report.folders_skipped,
@@ -1232,6 +1332,11 @@ async fn sync(
             report.unparseable,
             if report.deleted > 0 {
                 format!(", {} dropped", report.deleted)
+            } else {
+                String::new()
+            },
+            if report.folders_excluded > 0 {
+                format!(" | {} folder(s) not synced", report.folders_excluded)
             } else {
                 String::new()
             },

@@ -329,6 +329,39 @@ impl Store {
         Ok((id, outcome))
     }
 
+    // -- folder exclusions -------------------------------------------------
+
+    /// Stops a sync touching a folder. Returns false if it was already excluded.
+    pub fn exclude_folder(&self, account_id: AccountId, pattern: &str) -> Result<bool> {
+        let changed = self.conn.execute(
+            "INSERT OR IGNORE INTO folder_exclusion (account_id, pattern, created_at)
+             VALUES (?1, ?2, ?3)",
+            params![account_id, pattern, now()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Undoes [`Self::exclude_folder`]. Returns false if it was not excluded.
+    ///
+    /// The folder's messages are not fetched here; the next sync does that,
+    /// as it would for a folder that had just appeared.
+    pub fn include_folder(&self, account_id: AccountId, pattern: &str) -> Result<bool> {
+        let changed = self.conn.execute(
+            "DELETE FROM folder_exclusion WHERE account_id = ?1 AND pattern = ?2",
+            params![account_id, pattern],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn folder_exclusions(&self, account_id: AccountId) -> Result<Vec<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pattern FROM folder_exclusion WHERE account_id = ?1 ORDER BY pattern",
+        )?;
+        let rows = stmt.query_map(params![account_id], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     // -- the mutation queue ------------------------------------------------
 
     /// Queues a mutation, returning its id.

@@ -176,6 +176,28 @@ CREATE TABLE operation (
 CREATE INDEX operation_due ON operation (account_id, state, execute_after);
 CREATE INDEX operation_by_message ON operation (message_id, state);
 "#,
+    // v5 — folders a sync should leave alone.
+    //
+    // Gmail is the reason. Its `[Gmail]/All Mail` holds a copy of every
+    // message, so a mailbox whose mail averages two labels is fetched twice
+    // over: deduplication keeps one row and one body, but the bytes still
+    // cross the wire. Skipping it is the difference between downloading a
+    // mailbox once and downloading it twice.
+    //
+    // Stored per account rather than per folder because it has to be settable
+    // *before* the first sync — which is exactly when it matters, and before
+    // any folder row exists to hang a flag on. `fuckmail check` prints the
+    // names without syncing anything.
+    r#"
+CREATE TABLE folder_exclusion (
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    -- A folder name, or an RFC 6154 attribute like \All. The attribute form
+    -- survives a provider renaming its folders, and says what is meant.
+    pattern    TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (account_id, pattern)
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

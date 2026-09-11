@@ -35,6 +35,8 @@ pub struct SyncReport {
     /// Messages that ended the sync in no folder at all, and were dropped.
     /// A message that merely moved is not one of these.
     pub deleted: usize,
+    /// Folders the account is configured not to sync.
+    pub folders_excluded: usize,
 }
 
 /// The parts of a sync that do not change between folders.
@@ -79,9 +81,17 @@ pub async fn sync_account(
         classifier: Classifier::new(load_history(store, account_id)?),
     };
 
+    let exclusions = store.folder_exclusions(account_id)?;
+
     for remote in client.folders().await? {
         if !remote.selectable {
             tracing::debug!(folder = %remote.name, "skipping \\Noselect folder");
+            continue;
+        }
+        if core_store::folder_is_excluded(&exclusions, &remote.name, remote.special_use.as_deref())
+        {
+            tracing::debug!(folder = %remote.name, "excluded, not syncing");
+            report.folders_excluded += 1;
             continue;
         }
         sync_folder(client, &ctx, &remote, &mut report).await?;
