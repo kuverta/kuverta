@@ -290,23 +290,10 @@
   position: fixed;
   inset: 0;
   display: grid;
-  align-content: center;
-  justify-content: center;
-  gap: 6px 16px;
-  grid-template-columns: auto auto;
-  padding: 32px;
-  background: color-mix(in srgb, Window 92%, transparent);
+  place-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, Window 75%, transparent);
   z-index: 20;
-}
-
-.fb-help div {
-  display: contents;
-}
-
-.fb-help kbd {
-  font-family: ui-monospace, monospace;
-  text-align: right;
-  color: var(--fb-muted);
 }
 
 .fb-triage [hidden] {
@@ -357,4 +344,90 @@
   border: 0;
   background: none;
   font-size: 12px;
+}
+
+/* -- what this is --------------------------------------------------------- */
+
+.fb-help-panel {
+  max-width: 62ch;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  border: 1px solid var(--fb-line);
+  border-radius: 8px;
+  background: var(--fb-ground);
+  box-shadow: 0 8px 40px rgb(0 0 0 / 25%);
+}
+
+.fb-help-panel h2 {
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+
+.fb-help-panel h2:first-child {
+  margin-top: 0;
+}
+
+.fb-help-panel p {
+  margin: 0 0 8px;
+  color: var(--fb-muted);
+}
+
+/* The six, each with what it means. */
+.fb-meanings {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 10px 0 0;
+}
+
+.fb-meanings dt {
+  white-space: nowrap;
+}
+
+.fb-meanings dd {
+  margin: 0;
+  color: var(--fb-muted);
+}
+
+.fb-keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.fb-keys kbd {
+  justify-self: end;
+}
+
+.fb-help-done {
+  margin-top: 18px;
+}
+
+/* -- why this message is here --------------------------------------------- */
+
+.fb-why {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fb-line);
+}
+
+.fb-why-head {
+  margin-bottom: 8px;
+}
+
+.fb-why p {
+  margin: 0;
+  color: var(--fb-muted);
+}
+
+.fb-why ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fb-muted);
+}
+
+.fb-why li {
+  padding: 1px 0;
 }

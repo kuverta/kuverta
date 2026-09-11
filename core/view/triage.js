@@ -12,10 +12,13 @@
  * 40,000 messages is worse than building it this way now.
  */
 
-import { CATEGORY_LABELS, ALL_CATEGORIES } from '../category.js';
+import { CATEGORY_LABELS, CATEGORY_MEANINGS, ALL_CATEGORIES } from '../category.js';
+import { Classifier } from '../classify.js';
 import { CHEAT_SHEET, INTENT, INTENT_ACTIONS, PRIMARY_KEYS, intentFor, isTyping } from '../keys.js';
 
 const ROW_HEIGHT = 56;
+/** Where "you have been shown the explanation" is remembered. */
+const SEEN_KEY = 'fuckbird.explained';
 /** Rows drawn above and below the visible window, so scrolling is not blank. */
 const OVERSCAN = 6;
 
@@ -41,6 +44,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
   const spacer = el('spacer');
   const content = el('content');
   const reading = el('reading');
+  const why = el('why');
   const empty = el('empty');
   const toast = el('toast');
   const help = el('help');
@@ -85,10 +89,13 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
   scopeOut.addEventListener('click', () => triage.clearScope());
 
   el('helpbtn').addEventListener('click', () => {
-    help.hidden = !help.hidden;
+    if (help.hidden) help.hidden = false;
+    else closeHelp();
   });
-  help.addEventListener('click', () => {
-    help.hidden = true;
+  // Only the backdrop dismisses it. Making the whole overlay dismiss on click
+  // would eat every click meant for the text inside it.
+  help.addEventListener('click', (event) => {
+    if (event.target === help) closeHelp();
   });
 
   search.addEventListener('keydown', (event) => {
@@ -134,7 +141,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
     if (isTyping(event.target)) return;
 
     if (!help.hidden && event.key === 'Escape') {
-      help.hidden = true;
+      closeHelp();
       return;
     }
 
@@ -187,7 +194,8 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
         break;
       case INTENT.Explain:
         event.preventDefault();
-        help.hidden = !help.hidden;
+        if (help.hidden) help.hidden = false;
+        else closeHelp();
         break;
       case INTENT.Compose:
         if (onCompose) {
@@ -303,6 +311,9 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
           const button = document.createElement('button');
           button.className = 'fb-scope';
           button.textContent = scope.label;
+          if (scope.kind === 'category') {
+            button.title = CATEGORY_MEANINGS[scope.value] ?? '';
+          }
           if (scope.count) {
             const count = document.createElement('span');
             count.className = 'fb-count';
@@ -336,6 +347,75 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
     // written by whoever sent it.
     reading.querySelector('.fb-read-body').textContent =
       open.body ?? '(no plain-text body)';
+
+    drawWhy(open);
+  }
+
+  /**
+   * Why this message is where it is.
+   *
+   * The explanation is the point of a rules layer — a verdict you cannot argue
+   * with is one you learn to ignore. The reasons are recomputed here from the
+   * facts the host hands over rather than stored, because they are a pure
+   * function of those facts and a cached explanation can go stale against the
+   * verdict it is explaining.
+   *
+   * A host that cannot supply facts still gets the category and what it means,
+   * which is a weaker answer to the same question rather than no answer.
+   */
+  function drawWhy(open) {
+    const filed = open.row.category ?? null;
+    why.replaceChildren();
+    if (!filed && !open.facts) {
+      why.hidden = true;
+      return;
+    }
+    why.hidden = false;
+
+    const head = document.createElement('div');
+    head.className = 'fb-why-head';
+    const pill = document.createElement('span');
+    pill.className = 'fb-pill';
+    pill.dataset.category = filed ?? 'unknown';
+    pill.textContent = filed ? CATEGORY_LABELS[filed] : 'Not filed';
+    head.append(pill);
+    why.append(head);
+
+    if (!open.facts) {
+      // No facts from this host, so say what the category means and stop.
+      // Guessing at reasons would be worse than admitting to having none.
+      why.append(paragraph(filed ? CATEGORY_MEANINGS[filed] : ''));
+      return;
+    }
+
+    // Deliberately without the corrections history: this is what the rules
+    // alone make of the message, which is the thing worth showing beside a
+    // verdict that may have come from a correction instead.
+    const verdict = Classifier.withoutHistory().classify(open.facts);
+
+    if (filed && verdict.category !== filed) {
+      // The two disagree, which on this path means the filing came from you.
+      why.append(
+        paragraph(
+          `You filed this as ${CATEGORY_LABELS[filed]}. On the headers alone the ` +
+            `rules would have said ${CATEGORY_LABELS[verdict.category]}.`,
+        ),
+      );
+      return;
+    }
+
+    if (verdict.reasons.length === 0) {
+      why.append(paragraph(CATEGORY_MEANINGS[verdict.category]));
+      return;
+    }
+
+    const list = document.createElement('ul');
+    for (const reason of verdict.reasons) {
+      const item = document.createElement('li');
+      item.textContent = reason.detail;
+      list.append(item);
+    }
+    why.append(list);
   }
 
   function drawNotice() {
@@ -365,18 +445,112 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
     );
   }
 
+  /**
+   * What this is, before how to drive it.
+   *
+   * Asked for by the first person to use it, who could work out that the keys
+   * did things and not what the thing was. A list of shortcuts answers the
+   * second question and silently assumes the first has been answered
+   * somewhere — and the only somewhere was a readme in a different repository.
+   */
   function buildHelp() {
-    help.replaceChildren(
-      ...CHEAT_SHEET.map(([keys, what]) => {
-        const line = document.createElement('div');
-        const kbd = document.createElement('kbd');
-        kbd.textContent = keys;
-        const text = document.createElement('span');
-        text.textContent = what;
-        line.append(kbd, text);
-        return line;
-      }),
+    const panel = document.createElement('div');
+    panel.className = 'fb-help-panel';
+
+    panel.append(
+      heading('What this is'),
+      paragraph(
+        'Every message is read for a handful of headers — the mailing list it came ' +
+          'through, whether it offers an unsubscribe link, whether a machine sent it, ' +
+          'what the subject says — and filed under one of six categories. Nothing is ' +
+          'moved and no folder changes: the category is a label, and the list below is ' +
+          'sorted by it rather than by where the mail happens to live.',
+      ),
+      paragraph(
+        'The point is to make a mailbox something you work through rather than read. ' +
+          'Pick a category on the left to see only that, and act on what is under the ' +
+          'cursor without the list jumping around underneath you.',
+      ),
     );
+
+    const table = document.createElement('dl');
+    table.className = 'fb-meanings';
+    for (const category of ALL_CATEGORIES) {
+      const term = document.createElement('dt');
+      const pill = document.createElement('span');
+      pill.className = 'fb-pill';
+      pill.dataset.category = category;
+      pill.textContent = CATEGORY_LABELS[category];
+      term.append(pill);
+
+      const said = document.createElement('dd');
+      said.textContent = CATEGORY_MEANINGS[category];
+      table.append(term, said);
+    }
+    panel.append(table);
+
+    panel.append(
+      heading('When it gets one wrong'),
+      paragraph(
+        'Press 1 to 6 to file a message yourself. That is not just a relabelling: the ' +
+          'sender or the list is remembered, so the next message like it is filed the ' +
+          'same way without being asked. Corrections are the one signal here that is ' +
+          'definitely right, so they override the rules outright.',
+      ),
+      heading('Keys'),
+    );
+
+    const keys = document.createElement('div');
+    keys.className = 'fb-keys';
+    for (const [binding, what] of CHEAT_SHEET) {
+      const kbd = document.createElement('kbd');
+      kbd.textContent = binding;
+      const text = document.createElement('span');
+      text.textContent = what;
+      keys.append(kbd, text);
+    }
+    panel.append(keys);
+
+    const done = document.createElement('button');
+    done.className = 'fb-ghost fb-help-done';
+    done.textContent = 'Got it';
+    done.addEventListener('click', () => closeHelp());
+    panel.append(done);
+
+    help.replaceChildren(panel);
+  }
+
+  function heading(text) {
+    const h = document.createElement('h2');
+    h.textContent = text;
+    return h;
+  }
+
+  function paragraph(text) {
+    const p = document.createElement('p');
+    p.textContent = text;
+    return p;
+  }
+
+  function closeHelp() {
+    help.hidden = true;
+    // Remembered so it explains itself once and then gets out of the way.
+    // Wrapped because storage can be unavailable or full, and failing to
+    // record that the panel was dismissed is not worth taking the surface
+    // down for — it just means it opens again next time.
+    try {
+      localStorage.setItem(SEEN_KEY, '1');
+    } catch {
+      /* not worth caring about */
+    }
+  }
+
+  function seenBefore() {
+    try {
+      return localStorage.getItem(SEEN_KEY) === '1';
+    } catch {
+      return false;
+    }
   }
 }
 
@@ -424,6 +598,7 @@ const LAYOUT = `
       <h2 class="fb-read-subject"></h2>
       <p class="fb-read-meta fb-muted"></p>
       <pre class="fb-read-body"></pre>
+      <aside id="fb-why" class="fb-why" hidden></aside>
     </article>
   </section>
   <footer id="fb-legend" class="fb-legend"></footer>
