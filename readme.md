@@ -146,6 +146,12 @@ written down. That is now the most useful thing that can happen to this code.
 
 **Known gaps.**
 
+- **Per-message reasons only where the host supplies facts.** The reading pane
+  explains why a message was filed where it was by re-running the rules over
+  the headers the host hands back. Thunderbird provides those; `fuckmail`'s
+  `message` command returns a body and no headers, so there it shows the
+  category and what that category means and stops, rather than guessing at
+  reasons it does not have.
 - **No paperclip in the Thunderbird list.** `MessageHeader` carries no
   attachment information, and finding out costs either a round trip per message
   or a second query per scope. The classifier still sees attachments, because
