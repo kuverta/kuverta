@@ -81,6 +81,40 @@ not be cited as one. The reproducible command is:
 python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons
 ```
 
+### Resolved: the corpus was real, and it is still on disk
+
+**Later the same day.** The mailbox behind the brief's figures turned up in
+`fuckmail`'s scratch store, as a second account with exactly 251 messages.
+Running the store's own query over it gives, exactly:
+
+```
+newsletter 77 · transactional 62 · notification 61 · personal 33 · marketing 18
+```
+
+So the brief's number was a correct measurement and not a mis-transcription.
+What it measured was one mailbox: `fill-mailbox.py` output uploaded over IMAP
+by an earlier run, plus one real message from the provider — a
+`no-reply@systemli.org` notice, which is the 251st.
+
+The two-message difference is corpus composition and nothing else. Grouping
+that mailbox by sender and comparing it with `--dump 250`:
+
+| sender | in the brief's mailbox | in `--dump 250` |
+|---|---|---|
+| angebote@mediamarkt | 25 | 27 |
+| sec@news.heise | 21 | 22 |
+| hello@news.rustweekly | 19 | 18 |
+| newsletter@golem | 12 | 12 |
+
+**Every sender is filed under the same category in both.** The classifier
+agrees with itself; a different random draw produced two fewer newsletters and
+two more notifications. Nothing to fix.
+
+What stands from the original entry is the advice, for a clearer reason than it
+gave: the figure describes one particular mailbox, not what the generator
+produces, so it is a fact about that mailbox rather than a baseline to measure
+against. `npm run corpus` is the reproducible one.
+
 ### The weakness the brief names is bigger than it says
 
 §3.2 notes that "bulk marketing carrying `List-Id` and `Precedence: bulk` reads
