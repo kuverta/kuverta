@@ -13,9 +13,9 @@
  * quickest way to find a signal that has stopped matching.
  */
 
-import { Classifier } from '../extension/src/classify.js';
-import { buildFacts } from '../extension/src/facts.js';
-import { ALL_CATEGORIES } from '../extension/src/category.js';
+import { Classifier } from '../core/classify.js';
+import { buildFacts } from '../core/facts.js';
+import { ALL_CATEGORIES } from '../core/category.js';
 
 const showReasons = process.argv.includes('--reasons');
 

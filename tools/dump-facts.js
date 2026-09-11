@@ -7,7 +7,7 @@
  * than raw messages keeps the comparison about the classifier.
  */
 
-import { buildFacts } from '../extension/src/facts.js';
+import { buildFacts } from '../core/facts.js';
 
 let data = '';
 process.stdin.setEncoding('utf8');

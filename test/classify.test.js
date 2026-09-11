@@ -11,9 +11,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { Classifier, Learned } from '../extension/src/classify.js';
-import { Category } from '../extension/src/category.js';
-import { EMPTY_FACTS } from '../extension/src/facts.js';
+import { Classifier, Learned } from '../core/classify.js';
+import { Category } from '../core/category.js';
+import { EMPTY_FACTS } from '../core/facts.js';
 
 /** The Rust tests use `..Default::default()`; this is that. */
 const facts = (overrides) => ({ ...EMPTY_FACTS, ...overrides });

@@ -110,3 +110,101 @@ close.
 Thunderbird 128 and 140 ESR both support MV2. This will have to move, and when
 it does the thing to preserve is that the tests run the same files the add-on
 does.
+
+---
+
+## 4. One core, two hosts, and a contract between them
+
+**2026-09-11.** Not in the brief, and it changes the brief's shape.
+
+The brief assumes a line of succession: `fuckmail` is the thing that exists,
+Thunderbird is the thing to move to, and §7.6 asks what to do with the old repo
+— "archive it as a reference, keep it as the native-messaging backend, or keep
+running it alongside".
+
+There is a fourth answer, and it is better: **neither is the product**. The
+product is the triage surface and the classifier. Both are hosts.
+
+So the layout is:
+
+```
+core/     the classifier, the triage model, the key map, the surface
+          — no Thunderbird, no Tauri, no DOM in the model
+hosts/thunderbird/   an adapter over the MailExtension API
+hosts/fuckmail/      an adapter over the client's Tauri commands
+```
+
+`core/host.js` is the seam. Message ids are opaque, folders are opaque, and
+anything one host can do that the other cannot is **declared** in a
+`capabilities` object rather than sniffed for. A core that starts asking "am I
+in Thunderbird?" has stopped being a core, and `test/wiring.test.js` fails if
+it ever does — it greps for `messenger.`, `__TAURI__` and `browser.` in
+`core/`, and for imports reaching from one host into the other.
+
+**What this buys.** The §7.1 question — does the fork ever happen — stops being
+load-bearing. If it never does, the surface still runs in both. If it does, the
+fork inherits a surface that already works.
+
+**What it costs.** A contract to keep, and the discipline not to reach through
+it. Both are cheaper than two implementations of the same list, which is what
+existed before this: `fuckmail`'s `apps/desktop/ui/app.js` is 1,136 lines and
+most of it is the list, the cursor and the key map written once already.
+
+### The contract is a test, not a document
+
+`test/support/conformance.js` is the host contract as a suite. Three adapters
+run it: Thunderbird against a fake `messenger`, `fuckmail` against a fake
+`invoke`, and an in-memory reference that exists to prove the contract is
+satisfiable at all — a contract no host can pass is a bug in the contract, and
+without a reference there is nothing to notice that with.
+
+Two things the contract caught that a document would not have:
+
+**Message ids do not survive a move.** Thunderbird issues a new id for a moved
+message, and archive and trash are both moves. The first draft of the contract
+required a trashed message to still be readable by its id, which no Thunderbird
+adapter could ever satisfy. The contract now says ids are good until the
+message is acted on, the surface reloads after every action rather than
+patching the row it holds, and the Thunderbird adapter finds a moved message
+again by its `Message-ID` in order to undo — and refuses, out loud, when the
+message has none, because §3.6 says that is legal and moving the wrong message
+back is worse than refusing.
+
+**A capability read too early reads as false.** `fuckmail`'s host has to ask
+which folders are Archive and Trash before it can say whether it can archive.
+The suite read `capabilities` synchronously, got `false`, and silently skipped
+its archive and trash tests — passing, green, testing nothing. The suite now
+awaits the host factory, and every capability gate reports a **skip** with a
+reason rather than a pass, so a capability regression cannot hide as an `ok`.
+
+### The two undos are different promises
+
+`capabilities.undo` is `'queued' | 'compensating' | false`, never `true`.
+
+`fuckmail` queues a change before sending it, so undo **cancels** something
+that never happened — brief §3.5, "a change stays cancellable for as long as it
+is queued". Thunderbird's write paths do not queue, so by the time undo is
+offered the move has happened, another client may have seen it, and undo is a
+second change that **puts it back**. The surface uses those words, in that
+order of strength. Collapsing them into one boolean would have made the weaker
+one look like the stronger.
+
+---
+
+## 5. `fuckmail` cannot file by category, and the surface says so
+
+**2026-09-11.** A gap found by building the adapter.
+
+`core-rpc` registers twenty commands. None of them sets a category: the
+classifier runs during sync and nothing exposes a correction. So the
+`fuckmail` host declares `setCategory: false`, the surface hides the category
+keys there, and three conformance tests report as skipped rather than passing.
+
+This is the capability object earning its keep on the first day it exists. The
+alternative — an adapter that accepts the call and does nothing — is the worst
+outcome available: the key is shown, the user presses it, and nothing happens
+with no way to tell why. The contract has a test for exactly that
+("a capability it does not have is refused, not quietly ignored").
+
+`hosts/fuckmail/readme.md` has the command that closes it. Once it exists, one
+boolean changes here and the keys appear.

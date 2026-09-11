@@ -11,7 +11,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bodyText, hasAttachments } from '../extension/src/messages.js';
+import { bodyText, hasAttachments } from '../hosts/thunderbird/messages.js';
 
 const plain = {
   contentType: 'message/rfc822',

@@ -2,11 +2,12 @@
   "name": "fuckbird",
   "version": "0.1.0",
   "private": true,
-  "description": "A triage-first Thunderbird MailExtension, and eventually a fork.",
+  "description": "A triage-first mail surface that runs as a Thunderbird extension or inside the fuckmail client.",
   "type": "module",
   "scripts": {
     "test": "node --test test/",
-    "package": "cd extension && zip -qr -FS ../fuckbird.xpi . -x '.*' && cd .. && echo 'built fuckbird.xpi'"
+    "package": "rm -f fuckbird.xpi && zip -qr -FS fuckbird.xpi manifest.json core hosts/thunderbird -x '*/.*' && echo 'built fuckbird.xpi'",
+    "corpus": "python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons"
   },
   "engines": {
     "node": ">=18"
