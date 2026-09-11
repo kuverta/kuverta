@@ -4,6 +4,8 @@
 //! parser produced a message, and keeping the boundary plain makes it possible
 //! to construct fixtures in tests without building a MIME document.
 
+use crate::MessageSummary;
+
 pub type AccountId = i64;
 pub type FolderId = i64;
 pub type MessageId = i64;
@@ -350,4 +352,34 @@ pub fn folder_is_excluded(patterns: &[String], name: &str, special_use: Option<&
             name.eq_ignore_ascii_case(pattern)
         }
     })
+}
+
+/// What to narrow the message list to. All-`None` means everything.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ListFilter {
+    /// A rules category, e.g. `"transactional"`.
+    pub category: Option<String>,
+    pub unread_only: bool,
+}
+
+/// A message as the list shows it.
+#[derive(Debug, Clone)]
+pub struct ListedMessage {
+    pub summary: MessageSummary,
+    pub category: Option<String>,
+    pub confidence: Option<f64>,
+    /// True when no copy of this message anywhere carries `\Seen`.
+    pub unread: bool,
+}
+
+/// One window of the list, plus how many rows there are in total.
+///
+/// The total is what a virtualized list sizes its scrollbar against, so it has
+/// to come back with the window rather than from a second round trip that
+/// could disagree with it.
+#[derive(Debug, Clone)]
+pub struct MessageWindow {
+    pub total: usize,
+    pub offset: usize,
+    pub messages: Vec<ListedMessage>,
 }
