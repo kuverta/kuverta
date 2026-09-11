@@ -610,10 +610,13 @@ name = "core-accounts"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.23.1",
+ "getrandom 0.4.3",
  "keyring",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -1310,6 +1313,7 @@ dependencies = [
  "core-proto",
  "core-smtp",
  "core-store",
+ "futures",
  "tokio",
  "tracing",
  "tracing-subscriber",

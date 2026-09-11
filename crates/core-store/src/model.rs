@@ -101,6 +101,9 @@ pub struct NewAccount {
     pub oauth_tenant: Option<String>,
     /// Submission endpoint. `None` leaves the account receive-only.
     pub smtp: Option<SmtpConfig>,
+    /// `"microsoft"` or `"google"`, for `oauth2` accounts. Decides which grant
+    /// the login uses — they are not interchangeable.
+    pub oauth_provider: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +121,8 @@ pub struct Account {
     /// Submission endpoint, when one has been configured. `None` means the
     /// account can receive but not send.
     pub smtp: Option<SmtpConfig>,
+    /// `"microsoft"` or `"google"`, for `oauth2` accounts.
+    pub oauth_provider: Option<String>,
 }
 
 #[derive(Debug, Clone)]

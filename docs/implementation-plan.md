@@ -245,11 +245,23 @@ row and one body, but it cannot give the bytes back. `fuckmail check` measures
 the difference and names the command; excluding costs visibility of archived
 mail, which lives only there, and says so.
 
+That last doubt is now settled, and badly: Google does **not** issue
+`https://mail.google.com/` to the limited-input device grant at all, so the
+RFC 8628 flow built for M365 can never serve Gmail. Gmail takes the RFC 8252
+loopback redirect instead, and that is now implemented — PKCE, a `state` check,
+and a listener bound to `127.0.0.1` and nothing else. It shares its token
+handling with the device flow, so refreshing and rotation behave identically
+and only the first authorisation differs. Four tests drive it against a
+scripted endpoint that plays a conforming authorization server: it records the
+challenge and refuses the exchange unless the verifier hashes to it, which is
+what makes the PKCE test worth having rather than self-confirming.
+
+Decision 4 still holds, and the loopback flow is why: the restricted scope
+needs Google's CASA assessment only for a *published* client. One left in
+testing, with your own address as a test user, sidesteps it.
+
 Still open: the model layer itself (local Ollama, plan section 4), the triage
-UI, IDLE for push, QRESYNC, attachments in compose, and OAuth2 for Gmail —
-app passwords work today but Google is phasing them out during 2026, and the
-device flow already implemented for M365 is probably not the right grant for
-Gmail's restricted scope.
+UI, IDLE for push, QRESYNC, and attachments in compose.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 
