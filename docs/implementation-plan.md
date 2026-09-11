@@ -273,7 +273,30 @@ otherwise reaches. `unread` is derived rather than stored — a message is
 unread when no copy of it anywhere carries `\Seen` — which keeps one answer
 for a message that sits in several folders, as most of them do on Gmail.
 
-Still open: the triage UI itself, the model layer (local Ollama, section 4),
+And the triage window exists. `apps/desktop` is no longer the spike: it opens
+the store, lists messages, filters by rules category and by unread, reads a
+message, and archives, trashes, marks read and undoes — keyboard-first, with
+j/k, e, #, u, z and `/`. Every command in it is a thin wrapper over `core-rpc`,
+which is what keeps the decisions testable: which copy of a message to archive
+and what to draw for a missing subject are answered in the core, not in
+JavaScript.
+
+The list fetches windows of 200 and recycles a fixed pool of DOM nodes, so the
+node count tracks the viewport rather than the mailbox — the same virtualizer
+the spike validated, with the data source changed from "all of it in memory" to
+"the pages actually on screen".
+
+The spike itself is gone, and its result stands: the numbers are in
+[spike-tauri-list.md](spike-tauri-list.md) and the code is in the history.
+`make spike` is now `make app`.
+
+Syncing is still the CLI's job. The window reads the local store and queues
+changes into it, so it never waits on a network and a sync running alongside is
+just rows appearing. Moving that orchestration behind `core-rpc` — which means
+auth, IMAP and SMTP behind one facade, as the section 2 diagram has it — is the
+next piece.
+
+Still open: sync from the window, the model layer (local Ollama, section 4),
 IDLE for push, QRESYNC, and attachments in compose.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.

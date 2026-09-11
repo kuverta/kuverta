@@ -2,7 +2,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
-        paperless-up build test test-all lint fmt check e2e spike spike-window clean
+        paperless-up build test test-all lint fmt check e2e app app-real clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -55,15 +55,16 @@ check: ## What CI runs
 	$(MAKE) lint
 	$(MAKE) test-all
 
-## -- spikes ----------------------------------------------------------------
+## -- the app ---------------------------------------------------------------
 
-# --release matters: a debug build triples the measured IPC cost, which is the
-# one number this spike exists to find out.
-spike: ## Tauri virtualized-list risk test; prints frame timings and a verdict
+# --release matters for the list: a debug build triples the cost of moving rows
+# across the Rust/JS bridge, which is the one thing the spike found to be tight.
+# See docs/spike-tauri-list.md.
+app: ## Open the triage window on the scratch store
 	cargo build --release -p fuckmail-desktop
-	FUCKMAIL_SPIKE_AUTOEXIT=1 ./target/release/fuckmail-desktop
+	FUCKMAIL_DATA_DIR=.devdata ./target/release/fuckmail-desktop
 
-spike-window: ## Same, but leave the window open to scroll by hand
+app-real: ## Open it on the real data directory
 	cargo build --release -p fuckmail-desktop
 	./target/release/fuckmail-desktop
 

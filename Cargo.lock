@@ -696,6 +696,7 @@ name = "core-rpc"
 version = "0.1.0"
 dependencies = [
  "core-store",
+ "mail-parser",
  "serde",
  "thiserror 2.0.20",
  "tracing",
@@ -1334,6 +1335,8 @@ name = "fuckmail-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "core-proto",
+ "core-rpc",
  "core-store",
  "serde",
  "serde_json",

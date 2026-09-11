@@ -12,6 +12,8 @@ path = "src/main.rs"
 
 [dependencies]
 core-store.workspace = true
+core-rpc.workspace = true
+core-proto.workspace = true
 
 tauri = "2.11.5"
 serde.workspace = true
