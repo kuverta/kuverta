@@ -43,10 +43,12 @@ enum Command {
         #[arg(long)]
         email: String,
     },
-    /// Authorise an OAuth2 account via the device flow.
+    /// Authorise an OAuth2 account.
     ///
-    /// Prints a short code and a URL; the account is usable once you have
-    /// entered the code there. Only the refresh token is kept, in the keychain.
+    /// Microsoft takes the device flow — a short code and a URL to enter it at.
+    /// Google cannot: it does not issue the mail scope to that grant, so it
+    /// gets a browser redirect back to this process instead. Either way only
+    /// the refresh token is kept, in the keychain.
     Login {
         #[arg(long)]
         email: String,
