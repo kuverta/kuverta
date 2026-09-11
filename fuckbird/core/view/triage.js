@@ -53,6 +53,8 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
 
   /** Reused row elements. Rebuilt only when the window is resized. */
   let pool = [];
+  /** The sidebar's scopes, kept so the panel can quote this mailbox's own numbers. */
+  let scopes = [];
   let firstRendered = -1;
   let lastNotice = 0;
 
@@ -305,7 +307,12 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
   }
 
   function drawSidebar() {
-    triage.host.scopes().then((scopes) => {
+    triage.host.scopes().then((loaded) => {
+      scopes = loaded;
+      // Rebuilt now that there are real counts to put in it. "33 of these were
+      // written by a person" says what this is for; a paragraph about
+      // categories only says what it does.
+      buildHelp();
       sidebar.replaceChildren(
         ...scopes.map((scope) => {
           const button = document.createElement('button');
@@ -458,19 +465,39 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
     panel.className = 'fb-help-panel';
 
     panel.append(
-      heading('What this is'),
+      heading('What this is for'),
       paragraph(
-        'Every message is read for a handful of headers — the mailing list it came ' +
-          'through, whether it offers an unsubscribe link, whether a machine sent it, ' +
-          'what the subject says — and filed under one of six categories. Nothing is ' +
-          'moved and no folder changes: the category is a label, and the list below is ' +
-          'sorted by it rather than by where the mail happens to live.',
+        'Most of a mailbox was not written to you. Newsletters, receipts, alerts and ' +
+          'adverts arrive in the same list as the handful of messages that actually ' +
+          'need an answer, and in an inbox they all look equally like work.',
+      ),
+    );
+
+    // The mailbox's own numbers, when the host can count. Far more convincing
+    // than the sentence above, and it is the same point.
+    const split = mailboxSplit();
+    if (split) {
+      panel.append(
+        paragraph(
+          `In this mailbox: ${split.personal} of ${split.total} messages were written ` +
+            `by a person. The other ${split.rest} were not.`,
+        ),
+      );
+    }
+
+    panel.append(
+      paragraph(
+        'Triage sorts that out before you look. Each message is filed under one of six ' +
+          'categories, so you can deal with a whole kind at once — read the newsletters ' +
+          'when you want to read, do the invoices when you are doing money, and answer ' +
+          'the few messages a person actually sent you. That is the point: a mailbox ' +
+          'you work through rather than one you read.',
       ),
       paragraph(
-        'The point is to make a mailbox something you work through rather than read. ' +
-          'Pick a category on the left to see only that, and act on what is under the ' +
-          'cursor without the list jumping around underneath you.',
+        'Nothing is moved and no folder changes. The category is a label, and the list ' +
+          'is sorted by it instead of by whichever folder the mail happened to land in.',
       ),
+      heading('The six'),
     );
 
     const table = document.createElement('dl');
@@ -495,7 +522,9 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
         'Press 1 to 6 to file a message yourself. That is not just a relabelling: the ' +
           'sender or the list is remembered, so the next message like it is filed the ' +
           'same way without being asked. Corrections are the one signal here that is ' +
-          'definitely right, so they override the rules outright.',
+          'definitely right, so they override the rules outright — and the reading pane ' +
+          'shows why anything was filed where it was, so a wrong answer is arguable ' +
+          'rather than just annoying.',
       ),
       heading('Keys'),
     );
@@ -518,6 +547,26 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
     panel.append(done);
 
     help.replaceChildren(panel);
+  }
+
+  /**
+   * How much of this mailbox was written by a person.
+   *
+   * Null when the host cannot count cheaply — Thunderbird's scopes carry no
+   * totals — in which case the panel makes the point in words alone rather
+   * than inventing a number.
+   */
+  function mailboxSplit() {
+    const counted = scopes.filter(
+      (scope) => scope.kind === 'category' && typeof scope.count === 'number',
+    );
+    if (counted.length === 0) return null;
+
+    const total = counted.reduce((sum, scope) => sum + scope.count, 0);
+    if (total === 0) return null;
+
+    const personal = counted.find((scope) => scope.value === 'personal')?.count ?? 0;
+    return { personal, total, rest: total - personal };
   }
 
   function heading(text) {

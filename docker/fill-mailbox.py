@@ -1,9 +1,18 @@
 """Fill a test mailbox with enough varied mail to exercise the list.
 
+    fill-mailbox.py 127.0.0.1:10143 dev@fuckmail.test devpass 250 --plain
+    fill-mailbox.py --dump 250 > corpus.jsonl
+
+
 APPEND rather than SMTP: it puts the same messages in the same INBOX, but lets
 each one carry its own Date and INTERNALDATE, so the list has a realistic
 spread to sort and format instead of a few hundred messages all timestamped
 now. Nothing is sent: the messages are appended straight into the mailbox.
+
+With `--dump`, the same messages are written to stdout as JSON instead of
+being appended anywhere. That is what lets the classifier be measured on the
+exact corpus the Rust one was measured on, without an IMAP server in the way:
+the generator is seeded, so the sequence is the same either way.
 
 Deliberately varied, because the point is to exercise things that fixtures
 cannot: both languages the classifier knows, every category it has, HTML-only
@@ -11,19 +20,41 @@ bodies, attachments, long subjects, unicode, a threaded conversation, and
 enough volume that the windowed list has to fetch a second page.
 """
 
+import email
+import email.header
 import email.utils
+import html as html_module
 import imaplib
+import re
+import json
 import random
 import sys
 import time
 from datetime import datetime, timedelta, timezone
 
-if len(sys.argv) < 4:
-    sys.exit("usage: fill-mailbox.py <imap-host> <user> <password> [count]\n"
-             "       the password is an argument so it never lands in a file")
+ARGV = [a for a in sys.argv[1:] if a != "--plain"]
+PLAIN = "--plain" in sys.argv[1:]
+DUMP = ARGV[:1] == ["--dump"]
 
-HOST, USER, PASSWORD = sys.argv[1], sys.argv[2], sys.argv[3]
-COUNT = int(sys.argv[4]) if len(sys.argv) > 4 else 250
+if DUMP:
+    # No server, no credentials: just the messages, as JSON on stdout.
+    HOST, PORT, PASSWORD = None, None, None
+    USER = "you@example.com"
+    COUNT = int(ARGV[1]) if len(ARGV) > 1 else 250
+elif len(ARGV) >= 3:
+    # `host` may carry a port: the dev Dovecot is on 10143 without TLS, and
+    # without this the script could only ever talk to a real provider — which
+    # made "works against any IMAP server" untrue in the one case that matters
+    # during development.
+    HOST, _, port = ARGV[0].partition(":")
+    PORT = int(port) if port else (143 if PLAIN else 993)
+    USER, PASSWORD = ARGV[1], ARGV[2]
+    COUNT = int(ARGV[3]) if len(ARGV) > 3 else 250
+else:
+    sys.exit("usage: fill-mailbox.py <host[:port]> <user> <password> [count] [--plain]\n"
+             "       fill-mailbox.py --dump [count] > corpus.jsonl\n"
+             "       the password is an argument so it never lands in a file\n"
+             "       --plain for a server without TLS, such as the dev stack")
 
 random.seed(20260911)  # reproducible, so a re-run is comparable
 
@@ -222,12 +253,14 @@ def build(n, when):
     return rfc822(when, headers, body)
 
 
-def main():
-    imap = imaplib.IMAP4_SSL(HOST, 993)
-    imap.login(USER, PASSWORD)
+def generate():
+    """Yields (when, raw, seen) for each message, in the seeded order.
 
+    Both modes consume this, so `--dump` sees exactly the mail `fill` appends.
+    Every draw below is part of that sequence — moving one changes the whole
+    corpus, which is the point of seeding it.
+    """
     now = datetime.now(timezone.utc)
-    appended = 0
     for n in range(COUNT):
         # Spread over roughly seven months, densest recently — which is what a
         # real inbox looks like and what makes the relative dates worth having.
@@ -239,8 +272,88 @@ def main():
 
         # Most older mail has been read; recent mail mostly has not.
         seen = random.random() < (0.15 if days_ago < 7 else 0.85)
-        flags = "(\\Seen)" if seen else None
+        yield when, raw, seen
 
+
+def body_text(message):
+    """The text a classifier would read, HTML flattened if that is all there is.
+
+    Stands in for `mail-parser`'s `body_text`, which is what produced the
+    snippets the Rust classifier scored. Crude on purpose: it exists to make
+    the two runs comparable, not to render mail.
+    """
+    plain, markup = None, None
+    for part in message.walk():
+        if part.get_content_maintype() == "multipart":
+            continue
+        if part.get_filename():
+            continue
+        try:
+            text = part.get_payload(decode=True).decode(
+                part.get_content_charset() or "utf-8", "replace")
+        except (AttributeError, LookupError):
+            continue
+        if part.get_content_type() == "text/plain" and plain is None:
+            plain = text
+        elif part.get_content_type() == "text/html" and markup is None:
+            markup = text
+    if plain is not None:
+        return plain
+    if markup is None:
+        return None
+    stripped = re.sub(r"<[^>]+>", " ", markup)
+    return html_module.unescape(stripped)
+
+
+def decoded(value):
+    """Header value as a plain string, RFC 2047 words folded out."""
+    if value is None:
+        return None
+    return str(email.header.make_header(email.header.decode_header(str(value))))
+
+
+def facts(raw):
+    """The headers the classifier reads, shaped the way the extension sees them.
+
+    Parsed twice on purpose. Headers come from the text form, because the
+    generator writes 8-bit UTF-8 straight into them as plenty of real senders
+    do, and the bytes parser replaces those characters before they can be
+    recovered. Bodies come from the bytes form, because that is the one that
+    decodes transfer encodings against the declared charset. Thunderbird gives
+    an extension the result of both steps.
+    """
+    headers_from = email.message_from_string(raw.decode("utf-8", "replace"))
+    body_from = email.message_from_bytes(raw)
+
+    headers = {}
+    for name, value in headers_from.items():
+        headers.setdefault(name.lower(), []).append(decoded(value))
+
+    return {
+        "subject": decoded(headers_from["Subject"]),
+        "author": decoded(headers_from["From"]),
+        "recipients": [a for _, a in email.utils.getaddresses(headers_from.get_all("To", []))],
+        "ccList": [a for _, a in email.utils.getaddresses(headers_from.get_all("Cc", []))],
+        "headers": headers,
+        "hasAttachments": any(part.get_filename() for part in body_from.walk()),
+        "bodyText": body_text(body_from),
+    }
+
+
+def dump():
+    for _, raw, _ in generate():
+        print(json.dumps(facts(raw), ensure_ascii=False))
+
+
+def fill():
+    # Plaintext only where it was asked for: defaulting to it would make a
+    # typo enough to send a real password over the wire in clear.
+    imap = imaplib.IMAP4(HOST, PORT) if PLAIN else imaplib.IMAP4_SSL(HOST, PORT)
+    imap.login(USER, PASSWORD)
+
+    appended = 0
+    for when, raw, seen in generate():
+        flags = "(\\Seen)" if seen else None
         imap.append("INBOX", flags, imaplib.Time2Internaldate(when.timestamp()), raw)
         appended += 1
         if appended % 50 == 0:
@@ -253,4 +366,4 @@ def main():
     imap.logout()
 
 
-main()
+dump() if DUMP else fill()

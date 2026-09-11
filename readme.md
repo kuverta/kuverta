@@ -63,15 +63,46 @@ rendering, and the Paperless half.
 
 ## Quick start
 
+One command, if the scratch store already has mail in it:
+
+```sh
+make triage     # copy the surface in, build, open the window
+```
+
+Then click **triage** in the window's header. It opens on `.devdata`, a
+gitignored scratch store that is not your real mail.
+
+To fill that store from nothing, you need Docker running:
+
 ```sh
 make dev-up     # Dovecot with nine fixture messages, an SMTP sink, a Gmail shape
 make e2e        # register the dev account, sync it, send one, show the result
-./run.sh --dev  # open the window on that scratch store
+make triage     # open the window
 ```
 
-Expected: **9 fixtures, 8 messages, 9 locations.** The newsletter appears in
-both INBOX and Archive under one Message-ID and must collapse to a single
-message. If that number is 9, dedup has regressed.
+Expected after `make e2e`: **9 fixtures, 8 messages, 9 locations.** The
+newsletter appears in both INBOX and Archive under one Message-ID and must
+collapse to a single message. If that number is 9, dedup has regressed.
+
+Nine messages is enough to check that sync works and nowhere near enough to
+feel like a mailbox — which is what triage needs in order to be worth looking
+at. For that:
+
+```sh
+make fill-dev   # ~250 varied messages into the dev mailbox, then sync them
+```
+
+Both languages, every category the classifier knows, HTML-only marketing,
+attachments, a threaded conversation, and dates spread over seven months so the
+list has something realistic to sort.
+
+Other useful commands:
+
+```sh
+make help       # every target, with a line each
+make test       # both test suites: Rust, then the triage surface
+./run.sh --help # what the window's options do
+```
 
 ## Using it on a real account
 
