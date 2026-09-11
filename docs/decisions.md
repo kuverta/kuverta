@@ -441,3 +441,65 @@ it was found by writing one and asking what the old mount was still holding.
 The first user test bought a design fix, and the design fix bought a data-loss
 bug — neither of which any of the 181 tests was going to raise, because none of
 them can open a window.
+
+---
+
+## 9. The surface has to say what it is for, not just how to drive it
+
+**2026-09-11.** The second thing the first user said.
+
+Once the keys were on screen: *"I think it's working, but it should be
+explained what triage is actually doing."*
+
+Which is a different complaint from the first one and a better one. §8 fixed
+*how to drive it*. This is *what it is* — six words down the side that nobody
+had defined, a list sorted by something the window never named, and no
+indication anywhere that pressing `1` teaches it something rather than just
+relabelling one message.
+
+The explanation existed. It was in a readme, in a different repository, which
+is the one place the question never gets asked.
+
+### What the panel says
+
+Shown the first time the surface opens, and on `?` afterwards. Three things,
+in this order:
+
+1. **What it does** — every message is read for a handful of headers and filed
+   under one of six categories; nothing moves, no folder changes, the category
+   is a label and the list is sorted by it rather than by where mail happens to
+   live.
+2. **What the six mean**, each in a line. `CATEGORY_MEANINGS` now sits beside
+   the doc comments in `core/category.js`: the comments explain the taxonomy to
+   whoever reads the source, and these explain it in the window, which is where
+   it is actually asked.
+3. **That correcting it teaches it** — that `1`–`6` remembers the sender or the
+   list, so the next message like it is filed the same way unasked. This is the
+   part with no other way of being discovered: nothing about pressing a key
+   suggests the key has a memory.
+
+`localStorage` remembers that it has been seen, wrapped in try/catch both ways
+— storage can be unavailable or full, and failing to record a dismissal is not
+worth taking the surface down for. It just means the panel opens again.
+
+### And the per-message half, which the brief already asked for
+
+§3.2 says the rules layer earns its keep by being able to say *why*, "which is
+what makes a wrong answer correctable instead of infuriating". The Thunderbird
+message-header popup did that from the first commit. The shared triage surface
+did not do it at all — the one place you would actually be looking when you
+disagreed with a verdict.
+
+The reading pane now carries it: the category, and the signals that produced
+it. The reasons are recomputed from the facts the host hands back rather than
+stored, because they are a pure function of those facts and a cached
+explanation can go stale against the verdict it explains.
+
+It is deliberately computed **without** the corrections history, so that when
+the filed category and the rules disagree the surface can say so: *"You filed
+this as Transactional. On the headers alone the rules would have said
+Marketing."* That sentence is only available because the two were kept apart.
+
+Where a host cannot supply facts — `fuckmail`'s `message` command returns a
+body and no headers — it shows the category and what that category means, and
+stops. A weaker answer to the same question beats inventing reasons.
