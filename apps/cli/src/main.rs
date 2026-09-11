@@ -10,10 +10,11 @@ use std::path::PathBuf;
 use anyhow::{bail, Context, Result};
 use chrono::{Local, TimeZone};
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use core_accounts::loopback::{LoopbackConfig, OAuth2Loopback};
-use core_accounts::oauth::{OAuth2Config, OAuth2Device};
-use core_accounts::{AuthProvider, EnvPassword, KeychainPassword};
+use core_accounts::loopback::OAuth2Loopback;
+use core_accounts::oauth::OAuth2Device;
+use core_accounts::{AuthProvider, KeychainPassword};
 use core_proto::{ImapClient, ImapConfig};
+use core_rpc::session::{google_client_secret, google_config, microsoft_config, provider_for};
 use core_smtp::{Draft, Mailbox, ReplyMode, ReplySource};
 use core_store::model::{
     ImapSecurity, NewAccount, NewOperation, OperationKind, SmtpConfig, SmtpSecurity,
@@ -409,7 +410,7 @@ async fn main() -> Result<()> {
         Command::Sync {
             email,
             password_env,
-        } => sync(&store, &blobs, email.as_deref(), password_env.as_deref()).await,
+        } => sync(&store, &data_dir, email.as_deref(), password_env.as_deref()).await,
         Command::List { email, limit } => list_messages(&store, email.as_deref(), limit),
         Command::Search {
             query,
@@ -1186,78 +1187,6 @@ fn set_password(email: &str) -> Result<()> {
     Ok(())
 }
 
-/// Builds the auth provider an account is configured for.
-fn provider_for(
-    account: &core_store::model::Account,
-    password_env: Option<&str>,
-) -> Result<Box<dyn AuthProvider>> {
-    // The override exists for the dev server and CI, where reading the keychain
-    // would raise a GUI prompt and block.
-    if let Some(var) = password_env {
-        return Ok(Box::new(EnvPassword::new(var)));
-    }
-
-    match account.auth_method.as_str() {
-        "oauth2" if is_google(account) => {
-            Ok(Box::new(OAuth2Loopback::new(google_config(account)?)))
-        }
-        "oauth2" => Ok(Box::new(OAuth2Device::new(oauth_config(account)?))),
-        _ => Ok(Box::new(KeychainPassword::new(&account.email))),
-    }
-}
-
-fn is_google(account: &core_store::model::Account) -> bool {
-    account.oauth_provider.as_deref() == Some("google")
-}
-
-/// Where Google's client secret lives.
-///
-/// The keychain, like everything else: RFC 8252 is clear it is not really a
-/// secret for an installed app, but it is still a credential and the rule in
-/// this project is that credentials never touch a config file. It has to
-/// persist because Google wants it on the refresh grant too, not just at login.
-fn google_client_secret(email: &str) -> KeychainPassword {
-    KeychainPassword::new(format!("{email} (google oauth client secret)"))
-}
-
-fn google_config(account: &core_store::model::Account) -> Result<LoopbackConfig> {
-    let client_id = account
-        .oauth_client_id
-        .as_deref()
-        .with_context(|| format!("account {} has no OAuth client id", account.email))?;
-
-    // Absent is not an error here: a client configured without one still works
-    // if Google accepts the exchange on PKCE alone, and saying so at the point
-    // of failure is more useful than refusing up front.
-    let secret = futures_lite_block(google_client_secret(&account.email));
-
-    Ok(LoopbackConfig::google(&account.username, client_id, secret))
-}
-
-/// Reads a keychain entry without an async context.
-///
-/// `KeychainPassword::credential` is async because the trait is; the keychain
-/// itself is not, so there is nothing to await on.
-fn futures_lite_block(entry: KeychainPassword) -> Option<String> {
-    match futures::executor::block_on(entry.credential()) {
-        Ok(core_accounts::Credential::Password(secret)) => Some(secret),
-        _ => None,
-    }
-}
-
-fn oauth_config(account: &core_store::model::Account) -> Result<OAuth2Config> {
-    let client_id = account
-        .oauth_client_id
-        .as_deref()
-        .with_context(|| format!("account {} has no OAuth client id", account.email))?;
-    let tenant = account.oauth_tenant.as_deref().unwrap_or("common");
-    Ok(OAuth2Config::microsoft(
-        &account.username,
-        client_id,
-        tenant,
-    ))
-}
-
 async fn login(store: &Store, email: &str, client_secret: Option<String>) -> Result<()> {
     let account = store
         .account_by_email(email)?
@@ -1271,7 +1200,7 @@ async fn login(store: &Store, email: &str, client_secret: Option<String>) -> Res
         );
     }
 
-    if is_google(&account) {
+    if account.oauth_provider.as_deref() == Some("google") {
         if let Some(secret) = client_secret {
             google_client_secret(email).store(&secret)?;
         }
@@ -1294,7 +1223,7 @@ async fn login(store: &Store, email: &str, client_secret: Option<String>) -> Res
             })
             .await?;
     } else {
-        let device = OAuth2Device::new(oauth_config(&account)?);
+        let device = OAuth2Device::new(microsoft_config(&account)?);
 
         println!("Waiting for authorization…");
         device
@@ -1319,7 +1248,12 @@ fn logout(store: &Store, email: &str) -> Result<()> {
     let account = store
         .account_by_email(email)?
         .with_context(|| format!("no account {email}"))?;
-    OAuth2Device::new(oauth_config(&account)?).logout()?;
+    // Whichever grant it used, the refresh token is in the same place.
+    if account.oauth_provider.as_deref() == Some("google") {
+        OAuth2Loopback::new(google_config(&account)?).logout()?;
+    } else {
+        OAuth2Device::new(microsoft_config(&account)?).logout()?;
+    }
     println!("forgot the stored login for {email}");
     Ok(())
 }
@@ -1347,106 +1281,89 @@ fn list_accounts(store: &Store) -> Result<()> {
 
 async fn sync(
     store: &Store,
-    blobs: &Blobs,
+    data_dir: &std::path::Path,
     email: Option<&str>,
     password_env: Option<&str>,
 ) -> Result<()> {
-    let accounts = match email {
-        Some(email) => vec![store
-            .account_by_email(email)?
-            .with_context(|| format!("no account {email}"))?],
-        None => store.accounts()?,
-    };
+    // The orchestration lives in `core-rpc` so the window runs the same code
+    // rather than a second copy of it that drifts.
+    let session =
+        core_rpc::Session::new(data_dir).with_password_env(password_env.map(str::to_string));
 
-    if accounts.is_empty() {
+    let emails: Vec<String> = match email {
+        Some(email) => vec![
+            store
+                .account_by_email(email)?
+                .with_context(|| format!("no account {email}"))?
+                .email,
+        ],
+        None => store.accounts()?.into_iter().map(|a| a.email).collect(),
+    };
+    if emails.is_empty() {
         bail!("no accounts registered; start with `fuckmail add-account`");
     }
 
-    for account in accounts {
-        let auth = provider_for(&account, password_env)?;
+    for email in emails {
+        tracing::info!(%email, "connecting");
+        let summary = session.sync_account(&email).await?;
+        report_sync(&summary);
+    }
+    Ok(())
+}
 
-        let config = ImapConfig {
-            host: account.imap_host.clone(),
-            port: account.imap_port,
-            security: account.imap_security.clone(),
-            username: account.username.clone(),
-        };
-
-        tracing::info!(email = %account.email, "connecting");
-        let mut client = ImapClient::connect(&config, auth.as_ref())
-            .await
-            .with_context(|| format!("connecting to {}", account.imap_host))?;
-
-        // Queued changes go out first, so the reconciliation pass below sees
-        // their results and the user gets one command rather than two.
-        let flushed =
-            core_proto::flush_operations(&mut client, store, account.id, now_utc()).await?;
-        if !flushed.is_empty() {
-            println!(
-                "{}: {} change(s) sent{}{}{}",
-                account.email,
-                flushed.applied,
-                if flushed.obsolete > 0 {
-                    format!(", {} no longer applied", flushed.obsolete)
-                } else {
-                    String::new()
-                },
-                if flushed.conflicted > 0 {
-                    format!(", {} refused (see `fuckmail queue`)", flushed.conflicted)
-                } else {
-                    String::new()
-                },
-                if flushed.retryable > 0 {
-                    format!(", {} will be retried", flushed.retryable)
-                } else {
-                    String::new()
-                },
-            );
-        }
-        if flushed.non_atomic_moves > 0 {
-            eprintln!(
-                "warning: {} move(s) left a copy behind — this server supports neither \
-                 MOVE nor UIDPLUS",
-                flushed.non_atomic_moves
-            );
-        }
-
-        let report = core_proto::sync_account(&mut client, store, blobs, account.id).await?;
-        client.logout().await.ok();
-
+fn report_sync(s: &core_rpc::SyncSummary) {
+    let changes = s.changes_sent + s.changes_obsolete + s.changes_refused + s.changes_retryable;
+    if changes > 0 {
         println!(
-            "{}: {} folders synced, {} unchanged | {} new, {} deduplicated, \
-             {} flag changes, {} expunged, {} unparseable{}{}{}",
-            account.email,
-            report.folders_synced,
-            report.folders_skipped,
-            report.inserted,
-            report.deduplicated,
-            report.flag_updates,
-            report.expunged,
-            report.unparseable,
-            if report.deleted > 0 {
-                format!(", {} dropped", report.deleted)
-            } else {
-                String::new()
-            },
-            if report.folders_excluded > 0 {
-                format!(" | {} folder(s) not synced", report.folders_excluded)
-            } else {
-                String::new()
-            },
-            if report.invalidated > 0 {
-                format!(
-                    ", {} folders rebuilt after UIDVALIDITY change",
-                    report.invalidated
-                )
-            } else {
-                String::new()
-            },
+            "{}: {} change(s) sent{}{}{}",
+            s.email,
+            s.changes_sent,
+            option(s.changes_obsolete, "no longer applied"),
+            option(s.changes_refused, "refused (see `fuckmail queue`)"),
+            option(s.changes_retryable, "will be retried"),
+        );
+    }
+    if s.non_atomic_moves > 0 {
+        eprintln!(
+            "warning: {} move(s) left a copy behind — this server supports neither \
+             MOVE nor UIDPLUS",
+            s.non_atomic_moves
         );
     }
 
-    Ok(())
+    println!(
+        "{}: {} folders synced, {} unchanged | {} new, {} deduplicated, \
+         {} flag changes, {} expunged, {} unparseable{}{}",
+        s.email,
+        s.folders_synced,
+        s.folders_skipped,
+        s.inserted,
+        s.deduplicated,
+        s.flag_updates,
+        s.expunged,
+        s.unparseable,
+        option(s.deleted, "dropped"),
+        if s.folders_excluded > 0 {
+            format!(" | {} folder(s) not synced", s.folders_excluded)
+        } else {
+            String::new()
+        },
+    );
+    if s.invalidated > 0 {
+        println!(
+            "  {} folder(s) rebuilt after a UIDVALIDITY change",
+            s.invalidated
+        );
+    }
+}
+
+/// `", 3 dropped"`, or nothing at all when the count is zero.
+fn option(count: usize, label: &str) -> String {
+    if count > 0 {
+        format!(", {count} {label}")
+    } else {
+        String::new()
+    }
 }
 
 fn list_messages(store: &Store, email: Option<&str>, limit: usize) -> Result<()> {

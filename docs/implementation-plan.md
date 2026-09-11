@@ -290,14 +290,28 @@ The spike itself is gone, and its result stands: the numbers are in
 [spike-tauri-list.md](spike-tauri-list.md) and the code is in the history.
 `make spike` is now `make app`.
 
-Syncing is still the CLI's job. The window reads the local store and queues
-changes into it, so it never waits on a network and a sync running alongside is
-just rows appearing. Moving that orchestration behind `core-rpc` — which means
-auth, IMAP and SMTP behind one facade, as the section 2 diagram has it — is the
-next piece.
+Sync moved behind `core-rpc` too, which is the facade the section 2 diagram
+draws. `Session` assembles the auth provider an account is configured for,
+sends the queued changes, then runs the sync pass — in that order, because the
+pass is what makes the changes visible by observing the server rather than by
+guessing what it did. The CLI and the window now run that same code instead of
+two copies that drift; `r` syncs from the window.
 
-Still open: sync from the window, the model layer (local Ollama, section 4),
-IDLE for push, QRESYNC, and attachments in compose.
+A sync opens a connection of its own rather than borrowing the one the list is
+served from. It runs for as long as the network takes, and a lock held across
+that is a frozen window. SQLite is in WAL mode, so one writer and any number of
+readers coexist — there is a test that reads fifty times while a sync runs, and
+the real window stays responsive while the CLI syncs the same store underneath
+it.
+
+It also runs on a thread of its own, which is not a performance choice: a sync
+holds its `Store` across every await and `rusqlite`'s connection is `Send` but
+not `Sync`, so the future is not `Send` either — which is what Tauri's async
+commands require. Giving it one thread it never leaves satisfies that without
+pretending the store is something it is not.
+
+Still open: the model layer (local Ollama, section 4), compose from the window,
+IDLE for push, QRESYNC, and attachments.
 
 **Month 5 and month 8 are the real milestones.** Everything before month 5 is scaffolding; if motivation is going to fail, it fails in months 2–3, so keep those two months as short and concrete as possible.
 

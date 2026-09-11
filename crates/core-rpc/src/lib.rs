@@ -19,6 +19,10 @@
 //! single thing that would undo the 59.8 fps it otherwise reaches. See
 //! docs/spike-tauri-list.md.
 
+pub mod session;
+
+pub use session::{Session, SyncSummary};
+
 use std::path::Path;
 
 use core_store::model::{
@@ -40,6 +44,12 @@ pub enum RpcError {
 
     #[error("{0}")]
     Rejected(String),
+
+    #[error("network: {0}")]
+    Network(String),
+
+    #[error("credentials: {0}")]
+    Auth(String),
 }
 
 pub type Result<T> = std::result::Result<T, RpcError>;

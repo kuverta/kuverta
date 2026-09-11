@@ -12,9 +12,9 @@
 //! is plenty for a screenful and nowhere near enough for 200k rows; see
 //! docs/spike-tauri-list.md.
 //!
-//! Syncing is still the CLI's job. Everything here reads the local store and
-//! queues changes into it, so the app never waits on a network and a sync
-//! running alongside is just rows appearing.
+//! Reads and queued changes go through the store and never touch a network,
+//! so the window never blocks on one. Syncing does, and runs on its own
+//! thread with its own connection — see [`sync`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -28,7 +28,14 @@ use tauri::State;
 /// `rusqlite`'s connection is `Send` but not `Sync`, so the one store this app
 /// owns is behind a lock. At personal-mailbox scale every query here is well
 /// under a frame, so there is nothing to gain from a pool.
-struct App(Mutex<Core>);
+struct App {
+    core: Mutex<Core>,
+    /// A sync opens a connection of its own rather than borrowing the one
+    /// behind the lock: it runs for as long as the network takes, and a lock
+    /// held across that is a frozen window. SQLite is in WAL mode, so the list
+    /// goes on being served from the other connection while this one writes.
+    data_dir: PathBuf,
+}
 
 /// Tauri needs a serialisable error; `RpcError` is not one.
 ///
@@ -40,7 +47,7 @@ fn fail(err: impl std::fmt::Display) -> String {
 
 #[tauri::command]
 fn accounts(app: State<'_, App>) -> Result<Vec<AccountView>, String> {
-    app.0.lock().unwrap().accounts().map_err(fail)
+    app.core.lock().unwrap().accounts().map_err(fail)
 }
 
 #[tauri::command]
@@ -56,7 +63,7 @@ fn messages(
         category,
         unread_only,
     };
-    app.0
+    app.core
         .lock()
         .unwrap()
         .messages(account, offset, limit, &filter)
@@ -65,7 +72,7 @@ fn messages(
 
 #[tauri::command]
 fn message(app: State<'_, App>, account: i64, id: i64) -> Result<MessageDetail, String> {
-    app.0.lock().unwrap().message(account, id).map_err(fail)
+    app.core.lock().unwrap().message(account, id).map_err(fail)
 }
 
 #[tauri::command]
@@ -75,7 +82,7 @@ fn search(
     query: String,
     limit: usize,
 ) -> Result<Vec<MessageRow>, String> {
-    app.0
+    app.core
         .lock()
         .unwrap()
         .search(account, &query, limit)
@@ -84,12 +91,16 @@ fn search(
 
 #[tauri::command]
 fn category_counts(app: State<'_, App>, account: i64) -> Result<Vec<(String, usize)>, String> {
-    app.0.lock().unwrap().category_counts(account).map_err(fail)
+    app.core
+        .lock()
+        .unwrap()
+        .category_counts(account)
+        .map_err(fail)
 }
 
 #[tauri::command]
 fn move_to(app: State<'_, App>, account: i64, id: i64, target: String) -> Result<i64, String> {
-    app.0
+    app.core
         .lock()
         .unwrap()
         .move_to(account, id, &target, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
@@ -98,7 +109,7 @@ fn move_to(app: State<'_, App>, account: i64, id: i64, target: String) -> Result
 
 #[tauri::command]
 fn set_read(app: State<'_, App>, account: i64, id: i64, read: bool) -> Result<i64, String> {
-    app.0
+    app.core
         .lock()
         .unwrap()
         .set_read(account, id, read, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
@@ -107,19 +118,51 @@ fn set_read(app: State<'_, App>, account: i64, id: i64, read: bool) -> Result<i6
 
 #[tauri::command]
 fn undo(app: State<'_, App>, account: i64) -> Result<Option<QueuedChange>, String> {
-    app.0.lock().unwrap().undo(account).map_err(fail)
+    app.core.lock().unwrap().undo(account).map_err(fail)
 }
 
 #[tauri::command]
 fn queue(app: State<'_, App>, account: i64) -> Result<Vec<QueuedChange>, String> {
-    app.0.lock().unwrap().queue(account).map_err(fail)
+    app.core.lock().unwrap().queue(account).map_err(fail)
+}
+
+/// Sends queued changes and brings the mailbox up to date.
+///
+/// Holds no lock while it runs, so the window stays usable and rows appear as
+/// the pass writes them.
+///
+/// It runs on a thread of its own, which is not a performance choice. A sync
+/// holds its `Store` across every await, and `rusqlite`'s connection is `Send`
+/// but not `Sync`, so `&Store` is not `Send` and the future is not either —
+/// which is what Tauri's async commands require, because they are spawned onto
+/// a work-stealing runtime that may move them mid-poll. Giving the future one
+/// thread it never leaves satisfies that without making the store something it
+/// is not.
+#[tauri::command]
+async fn sync(app: State<'_, App>, email: String) -> Result<core_rpc::SyncSummary, String> {
+    let data_dir = app.data_dir.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(fail)?;
+        runtime.block_on(async {
+            core_rpc::Session::new(data_dir)
+                .sync_account(&email)
+                .await
+                .map_err(fail)
+        })
+    })
+    .await
+    .map_err(|err| format!("the sync thread did not finish: {err}"))?
 }
 
 /// Where Archive and Trash are for this account, resolved from what sync
 /// recorded rather than guessed in JavaScript.
 #[tauri::command]
 fn special_folders(app: State<'_, App>, account: i64) -> Result<SpecialFolders, String> {
-    let core = app.0.lock().unwrap();
+    let core = app.core.lock().unwrap();
     let folders = core.store().folders(account).map_err(fail)?;
     let pairs: Vec<(&str, Option<&str>)> = folders
         .iter()
@@ -174,7 +217,10 @@ fn main() {
     tracing::info!(dir = %data_dir.display(), "opened store");
 
     tauri::Builder::default()
-        .manage(App(Mutex::new(core)))
+        .manage(App {
+            core: Mutex::new(core),
+            data_dir,
+        })
         .invoke_handler(tauri::generate_handler![
             accounts,
             messages,
@@ -185,6 +231,7 @@ fn main() {
             set_read,
             undo,
             queue,
+            sync,
             special_folders,
         ])
         .run(tauri::generate_context!())

@@ -695,10 +695,13 @@ dependencies = [
 name = "core-rpc"
 version = "0.1.0"
 dependencies = [
+ "core-accounts",
+ "core-proto",
  "core-store",
  "mail-parser",
  "serde",
  "thiserror 2.0.20",
+ "tokio",
  "tracing",
 ]
 
@@ -1322,6 +1325,7 @@ dependencies = [
  "clap",
  "core-accounts",
  "core-proto",
+ "core-rpc",
  "core-smtp",
  "core-store",
  "futures",
@@ -1342,6 +1346,7 @@ dependencies = [
  "serde_json",
  "tauri",
  "tauri-build",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
