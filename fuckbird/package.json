@@ -1,0 +1,15 @@
+{
+  "name": "fuckbird",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A triage-first mail surface that runs as a Thunderbird extension or inside the fuckmail client.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "package": "rm -f fuckbird.xpi && zip -qr -FS fuckbird.xpi manifest.json core hosts/thunderbird -x '*/.*' && echo 'built fuckbird.xpi'",
+    "corpus": "python3 tools/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
