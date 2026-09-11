@@ -11,11 +11,11 @@
  * cannot go back for.
  */
 
-import { Classifier } from './src/classify.js';
-import { Corrections } from './src/corrections.js';
-import { factsForMessage, eachMessage } from './src/messages.js';
-import { ensureTags, applyCategory, currentCategory } from './src/tags.js';
-import { ALL_CATEGORIES, CATEGORY_LABELS, parseCategory } from './src/category.js';
+import { Classifier } from '../../core/classify.js';
+import { Corrections } from '../../core/corrections.js';
+import { factsForMessage, eachMessage } from './messages.js';
+import { ensureTags, applyCategory, currentCategory } from './tags.js';
+import { ALL_CATEGORIES, CATEGORY_LABELS, parseCategory } from '../../core/category.js';
 
 const corrections = new Corrections(messenger.storage.local);
 
@@ -149,9 +149,38 @@ async function buildMenus() {
     title: 'fuckbird: classify this folder',
     contexts: ['folder_pane'],
   });
+
+  messenger.menus.create({
+    id: 'fuckbird-open-triage',
+    title: 'fuckbird: open triage',
+    contexts: ['folder_pane', 'message_list'],
+  });
 }
 
+/**
+ * Opens the triage tab, or focuses it if it is already open.
+ *
+ * One tab, not one per click: the surface holds a cursor and a scope, and a
+ * second copy of it would quietly diverge from the first.
+ */
+async function openTriage() {
+  const url = messenger.runtime.getURL('hosts/thunderbird/ui/triage.html');
+  const [existing] = await messenger.tabs.query({ url });
+  if (existing) {
+    await messenger.tabs.update(existing.id, { active: true });
+    return;
+  }
+  await messenger.tabs.create({ url });
+}
+
+messenger.browserAction.onClicked.addListener(openTriage);
+
 messenger.menus.onClicked.addListener(async (info) => {
+  if (info.menuItemId === 'fuckbird-open-triage') {
+    await openTriage();
+    return;
+  }
+
   if (info.menuItemId === 'fuckbird-classify-folder') {
     const folder = info.selectedFolder ?? info.displayedFolder;
     if (folder) await backfillFolder(folder);

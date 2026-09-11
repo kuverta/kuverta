@@ -6,7 +6,7 @@
  * popup would drift the moment a correction landed.
  */
 
-import { ALL_CATEGORIES, CATEGORY_LABELS } from '../src/category.js';
+import { ALL_CATEGORIES, CATEGORY_LABELS } from '../../../core/category.js';
 
 const categoryEl = document.getElementById('category');
 const confidenceEl = document.getElementById('confidence');

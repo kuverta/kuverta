@@ -17,8 +17,8 @@ import {
   currentCategory,
   ensureTags,
   tagKeyFor,
-} from '../extension/src/tags.js';
-import { ALL_CATEGORIES, Category } from '../extension/src/category.js';
+} from '../hosts/thunderbird/tags.js';
+import { ALL_CATEGORIES, Category } from '../core/category.js';
 
 /** Just enough `messenger` to exercise the tag paths. */
 function fakeMessenger({ tags = [], messageTags = [] } = {}) {
