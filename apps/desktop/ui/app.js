@@ -785,12 +785,20 @@ const KEYS = {
   z: undo,
   r: sync,
   c: () => openCompose(),
+  ",": openSettings,
   R: () => openCompose({ replyAll: false }),
   A: () => openCompose({ replyAll: true }),
   f: () => openCompose({ forward: true }),
 };
 
 document.addEventListener("keydown", async (event) => {
+  // The settings sheet is a form: every key belongs to whatever field has
+  // focus, and none of them are triage shortcuts.
+  if (!settings.sheet.hidden) {
+    if (event.key === "Escape") await closeSettings();
+    return;
+  }
+
   // While composing, the keys belong to the fields — otherwise typing "e"
   // into a subject line would archive something.
   if (compose.pane.contains(event.target)) {
@@ -846,7 +854,10 @@ content.addEventListener("click", (event) => {
 async function start() {
   const accounts = await invoke("accounts");
   if (!accounts.length) {
-    statusBar.textContent = "no accounts — run `fuckmail add-account` first";
+    // Nothing to show and nowhere to go but settings, so go there.
+    statusBar.textContent = "no accounts yet";
+    buildPool();
+    await openSettings();
     return;
   }
 
@@ -861,3 +872,263 @@ async function start() {
 start().catch((err) => {
   statusBar.textContent = `failed to start: ${err}`;
 });
+
+// -- settings ---------------------------------------------------------------
+
+const settings = {
+  sheet: el("settings"),
+  list: el("settings-list"),
+  form: el("settings-form"),
+  report: el("settings-report"),
+  passwordState: el("password-state"),
+  oauthFields: el("oauth-fields"),
+  passwordFields: el("password-fields"),
+  // Which account the form is editing. Null means a new one.
+  editing: null,
+  accounts: [],
+};
+
+/// Sensible defaults for a brand-new account.
+///
+/// 993 and 465 because implicit TLS is what a modern provider offers, and a
+/// form that opens on the right answer is one fewer thing to get wrong.
+const NEW_ACCOUNT = {
+  id: null,
+  label: "",
+  email: "",
+  username: "",
+  imap_host: "",
+  imap_port: 993,
+  imap_security: "tls",
+  smtp_host: "",
+  smtp_port: 465,
+  smtp_security: "tls",
+  auth_method: "app_password",
+  oauth_provider: "microsoft",
+  oauth_client_id: "",
+  oauth_tenant: "",
+  has_password: false,
+  excluded_folders: [],
+};
+
+function formFields() {
+  return Object.fromEntries(new FormData(settings.form).entries());
+}
+
+function fillForm(account) {
+  settings.editing = account.id;
+  const f = settings.form;
+  f.label.value = account.label ?? "";
+  f.email.value = account.email ?? "";
+  f.username.value = account.username ?? "";
+  f.imap_host.value = account.imap_host ?? "";
+  f.imap_port.value = account.imap_port ?? 993;
+  f.imap_security.value = account.imap_security ?? "tls";
+  f.smtp_host.value = account.smtp_host ?? "";
+  f.smtp_port.value = account.smtp_port ?? "";
+  f.smtp_security.value = account.smtp_security ?? "tls";
+  f.auth_method.value = account.auth_method ?? "app_password";
+  f.oauth_provider.value = account.oauth_provider ?? "microsoft";
+  f.oauth_client_id.value = account.oauth_client_id ?? "";
+  f.oauth_tenant.value = account.oauth_tenant ?? "";
+  f.excluded_folders.value = (account.excluded_folders ?? []).join("\n");
+  f.password.value = "";
+
+  // The field never shows a password, so it has to say whether there is one.
+  settings.passwordState.textContent = account.has_password
+    ? "A password is stored in the keychain."
+    : "No password stored yet.";
+
+  el("settings-delete").hidden = account.id === null;
+  settings.report.hidden = true;
+  syncAuthFields();
+  renderSettingsList();
+}
+
+/// OAuth2 and app passwords need different fields, and showing both invites
+/// filling in the wrong one.
+function syncAuthFields() {
+  const oauth = settings.form.auth_method.value === "oauth2";
+  settings.oauthFields.hidden = !oauth;
+  settings.passwordFields.hidden = oauth;
+}
+
+function renderSettingsList() {
+  settings.list.textContent = "";
+  for (const account of settings.accounts) {
+    settings.list.append(
+      navItem({
+        label: account.email,
+        active: account.id === settings.editing,
+        onClick: () => fillForm(account),
+      }),
+    );
+  }
+  if (settings.editing === null) {
+    settings.list.append(
+      navItem({ label: "New account…", active: true, onClick: () => {} }),
+    );
+  }
+}
+
+async function openSettings() {
+  settings.accounts = await invoke("account_settings");
+  settings.sheet.hidden = false;
+  fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
+}
+
+async function closeSettings() {
+  settings.sheet.hidden = true;
+  // Accounts may have come or gone, so the window reloads rather than trusting
+  // what it had before.
+  state.accounts = await invoke("accounts");
+  if (!state.accounts.length) {
+    statusBar.textContent = "no accounts — add one in settings";
+    return;
+  }
+  const still = state.accounts.find((a) => a.id === state.account);
+  await selectAccount(still ?? state.accounts[0]);
+}
+
+/// The form's state, as the core wants it.
+function accountInput() {
+  const f = formFields();
+  const smtpHost = f.smtp_host.trim();
+  return {
+    id: settings.editing,
+    label: f.label.trim(),
+    email: f.email.trim(),
+    username: f.username.trim() || null,
+    imap_host: f.imap_host.trim(),
+    imap_port: Number(f.imap_port),
+    imap_security: f.imap_security,
+    smtp_host: smtpHost || null,
+    smtp_port: smtpHost ? Number(f.smtp_port) : null,
+    smtp_security: smtpHost ? f.smtp_security : null,
+    auth_method: f.auth_method,
+    oauth_provider: f.auth_method === "oauth2" ? f.oauth_provider : null,
+    oauth_client_id: f.auth_method === "oauth2" ? f.oauth_client_id.trim() || null : null,
+    oauth_tenant: f.auth_method === "oauth2" ? f.oauth_tenant.trim() || null : null,
+    excluded_folders: f.excluded_folders
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean),
+  };
+}
+
+settings.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const input = accountInput();
+  const password = formFields().password;
+
+  try {
+    const id = await invoke("save_account", { input });
+
+    // After the row, so a password is never stored for an account that failed
+    // to save — which would leave a credential with nothing to use it.
+    if (password) {
+      await invoke("set_password", { email: input.email, password });
+    }
+
+    settings.accounts = await invoke("account_settings");
+    fillForm(settings.accounts.find((a) => a.id === id) ?? NEW_ACCOUNT);
+    say("saved");
+  } catch (err) {
+    say(String(err), true);
+  }
+});
+
+el("settings-add").onclick = () => fillForm(NEW_ACCOUNT);
+el("settings-close").onclick = closeSettings;
+settings.form.auth_method.addEventListener("change", syncAuthFields);
+
+el("settings-delete").onclick = async () => {
+  const account = settings.accounts.find((a) => a.id === settings.editing);
+  if (!account) return;
+  // Removing an account throws away its mail as well as its settings, and
+  // there is no undo for that, so it asks.
+  if (!confirm(`Remove ${account.email} and everything synced for it?`)) return;
+
+  try {
+    await invoke("delete_account", { id: account.id });
+    settings.accounts = await invoke("account_settings");
+    fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
+    say(`removed ${account.email}`);
+  } catch (err) {
+    say(String(err), true);
+  }
+};
+
+el("settings-verify").onclick = async () => {
+  const button = el("settings-verify");
+  const input = accountInput();
+  if (!input.email) {
+    say("enter an email address first", true);
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Verifying…";
+  settings.report.hidden = false;
+  settings.report.textContent = "Connecting…";
+
+  try {
+    // Saved first, because verifying asks the core to connect to an account —
+    // and an account it cannot see is one it cannot test.
+    const id = await invoke("save_account", { input });
+    const password = formFields().password;
+    if (password) await invoke("set_password", { email: input.email, password });
+
+    const report = await invoke("verify_account", { email: input.email });
+    settings.report.textContent = describeReport(report);
+    settings.accounts = await invoke("account_settings");
+    settings.editing = id;
+    renderSettingsList();
+  } catch (err) {
+    settings.report.textContent = String(err);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Verify";
+  }
+};
+
+/// The report as text. Deliberately the same shape as `fuckmail check`, so
+/// the two do not have to be learned separately.
+function describeReport(r) {
+  const lines = [];
+  lines.push(`IMAP  ${r.imap_target}`);
+  lines.push(r.imap_ok ? "      connected and logged in" : `      FAILED — ${r.imap_error}`);
+
+  if (r.imap_ok) {
+    lines.push(`      ${r.extensions.map(([n, on]) => `${n} ${on ? "yes" : "no"}`).join("  ")}`);
+    lines.push("");
+    lines.push(`folders (${r.folders.length})`);
+    for (const f of r.folders) {
+      const use = f.special_use ?? "";
+      const skip = f.excluded ? "  (not synced)" : "";
+      lines.push(`  ${f.name.padEnd(30)} ${use.padEnd(10)} ${String(f.messages).padStart(6)}${skip}`);
+    }
+    lines.push("");
+    lines.push("where mail will go");
+    lines.push(`  sent      ${r.sent_folder ?? "(none found)"}`);
+    lines.push(`  archived  ${r.archive_folder ?? "(none found)"}`);
+    lines.push(`  deleted   ${r.trash_folder ?? "(none found)"}`);
+    lines.push("");
+    lines.push(`first sync would fetch ${r.total_messages} message(s)`);
+  }
+
+  if (r.smtp_target) {
+    lines.push("");
+    lines.push(`SMTP  ${r.smtp_target}`);
+    lines.push(r.smtp_ok ? "      connected and authenticated" : `      FAILED — ${r.smtp_error}`);
+  } else {
+    lines.push("");
+    lines.push("SMTP  not configured — this account cannot send");
+  }
+
+  for (const warning of r.warnings) {
+    lines.push("");
+    lines.push(`note: ${warning}`);
+  }
+  return lines.join("\n");
+}

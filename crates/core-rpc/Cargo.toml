@@ -8,6 +8,7 @@ publish.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
+serde_json.workspace = true
 
 [dependencies]
 core-store.workspace = true
