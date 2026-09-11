@@ -184,7 +184,7 @@ async fn send(
             .map_err(fail)?;
         runtime.block_on(async {
             core_rpc::Session::new(data_dir)
-                .send(&email, &draft)
+                .send(&email, &draft, true)
                 .await
                 .map_err(fail)
         })

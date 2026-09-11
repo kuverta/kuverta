@@ -201,6 +201,10 @@ impl Core {
         &self.store
     }
 
+    pub fn blobs(&self) -> &Blobs {
+        &self.blobs
+    }
+
     pub fn accounts(&self) -> Result<Vec<AccountView>> {
         Ok(self
             .store

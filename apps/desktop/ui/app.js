@@ -479,8 +479,10 @@ async function openSelected() {
     ]
       .filter(Boolean)
       .join("  ·  ");
-    el("reading-body").textContent =
-      detail.body_text ?? "(no plain-text body — HTML rendering is not built yet)";
+    // HTML mail arrives already rendered to text, so an empty body really
+    // means an empty body — an attachment-only message, or one whose stored
+    // copy has gone.
+    el("reading-body").textContent = detail.body_text ?? "(no readable body)";
   } catch (err) {
     say(`could not open: ${err}`, true);
   }

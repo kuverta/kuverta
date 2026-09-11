@@ -421,8 +421,18 @@ impl Session {
         })
     }
 
-    /// Sends a message and files a copy in Sent.
-    pub async fn send(&self, email: &str, input: &DraftInput) -> Result<SentSummary> {
+    /// Sends a message, and files a copy in Sent unless told not to.
+    ///
+    /// `file_in_sent` is a parameter rather than a field on the draft because
+    /// it is not part of the message — it is what to do afterwards, and the
+    /// only sane default is "yes". A `bool` field that deserialised to `false`
+    /// when omitted would silently stop filing anything.
+    pub async fn send(
+        &self,
+        email: &str,
+        input: &DraftInput,
+        file_in_sent: bool,
+    ) -> Result<SentSummary> {
         let (store, blobs) = self.open()?;
         let account = store
             .account_by_email(email)?
@@ -455,11 +465,13 @@ impl Session {
             filing_error: None,
         };
 
-        match file_in_sent(&account, auth.as_ref(), &built.rfc822).await {
-            Ok(folder) => summary.filed_in = Some(folder),
-            Err(err) => {
-                tracing::warn!(%err, "sent, but could not file a copy in Sent");
-                summary.filing_error = Some(err.to_string());
+        if file_in_sent {
+            match file_copy_in_sent(&account, auth.as_ref(), &built.rfc822).await {
+                Ok(folder) => summary.filed_in = Some(folder),
+                Err(err) => {
+                    tracing::warn!(%err, "sent, but could not file a copy in Sent");
+                    summary.filing_error = Some(err.to_string());
+                }
             }
         }
         Ok(summary)
@@ -565,7 +577,11 @@ fn reply_source(
 }
 
 /// Files the sent copy, returning the folder it went to.
-async fn file_in_sent(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) -> Result<String> {
+async fn file_copy_in_sent(
+    account: &Account,
+    auth: &dyn AuthProvider,
+    raw: &[u8],
+) -> Result<String> {
     let config = core_proto::ImapConfig {
         host: account.imap_host.clone(),
         port: account.imap_port,

@@ -1033,17 +1033,17 @@ async fn send(store: &Store, data_dir: &std::path::Path, args: SendArgs) -> Resu
         return Ok(());
     }
 
-    let sent = session.send(&account.email, &input).await?;
+    let sent = session
+        .send(&account.email, &input, !args.no_save_to_sent)
+        .await?;
     println!(
         "sent to {} recipient(s) as <{}>",
         sent.recipients.len(),
         sent.message_id
     );
     match (&sent.filed_in, &sent.filing_error) {
-        (Some(folder), _) if !args.no_save_to_sent => println!("filed a copy in {folder}"),
-        (_, Some(err)) if !args.no_save_to_sent => {
-            eprintln!("warning: sent, but could not file a copy in Sent: {err}")
-        }
+        (Some(folder), _) => println!("filed a copy in {folder}"),
+        (_, Some(err)) => eprintln!("warning: sent, but could not file a copy in Sent: {err}"),
         _ => {}
     }
     Ok(())
