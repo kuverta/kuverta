@@ -93,7 +93,23 @@ export function buildFacts({
  * occurrence is the one that counts.
  */
 export function firstHeader(headers, name) {
-  const value = headers?.[name] ?? headers?.[name.toLowerCase()];
+  if (headers == null) return null;
+
+  // Looked up case-insensitively rather than assuming a spelling. Thunderbird
+  // lowercases these keys in practice, but the API only promises "the header
+  // name as key" — and a header that is there under `List-Id` while this asks
+  // for `list-id` does not fail loudly, it just silently turns off a signal.
+  let value = headers[name];
+  if (value === undefined) {
+    const wanted = name.toLowerCase();
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === wanted) {
+        value = headers[key];
+        break;
+      }
+    }
+  }
+
   if (value == null) return null;
   const first = Array.isArray(value) ? value[0] : value;
   return blankToNull(typeof first === 'string' ? first.trim() : null);
