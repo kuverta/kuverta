@@ -10,6 +10,12 @@
     <strong>fuckmail</strong>
     <span id="status">starting…</span>
     <input id="search" type="search" placeholder="/ to search" spellcheck="false">
+    <!--
+      The shared triage surface, which this app and the Thunderbird extension
+      both mount over their own adapter. Installed by `make triage-ui`, so the
+      link is dead until that has been run — see docs or the fuckbird repo.
+    -->
+    <a id="triage-link" href="fuckbird/hosts/fuckmail/ui/triage.html">triage</a>
   </header>
 
   <!-- Accounts, their folders, and the classifier's categories. The one place
