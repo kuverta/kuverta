@@ -12,37 +12,53 @@
     <input id="search" type="search" placeholder="/ to search" spellcheck="false">
   </header>
 
-  <nav id="filters"></nav>
+  <!-- Accounts, their folders, and the classifier's categories. The one place
+       navigation happens; the list only ever shows what is selected here. -->
+  <aside id="sidebar">
+    <div id="accounts"></div>
+    <nav id="folders"></nav>
+    <div class="sidebar-heading">Categories</div>
+    <nav id="categories"></nav>
+  </aside>
 
-  <!-- The scroll container. `spacer` gives it the full scrollable height while
-       only a screenful of rows exists in the DOM; `content` is translated to
-       meet the scroll offset. -->
-  <div id="viewport">
-    <div id="spacer"></div>
-    <div id="content"></div>
-  </div>
-
-  <section id="reading" hidden>
-    <h2 id="reading-subject"></h2>
-    <p id="reading-meta"></p>
-    <pre id="reading-body"></pre>
+  <!-- The message list. Scrolls on its own, beside the reading pane rather
+       than above it. -->
+  <section id="list">
+    <div id="scope"></div>
+    <div id="viewport">
+      <!-- `spacer` gives the scroller the full height of the mailbox while
+           only a screenful of rows exists in the DOM; `content` is translated
+           to meet the scroll offset. -->
+      <div id="spacer"></div>
+      <div id="content"></div>
+    </div>
   </section>
 
-  <section id="compose" hidden>
-    <div class="compose-head">
-      <strong id="compose-what">New message</strong>
-      <span id="compose-envelope"></span>
-    </div>
-    <input id="compose-to" placeholder="to — comma separated" spellcheck="false">
-    <input id="compose-cc" placeholder="cc" spellcheck="false">
-    <input id="compose-bcc" placeholder="bcc (never appears in the message)" spellcheck="false">
-    <input id="compose-subject" placeholder="subject">
-    <textarea id="compose-body" rows="10" spellcheck="false"></textarea>
-    <div class="compose-actions">
-      <button id="compose-send">Send</button>
-      <button id="compose-cancel">Cancel</button>
-      <span class="hint">ctrl/cmd+enter sends · escape cancels</span>
-    </div>
+  <section id="detail">
+    <div id="empty">Select a message</div>
+
+    <article id="reading" hidden>
+      <h2 id="reading-subject"></h2>
+      <p id="reading-meta"></p>
+      <pre id="reading-body"></pre>
+    </article>
+
+    <section id="compose" hidden>
+      <div class="compose-head">
+        <strong id="compose-what">New message</strong>
+        <span id="compose-envelope"></span>
+      </div>
+      <input id="compose-to" placeholder="to — comma separated" spellcheck="false">
+      <input id="compose-cc" placeholder="cc" spellcheck="false">
+      <input id="compose-bcc" placeholder="bcc (never appears in the message)" spellcheck="false">
+      <input id="compose-subject" placeholder="subject">
+      <textarea id="compose-body" rows="8" spellcheck="false"></textarea>
+      <div class="compose-actions">
+        <button id="compose-send">Send</button>
+        <button id="compose-cancel">Cancel</button>
+        <span class="hint">ctrl/cmd+enter sends · escape cancels</span>
+      </div>
+    </section>
   </section>
 
   <footer>

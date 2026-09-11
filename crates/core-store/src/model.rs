@@ -355,11 +355,50 @@ pub fn folder_is_excluded(patterns: &[String], name: &str, special_use: Option<&
 }
 
 /// What to narrow the message list to. All-`None` means everything.
+///
+/// The fields combine rather than override: folder, category and unread are
+/// three independent questions and a sidebar asks several at once.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ListFilter {
     /// A rules category, e.g. `"transactional"`.
     pub category: Option<String>,
     pub unread_only: bool,
+    /// Restrict to messages with a copy in this folder.
+    pub folder: Option<FolderId>,
+}
+
+/// A folder and what is in it, for the sidebar.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FolderSummary {
+    pub id: FolderId,
+    pub name: String,
+    /// RFC 6154 attribute, when the server declares one.
+    pub special_use: Option<String>,
+    pub total: usize,
+    pub unread: usize,
+}
+
+impl FolderSummary {
+    /// Sort key, so a sidebar reads the way every other mail client's does.
+    ///
+    /// Alphabetical would put Archive above INBOX and bury Trash in the
+    /// middle. The conventional order is worth more than the simple rule:
+    /// people look for these by position, not by name.
+    pub fn rank(&self) -> u8 {
+        if self.name.eq_ignore_ascii_case("INBOX") {
+            return 0;
+        }
+        match self.special_use.as_deref() {
+            Some("\\Drafts") => 1,
+            Some("\\Sent") => 2,
+            Some("\\Archive") | Some("\\All") => 3,
+            Some("\\Junk") => 5,
+            Some("\\Trash") => 6,
+            // Everything the user made themselves sits between the archive and
+            // the bins, which is where it belongs: it is theirs, not plumbing.
+            _ => 4,
+        }
+    }
 }
 
 /// A message as the list shows it.

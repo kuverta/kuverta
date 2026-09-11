@@ -9,29 +9,86 @@
 
 const { invoke } = window.__TAURI__.core;
 
-const ROW_HEIGHT = 30;
+const ROW_HEIGHT = 74;
 const OVERSCAN = 8;
 // One page is several screenfuls, so scrolling at a normal speed stays ahead
 // of the fetch without asking for much that is never shown.
 const PAGE = 200;
 
 const el = (id) => document.getElementById(id);
+
+/// Sidebar glyphs, as inline SVG.
+///
+/// Drawn rather than pulled from a font: the webview has no access to SF
+/// Symbols, and a pictogram font would be a download for six shapes.
+const ICONS = {
+  inbox: "M3 13h3.5l1.2 2h4.6l1.2-2H17M3 13l2.4-7.6A1 1 0 016.35 4.7h7.3a1 1 0 01.95.7L17 13v2.3a1 1 0 01-1 1H4a1 1 0 01-1-1z",
+  drafts: "M4 16h12M13.1 3.9l3 3L7.6 15.4l-3.9.9.9-3.9z",
+  sent: "M17 3L2.5 9.2l5.6 2.2 2.2 5.6zM17 3l-8.9 8.4",
+  archive: "M3 6.5h14M4.5 6.5v9a1 1 0 001 1h9a1 1 0 001-1v-9M3 6.5l1.3-2.2a1 1 0 01.86-.5h9.68a1 1 0 01.86.5L17 6.5M8 10h4",
+  junk: "M10 3l7.5 13H2.5zM10 8v3.5M10 13.6v.1",
+  trash: "M3.5 5.5h13M8 5.5V4a1 1 0 011-1h2a1 1 0 011 1v1.5M5 5.5v10a1 1 0 001 1h8a1 1 0 001-1v-10M8.5 8.5v5M11.5 8.5v5",
+  folder: "M3 15.5v-10a1 1 0 011-1h3.8a1 1 0 01.78.37l1.04 1.26a1 1 0 00.78.37H16a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1z",
+  all: "M3 5.5h14M3 10h14M3 14.5h9",
+  tag: "M3 3h6.3a1 1 0 01.7.3l6.7 6.7a1 1 0 010 1.4l-5.3 5.3a1 1 0 01-1.4 0L3.3 10A1 1 0 013 9.3zM6.5 6.5v.01",
+};
+
+/// Which glyph a folder gets, from its special-use attribute and then its name.
+///
+/// The attribute first, because it is what the server actually asserts; the
+/// name only as a fallback for the many servers that assert nothing.
+function iconFor(folder) {
+  const byUse = {
+    "\\Drafts": "drafts",
+    "\\Sent": "sent",
+    "\\Archive": "archive",
+    "\\All": "archive",
+    "\\Junk": "junk",
+    "\\Trash": "trash",
+  }[folder.special_use];
+  if (byUse) return byUse;
+  if (folder.name.toUpperCase() === "INBOX") return "inbox";
+  return "folder";
+}
+
+function iconSvg(name) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "icon");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("fill", "none");
+  svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", "1.4");
+  svg.setAttribute("stroke-linecap", "round");
+  svg.setAttribute("stroke-linejoin", "round");
+  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  path.setAttribute("d", ICONS[name] ?? ICONS.folder);
+  svg.append(path);
+  return svg;
+}
 const viewport = el("viewport");
 const spacer = el("spacer");
 const content = el("content");
 const statusBar = el("status");
 const reading = el("reading");
-const filters = el("filters");
+const emptyPane = el("empty");
 const searchBox = el("search");
 const toast = el("toast");
+const sidebar = {
+  accounts: el("accounts"),
+  folders: el("folders"),
+  categories: el("categories"),
+};
+const scopeBar = el("scope");
 
 const state = {
+  accounts: [],
   account: null,
   email: null,
   syncing: false,
   archive: null,
   trash: null,
-  filter: { category: null, unreadOnly: false },
+  folders: [],
+  filter: { category: null, unreadOnly: false, folder: null },
   total: 0,
   // Sparse: offset -> row. Only what has been fetched.
   rows: new Map(),
@@ -56,6 +113,7 @@ async function loadPage(offset) {
       limit: PAGE,
       category: state.filter.category,
       unreadOnly: state.filter.unreadOnly,
+      folder: state.filter.folder,
     });
 
     // The total can move under us while a sync is running, so it is taken
@@ -72,46 +130,197 @@ async function loadPage(offset) {
   }
 }
 
-/** Throws away everything fetched, e.g. after a filter change. */
-async function reload() {
+/// Throws away everything fetched and asks again.
+///
+/// `keepPosition` is what makes triage bearable: archive the message under the
+/// cursor and the next one slides into its place, rather than the list jumping
+/// back to the top and making you find your way again. A filter change is the
+/// other case — there the old position means nothing, so it resets.
+async function reload({ keepPosition = false } = {}) {
+  const wasAt = state.selected;
   state.rows.clear();
   state.requested.clear();
   state.firstRendered = -1;
-  state.selected = -1;
   state.searching = false;
   reading.hidden = true;
-  viewport.scrollTop = 0;
+  emptyPane.hidden = false;
+  if (!keepPosition) {
+    state.selected = -1;
+    viewport.scrollTop = 0;
+  }
+
   await loadPage(0);
-  await refreshFilters();
+  await refreshSidebar();
+
+  if (state.total === 0) {
+    state.selected = -1;
+  } else if (keepPosition) {
+    // The row that was under the cursor has gone, so the same index is now
+    // the one that followed it.
+    select(Math.min(wasAt, state.total - 1));
+  } else {
+    select(0);
+  }
+  renderScope();
 }
 
-async function refreshFilters() {
-  const counts = await invoke("category_counts", { account: state.account });
-  filters.textContent = "";
+// -- sidebar ---------------------------------------------------------------
 
-  const add = (label, count, active, onClick) => {
-    const button = document.createElement("button");
-    button.className = active ? "filter active" : "filter";
-    button.textContent = count === null ? label : `${label} ${count}`;
-    button.onclick = onClick;
-    filters.append(button);
-  };
+/** One row in the sidebar. The same shape for accounts, folders and categories. */
+function navItem({ label, count, unread, active, className, onClick, title, icon }) {
+  const button = document.createElement("button");
+  button.className = `nav-item${className ? ` ${className}` : ""}${active ? " active" : ""}`;
+  // The badge shows one number, and its weight is the only thing saying which
+  // — too subtle to rely on alone, so the full answer is a hover away.
+  if (title) button.title = title;
+  if (icon) button.append(iconSvg(icon));
 
-  add("all", state.total, !state.filter.category && !state.filter.unreadOnly, async () => {
-    state.filter = { category: null, unreadOnly: false };
-    await reload();
-  });
-  add("unread", null, state.filter.unreadOnly, async () => {
-    state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
-    await reload();
-  });
-  for (const [category, count] of counts) {
-    add(category, count, state.filter.category === category, async () => {
-      const next = state.filter.category === category ? null : category;
-      state.filter = { ...state.filter, category: next };
-      await reload();
-    });
+  const text = document.createElement("span");
+  text.className = "label";
+  text.textContent = label;
+  button.append(text);
+
+  // Unread is the number worth seeing. The total only shows when there is no
+  // unread count to compete with it, so the column stays scannable.
+  if (unread) {
+    const badge = document.createElement("span");
+    badge.className = "count unread";
+    badge.textContent = unread;
+    button.append(badge);
+  } else if (count !== null && count !== undefined) {
+    const badge = document.createElement("span");
+    badge.className = "count";
+    badge.textContent = count;
+    button.append(badge);
   }
+
+  if (onClick) button.onclick = onClick;
+  return button;
+}
+
+async function refreshSidebar() {
+  // Accounts. Hidden when there is only one, because a list of one is a label
+  // pretending to be a choice.
+  sidebar.accounts.textContent = "";
+  if (state.accounts.length > 1) {
+    for (const account of state.accounts) {
+      sidebar.accounts.append(
+        navItem({
+          label: account.email,
+          className: "account",
+          active: account.id === state.account,
+          onClick: () => selectAccount(account),
+        }),
+      );
+    }
+  }
+
+  state.folders = await invoke("folders", { account: state.account });
+  sidebar.folders.textContent = "";
+  sidebar.folders.append(
+    navItem({
+      label: "All mail",
+      icon: "all",
+      count: null,
+      active: state.filter.folder === null,
+      onClick: async () => {
+        state.filter = { ...state.filter, folder: null };
+        await reload();
+      },
+    }),
+  );
+  for (const folder of state.folders) {
+    sidebar.folders.append(
+      navItem({
+        label: folder.label,
+        icon: iconFor(folder),
+        count: folder.total,
+        unread: folder.unread,
+        title: `${folder.name} — ${folder.unread} unread of ${folder.total}`,
+        active: state.filter.folder === folder.id,
+        onClick: async () => {
+          const next = state.filter.folder === folder.id ? null : folder.id;
+          state.filter = { ...state.filter, folder: next };
+          await reload();
+        },
+      }),
+    );
+  }
+
+  const counts = await invoke("category_counts", { account: state.account });
+  sidebar.categories.textContent = "";
+  sidebar.categories.append(
+    navItem({
+      label: "Unread only",
+      icon: "inbox",
+      active: state.filter.unreadOnly,
+      onClick: async () => {
+        state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
+        await reload();
+      },
+    }),
+  );
+  for (const [category, count] of counts) {
+    sidebar.categories.append(
+      navItem({
+        label: category,
+        icon: "tag",
+        count,
+        active: state.filter.category === category,
+        onClick: async () => {
+          const next = state.filter.category === category ? null : category;
+          state.filter = { ...state.filter, category: next };
+          await reload();
+        },
+      }),
+    );
+  }
+}
+
+/// Says what the list is showing.
+///
+/// A filtered list that does not announce itself looks exactly like mail going
+/// missing, so the narrowing is always on screen with a way out of it.
+function renderScope() {
+  scopeBar.textContent = "";
+  const parts = [];
+  if (state.searching) parts.push("search results");
+  if (state.filter.folder !== null) {
+    const folder = state.folders.find((f) => f.id === state.filter.folder);
+    if (folder) parts.push(folder.label);
+  }
+  if (state.filter.category) parts.push(state.filter.category);
+  if (state.filter.unreadOnly) parts.push("unread");
+
+  const label = document.createElement("span");
+  label.textContent = parts.length
+    ? `${state.total} in ${parts.join(" · ")}`
+    : `${state.total} messages`;
+  scopeBar.append(label);
+
+  if (parts.length) {
+    const clear = document.createElement("button");
+    clear.textContent = "clear";
+    clear.onclick = async () => {
+      searchBox.value = "";
+      state.filter = { category: null, unreadOnly: false, folder: null };
+      await reload();
+    };
+    scopeBar.append(clear);
+  }
+}
+
+async function selectAccount(account) {
+  state.account = account.id;
+  state.email = account.email;
+  statusBar.textContent = account.email;
+  state.filter = { category: null, unreadOnly: false, folder: null };
+
+  const special = await invoke("special_folders", { account: state.account });
+  state.archive = special.archive;
+  state.trash = special.trash;
+
+  await reload();
 }
 
 // -- rendering -------------------------------------------------------------
@@ -129,33 +338,66 @@ function buildPool() {
 
     const unread = document.createElement("span");
     unread.className = "dot";
-    const date = document.createElement("span");
-    date.className = "date";
+
+    // Line one: sender, any tag, then the date pushed to the right.
+    const top = document.createElement("div");
+    top.className = "top";
     const sender = document.createElement("span");
     sender.className = "sender";
-    const subject = document.createElement("span");
-    subject.className = "subject";
     const tag = document.createElement("span");
     tag.className = "tag";
+    const date = document.createElement("span");
+    date.className = "date";
+    top.append(sender, tag, date);
 
-    row.append(unread, date, sender, subject, tag);
+    const subject = document.createElement("div");
+    subject.className = "subject";
+    const snippet = document.createElement("div");
+    snippet.className = "snippet";
+
+    row.append(unread, top, subject, snippet);
     content.append(row);
-    state.pool.push({ row, unread, date, sender, subject, tag });
+    state.pool.push({ row, unread, top, date, sender, subject, snippet, tag });
   }
   state.firstRendered = -1;
 }
 
-const dateFormat = new Intl.DateTimeFormat(undefined, {
+const timeOnly = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit" });
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: "short" });
+const dayMonth = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short" });
+const withYear = new Intl.DateTimeFormat(undefined, {
+  day: "numeric",
+  month: "short",
   year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
+});
+
+/// Time today, weekday this week, date beyond — the resolution you actually
+/// want at each distance, and short enough not to crowd the sender.
+function listDate(seconds) {
+  if (!seconds) return "";
+  const when = new Date(seconds * 1000);
+  const now = new Date();
+  const sameDay = when.toDateString() === now.toDateString();
+  if (sameDay) return timeOnly.format(when);
+
+  const days = (now - when) / 86400000;
+  if (days < 7 && days >= 0) return weekday.format(when);
+  if (when.getFullYear() === now.getFullYear()) return dayMonth.format(when);
+  return withYear.format(when);
+}
+
+const fullDate = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
   hour: "2-digit",
   minute: "2-digit",
 });
 
 function formatDate(seconds) {
   if (!seconds) return "";
-  return dateFormat.format(new Date(seconds * 1000));
+  return fullDate.format(new Date(seconds * 1000));
 }
 
 /** Draws the slice of rows at the current scroll offset. */
@@ -190,16 +432,18 @@ function render(force = false) {
       node.date.textContent = "";
       node.sender.textContent = "";
       node.subject.textContent = "…";
+      node.snippet.textContent = "";
       node.tag.textContent = "";
       continue;
     }
 
     node.row.classList.remove("pending");
     node.unread.className = row.unread ? "dot on" : "dot";
-    node.date.textContent = formatDate(row.date_utc);
+    node.date.textContent = listDate(row.date_utc);
     node.sender.textContent = row.from;
     node.subject.textContent = row.subject;
-    node.tag.textContent = [row.category, row.has_attachments ? "📎" : ""]
+    node.snippet.textContent = row.snippet ?? "";
+    node.tag.textContent = [row.has_attachments ? "📎" : "", row.category]
       .filter(Boolean)
       .join(" ");
   }
@@ -226,6 +470,7 @@ async function openSelected() {
   try {
     const detail = await invoke("message", { account: state.account, id: row.id });
     reading.hidden = false;
+    emptyPane.hidden = true;
     el("reading-subject").textContent = detail.subject ?? "(no subject)";
     el("reading-meta").textContent = [
       detail.from,
@@ -282,7 +527,7 @@ async function act(command, args, describe) {
   try {
     await invoke(command, { account: state.account, id: row.id, ...args });
     say(`${describe} — z to undo`);
-    await reload();
+    await reload({ keepPosition: true });
   } catch (err) {
     say(String(err), true);
   }
@@ -314,7 +559,7 @@ async function undo() {
   try {
     const change = await invoke("undo", { account: state.account });
     say(change ? `undone: ${change.what}` : "nothing to undo");
-    if (change) await reload();
+    if (change) await reload({ keepPosition: true });
   } catch (err) {
     say(String(err), true);
   }
@@ -412,6 +657,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
 
   compose.pane.hidden = false;
   reading.hidden = true;
+  emptyPane.hidden = true;
   (compose.to.value ? compose.body : compose.to).focus();
   await refreshEnvelope();
 }
@@ -485,7 +731,7 @@ async function sync() {
     if (s.inserted) parts.push(`${s.inserted} new`);
     if (s.expunged) parts.push(`${s.expunged} gone`);
     say(parts.length ? parts.join(", ") : "nothing new");
-    await reload();
+    await reload({ keepPosition: true });
   } catch (err) {
     say(String(err), true);
   } finally {
@@ -516,6 +762,7 @@ async function runSearch(query) {
     spacer.style.height = `${state.total * ROW_HEIGHT}px`;
     viewport.scrollTop = 0;
     render(true);
+    renderScope();
     say(`${rows.length} result(s) — Escape to go back`);
   } catch (err) {
     say(String(err), true);
@@ -569,6 +816,7 @@ document.addEventListener("keydown", async (event) => {
   }
   if (event.key === "Escape") {
     reading.hidden = true;
+    emptyPane.hidden = false;
     return;
   }
 
@@ -602,17 +850,9 @@ async function start() {
     return;
   }
 
-  state.account = accounts[0].id;
-  state.email = accounts[0].email;
-  statusBar.textContent = state.email;
-
-  const special = await invoke("special_folders", { account: state.account });
-  state.archive = special.archive;
-  state.trash = special.trash;
-
+  state.accounts = accounts;
   buildPool();
-  await reload();
-  select(0);
+  await selectAccount(accounts[0]);
 
   const pending = await invoke("queue", { account: state.account });
   if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);

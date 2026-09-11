@@ -1,26 +1,35 @@
-/* Dense and quiet. A triage surface is read in glances, so the row is the
-   unit of design and everything else gets out of its way. */
+/* Apple Mail is the reference. What that means concretely: three panes side by
+   side rather than stacked; a recessed sidebar with rounded selection pills
+   and icons; list rows of three lines — sender, subject, preview — rather than
+   a dense table; separators inset from the left so they read as dividers
+   between rows and not as a grid. */
 
 :root {
-  --row-height: 30px;
-  --bg: #fbfbfa;
-  --fg: #1b1b1a;
-  --muted: #6b6b68;
-  --line: #e4e3e0;
-  --accent: #2f6f4f;
-  --selected: #e8efe9;
-  --error: #8c2f2f;
+  --row-height: 74px;
+
+  --bg: #ffffff;
+  /* The sidebar is recessed, not the same sheet as the content. */
+  --sidebar-bg: #f2f1f6;
+  --fg: #1d1d1f;
+  --muted: #86868b;
+  --line: #e3e3e6;
+  --accent: #0a6cff;
+  --accent-fg: #ffffff;
+  --selected: #d9d9de;
+  --error: #d0342c;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #16171a;
-    --fg: #e6e6e4;
-    --muted: #8b8b88;
-    --line: #2a2c31;
-    --accent: #7fbf9a;
-    --selected: #22302a;
-    --error: #e08a8a;
+    --bg: #1e1e1e;
+    --sidebar-bg: #1a1a1c;
+    --fg: #e8e8ea;
+    --muted: #8e8e93;
+    --line: #323236;
+    --accent: #3f8cff;
+    --accent-fg: #ffffff;
+    --selected: #333338;
+    --error: #ff6961;
   }
 }
 
@@ -31,63 +40,159 @@ html, body {
   height: 100%;
   background: var(--bg);
   color: var(--fg);
-  font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif,
+    system-ui, sans-serif;
   overflow: hidden;
 }
 
+/* Toolbar across the top; below it the three panes, side by side. Each pane
+   scrolls on its own, so anything containing a scroller needs `min-height: 0`
+   — without it a long message stretches the row instead of scrolling. */
 body {
   display: grid;
-  grid-template-rows: auto auto 1fr auto auto;
+  grid-template-columns: 232px minmax(300px, 380px) 1fr;
+  grid-template-rows: auto 1fr auto;
   height: 100vh;
 }
 
 header {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 8px 12px;
+  padding: 9px 14px;
   border-bottom: 1px solid var(--line);
+  background: var(--sidebar-bg);
 }
 
 header strong { letter-spacing: -0.01em; }
 header #status { color: var(--muted); flex: 1; }
 
+footer {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 14px;
+  padding: 5px 14px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 #search {
-  width: 260px;
-  padding: 4px 8px;
+  width: 240px;
+  padding: 4px 9px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
   font: inherit;
 }
 
-nav#filters {
-  display: flex;
-  gap: 6px;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
+/* -- sidebar ------------------------------------------------------------- */
+
+#sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  padding: 8px 8px 12px;
+  min-height: 0;
 }
 
-.filter {
+.sidebar-heading {
+  padding: 14px 8px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* A rounded pill inset from the edges, not a full-bleed bar. That is most of
+   what makes a sidebar look like this one rather than a table of contents. */
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 4px 8px;
+  margin-bottom: 1px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nav-item:hover { background: var(--selected); }
+
+.nav-item.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.nav-item.active .count,
+.nav-item.active .icon { color: var(--accent-fg); }
+
+.nav-item .icon {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.nav-item .label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-item .count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+
+.nav-item .count.unread { font-weight: 600; }
+
+#accounts:not(:empty) {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+.account .label { font-weight: 600; font-size: 12px; }
+
+/* -- message list -------------------------------------------------------- */
+
+#list {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  border-right: 1px solid var(--line);
+  min-height: 0;
+}
+
+#scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+#scope button {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
   color: var(--muted);
-  padding: 2px 10px;
+  padding: 1px 8px;
   font: inherit;
   cursor: pointer;
-  white-space: nowrap;
 }
 
-.filter.active {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-/* The virtualized list. `content` is absolutely positioned and translated so
-   that moving it costs a transform rather than a reflow. */
 #viewport {
   position: relative;
   overflow-y: auto;
@@ -104,89 +209,143 @@ nav#filters {
   will-change: transform;
 }
 
+/* Three lines: sender and date, subject, preview. The unread dot sits in a
+   fixed gutter so every row's text starts in the same place whether or not it
+   has one. */
 .row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  grid-template-rows: auto auto auto;
+  align-content: center;
   height: var(--row-height);
-  padding: 0 12px;
-  border-bottom: 1px solid var(--line);
+  padding: 8px 14px 8px 6px;
   cursor: default;
+  /* Inset, so it reads as a divider rather than a table rule. */
+  box-shadow: inset 0 -1px 0 var(--line);
+  overflow: hidden;
+}
+
+.row.selected { background: var(--accent); color: var(--accent-fg); }
+.row.pending { opacity: 0.4; }
+
+.row .dot {
+  grid-row: 1;
+  grid-column: 1;
+  width: 8px;
+  height: 8px;
+  margin: 4px auto 0;
+  border-radius: 50%;
+  background: transparent;
+}
+
+.row .dot.on { background: var(--accent); }
+.row.selected .dot.on { background: var(--accent-fg); }
+
+.row .top {
+  grid-row: 1;
+  grid-column: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+.row .sender {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.row.selected { background: var(--selected); }
-.row.pending { opacity: 0.4; }
-
-.dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+.row .date {
+  margin-left: auto;
   flex: 0 0 auto;
-  background: transparent;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
 }
-.dot.on { background: var(--accent); }
 
-.date { color: var(--muted); font-variant-numeric: tabular-nums; flex: 0 0 auto; }
-.sender { width: 180px; flex: 0 0 auto; overflow: hidden; text-overflow: ellipsis; }
-.subject { flex: 1; overflow: hidden; text-overflow: ellipsis; }
-.tag { color: var(--muted); flex: 0 0 auto; }
+.row .subject,
+.row .snippet {
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.row .subject { grid-row: 2; }
+
+.row .snippet {
+  grid-row: 3;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* On a selected row the greys would disappear into the accent fill. */
+.row.selected .date,
+.row.selected .snippet,
+.row.selected .tag { color: rgb(255 255 255 / 0.82); }
+
+.row .tag {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+/* -- reading and compose ------------------------------------------------- */
+
+#detail {
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+}
 
 #reading {
-  border-top: 1px solid var(--line);
-  padding: 10px 14px;
-  max-height: 45vh;
+  padding: 18px 24px;
   overflow-y: auto;
+  min-height: 0;
 }
 
-#reading h2 { margin: 0 0 4px; font-size: 14px; }
-#reading p { margin: 0 0 10px; color: var(--muted); }
+#reading[hidden],
+#compose[hidden],
+#empty[hidden],
+.toast[hidden] {
+  display: none !important;
+}
+
+#empty {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  min-height: 0;
+}
+
+#reading h2 {
+  margin: 0 0 6px;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+#reading p {
+  margin: 0 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
 
 #reading-body {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
-
-footer {
-  display: flex;
-  gap: 14px;
-  padding: 6px 12px;
-  border-top: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.toast {
-  position: fixed;
-  bottom: 40px;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 7px 14px;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--bg);
-  box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
-}
-
-.toast.error { color: var(--error); border-color: var(--error); }
-
-/* Compose. Same density as the list: this is a mail client, not a document
-   editor, and a reply is usually two lines. */
-
-/* An id selector setting `display` beats the user agent's `[hidden]` rule, so
-   the attribute stops working and the pane is simply always open. Anything
-   here that sets `display` has to say this too. */
-#compose[hidden],
-#reading[hidden],
-.toast[hidden] {
-  display: none !important;
+  font: 13px/1.6 -apple-system, BlinkMacSystemFont, "SF Pro Text", ui-sans-serif,
+    system-ui, sans-serif;
 }
 
 #compose {
   border-top: 1px solid var(--line);
-  padding: 10px 14px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -200,23 +359,20 @@ footer {
   gap: 10px;
 }
 
-.compose-head span { color: var(--muted); font-size: 12px; }
+.compose-head span { color: var(--muted); font-size: 11.5px; }
 
 #compose input,
 #compose textarea {
   width: 100%;
-  padding: 5px 8px;
+  padding: 5px 9px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
   font: inherit;
 }
 
-#compose textarea {
-  resize: vertical;
-  font: 12.5px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-}
+#compose textarea { resize: vertical; }
 
 .compose-actions {
   display: flex;
@@ -227,13 +383,32 @@ footer {
 .compose-actions button {
   padding: 4px 14px;
   border: 1px solid var(--line);
-  border-radius: 5px;
+  border-radius: 6px;
   background: transparent;
   color: var(--fg);
   font: inherit;
   cursor: pointer;
 }
 
-#compose-send { border-color: var(--accent); color: var(--accent); }
+#compose-send {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
 #compose-send:disabled { opacity: 0.5; cursor: default; }
-.compose-actions .hint { color: var(--muted); font-size: 12px; }
+.compose-actions .hint { color: var(--muted); font-size: 11.5px; }
+
+.toast {
+  position: fixed;
+  bottom: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+}
+
+.toast.error { color: var(--error); border-color: var(--error); }
