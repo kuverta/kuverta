@@ -331,7 +331,15 @@ function toRow(header) {
     fromAddr: addressOf(header.author),
     date: header.date ? new Date(header.date).getTime() : null,
     unread: !header.read,
-    hasAttachments: Boolean(header.attachments?.length) || Boolean(header.hasAttachments),
+    // Always false, and not an oversight: `MessageHeader` carries no
+    // attachment information in any Thunderbird version, so the only ways to
+    // know are `listAttachments` per message — thousands of round trips for a
+    // paperclip — or a second `query({attachment: true})` per scope, which
+    // doubles the cost of the one operation already flagged as this adapter's
+    // scaling limit. The list simply does not show the paperclip here. The
+    // classifier is unaffected: it reads attachments off the part tree when a
+    // message is actually opened.
+    hasAttachments: false,
     category: currentCategory(header),
   };
 }

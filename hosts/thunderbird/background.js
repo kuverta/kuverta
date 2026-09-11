@@ -182,7 +182,10 @@ messenger.menus.onClicked.addListener(async (info) => {
   }
 
   if (info.menuItemId === 'fuckbird-classify-folder') {
-    const folder = info.selectedFolder ?? info.displayedFolder;
+    // `selectedFolders` arrived in TB 128 and replaces the deprecated
+    // `selectedFolder`; both are read so this keeps working either way.
+    const folder =
+      info.selectedFolders?.[0] ?? info.selectedFolder ?? info.displayedFolder;
     if (folder) await backfillFolder(folder);
     return;
   }

@@ -115,7 +115,7 @@ See [hosts/fuckmail/readme.md](hosts/fuckmail/readme.md).
 ## Working on it
 
 ```sh
-npm test       # 153 tests, no mail client required
+npm test       # 157 tests, no mail client required
 npm run corpus # the classifier over 250 generated messages, with the rules that fired
 ```
 
@@ -130,15 +130,25 @@ cursor behaviour, the corrections log, the tag writing, and all three host
 adapters are tested — including that trashing is always a move and that undo
 puts it back.
 
+**Checked against the documentation.** Every one of the twenty-five Thunderbird
+API calls the adapter makes has been checked against the Manifest V2 reference.
+That found four missing permissions — `messagesMove`, `messagesTagsList`,
+`compose`, `tabs` — and three wrong assumptions, all now fixed, and all of them
+invisible to a fake, which answers whatever it is asked. The table now lives in
+`test/permissions.test.js`, which also fails if the manifest asks for a
+permission nothing uses. See [decisions.md §6](docs/decisions.md).
+
 **Not verified.** Neither host has been run. The classifier and the model are
-proven; the adapters are written against the documented APIs and tested against
-fakes, which catches an adapter drifting but cannot catch an API that is not
-what the documentation says. Expect the first real load to turn up at least one
-wrong permission string and at least one Thunderbird API that behaves
-differently from the fake.
+proven and the API surface is checked, but documentation is not a client:
+expect the first real load to turn up behaviour that differs from what is
+written down. That is now the most useful thing that can happen to this code.
 
 **Known gaps.**
 
+- **No paperclip in the Thunderbird list.** `MessageHeader` carries no
+  attachment information, and finding out costs either a round trip per message
+  or a second query per scope. The classifier still sees attachments, because
+  it reads them off the part tree when a message is opened.
 - **The Thunderbird adapter materialises a whole scope** to answer an offset,
   because Thunderbird's lists are cursor-paged and unordered where the port asks
   for an offset into a list sorted newest first. Capped at 20,000 messages. A
