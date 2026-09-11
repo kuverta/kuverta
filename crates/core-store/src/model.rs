@@ -387,6 +387,58 @@ pub struct ListFilter {
     pub folder: Option<FolderId>,
 }
 
+/// Names a client might have given the folder behind each RFC 6154 attribute.
+///
+/// The fallbacks exist because plenty of servers — Dovecot in its default
+/// configuration among them — advertise no special-use attributes at all, and
+/// guessing from a known list beats creating a second Sent folder beside the
+/// one the user's other clients already use. German names are here for the same
+/// reason the classifier is bilingual.
+///
+/// They live in the store rather than in the protocol layer because they are
+/// not about IMAP: they are what people call these folders, and both folder
+/// resolution and the order a sidebar lists them in need the same answer.
+pub const SENT_NAMES: &[&str] = &[
+    "Sent",
+    "Sent Items",
+    "Sent Messages",
+    // Gmail's own.
+    "Sent Mail",
+    "INBOX.Sent",
+    "Gesendet",
+    "Gesendete Objekte",
+    "Gesendete Elemente",
+];
+
+pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived"];
+
+/// Gmail has no Archive folder; archiving there means All Mail.
+///
+/// Kept apart from [`ARCHIVE_NAMES`] because for *resolution* it must be tried
+/// last — a server with both a real Archive and an All Mail should file into
+/// the Archive — while for ordering a sidebar the two belong in the same place.
+pub const ALL_MAIL_NAMES: &[&str] = &["All Mail"];
+
+pub const DRAFTS_NAMES: &[&str] = &["Drafts", "Entwürfe", "Entwuerfe", "INBOX.Drafts"];
+
+pub const JUNK_NAMES: &[&str] = &["Junk", "Spam", "Junk E-mail", "Bulk Mail"];
+
+pub const TRASH_NAMES: &[&str] = &[
+    "Trash",
+    "Deleted Items",
+    "Deleted Messages",
+    "INBOX.Trash",
+    "Papierkorb",
+    "Gelöschte Objekte",
+    "Gelöschte Elemente",
+];
+
+fn named_like(name: &str, known: &[&str]) -> bool {
+    // The leaf, so Gmail's `[Gmail]/Sent Mail` matches on `Sent Mail`.
+    let leaf = name.rsplit('/').next().unwrap_or(name);
+    known.iter().any(|k| leaf.eq_ignore_ascii_case(k))
+}
+
 /// A folder and what is in it, for the sidebar.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FolderSummary {
@@ -408,15 +460,36 @@ impl FolderSummary {
         if self.name.eq_ignore_ascii_case("INBOX") {
             return 0;
         }
+
+        // The attribute first, because it is what the server asserts.
         match self.special_use.as_deref() {
-            Some("\\Drafts") => 1,
-            Some("\\Sent") => 2,
-            Some("\\Archive") | Some("\\All") => 3,
-            Some("\\Junk") => 5,
-            Some("\\Trash") => 6,
+            Some("\\Drafts") => return 1,
+            Some("\\Sent") => return 2,
+            Some("\\Archive") | Some("\\All") => return 3,
+            Some("\\Junk") => return 5,
+            Some("\\Trash") => return 6,
+            _ => {}
+        }
+
+        // Then the name, so a folder the app already treats as the archive
+        // does not sit among the user's own folders in the list. Dovecot will
+        // not let a client set a special-use attribute at all, so an Archive
+        // created from inside this app has none — and would otherwise sort
+        // wherever the alphabet put it.
+        if named_like(&self.name, DRAFTS_NAMES) {
+            1
+        } else if named_like(&self.name, SENT_NAMES) {
+            2
+        } else if named_like(&self.name, ARCHIVE_NAMES) || named_like(&self.name, ALL_MAIL_NAMES) {
+            3
+        } else if named_like(&self.name, JUNK_NAMES) {
+            5
+        } else if named_like(&self.name, TRASH_NAMES) {
+            6
+        } else {
             // Everything the user made themselves sits between the archive and
             // the bins, which is where it belongs: it is theirs, not plumbing.
-            _ => 4,
+            4
         }
     }
 }

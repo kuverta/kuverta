@@ -1178,6 +1178,39 @@ fn folder_summaries_count_messages_and_read_in_the_conventional_order() {
     // INBOX first, the user's own folder above the bins, Trash last.
     assert_eq!(names, vec!["INBOX", "Archive", "Projekte", "Trash"]);
 
+    // And the same order when the server declares nothing — which is what a
+    // folder created from inside this app looks like, because Dovecot will not
+    // let a client set a special-use attribute. Without the name fallback,
+    // Archive would sort wherever the alphabet put it.
+    let bare = store.upsert_folder(account, "Aardvark", None).unwrap();
+    let _ = bare;
+    let unmarked = FolderSummary {
+        id: 0,
+        name: "Archive".into(),
+        special_use: None,
+        total: 0,
+        unread: 0,
+    };
+    assert_eq!(unmarked.rank(), 3, "an unmarked Archive still ranks as one");
+    assert_eq!(
+        FolderSummary {
+            name: "[Gmail]/Sent Mail".into(),
+            ..unmarked.clone()
+        }
+        .rank(),
+        2,
+        "the leaf is what is recognised, so Gmail's nesting still matches"
+    );
+    assert_eq!(
+        FolderSummary {
+            name: "Projekte".into(),
+            ..unmarked.clone()
+        }
+        .rank(),
+        4,
+        "a folder of the user's own is not plumbing"
+    );
+
     let by = |name: &str| folders.iter().find(|f| f.name == name).unwrap();
     assert_eq!(by("INBOX").total, 2);
     assert_eq!(by("INBOX").unread, 1, "one of the two has been read");
