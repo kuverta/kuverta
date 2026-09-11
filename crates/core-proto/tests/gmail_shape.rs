@@ -331,3 +331,78 @@ async fn archiving_a_labelled_message_keeps_it_and_its_history() {
     fx.client.logout().await.unwrap();
     writer.logout().await.ok();
 }
+
+#[tokio::test]
+async fn excluding_all_mail_fetches_the_mailbox_once_instead_of_twice() {
+    // The reason folder exclusion exists. Gmail's All Mail holds a copy of
+    // every message, so a mailbox whose mail carries two labels crosses the
+    // wire twice over. Deduplication already keeps one row and one body — this
+    // is about the bytes, which dedup cannot give back.
+    if !server_available() {
+        return;
+    }
+    let user = "exclude@gmail.test";
+
+    let mut writer = label::login(user).await;
+    label::clear(&mut writer, "INBOX").await;
+    label::clear(&mut writer, ALL_MAIL).await;
+    for n in 1..=3 {
+        let id = format!("excluded-{n}@example.com");
+        label::put(&mut writer, "INBOX", &id, &format!("msg {n}")).await;
+        label::put(&mut writer, ALL_MAIL, &id, &format!("msg {n}")).await;
+    }
+
+    // Without the exclusion: every message is fetched twice, and the second
+    // copy is thrown away as a duplicate.
+    let mut plain = fixture(user).await;
+    let report =
+        core_proto::sync_account(&mut plain.client, &plain.store, &plain.blobs, plain.account)
+            .await
+            .unwrap();
+    assert_eq!(report.inserted, 3, "{report:?}");
+    assert_eq!(
+        report.deduplicated, 3,
+        "the wasted half of the download: {report:?}"
+    );
+    assert_eq!(report.folders_excluded, 0);
+    plain.client.logout().await.unwrap();
+
+    // With it: fetched once, and nothing is discarded.
+    let mut trimmed = fixture(user).await;
+    trimmed
+        .store
+        .exclude_folder(trimmed.account, "\\All")
+        .unwrap();
+    let report = core_proto::sync_account(
+        &mut trimmed.client,
+        &trimmed.store,
+        &trimmed.blobs,
+        trimmed.account,
+    )
+    .await
+    .unwrap();
+    assert_eq!(report.inserted, 3, "{report:?}");
+    assert_eq!(
+        report.deduplicated, 0,
+        "nothing should be fetched twice: {report:?}"
+    );
+    assert_eq!(report.folders_excluded, 1, "{report:?}");
+
+    // Same mail either way; one location each rather than two.
+    assert_eq!(trimmed.store.message_count(trimmed.account).unwrap(), 3);
+    assert_eq!(trimmed.store.location_count(trimmed.account).unwrap(), 3);
+
+    // And the excluded folder is not even recorded, so nothing later mistakes
+    // it for a folder that happens to be empty.
+    let names: Vec<String> = trimmed
+        .store
+        .folders(trimmed.account)
+        .unwrap()
+        .into_iter()
+        .map(|f| f.name)
+        .collect();
+    assert!(!names.contains(&ALL_MAIL.to_string()), "got {names:?}");
+
+    trimmed.client.logout().await.unwrap();
+    writer.logout().await.ok();
+}

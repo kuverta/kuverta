@@ -323,3 +323,26 @@ pub struct Operation {
     pub last_error: Option<String>,
     pub created_at: i64,
 }
+
+/// Whether a sync should leave this folder alone.
+///
+/// A pattern beginning with `\` is matched against the folder's RFC 6154
+/// special-use attribute, anything else against its name. The attribute form
+/// is the more robust of the two — `\All` means Gmail's All Mail whatever
+/// Google decides to call it — but the name form is what someone reading
+/// `fuckmail check` can copy.
+///
+/// Matching is case-insensitive, because IMAP folder names are compared that
+/// way in every other part of this codebase and a skip that silently did not
+/// apply would be worse than one that over-applied.
+pub fn folder_is_excluded(patterns: &[String], name: &str, special_use: Option<&str>) -> bool {
+    patterns.iter().any(|pattern| {
+        if let Some(attribute) = pattern.strip_prefix('\\') {
+            special_use
+                .and_then(|s| s.strip_prefix('\\'))
+                .is_some_and(|s| s.eq_ignore_ascii_case(attribute))
+        } else {
+            name.eq_ignore_ascii_case(pattern)
+        }
+    })
+}
