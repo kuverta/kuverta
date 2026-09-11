@@ -554,34 +554,10 @@ impl ImapClient {
     }
 }
 
-/// Names a client might have given the folder behind each RFC 6154 attribute.
-///
-/// The fallbacks exist because plenty of servers — including Dovecot in its
-/// default configuration — advertise no special-use attributes at all, and
-/// guessing from a known list beats creating a second Sent folder alongside the
-/// one the user's other clients already use. German names are here for the same
-/// reason the classifier is bilingual.
-pub const SENT_NAMES: &[&str] = &[
-    "Sent",
-    "Sent Items",
-    "Sent Messages",
-    "INBOX.Sent",
-    "Gesendet",
-    "Gesendete Objekte",
-    "Gesendete Elemente",
-];
-
-pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived"];
-
-pub const TRASH_NAMES: &[&str] = &[
-    "Trash",
-    "Deleted Items",
-    "Deleted Messages",
-    "INBOX.Trash",
-    "Papierkorb",
-    "Gelöschte Objekte",
-    "Gelöschte Elemente",
-];
+// The conventional names live in `core-store`, because they are what people
+// call these folders rather than anything about IMAP, and the sidebar needs the
+// same answer this does. Re-exported so callers have one place to look.
+pub use core_store::model::{ARCHIVE_NAMES, SENT_NAMES, TRASH_NAMES};
 
 /// Picks the folder behind a special-use attribute.
 ///
@@ -643,7 +619,7 @@ pub fn find_archive<'a>(
         // CAPABILITY offers the older `XLIST` and not `SPECIAL-USE`, and while
         // it does report `\\All` over `LIST` in practice, having archiving on
         // the largest provider hinge on that is not worth the one string.
-        find_special(folders, &["\\All"], &["All Mail"])
+        find_special(folders, &["\\All"], core_store::model::ALL_MAIL_NAMES)
     })
 }
 
