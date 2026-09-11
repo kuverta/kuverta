@@ -1,0 +1,433 @@
+/*
+  The triage surface.
+
+  One stylesheet for both hosts. Colours come from the system where they can,
+  because this runs inside Thunderbird's chrome in one host and inside a Tauri
+  window in the other, and a surface that ignores the theme around it looks
+  like something bolted on — which it is, and which is exactly what it should
+  not look like.
+
+  Every selector is prefixed `fb-`. In Thunderbird this is mounted in a tab
+  that carries the client's own stylesheets, so anything unprefixed would be a
+  collision waiting to happen.
+*/
+
+.fb-triage {
+  --fb-personal: #3b7dd8;
+  --fb-newsletter: #7a5fb0;
+  --fb-marketing: #c4552d;
+  --fb-transactional: #2e8b57;
+  --fb-notification: #6e7b85;
+  --fb-unknown: #9a9a9a;
+
+  --fb-text: WindowText;
+  --fb-ground: Window;
+  --fb-muted: GrayText;
+  --fb-line: color-mix(in srgb, WindowText 15%, transparent);
+  --fb-selected: color-mix(in srgb, Highlight 28%, Window);
+  --fb-row: 56px;
+
+  display: grid;
+  grid-template-columns: 200px minmax(320px, 1fr) minmax(0, 1.2fr);
+  /* The legend is a row of its own, spanning everything, so it stays put
+     while all three columns scroll independently behind it. */
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'sidebar list detail'
+    'legend legend legend';
+  height: 100%;
+  min-height: 0;
+  color: var(--fb-text);
+  background: var(--fb-ground);
+  font: message-box;
+  font-size: 13px;
+}
+
+/* At a narrow width the reading pane goes; the list is the thing. */
+@media (max-width: 900px) {
+  .fb-triage {
+    grid-template-columns: 160px 1fr;
+    grid-template-areas:
+      'sidebar list'
+      'legend legend';
+  }
+  .fb-triage .fb-detail {
+    display: none;
+  }
+}
+
+.fb-muted {
+  color: var(--fb-muted);
+}
+
+/* -- sidebar -------------------------------------------------------------- */
+
+.fb-sidebar {
+  grid-area: sidebar;
+  border-right: 1px solid var(--fb-line);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.fb-scope {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.fb-scope:hover {
+  background: var(--fb-line);
+}
+
+.fb-count {
+  margin-left: auto;
+  color: var(--fb-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* -- list ----------------------------------------------------------------- */
+
+.fb-main {
+  grid-area: list;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--fb-line);
+}
+
+.fb-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--fb-line);
+}
+
+/* Which mailbox this is. The core does not know; the host tells it. */
+.fb-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 40%;
+}
+
+.fb-search {
+  flex: 1;
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.fb-ghost {
+  border: 1px solid var(--fb-line);
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 3px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/*
+  The scope bar. Always there, saying what the list is showing and how many —
+  a list that only explains itself once it has been narrowed leaves you working
+  out where you are from the rows. The way out appears only when there is
+  something to get out of.
+*/
+.fb-scopebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  background: color-mix(in srgb, Highlight 8%, Window);
+  border-bottom: 1px solid var(--fb-line);
+}
+
+/* An empty list says why it is empty. Silence reads as mail gone missing. */
+.fb-empty-list {
+  padding: 24px 16px;
+  margin: 0;
+  text-align: center;
+}
+
+.fb-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+#fb-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+}
+
+.fb-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-areas: 'cat from clip date' 'cat subject subject subject';
+  align-items: center;
+  gap: 2px 8px;
+  height: var(--fb-row);
+  box-sizing: border-box;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--fb-line);
+  cursor: default;
+}
+
+.fb-row.fb-selected {
+  background: var(--fb-selected);
+}
+
+.fb-row.fb-pending {
+  opacity: 0.4;
+}
+
+.fb-cat {
+  grid-area: cat;
+  width: 6px;
+  height: 34px;
+  border-radius: 3px;
+  overflow: hidden;
+  /* The label is for screen readers and the title; the colour is the signal. */
+  text-indent: -999px;
+  background: transparent;
+}
+
+.fb-cat[data-category='personal'] { background: var(--fb-personal); }
+.fb-cat[data-category='newsletter'] { background: var(--fb-newsletter); }
+.fb-cat[data-category='marketing'] { background: var(--fb-marketing); }
+.fb-cat[data-category='transactional'] { background: var(--fb-transactional); }
+.fb-cat[data-category='notification'] { background: var(--fb-notification); }
+.fb-cat[data-category='unknown'] { background: var(--fb-unknown); }
+
+.fb-from {
+  grid-area: from;
+  color: var(--fb-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-subject {
+  grid-area: subject;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fb-row.fb-unread .fb-subject,
+.fb-row.fb-unread .fb-from {
+  font-weight: 600;
+  color: var(--fb-text);
+}
+
+.fb-clip {
+  grid-area: clip;
+}
+
+.fb-date {
+  grid-area: date;
+  color: var(--fb-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* -- reading -------------------------------------------------------------- */
+
+.fb-detail {
+  grid-area: detail;
+  overflow-y: auto;
+  padding: 16px;
+  min-width: 0;
+}
+
+.fb-read-subject {
+  font-size: 15px;
+  margin: 0 0 4px;
+}
+
+.fb-read-body {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin-top: 12px;
+}
+
+/* -- toast and help ------------------------------------------------------- */
+
+.fb-toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--fb-text);
+  color: var(--fb-ground);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 25%);
+  z-index: 10;
+}
+
+.fb-toast.fb-error {
+  background: #b3261e;
+  color: #fff;
+}
+
+.fb-help {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, Window 75%, transparent);
+  z-index: 20;
+}
+
+.fb-triage [hidden] {
+  display: none !important;
+}
+
+/* -- the legend ----------------------------------------------------------- */
+
+/*
+  Always on screen. A keyboard-first list is not the same thing as an
+  undiscoverable one, and the first person to open this had no idea what they
+  were meant to do — which was a fair reading of a window that showed rows and
+  said nothing.
+*/
+.fb-legend {
+  grid-area: legend;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+  padding: 6px 12px;
+  border-top: 1px solid var(--fb-line);
+  background: color-mix(in srgb, WindowText 4%, Window);
+  color: var(--fb-muted);
+}
+
+.fb-legend span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.fb-legend kbd,
+.fb-help kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid var(--fb-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--fb-ground);
+  color: var(--fb-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+
+.fb-help kbd {
+  border: 0;
+  background: none;
+  font-size: 12px;
+}
+
+/* -- what this is --------------------------------------------------------- */
+
+.fb-help-panel {
+  max-width: 62ch;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 20px 24px 24px;
+  border: 1px solid var(--fb-line);
+  border-radius: 8px;
+  background: var(--fb-ground);
+  box-shadow: 0 8px 40px rgb(0 0 0 / 25%);
+}
+
+.fb-help-panel h2 {
+  font-size: 14px;
+  margin: 18px 0 6px;
+}
+
+.fb-help-panel h2:first-child {
+  margin-top: 0;
+}
+
+.fb-help-panel p {
+  margin: 0 0 8px;
+  color: var(--fb-muted);
+}
+
+/* The six, each with what it means. */
+.fb-meanings {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 5px 12px;
+  margin: 10px 0 0;
+}
+
+.fb-meanings dt {
+  white-space: nowrap;
+}
+
+.fb-meanings dd {
+  margin: 0;
+  color: var(--fb-muted);
+}
+
+.fb-keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.fb-keys kbd {
+  justify-self: end;
+}
+
+.fb-help-done {
+  margin-top: 18px;
+}
+
+/* -- why this message is here --------------------------------------------- */
+
+.fb-why {
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid var(--fb-line);
+}
+
+.fb-why-head {
+  margin-bottom: 8px;
+}
+
+.fb-why p {
+  margin: 0;
+  color: var(--fb-muted);
+}
+
+.fb-why ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--fb-muted);
+}
+
+.fb-why li {
+  padding: 1px 0;
+}

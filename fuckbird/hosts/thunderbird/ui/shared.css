@@ -1,0 +1,152 @@
+/*
+  Two surfaces, one stylesheet.
+
+  Colours come from Thunderbird's own theme variables where they exist, so the
+  popup does not sit on a white card in a dark client. The category colours are
+  ours and match the tags, because a pill that does not match the tag in the
+  list is a second vocabulary to learn.
+*/
+
+:root {
+  --fb-personal: #3b7dd8;
+  --fb-newsletter: #7a5fb0;
+  --fb-marketing: #c4552d;
+  --fb-transactional: #2e8b57;
+  --fb-notification: #6e7b85;
+  --fb-unknown: #9a9a9a;
+
+  --fb-text: WindowText;
+  --fb-ground: Window;
+  --fb-muted: GrayText;
+  --fb-line: color-mix(in srgb, WindowText 20%, transparent);
+}
+
+body {
+  margin: 0;
+  color: var(--fb-text);
+  background: var(--fb-ground);
+  font: message-box;
+  font-size: 13px;
+}
+
+body.busy {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.muted {
+  color: var(--fb-muted);
+}
+
+/* -- the pill, shared ----------------------------------------------------- */
+
+.pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--fb-unknown);
+}
+
+.pill[data-category='personal'] { background: var(--fb-personal); }
+.pill[data-category='newsletter'] { background: var(--fb-newsletter); }
+.pill[data-category='marketing'] { background: var(--fb-marketing); }
+.pill[data-category='transactional'] { background: var(--fb-transactional); }
+.pill[data-category='notification'] { background: var(--fb-notification); }
+.pill[data-category='unknown'] { background: var(--fb-unknown); }
+
+/* -- the why popup -------------------------------------------------------- */
+
+.popup {
+  width: 320px;
+  padding: 12px;
+  box-sizing: border-box;
+}
+
+.verdict {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.reasons {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+
+.reasons li {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--fb-line);
+}
+
+.reasons li:last-child {
+  border-bottom: none;
+}
+
+/* An empty reason list is a real state — "unknown" has nothing to show. */
+.reasons:empty::after {
+  content: 'No signal strong enough to guess.';
+  color: var(--fb-muted);
+}
+
+.weight {
+  color: var(--fb-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.correction p {
+  margin: 0 0 6px;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.buttons button {
+  flex: 1 1 auto;
+}
+
+/* -- the options page ----------------------------------------------------- */
+
+.options {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 24px 16px 48px;
+}
+
+.options section {
+  margin-bottom: 32px;
+}
+
+.options h2 {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.options p {
+  margin: 0 0 10px;
+  max-width: 65ch;
+}
+
+.options table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.options td {
+  padding: 5px 10px 5px 0;
+  border-bottom: 1px solid var(--fb-line);
+  vertical-align: top;
+  /* Subjects and addresses are long and not ours to shorten. */
+  overflow-wrap: anywhere;
+}

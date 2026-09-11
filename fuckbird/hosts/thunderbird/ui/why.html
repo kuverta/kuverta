@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Why this category?</title>
+    <link rel="stylesheet" href="shared.css" />
+  </head>
+  <body class="popup">
+    <!--
+      The explanation is the point of the rules layer. A verdict you cannot
+      argue with is one you learn to ignore, so this popup shows the evidence
+      and puts the correction one click away from it.
+    -->
+    <div id="verdict" class="verdict">
+      <span id="category" class="pill">…</span>
+      <span id="confidence" class="muted"></span>
+    </div>
+
+    <ul id="reasons" class="reasons"></ul>
+
+    <div class="correction">
+      <p class="muted">File it as</p>
+      <div id="buttons" class="buttons"></div>
+    </div>
+
+    <script type="module" src="why.js"></script>
+  </body>
+</html>
