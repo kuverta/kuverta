@@ -316,6 +316,7 @@ async fn sending_files_a_copy_and_says_where() {
                 body: "hello".into(),
                 ..Default::default()
             },
+            true,
         )
         .await
         .unwrap();
@@ -351,8 +352,47 @@ async fn an_account_with_no_submission_endpoint_says_so_before_composing() {
                 to: vec!["jane@example.com".into()],
                 ..Default::default()
             },
+            true,
         )
         .await
         .expect_err("there is nowhere to submit to");
     assert!(err.to_string().contains("set-smtp"), "{err}");
+}
+
+#[tokio::test]
+async fn a_send_can_decline_to_file_a_copy() {
+    // `--no-save-to-sent` exists so a scripted send does not add mail to a
+    // mailbox other things assert the contents of. It stopped working when the
+    // send path moved into the session and the flag was left behind in the CLI,
+    // suppressing the message about filing rather than the filing itself.
+    if !dev_server_available() || !sink_available() {
+        return;
+    }
+    let user = "session-nofile@fuckmail.test";
+    let dir = registered_sender("nofile", user);
+    let session = session(&dir);
+
+    let draft = core_rpc::DraftInput {
+        to: vec!["jane@example.com".into()],
+        subject: "not filed".into(),
+        body: "hello".into(),
+        ..Default::default()
+    };
+
+    let sent = session.send(user, &draft, false).await.unwrap();
+    assert_eq!(sent.recipients.len(), 1, "it still goes out");
+    assert!(sent.filed_in.is_none(), "nothing should have been filed");
+    assert!(sent.filing_error.is_none(), "declining is not a failure");
+
+    // And the Sent folder really is untouched.
+    session.sync_account(user).await.unwrap();
+    let core = core(&dir);
+    let account = core.accounts().unwrap()[0].id;
+    let sent_folder = core
+        .folders(account)
+        .unwrap()
+        .into_iter()
+        .find(|f| f.special_use.as_deref() == Some("\\Sent"))
+        .expect("the dev server has a Sent folder");
+    assert_eq!(sent_folder.total, 0, "Sent should still be empty");
 }
