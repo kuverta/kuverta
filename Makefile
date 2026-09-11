@@ -3,7 +3,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
-        triage-ui \
+        triage-ui test-js \
         fill-mailbox clean
 
 help: ## Show this help
@@ -45,6 +45,10 @@ build: ## Build everything
 
 test: ## Run tests (integration tests skip if the dev server is down)
 	cargo test -j 2 --workspace
+	$(MAKE) test-js
+
+test-js: ## Run the triage surface's tests (no mail client needed)
+	cd fuckbird && npm test
 
 test-all: dev-up ## Run tests with the dev server required, as CI does
 	FUCKMAIL_REQUIRE_DEV_SERVER=1 cargo test -j 2 --workspace
@@ -68,15 +72,11 @@ check: ## What CI runs
 app: ## Open the triage window on the scratch store
 	./run.sh --dev
 
-# The shared surface lives in the fuckbird repository; this copies it in. The
-# copy is verbatim and the script verifies it, so the files the app loads are
-# the files that repository's tests run.
-FUCKBIRD ?= ../fuckbird
-
-triage-ui: ## Install the shared triage surface from the fuckbird repo
-	@test -x $(FUCKBIRD)/tools/install-into.sh || \
-	  (echo "fuckbird not found at $(FUCKBIRD) — set FUCKBIRD=/path/to/fuckbird" && false)
-	$(FUCKBIRD)/tools/install-into.sh apps/desktop/ui
+# Tauri serves one directory as the web root, so the shared surface has to be
+# inside it. The copy is verbatim and the script verifies it, so the files the
+# app loads are the files `make test-js` runs.
+triage-ui: ## Copy the shared triage surface into the desktop app
+	fuckbird/tools/install-into.sh apps/desktop/ui
 
 app-real: ## Open it on the real data directory
 	./run.sh

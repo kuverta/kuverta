@@ -49,7 +49,7 @@ Identical on all 250 — the same category *and* the same confidence to six
 decimal places. The facts are built once, in JS, and fed to both, so this
 measures the classifier and not the header parsing.
 
-Worth re-running after any change to `signals.js`. The harness for the Rust
+Worth re-running after any change to `fuckbird/core/signals.js`. The harness for the Rust
 half is throwaway (a few lines depending on `core-rules` by path); it is not
 kept in this repository because keeping it would mean keeping a Rust toolchain
 in the loop for a JS add-on.
@@ -168,10 +168,10 @@ hosts/thunderbird/   an adapter over the MailExtension API
 hosts/fuckmail/      an adapter over the client's Tauri commands
 ```
 
-`core/host.js` is the seam. Message ids are opaque, folders are opaque, and
+`fuckbird/core/host.js` is the seam. Message ids are opaque, folders are opaque, and
 anything one host can do that the other cannot is **declared** in a
 `capabilities` object rather than sniffed for. A core that starts asking "am I
-in Thunderbird?" has stopped being a core, and `test/wiring.test.js` fails if
+in Thunderbird?" has stopped being a core, and `fuckbird/test/wiring.test.js` fails if
 it ever does — it greps for `messenger.`, `__TAURI__` and `browser.` in
 `core/`, and for imports reaching from one host into the other.
 
@@ -186,7 +186,7 @@ most of it is the list, the cursor and the key map written once already.
 
 ### The contract is a test, not a document
 
-`test/support/conformance.js` is the host contract as a suite. Three adapters
+`fuckbird/test/support/conformance.js` is the host contract as a suite. Three adapters
 run it: Thunderbird against a fake `messenger`, `fuckmail` against a fake
 `invoke`, and an in-memory reference that exists to prove the contract is
 satisfiable at all — a contract no host can pass is a bug in the contract, and
@@ -240,7 +240,7 @@ outcome available: the key is shown, the user presses it, and nothing happens
 with no way to tell why. The contract has a test for exactly that
 ("a capability it does not have is refused, not quietly ignored").
 
-`hosts/fuckmail/readme.md` has the command that closes it. Once it exists, one
+[`fuckbird/hosts/fuckmail/readme.md`](../fuckbird/hosts/fuckmail/readme.md) has the command that closes it. Once it exists, one
 boolean changes here and the keys appear.
 
 ---
@@ -314,7 +314,7 @@ Worth recording, because they were guesses and are no longer:
 
 ### The table is now a test
 
-`test/permissions.test.js` holds the API-to-permission table and checks three
+`fuckbird/test/permissions.test.js` holds the API-to-permission table and checks three
 things: that the manifest grants everything the code needs, that it grants
 nothing it does not — a mail client asking for more than it uses is asking to
 be trusted for no reason — and that every `messenger.*` call the code makes has
@@ -470,7 +470,7 @@ in this order:
    is a label and the list is sorted by it rather than by where mail happens to
    live.
 2. **What the six mean**, each in a line. `CATEGORY_MEANINGS` now sits beside
-   the doc comments in `core/category.js`: the comments explain the taxonomy to
+   the doc comments in `fuckbird/core/category.js`: the comments explain the taxonomy to
    whoever reads the source, and these explain it in the window, which is where
    it is actually asked.
 3. **That correcting it teaches it** — that `1`–`6` remembers the sender or the
@@ -503,3 +503,57 @@ Marketing."* That sentence is only available because the two were kept apart.
 Where a host cannot supply facts — `fuckmail`'s `message` command returns a
 body and no headers — it shows the category and what that category means, and
 stops. A weaker answer to the same question beats inventing reasons.
+
+---
+
+## 10. One repository
+
+**2026-09-11.** Reverses the split that §4 was written inside.
+
+`fuckbird` was a separate repository for about a day. Looking at the two side by
+side, the reaction was the obvious one: why are there two of these?
+
+There was no good answer. §4 had already concluded that neither the Rust client
+nor Thunderbird is the product — the triage surface and the classifier are, and
+both are hosts. A repository boundary between the surface and one of its two
+hosts does not express that; it just makes the surface look like a separate
+project that happens to have an adapter.
+
+The evidence it was wrong was already sitting in both trees. The brief existed
+twice, in two states, with the second copy's links rewritten to stop pretending
+they resolved. The install script existed to carry files across a boundary that
+had no reason to be there. And the fix in §7 — exposing corrections — touched
+the Rust store, the Rust RPC, the Tauri command *and* the JavaScript adapter,
+which is one change described in two commit messages in two histories.
+
+So `fuckbird` is now a directory, merged with `git subtree` rather than copied,
+so its seven commits and their reasoning are still in the log and interleaved
+with the Rust ones in the order things actually happened.
+
+### What that tidied
+
+- **One brief.** The annotated copy survives as
+  `docs/thunderbird-fork-brief.md`; the links that had been flattened to code
+  spans are links again, because now they resolve.
+- **One decisions log**, this file, covering both halves. §7 is about the Rust
+  store and §8 about a JavaScript view, and they belong in one place because
+  they are the same project.
+- **`make test-js`**, and `make test` now runs both suites. Two test commands in
+  two directories was another way of saying two projects.
+
+### What stays copied, and why
+
+`make triage-ui` still copies the surface into `apps/desktop/ui/`. That is not
+left over from the split: Tauri serves exactly one directory as the web root,
+and nothing outside it is reachable from the page. The copy is verbatim and
+verified with `diff -r`, so it stays a copy rather than becoming a build step —
+which is the same line the Thunderbird side walks by putting the manifest where
+`core/` is already inside the extension root.
+
+### What this does not change
+
+The contract. `fuckbird/core/` still may not name a host, and
+`fuckbird/test/wiring.test.js` still fails if it does. Sharing a repository with
+one of the two hosts is exactly the circumstance in which that rule stops being
+obvious and starts being load-bearing: the Rust client is now a directory away,
+and reaching into it would work.

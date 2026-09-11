@@ -15,6 +15,28 @@ cost and what replaced the safety the first one had for free.
 Status: **usable, not finished.** The window syncs, reads, triages, replies and
 sends against real providers. There is no local model yet, and no paper half.
 
+## Two halves
+
+The repository holds a Rust mail client and a JavaScript triage surface, and
+they are not the same thing wearing two hats:
+
+- **The Rust half** — `crates/` and `apps/` — is a mail client. IMAP, SMTP, the
+  store, accounts, the deterministic classifier.
+- **The JavaScript half** — [`fuckbird/`](fuckbird/) — is the triage surface and
+  the classifier ported to run wherever the mail is. It mounts over this client
+  *and* over Thunderbird as an extension, from the same code, behind a contract
+  each host implements.
+
+The second exists because of the add-on ecosystem: Thunderbird extensions need
+Gecko, and Gecko cannot be embedded outside Mozilla's own applications, so
+running them means *being* a Thunderbird rather than talking to one. Rather than
+choose, the surface was written once and given two hosts. See
+[docs/thunderbird-fork-brief.md](docs/thunderbird-fork-brief.md) for the
+reasoning and [docs/decisions.md](docs/decisions.md) for what it has cost.
+
+`make triage-ui` copies the surface into the desktop app; then click **triage**
+in its header.
+
 ## What works today
 
 - **Sync** — IMAP into SQLite + FTS5, incremental via `HIGHESTMODSEQ`, flag
@@ -90,8 +112,10 @@ of everything, so `check` will suggest `exclude '\All'` and say what that costs.
 | `crates/core-rpc` | The typed surface both front ends talk to |
 | `apps/cli` | Development driver — not the product |
 | `apps/desktop` | The triage window |
+| `fuckbird/core` | The shared triage surface and the classifier, in JavaScript |
+| `fuckbird/hosts` | One adapter per host: this client, and Thunderbird |
 | `docker/` | Dev stack: Dovecot, an SMTP sink, a Gmail shape, Ollama, Paperless |
-| `docs/` | Plan, evaluation, original brief |
+| `docs/` | Plan, evaluation, briefs, and the decisions log |
 
 `make help` lists the useful targets. `run.sh --help` explains the window.
 
