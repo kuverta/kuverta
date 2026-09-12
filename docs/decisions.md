@@ -670,3 +670,76 @@ useful way — the first was message ids not surviving a move (§4). Both times
 the fix was in the port, both times it was found by adding a host rather than
 by thinking harder about the port, and both times a test that assumed too much
 was the thing that said so.
+
+---
+
+## 13. `scannerd` is small because it refuses to do most of the job
+
+**2026-09-12.** Brief §4.2, and the plan's month 6–7.
+
+The plan lists the capture daemon as "page detect → capture → deskew → crop →
+upload with offline spooling" and budgets ~600 lines. Three of those five steps
+turned out not to be this program's work at all, and saying why is more useful
+than the code.
+
+**Deskew is `ocrmypdf`'s.** Paperless runs it on every document. A photograph of
+a letter on a desk is never square, and straightening it here would be writing —
+and then maintaining, and then failing to test — something that already happens
+downstream. The dev stack now sets `PAPERLESS_OCR_DESKEW` explicitly rather than
+inheriting a default, so the dependency is visible to whoever changes it next.
+
+**Cropping is a setting.** A capture rig has the camera fixed above a fixed
+spot, so the page is always in the same part of the frame. `rpicam-still --roi`
+crops on the sensor. That turns a page of perspective geometry into one line of
+configuration — and geometry that cannot be tested against real photographs is
+geometry that is guessed at, which was the deciding argument.
+
+**Page detection is arithmetic, not vision.** `--encoding yuv420` hands back raw
+YUV whose first plane *is* the greyscale image, so there is no JPEG to decode
+and no image library in the binary. "Is there a page" becomes "what fraction of
+pixels differ from the empty desk by more than a threshold".
+
+That last one is why the interesting part is testable at all. The detector is
+driven by synthetic frames on a laptop, and what it is tested for is not "does
+it see paper" — that is a threshold someone will tune on the device — but the
+transitions:
+
+- a hand still in shot is not photographed, however long it hovers;
+- a pause halfway does not add up to a still page, because stillness counts
+  consecutively and resets on movement;
+- one page is photographed **once**, because after a capture nothing arms again
+  until the surface has been seen empty — the rule that stops one letter
+  becoming forty;
+- the baseline is re-learnt each time the desk is seen empty, so daylight moving
+  across it over an afternoon does not slowly read as a page.
+
+### The camera is a program, not a library
+
+`rpicam-still` is what Raspberry Pi OS ships and supports. The libcamera stack
+underneath is C++ and its Rust bindings are not something to bet a device daemon
+on. Shelling out costs a process per frame and buys a camera that will still
+work after the next OS upgrade — the same "lean on, don't rewrite" the plan
+applies to `mail-parser` and Paperless itself.
+
+### Nothing is lost, and what that cost
+
+§3.5's "queue the intent before acting" applied to paper: the photograph is on
+disk before Paperless is contacted, and removed only once it has confirmed. The
+spool is a directory rather than a database, so a Pi unplugged mid-write is
+recoverable with `ls`, and a half-written capture keeps a `.partial` extension
+that nothing uploads.
+
+One API hazard turned up while testing it. `failed()` originally incremented the
+attempt count from the caller's `Pending`, which may have been read some time
+ago — so two failures against one stale handle both recorded "attempt 1", and
+the backoff never backed off. It counts from disk now. The test that found it
+was itself wrong in exactly that way, which is the useful kind of wrong: a test
+that misuses an API is evidence the API invites it.
+
+### What is still unverified
+
+`rpicam-still` behaving as documented. Twenty-six tests cover the detector, the
+spool and the uploader, and every one of them runs without a camera; none of
+them can tell whether the flags are right. `--drain-only` exists partly for
+that — it exercises the upload half against a real Paperless before there is a
+device to test the other half with.

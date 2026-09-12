@@ -1,0 +1,41 @@
+# systemd unit for the capture daemon.
+#
+#   sudo install -m 0644 scannerd.service /etc/systemd/system/
+#   sudo install -m 0600 scannerd.env     /etc/scannerd.env
+#   sudo systemctl enable --now scannerd
+#
+# Runs as its own user with no login, because a daemon that can reach the
+# camera and hold a Paperless token should not also be able to read the pi
+# user's home directory.
+
+[Unit]
+Description=scannerd — capture post and hand it to Paperless-ngx
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scannerd
+# `video` for the camera; nothing else is needed.
+SupplementaryGroups=video
+EnvironmentFile=/etc/scannerd.env
+ExecStart=/usr/local/bin/scannerd
+Restart=always
+# Long enough not to hammer a camera that is genuinely missing, short enough
+# that a transient failure costs one letter's delay rather than an afternoon.
+RestartSec=10
+
+StateDirectory=scannerd
+# The spool lives here; StateDirectory creates it with the right owner.
+Environment=SCANNERD_SPOOL=/var/lib/scannerd/spool
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
