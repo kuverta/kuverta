@@ -160,8 +160,24 @@ several addresses. `--check` exists because a selector that matches nothing
 looks exactly like an address that has had no post, which is the §3.6 lesson
 applied to paper.
 
-Not done yet: post does not appear in the triage window beside mail. That is the
-next step, and the reason the shapes already match.
+### Capturing it
+
+[`scannerd`](apps/scannerd/) is the other end: a Pi with a camera over a fixed
+spot, which notices when a page is put down, photographs it once it has stopped
+moving, and hands it to Paperless. It is the only part of the paper pipeline
+that is ours, and it stays small by refusing to do what upstream already does —
+no deskew (ocrmypdf's job), no page-finding (the camera is bolted above a fixed
+spot, so cropping is `--roi` rather than geometry), and no image library at all,
+because raw YUV's first plane is already the greyscale image.
+
+```sh
+cargo test -p scannerd        # 26 tests, no camera needed
+scannerd --drain-only         # upload whatever is spooled, and exit
+```
+
+A capture is written to the spool before any upload is attempted and removed
+only once Paperless confirms it, so a flat battery between the two costs a
+retry rather than a letter.
 
 ## Layout
 
@@ -175,6 +191,7 @@ next step, and the reason the shapes already match.
 | `crates/core-rpc` | The typed surface both front ends talk to |
 | `apps/cli` | Development driver — not the product |
 | `apps/desktop` | The triage window |
+| `apps/scannerd` | Pi capture daemon: page detect → capture → spool → upload |
 | `crates/core-paper` | Paperless-ngx read as a mailbox: post, in the shape mail has |
 | `fuckbird/core` | The shared triage surface and the classifier, in JavaScript |
 | `fuckbird/hosts` | One adapter per host: this client, and Thunderbird |
