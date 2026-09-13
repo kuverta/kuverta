@@ -11,6 +11,7 @@ members = [
     "apps/cli",
     "apps/desktop",
     "apps/scannerd",
+    "apps/mcp",
 ]
 
 [workspace.package]
