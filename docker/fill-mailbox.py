@@ -135,6 +135,25 @@ TOPICS = [
 ]
 
 
+# The true category of each generated message, for scoring classifiers against.
+#
+# Mostly the bucket a fixture was drawn from — with one exception, where the
+# bucket and the taxonomy disagree and the taxonomy wins. A parcel-delivered
+# message sits in the transactional list above because it arrives from a
+# carrier's no-reply address like a receipt does, but the taxonomy defines
+# notification as "machine-generated status: builds, alerts, delivery
+# notices". An evaluation scored against the bucket name would mark a
+# classifier wrong for being right.
+TRUTH = {
+    "noreply@dhl.example.de": "notification",
+}
+
+# Set by build() for the message it has just built. A side channel rather than
+# a changed return value, so that labelling adds no draw from the random
+# sequence: the corpus must stay exactly the corpus it was.
+_LAST = {"label": None}
+
+
 def rfc822(date, headers, body, html=None, attachment=False):
     """One message, built by hand so every header is deliberate."""
     lines = [f"{k}: {v}" for k, v in headers.items()]
@@ -185,6 +204,7 @@ def build(n, when):
 
     if roll < 0.30:
         name, addr, subj, body = random.choice(GERMAN_TRANSACTIONAL + ENGLISH_TRANSACTIONAL)
+        _LAST["label"] = TRUTH.get(addr, "transactional")
         attach = random.random() < 0.25
         return rfc822(when, {
             "Message-ID": f"<{mid}>",
@@ -195,6 +215,7 @@ def build(n, when):
 
     if roll < 0.52:
         name, addr, list_id, subj, body = random.choice(NEWSLETTERS)
+        _LAST["label"] = TRUTH.get(addr, "newsletter")
         return rfc822(when, {
             "Message-ID": f"<{mid}>",
             "From": f'"{name}" <{addr}>',
@@ -207,6 +228,7 @@ def build(n, when):
 
     if roll < 0.70:
         name, addr, list_id, subj, _ = random.choice(MARKETING)
+        _LAST["label"] = TRUTH.get(addr, "marketing")
         subject = subj.format(**fmt)
         html = (f"<html><body style='font-family:sans-serif'>"
                 f"<h1>{subject}</h1>"
@@ -225,6 +247,7 @@ def build(n, when):
 
     if roll < 0.85:
         name, addr, subj, body = random.choice(NOTIFICATIONS)
+        _LAST["label"] = TRUTH.get(addr, "notification")
         return rfc822(when, {
             "Message-ID": f"<{mid}>",
             "From": f'"{name}" <{addr}>',
@@ -235,6 +258,7 @@ def build(n, when):
 
     # Personal, sometimes as a reply so threading has something to chew on.
     name, addr = random.choice(PEOPLE)
+    _LAST["label"] = TRUTH.get(addr, "personal")
     subject, body = random.choice(PERSONAL_SUBJECTS)
     headers = {
         "Message-ID": f"<{mid}>",
@@ -254,7 +278,7 @@ def build(n, when):
 
 
 def generate():
-    """Yields (when, raw, seen) for each message, in the seeded order.
+    """Yields (when, raw, seen, label) for each message, in the seeded order.
 
     Both modes consume this, so `--dump` sees exactly the mail `fill` appends.
     Every draw below is part of that sequence — moving one changes the whole
@@ -272,7 +296,7 @@ def generate():
 
         # Most older mail has been read; recent mail mostly has not.
         seen = random.random() < (0.15 if days_ago < 7 else 0.85)
-        yield when, raw, seen
+        yield when, raw, seen, _LAST["label"]
 
 
 def body_text(message):
@@ -341,8 +365,11 @@ def facts(raw):
 
 
 def dump():
-    for _, raw, _ in generate():
-        print(json.dumps(facts(raw), ensure_ascii=False))
+    for _, raw, _, label in generate():
+        # The label travels beside the facts, never among them: it is the
+        # answer an evaluation scores against, and a classifier must not be
+        # shown it.
+        print(json.dumps({**facts(raw), "label": label}, ensure_ascii=False))
 
 
 def fill():
@@ -352,7 +379,7 @@ def fill():
     imap.login(USER, PASSWORD)
 
     appended = 0
-    for when, raw, seen in generate():
+    for when, raw, seen, _ in generate():
         flags = "(\\Seen)" if seen else None
         imap.append("INBOX", flags, imaplib.Time2Internaldate(when.timestamp()), raw)
         appended += 1

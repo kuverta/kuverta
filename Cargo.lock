@@ -623,6 +623,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-ai"
+version = "0.1.0"
+dependencies = [
+ "core-rules",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -709,6 +722,7 @@ name = "core-rpc"
 version = "0.1.0"
 dependencies = [
  "core-accounts",
+ "core-ai",
  "core-paper",
  "core-proto",
  "core-rules",
@@ -1341,6 +1355,7 @@ dependencies = [
  "chrono",
  "clap",
  "core-accounts",
+ "core-ai",
  "core-paper",
  "core-proto",
  "core-rpc",
@@ -1348,6 +1363,8 @@ dependencies = [
  "core-smtp",
  "core-store",
  "futures",
+ "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "tracing-subscriber",
