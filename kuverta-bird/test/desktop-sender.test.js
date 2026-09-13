@@ -96,7 +96,7 @@ function load({ answer = view(), fail = null } = {}) {
   const make = new Function(
     'el', 'invoke', 'state', 't', 'initials', 'listDate', 'formatDate', 'LEVELS',
     'viewport', 'window', 'document', 'openWholeMessage', 'syncAside', 'select', 'say',
-    'iconSvg', 'reload',
+    'iconSvg', 'reload', 'accountOf',
     `${source}
      return { senderCard, showSender, hideSender, forgetSenders, hideHover, hoverTarget, senderName };`,
   );
@@ -121,6 +121,7 @@ function load({ answer = view(), fail = null } = {}) {
     (text) => said.push(text),
     () => document.createElement('span'),
     async () => reloads.push(true),
+    (row) => row?.account ?? state.account,
   );
   return { ...api, el, state, asked, opened, said, reloads, document, window };
 }
@@ -248,9 +249,10 @@ test('what a hovered row is about depends on which list it is in', () => {
   row.className = 'row';
   row.dataset.index = '0';
   document.getElementById('viewport').append(row);
-  state.rows.set(0, { id: 42, key: 'erika@example.de' });
+  state.rows.set(0, { id: 42, key: 'erika@example.de', account: 3 });
 
-  assert.deepEqual(hoverTarget(row), { node: row, id: 42 });
+  // In mail a row is a message of one account, which the card is asked by.
+  assert.deepEqual(hoverTarget(row), { node: row, id: 42, account: 3 });
 
   // In People a row is a person, so the card is asked for by address.
   state.view = 'people';
