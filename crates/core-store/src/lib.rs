@@ -887,6 +887,35 @@ impl Store {
             .map_err(Into::into)
     }
 
+    /// Messages on an account that this model has not classified yet, newest
+    /// first.
+    ///
+    /// Keyed on the model's name as well as the source, so trying a second
+    /// model is a fresh pass rather than a no-op — and so comparing two models
+    /// is possible at all.
+    pub fn awaiting_model_verdict(
+        &self,
+        account_id: AccountId,
+        model: &str,
+        limit: usize,
+    ) -> Result<Vec<MessageSummary>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, m.snippet
+             FROM message m
+             WHERE m.account_id = ?1
+               AND NOT EXISTS (
+                   SELECT 1 FROM classification c
+                   WHERE c.message_id = m.id AND c.source = 'model' AND c.model = ?2
+               )
+             ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(params![account_id, model, limit as i64], row_to_summary)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn recent_with_category(
         &self,
         account_id: AccountId,

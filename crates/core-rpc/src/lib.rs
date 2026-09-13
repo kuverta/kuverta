@@ -161,6 +161,21 @@ pub struct MessageDetail {
     pub body_text: Option<String>,
 }
 
+/// What a model pass did.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelPass {
+    pub model: String,
+    /// Messages that had no verdict from this model when the pass started.
+    pub waiting: usize,
+    pub classified: usize,
+    /// Replies that named no single category, recorded as Unknown.
+    pub unparseable: usize,
+    pub failed: usize,
+    pub mean_latency_ms: Option<i64>,
+    /// Set when the pass gave up — three failures in a row — with the last reason.
+    pub stopped: Option<String>,
+}
+
 /// Where archiving and trashing move mail to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecialFolders {
@@ -545,6 +560,112 @@ impl Core {
             archive: core_proto::client::find_archive(pairs.iter().copied()).map(str::to_string),
             trash: core_proto::client::find_trash(pairs.iter().copied()).map(str::to_string),
         })
+    }
+
+    /// Runs the local model over mail it has not classified yet.
+    ///
+    /// Brief §3.3, all three rules at once. **After sync, not during**: this is
+    /// its own call, so a slow model can never make a sync slow. **Log both**:
+    /// the verdict is recorded as `model` beside the rules' verdict, keyed by
+    /// the model's name, and `disagreements` compares them. **Never shown**:
+    /// the list does not read model verdicts, so a model that is wrong for a
+    /// month moves nobody's mail.
+    ///
+    /// Stops after three failures in a row rather than grinding through a
+    /// mailbox against a server that is down — each failure can be a long
+    /// timeout, and a hundred of them is an afternoon.
+    pub async fn model_pass(
+        &self,
+        account: AccountId,
+        ollama: &core_ai::Ollama,
+        classifier: &core_ai::PromptClassifier,
+        limit: usize,
+    ) -> Result<ModelPass> {
+        let waiting = self
+            .store
+            .awaiting_model_verdict(account, &classifier.model, limit)?;
+        let mut pass = ModelPass {
+            model: classifier.model.clone(),
+            waiting: waiting.len(),
+            ..ModelPass::default()
+        };
+
+        let mut latency_total: i64 = 0;
+        let mut failures_in_a_row = 0;
+
+        for summary in &waiting {
+            let facts = self.facts_for_model(account, summary);
+            match classifier.classify(ollama, &facts.as_message_facts()).await {
+                Ok(verdict) => {
+                    failures_in_a_row = 0;
+                    // An answer that names no single category is the model not
+                    // knowing, which is exactly what Unknown means — recorded as
+                    // such, and counted, so a model that cannot follow the
+                    // instruction shows up as one.
+                    if verdict.category.is_none() {
+                        pass.unparseable += 1;
+                        tracing::debug!(message = summary.id, reply = %verdict.raw, "unparseable model reply");
+                    }
+                    let category = verdict.category.unwrap_or(core_rules::Category::Unknown);
+                    self.store.record_verdict(
+                        summary.id,
+                        &core_store::model::Verdict {
+                            category: category.as_str().to_string(),
+                            confidence: None,
+                            source: core_store::model::ClassifierSource::Model,
+                            model: Some(classifier.model.clone()),
+                            latency_ms: Some(verdict.latency_ms),
+                        },
+                    )?;
+                    pass.classified += 1;
+                    latency_total += verdict.latency_ms;
+                }
+                Err(err) => {
+                    pass.failed += 1;
+                    failures_in_a_row += 1;
+                    tracing::warn!(message = summary.id, %err, "the model did not answer");
+                    if failures_in_a_row >= 3 {
+                        pass.stopped = Some(err.to_string());
+                        break;
+                    }
+                }
+            }
+        }
+
+        pass.mean_latency_ms =
+            (pass.classified > 0).then(|| latency_total / pass.classified as i64);
+        Ok(pass)
+    }
+
+    /// The facts a model is shown for a stored message.
+    ///
+    /// Re-parsed from the message on disk where there is one, because the store
+    /// keeps only some of what the rules read at sync time — `List-Unsubscribe`,
+    /// `Precedence` and `Auto-Submitted` are read then and not kept. Without the
+    /// body on disk the summary stands in, and the model sees less; that is
+    /// worth knowing when reading its disagreements.
+    fn facts_for_model(
+        &self,
+        account: AccountId,
+        summary: &core_store::MessageSummary,
+    ) -> core_proto::parse::ClassifyFacts {
+        self.store
+            .message_by_id(account, summary.id)
+            .ok()
+            .flatten()
+            .and_then(|stored| stored.body_path)
+            .and_then(|path| self.blobs.get(path.as_str()).ok())
+            .and_then(|raw| core_proto::parse::parse_message(&raw, None))
+            .map(|parsed| parsed.facts)
+            .unwrap_or_else(|| core_proto::parse::ClassifyFacts {
+                from_addr: summary.from_addr.clone(),
+                from_name: summary.from_name.clone(),
+                subject: summary.subject.clone(),
+                list_id: summary.list_id.clone(),
+                has_attachments: summary.has_attachments,
+                snippet: summary.snippet.clone(),
+                ..Default::default()
+            })
     }
 
     /// Cancels the most recent change that has not been sent.

@@ -72,7 +72,7 @@ Seeding is idempotent — a mailbox that already holds messages is left alone. U
 
 **On Apple Silicon the container has no GPU access** — no Metal passthrough — so
 it is much slower than a native install. Use the container for CI and parity, and
-run Ollama natively for real development. `make ai-model` pulls a model.
+run Ollama natively for real development. `make ai-model` pulls a chat model and `nomic-embed-text`, the embedding model `fuckmail eval` compares prompting against.
 
 ## Paperless-ngx
 

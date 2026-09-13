@@ -18,6 +18,9 @@ core-smtp.workspace = true
 core-rpc.workspace = true
 core-paper.workspace = true
 core-rules.workspace = true
+core-ai.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 anyhow.workspace = true
 clap.workspace = true

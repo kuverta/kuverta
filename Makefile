@@ -30,8 +30,11 @@ dev-logs: ## Follow the Dovecot log
 ai-up: ## Start Ollama in a container (see docker/README.md before using this)
 	$(COMPOSE) --profile ai up -d
 
-ai-model: ## Pull the classification model into the Ollama container
+ai-model: ## Pull the chat model and the embedding model into the Ollama container
 	$(COMPOSE) --profile ai exec ollama ollama pull qwen3:8b
+	@# The embedding model `fuckmail eval` scores against prompting. Plan §4 asks
+	@# for both to be tried before either is committed to.
+	$(COMPOSE) --profile ai exec ollama ollama pull nomic-embed-text
 
 # Kept as a name people already type; Paperless is in the default stack now.
 paperless-up: dev-up ## Start Paperless-ngx on http://localhost:8000 (admin/admin)
