@@ -14,6 +14,7 @@ serde_json.workspace = true
 core-store.workspace = true
 core-proto.workspace = true
 core-rules.workspace = true
+core-ai.workspace = true
 core-paper.workspace = true
 core-accounts.workspace = true
 core-smtp.workspace = true
