@@ -179,6 +179,14 @@ A capture is written to the spool before any upload is attempted and removed
 only once Paperless confirms it, so a flat battery between the two costs a
 retry rather than a letter.
 
+## For an assistant
+
+[`fuckmail-mcp`](apps/mcp/) serves the mailbox — mail and scanned post — over
+MCP on stdio. Read-only unless started with `--allow-writes`, and even then it
+cannot send, cannot delete, and holds every change for five minutes before it
+may reach the server, cancellable the whole time. An assistant's filing shows in
+the list but does not teach the classifier; only yours do.
+
 ## Layout
 
 | Path | What |
@@ -192,6 +200,7 @@ retry rather than a letter.
 | `apps/cli` | Development driver — not the product |
 | `apps/desktop` | The triage window |
 | `apps/scannerd` | Pi capture daemon: page detect → capture → spool → upload |
+| `apps/mcp` | The mailbox as an MCP server, for an assistant |
 | `crates/core-paper` | Paperless-ngx read as a mailbox: post, in the shape mail has |
 | `fuckbird/core` | The shared triage surface and the classifier, in JavaScript |
 | `fuckbird/hosts` | One adapter per host: this client, and Thunderbird |
