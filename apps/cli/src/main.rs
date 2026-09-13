@@ -202,6 +202,50 @@ enum Command {
         #[command(flatten)]
         smtp: SmtpArgs,
     },
+    /// Run the local model over mail it has not classified yet.
+    ///
+    /// Records its verdict beside the rules' and never changes what the list
+    /// shows. Brief §3.3: run it after sync, not during, and log both.
+    Classify {
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long, default_value = "Dolphin3:latest")]
+        model: String,
+        #[arg(long, env = "OLLAMA_URL", default_value = "http://127.0.0.1:11434")]
+        ollama: String,
+        #[arg(short = 'n', long, default_value_t = 100)]
+        limit: usize,
+    },
+    /// Where the rules and the model filed a message differently.
+    Disagreements {
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Score the rules, a prompted model and embeddings against labelled mail.
+    ///
+    /// Every method is scored on the same held-out half. Generate the input with
+    /// `python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl`.
+    Eval {
+        /// Facts with a `label`, one JSON object per line.
+        facts: PathBuf,
+        #[arg(long, default_value = "Dolphin3:latest")]
+        model: String,
+        #[arg(long, default_value = "nomic-embed-text")]
+        embed_model: String,
+        #[arg(long, env = "OLLAMA_URL", default_value = "http://127.0.0.1:11434")]
+        ollama: String,
+        /// How many of the nearest filings the embedding classifier consults.
+        #[arg(long, default_value_t = 5)]
+        k: usize,
+        /// Hold out every other message, or every other sender within each
+        /// category — the second scores only senders never filed before.
+        #[arg(long, value_enum, default_value_t = Split::Alternate)]
+        split: Split,
+        #[arg(long)]
+        skip_prompt: bool,
+        #[arg(long)]
+        skip_embeddings: bool,
+    },
     /// Summarise what is in the store.
     Status,
 }
@@ -579,6 +623,31 @@ async fn main() -> Result<()> {
         Command::Queue { email } => show_queue(&store, email.as_deref()),
         Command::Send(args) => send(&store, &data_dir, args).await,
         Command::SetSmtp { email, clear, smtp } => set_smtp(&store, &email, clear, &smtp),
+        Command::Classify {
+            email,
+            model,
+            ollama,
+            limit,
+        } => model_classify(&data_dir, &store, email.as_deref(), &model, &ollama, limit).await,
+        Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
+        Command::Eval {
+            facts,
+            model,
+            embed_model,
+            ollama,
+            k,
+            split,
+            skip_prompt,
+            skip_embeddings,
+        } => {
+            let options = EvalOptions {
+                k,
+                split,
+                skip_prompt,
+                skip_embeddings,
+            };
+            evaluate_models(&facts, &model, &embed_model, &ollama, &options).await
+        }
         Command::Status => status(&store, &blobs),
     }
 }
@@ -1560,4 +1629,384 @@ fn default_data_dir() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".local/share/fuckmail")
+}
+
+// -- the local model ----------------------------------------------------------
+
+async fn model_classify(
+    data_dir: &std::path::Path,
+    store: &Store,
+    email: Option<&str>,
+    model: &str,
+    ollama_url: &str,
+    limit: usize,
+) -> Result<()> {
+    let account = resolve_account(store, email)?;
+    let core = core_rpc::Core::open(data_dir)
+        .with_context(|| format!("opening the store in {}", data_dir.display()))?;
+    let ollama = core_ai::Ollama::new(ollama_url)?;
+    let classifier = core_ai::PromptClassifier::new(model);
+
+    println!("asking {model} about up to {limit} message(s) it has not seen");
+    let pass = core
+        .model_pass(account, &ollama, &classifier, limit)
+        .await?;
+
+    println!(
+        "{} of {} classified, {} with no usable answer, {} failed{}",
+        pass.classified,
+        pass.waiting,
+        pass.unparseable,
+        pass.failed,
+        pass.mean_latency_ms
+            .map(|ms| format!(", {ms} ms each on average"))
+            .unwrap_or_default()
+    );
+    if let Some(reason) = pass.stopped {
+        println!("stopped after three failures in a row: {reason}");
+    }
+    let disagreements = store.disagreements(account)?.len();
+    println!(
+        "{disagreements} disagreement(s) with the rules — `fuckmail disagreements` lists them"
+    );
+    Ok(())
+}
+
+fn list_disagreements(store: &Store, email: Option<&str>) -> Result<()> {
+    let account = resolve_account(store, email)?;
+    let rows = store.disagreements(account)?;
+    if rows.is_empty() {
+        println!(
+            "no disagreements: either they agree, or the model has not run (`fuckmail classify`)"
+        );
+        return Ok(());
+    }
+    println!("{:<14}   {:<14} subject", "rules", "model");
+    for row in &rows {
+        println!(
+            "{:<14} → {:<14} {}",
+            row.rules_category,
+            row.model_category,
+            truncate(row.subject.as_deref().unwrap_or("(no subject)"), 60)
+        );
+    }
+    println!("\n{} message(s)", rows.len());
+    Ok(())
+}
+
+/// Scores the rules, a prompted model and embeddings on the same labelled mail.
+///
+/// The gate for brief stage 5 — "you can say whether it beats the rules, with
+/// numbers" — and the embeddings-against-prompting spike plan §4 asks for before
+/// either is committed to.
+async fn evaluate_models(
+    path: &std::path::Path,
+    model: &str,
+    embed_model: &str,
+    ollama_url: &str,
+    options: &EvalOptions,
+) -> Result<()> {
+    let text =
+        std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
+
+    let mut rows: Vec<(LabelledFacts, core_rules::Category)> = Vec::new();
+    let mut unlabelled = 0usize;
+    for (n, line) in text.lines().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let row: LabelledFacts = serde_json::from_str(line)
+            .with_context(|| format!("line {} of {}", n + 1, path.display()))?;
+        match row.label.as_deref().and_then(core_rules::Category::parse) {
+            Some(label) => rows.push((row, label)),
+            None => unlabelled += 1,
+        }
+    }
+    if rows.len() < 4 {
+        bail!(
+            "{} holds {} labelled message(s); generate some with\n  \
+             python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl",
+            path.display(),
+            rows.len()
+        );
+    }
+
+    // Every method is scored on the same held-out messages, so none is marked on
+    // mail it has already seen. *How* they are held out is the choice that
+    // matters, and neither answer is the whole truth:
+    //
+    // - alternate: every other message. Most scored messages then have a
+    //   sibling from the same sender among the filings — which is what a mailbox
+    //   looks like once it has been used for a while, and on a generated corpus
+    //   whose senders repeat templates, an upper bound for anything that learns
+    //   from filings.
+    // - sender: every other sender within each category is held out whole, so
+    //   each scored message comes from a sender never filed before. The cold
+    //   start, and the harder test for anything that learns.
+    //
+    // Neither changes anything for the rules or for prompting, which learn
+    // nothing from the filings. Only embeddings are flattered by the first.
+    type Row = (LabelledFacts, core_rules::Category);
+    let (train, test): (Vec<&Row>, Vec<&Row>) = match options.split {
+        Split::Alternate => (
+            rows.iter().step_by(2).collect(),
+            rows.iter().skip(1).step_by(2).collect(),
+        ),
+        Split::Sender => {
+            let mut senders: std::collections::BTreeMap<&str, std::collections::BTreeSet<String>> =
+                std::collections::BTreeMap::new();
+            for (row, label) in &rows {
+                senders
+                    .entry(label.as_str())
+                    .or_default()
+                    .insert(row.sender());
+            }
+            // Within each category, so every category keeps senders to learn
+            // from wherever it has more than one.
+            let held_out: std::collections::HashSet<String> = senders
+                .values()
+                .flat_map(|names| names.iter().skip(1).step_by(2).cloned())
+                .collect();
+            rows.iter()
+                .partition(|(row, _)| !held_out.contains(&row.sender()))
+        }
+    };
+    let truth: Vec<core_rules::Category> = test.iter().map(|(_, label)| *label).collect();
+
+    println!(
+        "{} labelled message(s): {} to learn from, {} to score on{}",
+        rows.len(),
+        train.len(),
+        test.len(),
+        if unlabelled > 0 {
+            format!(" ({unlabelled} unlabelled, skipped)")
+        } else {
+            String::new()
+        }
+    );
+
+    println!("held out: {}", options.split.describe());
+
+    let rules = core_rules::Classifier::without_history();
+    let predicted: Vec<Option<core_rules::Category>> = test
+        .iter()
+        .map(|(row, _)| Some(rules.classify(&row.facts()).category))
+        .collect();
+    score("rules, no corrections", &truth, &predicted, None);
+
+    let ollama = core_ai::Ollama::new(ollama_url)?;
+
+    if !options.skip_prompt {
+        let classifier = core_ai::PromptClassifier::new(model);
+        // One call first, untimed. The first request loads the model, and a
+        // twenty-five second cold start averaged into a hundred warm answers
+        // would say nothing true about either.
+        classifier
+            .classify(&ollama, &test[0].0.facts())
+            .await
+            .with_context(|| {
+                format!("asking {model} at {ollama_url} — is Ollama running with it pulled?")
+            })?;
+
+        let mut predicted = Vec::with_capacity(test.len());
+        let mut latency = Vec::with_capacity(test.len());
+        for (row, _) in &test {
+            let verdict = classifier.classify(&ollama, &row.facts()).await?;
+            predicted.push(verdict.category);
+            latency.push(verdict.latency_ms);
+        }
+        score(
+            &format!("prompting {model}"),
+            &truth,
+            &predicted,
+            Some(&latency),
+        );
+    }
+
+    if !options.skip_embeddings {
+        let mut neighbours = core_ai::Neighbours::new(options.k);
+        for batch in train.chunks(16) {
+            let inputs: Vec<String> = batch
+                .iter()
+                .map(|(row, _)| core_ai::embedding_input(embed_model, &row.facts()))
+                .collect();
+            let embedded = ollama.embed(embed_model, &inputs).await.with_context(|| {
+                format!("embedding with {embed_model} — is it pulled? `ollama pull {embed_model}`")
+            })?;
+            for (vector, (_, label)) in embedded.vectors.into_iter().zip(batch) {
+                neighbours.add(vector, *label);
+            }
+        }
+
+        let mut predicted = Vec::with_capacity(test.len());
+        let mut latency = Vec::with_capacity(test.len());
+        for batch in test.chunks(16) {
+            let inputs: Vec<String> = batch
+                .iter()
+                .map(|(row, _)| core_ai::embedding_input(embed_model, &row.facts()))
+                .collect();
+            let embedded = ollama.embed(embed_model, &inputs).await?;
+            let each = embedded.latency_ms / batch.len().max(1) as i64;
+            for vector in &embedded.vectors {
+                predicted.push(neighbours.classify(vector).map(|(category, _)| category));
+                latency.push(each);
+            }
+        }
+        score(
+            &format!(
+                "embeddings {embed_model}, {} nearest of {} filings",
+                options.k,
+                neighbours.len()
+            ),
+            &truth,
+            &predicted,
+            Some(&latency),
+        );
+    }
+
+    Ok(())
+}
+
+fn score(
+    name: &str,
+    truth: &[core_rules::Category],
+    predicted: &[Option<core_rules::Category>],
+    latency: Option<&[i64]>,
+) {
+    let total = truth.len();
+    let correct = truth
+        .iter()
+        .zip(predicted)
+        .filter(|(expected, got)| **got == Some(**expected))
+        .count();
+    let unanswered = predicted.iter().filter(|got| got.is_none()).count();
+
+    println!();
+    println!("{name}");
+    println!(
+        "  accuracy  {:>5.1}%  ({correct}/{total}){}",
+        100.0 * correct as f64 / total.max(1) as f64,
+        if unanswered > 0 {
+            format!(", {unanswered} with no usable answer")
+        } else {
+            String::new()
+        }
+    );
+
+    if let Some(latency) = latency.filter(|l| !l.is_empty()) {
+        let mut sorted = latency.to_vec();
+        sorted.sort_unstable();
+        let at = |q: f64| sorted[((sorted.len() - 1) as f64 * q).round() as usize];
+        println!("  latency   p50 {} ms, p95 {} ms", at(0.5), at(0.95));
+    }
+
+    for category in core_rules::Category::ALL {
+        let expected = truth.iter().filter(|t| **t == category).count();
+        if expected == 0 {
+            continue;
+        }
+        let hit = truth
+            .iter()
+            .zip(predicted)
+            .filter(|(t, got)| **t == category && **got == Some(category))
+            .count();
+        println!("  {:<14} {hit:>3}/{expected:<3}", category.as_str());
+    }
+
+    let mut confusions: std::collections::HashMap<
+        (core_rules::Category, Option<core_rules::Category>),
+        usize,
+    > = std::collections::HashMap::new();
+    for (expected, got) in truth.iter().zip(predicted) {
+        if *got != Some(*expected) {
+            *confusions.entry((*expected, *got)).or_default() += 1;
+        }
+    }
+    let mut worst: Vec<_> = confusions.into_iter().collect();
+    worst.sort_by(|a, b| {
+        b.1.cmp(&a.1)
+            .then_with(|| a.0 .0.as_str().cmp(b.0 .0.as_str()))
+    });
+    for ((expected, got), count) in worst.into_iter().take(3) {
+        println!(
+            "  wrong ×{count:<3} {} read as {}",
+            expected.as_str(),
+            got.map(|c| c.as_str()).unwrap_or("nothing")
+        );
+    }
+}
+
+/// How `eval` chooses the messages it scores on.
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Split {
+    /// Every other message.
+    Alternate,
+    /// Every other sender within each category, held out whole.
+    Sender,
+}
+
+impl Split {
+    fn describe(self) -> &'static str {
+        match self {
+            Self::Alternate => {
+                "every other message (most have a same-sender sibling among the filings)"
+            }
+            Self::Sender => "every other sender per category (no scored sender was ever filed)",
+        }
+    }
+}
+
+struct EvalOptions {
+    k: usize,
+    split: Split,
+    skip_prompt: bool,
+    skip_embeddings: bool,
+}
+
+/// One line of `dump-facts.js` output: the facts a classifier reads, and the
+/// answer it is scored against, kept apart.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct LabelledFacts {
+    from_addr: Option<String>,
+    from_name: Option<String>,
+    subject: Option<String>,
+    list_id: Option<String>,
+    list_unsubscribe: Option<String>,
+    precedence: Option<String>,
+    auto_submitted: Option<String>,
+    in_reply_to: Option<String>,
+    #[serde(default)]
+    has_attachments: bool,
+    #[serde(default)]
+    recipient_count: usize,
+    snippet: Option<String>,
+    label: Option<String>,
+}
+
+impl LabelledFacts {
+    /// Who sent it, for holding senders out of training whole.
+    fn sender(&self) -> String {
+        self.from_addr
+            .clone()
+            .or_else(|| self.from_name.clone())
+            .unwrap_or_default()
+            .to_lowercase()
+    }
+
+    fn facts(&self) -> core_rules::MessageFacts<'_> {
+        core_rules::MessageFacts {
+            from_addr: self.from_addr.as_deref(),
+            from_name: self.from_name.as_deref(),
+            subject: self.subject.as_deref(),
+            list_id: self.list_id.as_deref(),
+            list_unsubscribe: self.list_unsubscribe.as_deref(),
+            precedence: self.precedence.as_deref(),
+            auto_submitted: self.auto_submitted.as_deref(),
+            in_reply_to: self.in_reply_to.as_deref(),
+            has_attachments: self.has_attachments,
+            recipient_count: self.recipient_count,
+            snippet: self.snippet.as_deref(),
+        }
+    }
 }

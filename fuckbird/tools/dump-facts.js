@@ -15,5 +15,8 @@ for await (const chunk of process.stdin) data += chunk;
 
 for (const line of data.split('\n')) {
   if (line.trim() === '') continue;
-  console.log(JSON.stringify(buildFacts(JSON.parse(line))));
+  const row = JSON.parse(line);
+  // The label rides along untouched: it is the answer an evaluation scores
+  // against, and it must never be one of the facts a classifier is shown.
+  console.log(JSON.stringify({ ...buildFacts(row), label: row.label ?? null }));
 }

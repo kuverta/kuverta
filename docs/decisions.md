@@ -817,3 +817,142 @@ spawning the binary over stdio to check stdout carries replies and nothing else,
 but no client has connected to it yet. Registering it with one is a change to a
 user's own configuration, which is theirs to make; `apps/mcp/readme.md` has the
 snippet.
+
+---
+
+## 15. The local model, measured before it is trusted
+
+**2026-09-13.** Brief stage 5; plan §4.
+
+The plan's warning is that the risk of a local model is not that it fails — it
+is never finding out whether it beat a `HashMap` of sender to folder, and paying
+its latency for nothing. Brief §3.3 turns that into four rules. What each became:
+
+1. **Log both verdicts.** A model's verdict is recorded as `source = 'model'`,
+   keyed by the model's name, beside the rules' verdict for the same message.
+   `fuckmail disagreements` lists where they differ. Model verdicts are never
+   shown — `CURRENT_CATEGORY_JOIN` has excluded them since §7 — so a model that
+   is wrong for a month moves nobody's mail.
+2. **Spike embeddings against prompting before committing.** Both exist:
+   `PromptClassifier` asks a chat model for one word, `Neighbours` embeds a
+   message and takes the nearest of the user's own filings. `fuckmail eval`
+   scores both, and the rules, on the same held-out messages.
+3. **4–8B instruct is ample.** The model on this machine is an 8B Llama; the
+   results below are its.
+4. **After sync, not during.** The model pass is its own command and its own
+   call, `Core::model_pass`, so a slow model can never make a sync slow. It stops
+   after three failures in a row rather than grinding through a mailbox against
+   a server that is down.
+
+### A labelled corpus, for free
+
+`fill-mailbox.py` draws every message from a named bucket, so it already knows
+the answer. The dump now carries it as `label`, beside the facts and never among
+them. The side channel is deliberate: labelling adds no draw to the random
+sequence, and the corpus was checked to be the same 250 messages in the same
+order as before.
+
+One label overrules its bucket. Parcel-delivered mail sits in the generator's
+transactional list, but the taxonomy defines notification as "machine-generated
+status: builds, alerts, delivery notices". Scoring against the bucket name would
+mark a classifier wrong for being right, so the 23 DHL messages are labelled
+`notification`.
+
+### The sender's words are fenced
+
+A prompt carries mail, and mail is written by whoever sent it. The system prompt
+says the message is data and never instructions; the message sits inside a
+`<message>` fence that a subject cannot close, because the fence's own tags are
+neutralised wherever they appear in content. The worst an injected instruction
+can achieve is a verdict nobody is shown.
+
+### Scoring honestly
+
+Four choices, each of which would otherwise have produced a number that was
+easier to like than to believe:
+
+- **Every method is scored on the same held-out messages.** None is marked on
+  mail it learned from.
+- **The first model call is not timed.** It loads the model — 25 seconds for this
+  8B model — and averaging a cold start into a hundred warm answers says nothing
+  true about either.
+- **A reply that names no single category is not guessed at.** "Not personal,
+  it is marketing" names two, and a parser that picked one would be inventing
+  accuracy the model does not have. Those are counted separately.
+- **Two splits, because one would flatter embeddings.** Holding out every other
+  message leaves most scored messages with a near-identical sibling from the same
+  sender among the filings — realistic for a mailbox in use, and an upper bound
+  on a generated corpus whose senders repeat templates. `--split sender` holds
+  whole senders out within each category, so every scored message is from a
+  sender never filed. The rules and prompting learn nothing from filings, so
+  only embeddings move between the two.
+
+### Results
+
+Dolphin3 8B for prompting, `nomic-embed-text` with the five nearest filings for
+embeddings, on the 250-message generated corpus:
+
+| | every other message held out | whole senders held out |
+|---|---|---|
+| rules, no corrections | 86.4% | 99.1% |
+| prompting | **100%** · p50 634 ms | **100%** · p50 619 ms |
+| embeddings | 100% · p50 11 ms | **79.5%** · p50 11 ms |
+
+And over the 251 stored messages in the scratch store, where the model pass
+took 571 ms a message: 30 disagreements with the rules. 25 are the MediaMarkt
+advert §3.2 already named, read by the rules as a newsletter and by the model as
+marketing. 4 are "Rückfrage zum Angebot", a person asking about a quote, which
+the rules call marketing on the word *Angebot* and the model calls personal. The
+model is right in all 29. The last is a real provider's welcome message, which
+the rules call notification and the model declines to call anything.
+
+Three readings, and one warning about reading them:
+
+**Embeddings learn senders, not meaning.** Perfect and sixty times faster on
+senders it has filings for; poor on a sender it has never seen — all 23 DHL
+delivery notices read as transactional, because their nearest neighbours are the
+other no-reply senders, the Finanzamt and the Stadtwerke. Plan §4's claim that
+nearest-neighbours "improves automatically as you correct it" is true, and says
+nothing about the first message from anyone.
+
+**Prompting holds on both.** The only method that does not care whether a sender
+is new.
+
+**The rules' two numbers cannot be compared with each other.** They are scored
+on different messages: holding senders out put MediaMarkt in the training half,
+so the rules' one blind spot was never marked. Every comparison here is valid
+within a column and not across it.
+
+The warning: this corpus is generated from a handful of templates, and 100% on it
+is a statement about the templates, not a forecast for real mail. What it does
+establish is narrower and still worth having — the model is not *worse* than the
+rules anywhere they were tested, it is right about both of the rules' known
+weaknesses, and it costs well under a second a message after a sync rather than
+during one.
+
+### What this decides
+
+Not what the list shows. Model verdicts stay recorded and compared, exactly as
+before; nothing in this entry moves a message. That decision wants real mail
+behind it — `fuckmail disagreements` on a real mailbox, and the user's own
+corrections scored against both — rather than a generated corpus that both
+methods find easy.
+
+What it does settle is the shape the eventual answer will take, because the two
+methods fail in complementary places: embeddings are fast and right wherever a
+sender has been filed before, prompting is slower and right on senders nobody has
+filed. A classifier that asks the nearest filings first and falls back to the
+model when they are far away, or disagree, would take the cheap answer when there
+is one. That is the next thing to build and measure, not something to assume.
+
+Two loose ends, stated rather than tidied:
+
+- **The CLI's default model is `Dolphin3:latest`** because it is the one these
+  numbers are for. `make ai-model` pulls `qwen3:8b`, which has not been measured
+  and is a thinking model — with the twelve-token answer limit it may never get
+  past its reasoning to the word. Renaming the default to match the Makefile
+  without measuring it would be the exact mistake §3.3 warns about.
+- **The model sees less of stored mail than it was scored on.** The store keeps
+  some of the headers the rules read and not others, so the model pass re-parses
+  the message from disk where there is one and falls back to the summary where
+  there is not.

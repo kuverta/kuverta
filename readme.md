@@ -179,6 +179,28 @@ A capture is written to the spool before any upload is attempted and removed
 only once Paperless confirms it, so a flat battery between the two costs a
 retry rather than a letter.
 
+## The local model
+
+A model can classify mail too, and is kept honest by never being trusted on its
+own say-so. Its verdicts are recorded beside the rules' and compared; they never
+change what the list shows.
+
+```sh
+fuckmail classify --email you@example.com   # after a sync, never during one
+fuckmail disagreements                      # where it and the rules differ
+
+python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl
+fuckmail eval labelled.jsonl                # rules vs prompting vs embeddings
+fuckmail eval labelled.jsonl --split sender # the same, on senders never filed
+```
+
+Measured on the generated corpus with an 8B model: prompting 100% on both
+splits at ~620 ms a message, embeddings 100% on known senders and 79.5% on new
+ones at 11 ms, the rules 86.4% where their known blind spot is scored. On stored
+mail the model disagreed with the rules 30 times and was right in 29. The corpus
+is templated, so read that as "not worse anywhere", not as a forecast — see
+[docs/decisions.md](docs/decisions.md) §15.
+
 ## For an assistant
 
 [`fuckmail-mcp`](apps/mcp/) serves the mailbox — mail and scanned post — over
@@ -195,6 +217,7 @@ the list but does not teach the classifier; only yours do.
 | `crates/core-proto` | IMAP client, MIME parsing, folder sync, the mutation executor |
 | `crates/core-accounts` | Credentials behind an auth trait; both OAuth2 flows |
 | `crates/core-rules` | The deterministic classifier |
+| `crates/core-ai` | The local model: prompting and embeddings over Ollama |
 | `crates/core-smtp` | Composing RFC 5322 messages and submitting them |
 | `crates/core-rpc` | The typed surface both front ends talk to |
 | `apps/cli` | Development driver — not the product |
