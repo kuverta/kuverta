@@ -371,26 +371,12 @@ async fn verify_account(
 /// Where Archive and Trash are for this account, resolved from what sync
 /// recorded rather than guessed in JavaScript.
 #[tauri::command]
-fn special_folders(app: State<'_, App>, account: i64) -> Result<SpecialFolders, String> {
-    let core = app.core.lock().unwrap();
-    let folders = core.store().folders(account).map_err(fail)?;
-    let pairs: Vec<(&str, Option<&str>)> = folders
-        .iter()
-        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
-        .collect();
-
-    Ok(SpecialFolders {
-        archive: core_proto::client::find_archive(pairs.iter().copied()).map(str::to_string),
-        trash: core_proto::client::find_trash(pairs.iter().copied()).map(str::to_string),
-    })
-}
-
-#[derive(serde::Serialize)]
-struct SpecialFolders {
-    /// `None` when the account has no Archive folder — on which the UI has to
-    /// disable archiving rather than fail per keystroke.
-    archive: Option<String>,
-    trash: Option<String>,
+fn special_folders(app: State<'_, App>, account: i64) -> Result<core_rpc::SpecialFolders, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .special_folders(account)
+        .map_err(fail)
 }
 
 fn default_data_dir() -> PathBuf {

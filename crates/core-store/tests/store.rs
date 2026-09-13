@@ -1550,3 +1550,79 @@ fn an_unclassified_message_has_no_category() {
         .unwrap();
     assert_eq!(window.messages[0].category, None);
 }
+
+// -- an assistant's filings ------------------------------------------------
+
+fn agent_says(store: &Store, id: MessageId, category: &str) {
+    store
+        .record_verdict(
+            id,
+            &Verdict {
+                category: category.into(),
+                confidence: None,
+                source: ClassifierSource::Agent,
+                model: None,
+                latency_ms: None,
+            },
+        )
+        .unwrap();
+}
+
+#[test]
+fn an_assistants_filing_outranks_the_rules() {
+    // An assistant that files mail and nothing visibly changes is useless.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    agent_says(&store, id, "marketing");
+
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("marketing")
+    );
+}
+
+#[test]
+fn the_user_outranks_the_assistant() {
+    // Whatever order they arrive in. A person's filing is the one that is
+    // definitely right; an assistant filing afterwards does not overturn it.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    user_says(&store, id, "transactional");
+    agent_says(&store, id, "marketing");
+
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("transactional")
+    );
+}
+
+#[test]
+fn the_users_own_filing_ignores_the_assistant() {
+    // "Has the user already said so?" is a different question from "is this
+    // where it is shown?" once an assistant can file. Conflating them would
+    // make a user confirming a suggestion record nothing.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    agent_says(&store, id, "marketing");
+
+    assert_eq!(store.user_category(id).unwrap(), None);
+    assert_eq!(
+        store.current_category(id).unwrap().as_deref(),
+        Some("marketing")
+    );
+}
+
+#[test]
+fn an_assistants_filing_is_never_learned_from() {
+    // §3.4: corrections are the one signal that is definitely right. An
+    // assistant's judgement is not that, and must not reach the classifier.
+    let (store, account) = store_with_account();
+    let id = classified(&store, account, "newsletter");
+
+    agent_says(&store, id, "marketing");
+
+    assert!(store.learned_categories(account).unwrap().is_empty());
+}

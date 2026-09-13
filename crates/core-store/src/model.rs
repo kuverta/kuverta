@@ -227,6 +227,14 @@ pub enum ClassifierSource {
     /// out, and filing it as a rules verdict would put the answers into the
     /// baseline the model is supposed to be measured against.
     User,
+    /// An assistant filed it, through the agent surface.
+    ///
+    /// Shown in the list like a user's filing, because an assistant that files
+    /// mail and nothing visibly changes is useless. Never learned from, because
+    /// §3.4 treats corrections as the one signal that is definitely right and
+    /// an assistant's judgement is not that. And never part of `disagreements`,
+    /// which compares rules against the model and nothing else.
+    Agent,
 }
 
 impl ClassifierSource {
@@ -235,6 +243,7 @@ impl ClassifierSource {
             Self::Rules => "rules",
             Self::Model => "model",
             Self::User => "user",
+            Self::Agent => "agent",
         }
     }
 }

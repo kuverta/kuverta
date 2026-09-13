@@ -424,3 +424,85 @@ fn filing_a_message_on_another_account_is_refused() {
     let err = core.set_category(9999, 1, "personal").unwrap_err();
     assert!(matches!(err, RpcError::UnknownMessage(_)), "got {err:?}");
 }
+
+// -- an assistant's filings ------------------------------------------------
+
+#[test]
+fn an_assistant_can_file_a_message_without_teaching_the_classifier() {
+    let (core, account, _inbox, _archive, _dir) = core_with("suggest", 2);
+    let id = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+
+    core.suggest_category(account, id, "transactional").unwrap();
+
+    let after = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    let row = after.rows.iter().find(|row| row.id == id).unwrap();
+    assert_eq!(row.category.as_deref(), Some("transactional"));
+    assert!(core.store().learned_categories(account).unwrap().is_empty());
+}
+
+#[test]
+fn a_user_agreeing_with_the_assistant_is_what_teaches() {
+    // The assistant's suggestion is already shown, so a naive "already filed
+    // there" check would record nothing — and drop the one filing that should
+    // be learned from.
+    let (core, account, _inbox, _archive, _dir) = core_with("confirm", 1);
+    let id = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+
+    core.suggest_category(account, id, "transactional").unwrap();
+    core.set_category(account, id, "transactional").unwrap();
+
+    let learned = core.store().learned_categories(account).unwrap();
+    assert_eq!(learned.len(), 1);
+    assert_eq!(learned[0].category, "transactional");
+}
+
+#[test]
+fn an_assistant_does_not_overturn_the_user() {
+    let (core, account, _inbox, _archive, _dir) = core_with("outrank", 1);
+    let id = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+
+    core.set_category(account, id, "personal").unwrap();
+    core.suggest_category(account, id, "marketing").unwrap();
+
+    let row = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .clone();
+    assert_eq!(row.category.as_deref(), Some("personal"));
+}
+
+#[test]
+fn an_assistant_filing_a_category_that_is_not_one_is_refused() {
+    let (core, account, _inbox, _archive, _dir) = core_with("suggest-bad", 1);
+    let id = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+
+    let err = core.suggest_category(account, id, "invoices").unwrap_err();
+    assert!(matches!(err, RpcError::Rejected(_)), "got {err:?}");
+}
+
+#[test]
+fn special_folders_are_found_once_for_every_shell() {
+    let (core, account, _inbox, _archive, _dir) = core_with("special", 0);
+    let special = core.special_folders(account).unwrap();
+    assert_eq!(special.archive.as_deref(), Some("Archive"));
+    assert_eq!(special.trash, None);
+}

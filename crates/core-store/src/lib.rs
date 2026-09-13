@@ -1028,9 +1028,31 @@ impl Store {
             .conn
             .query_row(
                 "SELECT c.category FROM classification c
-                 WHERE c.message_id = ?1 AND c.source IN ('rules', 'user')
-                 ORDER BY (c.source = 'user') DESC, c.id DESC
+                 WHERE c.message_id = ?1 AND c.source IN ('rules', 'agent', 'user')
+                 ORDER BY CASE c.source WHEN 'user' THEN 2 WHEN 'agent' THEN 1 ELSE 0 END DESC,
+                   c.id DESC
                  LIMIT 1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .optional()?)
+    }
+
+    /// The category the user themselves most recently filed a message under.
+    ///
+    /// Separate from [`Store::current_category`] because the two answer
+    /// different questions once an assistant can file mail. "Is this already
+    /// where it is shown?" includes the assistant's filing; "has the user
+    /// already said so?" must not — otherwise a user confirming an assistant's
+    /// suggestion would record nothing, and the one filing that teaches the
+    /// classifier would be silently dropped.
+    pub fn user_category(&self, message_id: MessageId) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT category FROM classification
+                 WHERE message_id = ?1 AND source = 'user'
+                 ORDER BY id DESC LIMIT 1",
                 params![message_id],
                 |row| row.get(0),
             )
@@ -1178,8 +1200,8 @@ pub struct Disagreement {
 /// Two spellings of this would show as a badge that never matches the rows.
 /// The category a message is *shown* under.
 ///
-/// A correction the user made wins; failing that, the most recent rules
-/// verdict. Model verdicts are deliberately not consulted: they are recorded
+/// A correction the user made wins; then something an assistant filed through
+/// the agent surface; then the most recent rules verdict. Model verdicts are deliberately not consulted: they are recorded
 /// beside the rules ones so `disagreements` can compare the two, and a model
 /// that started changing what the list shows would take that measurement with
 /// it.
@@ -1190,8 +1212,9 @@ const CURRENT_CATEGORY_JOIN: &str = "\
     LEFT JOIN classification c
       ON c.id = (
           SELECT c2.id FROM classification c2
-          WHERE c2.message_id = m.id AND c2.source IN ('rules', 'user')
-          ORDER BY (c2.source = 'user') DESC, c2.id DESC
+          WHERE c2.message_id = m.id AND c2.source IN ('rules', 'agent', 'user')
+          ORDER BY CASE c2.source WHEN 'user' THEN 2 WHEN 'agent' THEN 1 ELSE 0 END DESC,
+                   c2.id DESC
           LIMIT 1
       )";
 

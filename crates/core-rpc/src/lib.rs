@@ -161,6 +161,30 @@ pub struct MessageDetail {
     pub body_text: Option<String>,
 }
 
+/// Where archiving and trashing move mail to.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpecialFolders {
+    /// `None` when the account has no Archive folder — which a shell has to
+    /// treat as "cannot archive" rather than failing per keystroke.
+    pub archive: Option<String>,
+    pub trash: Option<String>,
+}
+
+/// Where the store lives unless told otherwise.
+///
+/// `FUCKMAIL_DATA_DIR`, else `~/.local/share/fuckmail`. In one place because
+/// the window and the agent surface must open the same store — an assistant
+/// reading a different mailbox from the one on screen would be worse than no
+/// assistant.
+pub fn default_data_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("FUCKMAIL_DATA_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    std::env::var_os("HOME")
+        .map(|home| std::path::PathBuf::from(home).join(".local/share/fuckmail"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".fuckmail"))
+}
+
 /// A change that has been asked for but not yet sent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QueuedChange {
@@ -441,8 +465,8 @@ impl Core {
             .ok_or(RpcError::UnknownMessage(id))?;
 
         let was = self.store.current_category(id)?;
-        if was.as_deref() == Some(category.as_str()) {
-            // Already filed there. Recording it would put a correction in the
+        if self.store.user_category(id)?.as_deref() == Some(category.as_str()) {
+            // Already filed there by the user. Recording it would put a correction in the
             // log that corrects nothing, which is noise in the one dataset
             // being kept deliberately clean.
             return Ok(());
@@ -462,6 +486,65 @@ impl Core {
             },
         )?;
         Ok(())
+    }
+
+    /// Files a message under a category on an assistant's say-so.
+    ///
+    /// Shown in the list exactly as a user's filing is, and recorded as
+    /// [`ClassifierSource::Agent`] rather than as a correction. The difference
+    /// matters more than it looks: corrections are what the classifier learns
+    /// from, and they are trusted because a person made them. An assistant's
+    /// filing is a suggestion that happens to be visible — if the user agrees
+    /// and files it the same way, *that* is recorded as a correction.
+    ///
+    /// [`ClassifierSource::Agent`]: core_store::model::ClassifierSource::Agent
+    pub fn suggest_category(
+        &self,
+        account: AccountId,
+        id: MessageId,
+        category: &str,
+    ) -> Result<()> {
+        let category = core_rules::Category::parse(category)
+            .ok_or_else(|| RpcError::Rejected(format!("not a category: {category}")))?;
+        self.store
+            .message_by_id(account, id)?
+            .ok_or(RpcError::UnknownMessage(id))?;
+
+        if self.store.current_category(id)?.as_deref() == Some(category.as_str()) {
+            return Ok(());
+        }
+
+        self.store.record_verdict(
+            id,
+            &core_store::model::Verdict {
+                category: category.as_str().to_string(),
+                // An assistant's filing is not a probability either, but it is
+                // not certain the way a person's is. No number is more honest
+                // than a made-up one.
+                confidence: None,
+                source: core_store::model::ClassifierSource::Agent,
+                model: None,
+                latency_ms: None,
+            },
+        )?;
+        Ok(())
+    }
+
+    /// Where archiving and trashing move mail to, for one account.
+    ///
+    /// Moved here from the desktop app, which was reaching into `core-proto`
+    /// for it — the agent surface needs the same answer, and two shells
+    /// deciding separately where "Archive" is would be two places to disagree.
+    pub fn special_folders(&self, account: AccountId) -> Result<SpecialFolders> {
+        let folders = self.store.folders(account)?;
+        let pairs: Vec<(&str, Option<&str>)> = folders
+            .iter()
+            .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+            .collect();
+        Ok(SpecialFolders {
+            archive: core_proto::client::find_archive(pairs.iter().copied()).map(str::to_string),
+            trash: core_proto::client::find_trash(pairs.iter().copied()).map(str::to_string),
+        })
     }
 
     /// Cancels the most recent change that has not been sent.
