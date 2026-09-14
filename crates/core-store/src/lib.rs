@@ -1020,6 +1020,30 @@ impl Store {
         )?)
     }
 
+    /// Changes an existing address in place.
+    ///
+    /// Separate from the upsert because the upsert is keyed on where the
+    /// documents are, and an edit is exactly a change to where they are: saving
+    /// a new URL through the upsert would add a second address and strand the
+    /// first, together with the token filed under its id.
+    ///
+    /// Returns whether there was such an address.
+    pub fn update_paper_mailbox(&self, id: i64, mailbox: &NewPaperMailbox) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE paper_mailbox
+             SET label = ?2, base_url = ?3, selector_kind = ?4, selector_value = ?5
+             WHERE id = ?1",
+            params![
+                id,
+                mailbox.label,
+                mailbox.base_url.trim_end_matches('/'),
+                mailbox.selector_kind,
+                mailbox.selector_value,
+            ],
+        )?;
+        Ok(changed > 0)
+    }
+
     pub fn delete_paper_mailbox(&self, id: i64) -> Result<()> {
         self.conn
             .execute("DELETE FROM paper_mailbox WHERE id = ?1", params![id])?;

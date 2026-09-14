@@ -919,6 +919,9 @@ function formFields() {
 
 function fillForm(account) {
   settings.editing = account.id;
+  settings.mode = "account";
+  settings.form.hidden = false;
+  paper.form.hidden = true;
   const f = settings.form;
   f.label.value = account.label ?? "";
   f.email.value = account.email ?? "";
@@ -957,24 +960,55 @@ function syncAuthFields() {
 
 function renderSettingsList() {
   settings.list.textContent = "";
+  const onAccounts = settings.mode !== "paper";
+
   for (const account of settings.accounts) {
     settings.list.append(
       navItem({
         label: account.email,
-        active: account.id === settings.editing,
+        active: onAccounts && account.id === settings.editing,
         onClick: () => fillForm(account),
       }),
     );
   }
-  if (settings.editing === null) {
+  if (onAccounts && settings.editing === null) {
     settings.list.append(
       navItem({ label: "New account…", active: true, onClick: () => {} }),
+    );
+  }
+
+  // Addresses under their own heading: they are configured like accounts and
+  // are not accounts, and a single list pretending otherwise would be a list
+  // where "Home" sits between two email addresses with no explanation.
+  const heading = document.createElement("div");
+  heading.className = "sidebar-heading";
+  heading.textContent = "Postal addresses";
+  settings.list.append(heading);
+
+  for (const address of paper.addresses) {
+    settings.list.append(
+      navItem({
+        label: address.label || address.base_url,
+        active: !onAccounts && address.id === paper.editing,
+        onClick: () => fillPaper(address),
+        // A token-less address is configured and unreadable, which is worth
+        // seeing without opening it.
+        title: address.has_token ? address.base_url : `${address.base_url} — no token stored`,
+      }),
+    );
+  }
+  if (!onAccounts && paper.editing === null) {
+    settings.list.append(
+      navItem({ label: "New address…", active: true, onClick: () => {} }),
     );
   }
 }
 
 async function openSettings() {
   settings.accounts = await invoke("account_settings");
+  // Post is an addition to the settings, not a prerequisite for them: a
+  // failure to list addresses must not stop anyone editing an account.
+  paper.addresses = await invoke("paper_mailboxes").catch(() => []);
   settings.sheet.hidden = false;
   fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
 }
@@ -1131,6 +1165,166 @@ function describeReport(r) {
   for (const warning of r.warnings) {
     lines.push("");
     lines.push(`note: ${warning}`);
+  }
+  return lines.join("\n");
+}
+
+// -- postal addresses ----------------------------------------------------------
+
+const paper = {
+  form: el("paper-form"),
+  tokenState: el("paper-token-state"),
+  valueField: el("paper-selector-value"),
+  // Which address the form is editing. Null means a new one.
+  editing: null,
+  addresses: [],
+};
+
+/// Where a new address starts: the dev stack's Paperless, every document.
+///
+/// "Every document" because one Paperless serving one address is the common
+/// case, and a new address that matched nothing until a tag was typed would
+/// look exactly like an address with no post.
+const NEW_ADDRESS = {
+  id: null,
+  label: "",
+  base_url: "http://localhost:8000",
+  selector_kind: "everything",
+  selector_value: null,
+  has_token: false,
+};
+
+function fillPaper(address) {
+  settings.mode = "paper";
+  paper.editing = address.id;
+
+  const f = paper.form;
+  f.label.value = address.label ?? "";
+  f.base_url.value = address.base_url ?? "";
+  f.selector_kind.value = address.selector_kind ?? "everything";
+  f.selector_value.value = address.selector_value ?? "";
+  f.token.value = "";
+
+  // As with passwords: the field never shows the token, so it says whether
+  // there is one — and where to get one, since that is not obvious.
+  paper.tokenState.textContent = address.has_token
+    ? "A token is stored in the keychain."
+    : "No token stored yet. In Paperless: your profile menu → API Auth Token.";
+
+  el("paper-delete").hidden = address.id === null;
+  settings.form.hidden = true;
+  paper.form.hidden = false;
+  settings.report.hidden = true;
+  syncSelectorField();
+  renderSettingsList();
+}
+
+/// "All of them" needs no name, and an empty name field beside it invites
+/// typing one that is then silently ignored.
+function syncSelectorField() {
+  paper.valueField.hidden = paper.form.selector_kind.value === "everything";
+}
+
+function paperInput() {
+  const f = Object.fromEntries(new FormData(paper.form).entries());
+  const kind = f.selector_kind;
+  return {
+    // Carried so that changing an address's URL or selector edits it, rather
+    // than saving a second address and orphaning the first with its token.
+    id: paper.editing,
+    label: f.label.trim(),
+    base_url: f.base_url.trim(),
+    selector_kind: kind,
+    selector_value: kind === "everything" ? null : f.selector_value.trim() || null,
+  };
+}
+
+async function savePaper() {
+  const id = await invoke("save_paper_mailbox", { input: paperInput() });
+  const token = paper.form.token.value;
+  // After the row, so a token is never stored for an address that failed to
+  // save — a credential with nothing to use it.
+  if (token) await invoke("set_paper_token", { id, token });
+  paper.addresses = await invoke("paper_mailboxes");
+  return id;
+}
+
+paper.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const id = await savePaper();
+    fillPaper(paper.addresses.find((a) => a.id === id) ?? NEW_ADDRESS);
+    say("saved");
+  } catch (err) {
+    say(String(err), true);
+  }
+});
+
+el("settings-add-paper").onclick = () => fillPaper(NEW_ADDRESS);
+paper.form.selector_kind.addEventListener("change", syncSelectorField);
+
+el("paper-delete").onclick = async () => {
+  const address = paper.addresses.find((a) => a.id === paper.editing);
+  if (!address) return;
+  // Says what is and is not lost: the documents are Paperless's and stay
+  // there. Only this client's view of them, and the stored token, go.
+  const name = address.label || address.base_url;
+  if (!confirm(`Remove ${name}? Its documents stay in Paperless; only the address and its stored token are forgotten here.`)) {
+    return;
+  }
+  try {
+    await invoke("delete_paper_mailbox", { id: address.id });
+    paper.addresses = await invoke("paper_mailboxes");
+    if (settings.accounts.length) fillForm(settings.accounts[0]);
+    else fillPaper(NEW_ADDRESS);
+    say(`removed ${name}`);
+  } catch (err) {
+    say(String(err), true);
+  }
+};
+
+el("paper-verify").onclick = async () => {
+  const button = el("paper-verify");
+  button.disabled = true;
+  button.textContent = "Verifying…";
+  settings.report.hidden = false;
+  settings.report.textContent = "Connecting…";
+
+  try {
+    // Saved first, as with accounts: the check runs against a stored address,
+    // with the stored token.
+    const id = await savePaper();
+    paper.editing = id;
+    renderSettingsList();
+    const report = await invoke("paper_check", { id });
+    settings.report.textContent = describePaperReport(report);
+  } catch (err) {
+    settings.report.textContent = String(err);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Verify";
+  }
+};
+
+/// The Paperless preflight, as text — the same shape as the IMAP one above.
+function describePaperReport(r) {
+  const lines = [];
+  lines.push("Paperless-ngx");
+  lines.push(`      ${r.reachable ? "reachable" : "NOT reachable"}, ${r.authenticated ? "token accepted" : "token REJECTED"}`);
+  lines.push("");
+  lines.push(`${r.documents_total} document(s) in the instance`);
+  lines.push(`${r.documents_matching} of them belong to this address`);
+
+  const list = (names) => (names.length ? names.slice(0, 20).join(", ") + (names.length > 20 ? ", …" : "") : "none");
+  lines.push("");
+  lines.push(`tags            ${list(r.tags)}`);
+  lines.push(`correspondents  ${list(r.correspondents)}`);
+
+  // The notes are the point of the check: a selector that matches nothing
+  // looks exactly like an address that has had no post.
+  for (const note of r.notes) {
+    lines.push("");
+    lines.push(`note: ${note}`);
   }
   return lines.join("\n");
 }

@@ -462,7 +462,8 @@ footer {
 }
 
 #settings-close,
-#settings-save {
+#settings-save,
+#paper-save {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
@@ -485,7 +486,8 @@ footer {
   overflow-y: auto;
 }
 
-#settings-form {
+#settings-form,
+#paper-form {
   padding: 16px 20px;
   overflow-y: auto;
   display: flex;
@@ -494,7 +496,8 @@ footer {
   min-height: 0;
 }
 
-#settings-form label {
+#settings-form label,
+#paper-form label {
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -504,7 +507,9 @@ footer {
 
 #settings-form input,
 #settings-form select,
-#settings-form textarea {
+#settings-form textarea,
+#paper-form input,
+#paper-form select {
   padding: 5px 9px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -530,7 +535,19 @@ footer {
 
 .form-heading .hint { font-weight: 400; }
 .hint { color: var(--muted); font-size: 11.5px; }
-#settings-form p.hint { margin: 2px 0 0; }
+#settings-form p.hint,
+#paper-form p.hint { margin: 2px 0 0; }
+
+/* The two forms take turns in one place, and `display: flex` above would beat
+   the hidden attribute's own `display: none` — leaving both on screen at once,
+   the account form under the address form, with nothing to say which a Save
+   button belonged to. The same for the name field that "all documents" hides. */
+#settings-form[hidden],
+#paper-form[hidden],
+#paper-form label[hidden] { display: none !important; }
+
+/* Two fields, not three: the kind of selector and the name it takes. */
+#paper-form .row3 { grid-template-columns: 1fr 2fr; }
 
 .form-actions {
   display: flex;

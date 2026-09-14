@@ -506,3 +506,61 @@ fn special_folders_are_found_once_for_every_shell() {
     assert_eq!(special.archive.as_deref(), Some("Archive"));
     assert_eq!(special.trash, None);
 }
+
+// -- postal addresses ------------------------------------------------------
+
+fn address(id: Option<i64>, label: &str, url: &str) -> core_rpc::PaperMailboxInput {
+    serde_json::from_value(serde_json::json!({
+        "id": id,
+        "label": label,
+        "base_url": url,
+        "selector_kind": "tag",
+        "selector_value": "home",
+    }))
+    .unwrap()
+}
+
+#[test]
+fn editing_an_address_changes_it_rather_than_adding_a_second() {
+    // The failure this prevents is quiet: a new URL saved as a new address,
+    // the old one left behind, and the token stranded under the old id.
+    let (core, _account, _inbox, _archive, _dir) = core_with("paper-edit", 0);
+
+    let id = core
+        .save_paper_mailbox(&address(None, "Home", "http://old.local:8000"))
+        .unwrap();
+    let same = core
+        .save_paper_mailbox(&address(Some(id), "Zuhause", "http://new.local:8000"))
+        .unwrap();
+
+    assert_eq!(same, id);
+    let stored = core.store().paper_mailboxes().unwrap();
+    assert_eq!(stored.len(), 1, "an edit must not add an address");
+    assert_eq!(stored[0].label, "Zuhause");
+    assert_eq!(stored[0].base_url, "http://new.local:8000");
+}
+
+#[test]
+fn editing_an_address_that_is_gone_is_refused() {
+    let (core, _account, _inbox, _archive, _dir) = core_with("paper-gone", 0);
+    let err = core
+        .save_paper_mailbox(&address(Some(999), "Home", "http://x.local:8000"))
+        .unwrap_err();
+    assert!(matches!(err, RpcError::Rejected(_)), "got {err:?}");
+}
+
+#[test]
+fn a_new_address_without_an_id_is_still_added() {
+    // The field is optional, so everything that saved addresses before still
+    // does.
+    let (core, _account, _inbox, _archive, _dir) = core_with("paper-new", 0);
+    let first: core_rpc::PaperMailboxInput = serde_json::from_value(serde_json::json!({
+        "label": "Home",
+        "base_url": "http://a.local:8000",
+        "selector_kind": "everything",
+        "selector_value": null,
+    }))
+    .unwrap();
+    core.save_paper_mailbox(&first).unwrap();
+    assert_eq!(core.store().paper_mailboxes().unwrap().len(), 1);
+}

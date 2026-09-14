@@ -39,6 +39,13 @@ pub struct PaperMailboxView {
 /// A physical address, as configured.
 #[derive(Debug, Clone, Deserialize)]
 pub struct PaperMailboxInput {
+    /// The address being edited, or `None` for a new one.
+    ///
+    /// Without it an edit is indistinguishable from an addition: changing the
+    /// URL would save a second address and leave the first behind, with the
+    /// token filed under its id.
+    #[serde(default)]
+    pub id: Option<i64>,
     pub label: String,
     pub base_url: String,
     /// `everything` | `tag` | `correspondent` | `storage_path`.
@@ -114,12 +121,22 @@ impl Core {
             )));
         }
 
-        Ok(self.store.upsert_paper_mailbox(&NewPaperMailbox {
+        let mailbox = NewPaperMailbox {
             label: input.label.trim().to_string(),
             base_url: input.base_url.trim().to_string(),
             selector_kind: input.selector_kind.clone(),
             selector_value: input.selector_value.clone(),
-        })?)
+        };
+
+        match input.id {
+            Some(id) => {
+                if !self.store.update_paper_mailbox(id, &mailbox)? {
+                    return Err(RpcError::Rejected(format!("no postal address {id}")));
+                }
+                Ok(id)
+            }
+            None => Ok(self.store.upsert_paper_mailbox(&mailbox)?),
+        }
     }
 
     pub fn delete_paper_mailbox(&self, id: i64) -> Result<()> {
