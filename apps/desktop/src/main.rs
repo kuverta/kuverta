@@ -215,6 +215,33 @@ async fn paper_check(app: State<'_, App>, id: i64) -> Result<core_rpc::PaperRepo
     session.check().await.map_err(fail)
 }
 
+/// Files a piece of post by hand.
+///
+/// Who sent it is Paperless's to say, so the document is fetched with no store
+/// lock held, and the lock is taken again only to record — the same shape as
+/// every other paper command, for the same reason.
+#[tauri::command]
+async fn file_post(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+    category: String,
+) -> Result<(), String> {
+    let session = paper_session(&app, id)?;
+    let detail = session.document(document_id).await.map_err(fail)?;
+    app.core
+        .lock()
+        .unwrap()
+        .record_paper_correction(
+            id,
+            document_id,
+            detail.correspondent.as_deref(),
+            detail.row.category.as_deref(),
+            &category,
+        )
+        .map_err(fail)
+}
+
 #[tauri::command]
 fn undo(app: State<'_, App>, account: i64) -> Result<Option<QueuedChange>, String> {
     app.core.lock().unwrap().undo(account).map_err(fail)
@@ -434,6 +461,7 @@ fn main() {
             paper_documents,
             paper_document,
             paper_check,
+            file_post,
             undo,
             queue,
             sync,
