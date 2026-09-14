@@ -22,7 +22,7 @@
  *   which is what the log wants anyway — an event, not an edit.
  */
 
-import { MailHost, Unsupported } from '../../core/host.js';
+import { ACTIONS, MailHost, Unsupported } from '../../core/host.js';
 import { ALL_CATEGORIES, CATEGORY_LABELS } from '../../core/category.js';
 
 export class FuckmailHost extends MailHost {
@@ -254,9 +254,18 @@ export class FuckmailHost extends MailHost {
   }
 
   async setCategory(id, category) {
-    // Corrections hang off a message row, and a document is not one. Filing
-    // post by hand needs a table of its own; until then, say so.
-    if (parsePaperId(id)) throw new Unsupported('file post by category');
+    const paper = parsePaperId(id);
+    if (paper) {
+      // Post has its own corrections, pinned to the letter and learned from
+      // its correspondent. Who that is lives in Paperless, which the command
+      // asks rather than trusting the row this list happens to hold.
+      await this.#invoke('file_post', {
+        id: paper.mailboxId,
+        documentId: paper.documentId,
+        category,
+      });
+      return;
+    }
     await this.#invoke('set_category', {
       account: this.#account,
       id: Number(id),
@@ -343,10 +352,11 @@ function paperRow(row, mailboxId) {
     unread: Boolean(row.unread),
     hasAttachments: Boolean(row.has_attachments),
     category: row.category ?? null,
-    // Paperless owns its documents; this reads them. Saying so on the row
-    // means the surface refuses immediately and specifically, rather than
-    // making a round trip to be told no.
-    actions: [],
+    // Filing is the one thing that can be done to post. Archive, trash and read
+    // state are Paperless's documents' business, and this only reads them; a
+    // category is this client's own record. Saying so on the row means the
+    // surface refuses the rest immediately and specifically.
+    actions: [ACTIONS.SetCategory],
   };
 }
 

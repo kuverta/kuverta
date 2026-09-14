@@ -1626,3 +1626,89 @@ fn an_assistants_filing_is_never_learned_from() {
 
     assert!(store.learned_categories(account).unwrap().is_empty());
 }
+
+// -- corrections to post ---------------------------------------------------
+
+fn paper_mailbox(store: &Store) -> i64 {
+    store
+        .upsert_paper_mailbox(&core_store::NewPaperMailbox {
+            label: "Home".into(),
+            base_url: "http://localhost:8000".into(),
+            selector_kind: "everything".into(),
+            selector_value: None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn the_latest_filing_of_a_document_is_the_one_that_stands() {
+    let (store, _account) = store_with_account();
+    let home = paper_mailbox(&store);
+
+    store
+        .record_paper_correction(
+            home,
+            41,
+            Some("Stadtwerke"),
+            Some("personal"),
+            "transactional",
+        )
+        .unwrap();
+    store
+        .record_paper_correction(
+            home,
+            41,
+            Some("Stadtwerke"),
+            Some("transactional"),
+            "notification",
+        )
+        .unwrap();
+
+    assert_eq!(
+        store.paper_overrides(home).unwrap(),
+        vec![(41, "notification".to_string())]
+    );
+    // Both events are kept: a reversal is the most interesting row there is.
+    let events: i64 = store
+        .connection()
+        .query_row("SELECT COUNT(*) FROM paper_correction", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(events, 2);
+}
+
+#[test]
+fn a_correspondent_is_learned_from_its_latest_filing() {
+    let (store, _account) = store_with_account();
+    let home = paper_mailbox(&store);
+
+    store
+        .record_paper_correction(home, 1, Some("Finanzamt"), None, "notification")
+        .unwrap();
+    store
+        .record_paper_correction(home, 2, Some("Finanzamt"), None, "transactional")
+        .unwrap();
+    // No correspondent: it pins its document and teaches nothing.
+    store
+        .record_paper_correction(home, 3, None, None, "personal")
+        .unwrap();
+
+    assert_eq!(
+        store.paper_learned().unwrap(),
+        vec![("Finanzamt".to_string(), "transactional".to_string())]
+    );
+}
+
+#[test]
+fn removing_an_address_removes_its_corrections() {
+    let (store, _account) = store_with_account();
+    let home = paper_mailbox(&store);
+    store
+        .record_paper_correction(home, 1, Some("Finanzamt"), None, "transactional")
+        .unwrap();
+
+    store.delete_paper_mailbox(home).unwrap();
+
+    assert!(store.paper_learned().unwrap().is_empty());
+}

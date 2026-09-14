@@ -1050,6 +1050,74 @@ impl Store {
         Ok(())
     }
 
+    // -- corrections to post ------------------------------------------------
+
+    /// Records that the user filed a piece of post by hand.
+    pub fn record_paper_correction(
+        &self,
+        mailbox_id: i64,
+        document_id: i64,
+        correspondent: Option<&str>,
+        from_category: Option<&str>,
+        to_category: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO paper_correction
+                 (mailbox_id, document_id, correspondent, from_category, to_category, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                mailbox_id,
+                document_id,
+                correspondent,
+                from_category,
+                to_category,
+                now()
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// The category each corrected document of one address was last filed under.
+    ///
+    /// Only the most recent correction per document counts, so filing a letter
+    /// twice leaves the second answer standing and both events in the table.
+    pub fn paper_overrides(&self, mailbox_id: i64) -> Result<Vec<(i64, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT p.document_id, p.to_category
+             FROM paper_correction p
+             WHERE p.mailbox_id = ?1
+               AND p.id = (
+                   SELECT MAX(p2.id) FROM paper_correction p2
+                   WHERE p2.mailbox_id = p.mailbox_id AND p2.document_id = p.document_id
+               )
+             ORDER BY p.document_id",
+        )?;
+        let rows = stmt.query_map(params![mailbox_id], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// The category each correspondent was last filed under, across every address.
+    ///
+    /// Across addresses rather than per address, the same way mail learned from
+    /// one account is used for post: the Stadtwerke are the Stadtwerke whichever
+    /// letterbox their bill arrived through.
+    pub fn paper_learned(&self) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT p.correspondent, p.to_category
+             FROM paper_correction p
+             WHERE p.correspondent IS NOT NULL
+               AND p.id = (
+                   SELECT MAX(p2.id) FROM paper_correction p2
+                   WHERE p2.correspondent = p.correspondent
+               )
+             ORDER BY p.id",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     // -- classification ---------------------------------------------------
 
     pub fn record_verdict(&self, message_id: MessageId, verdict: &Verdict) -> Result<()> {

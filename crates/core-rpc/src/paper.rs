@@ -85,6 +85,10 @@ pub struct PaperPage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperDetail {
     pub row: PaperRow,
+    /// Who sent it, as Paperless knows it — `None` when it does not. Carried
+    /// separately from `row.from`, which shows a dash for "unknown" and would
+    /// otherwise be learned from as if a dash were a correspondent.
+    pub correspondent: Option<String>,
     /// The OCR text, which is the body.
     pub body_text: Option<String>,
     /// Where the PDF is, for a viewer that wants it.
@@ -163,10 +167,19 @@ impl Core {
     /// against what came back.
     pub fn paper_session(&self, id: i64) -> Result<PaperSession> {
         let (client, selector) = self.client(id)?;
+        let overrides = self
+            .store
+            .paper_overrides(id)?
+            .into_iter()
+            .filter_map(|(document, category)| {
+                core_rules::Category::parse(&category).map(|category| (document, category))
+            })
+            .collect();
         Ok(PaperSession {
             client,
             selector,
             classifier: self.paper_classifier()?,
+            overrides,
         })
     }
 
@@ -190,6 +203,67 @@ impl Core {
     /// Connects and reports what is there, before anything depends on it.
     pub async fn paper_check(&self, id: i64) -> Result<PaperReport> {
         self.paper_session(id)?.check().await
+    }
+
+    /// Records that the user filed a piece of post by hand.
+    ///
+    /// Two effects, deliberately. The document itself shows the chosen
+    /// category from now on, whatever the rules say. And if Paperless knows who
+    /// sent it, the correspondent is learned: the next letter from the same
+    /// sender is filed the same way without being asked. A document with no
+    /// correspondent teaches nothing, because there is nothing to key it on.
+    ///
+    /// Takes the correspondent and the shown category from the caller because
+    /// finding them means asking Paperless, and a caller holding `Core` behind
+    /// a lock must not hold it across that. [`Core::file_post`] does the asking
+    /// for callers that can.
+    pub fn record_paper_correction(
+        &self,
+        mailbox_id: i64,
+        document_id: i64,
+        correspondent: Option<&str>,
+        shown: Option<&str>,
+        category: &str,
+    ) -> Result<()> {
+        let category = core_rules::Category::parse(category)
+            .ok_or_else(|| RpcError::Rejected(format!("not a category: {category}")))?;
+        self.mailbox(mailbox_id)?;
+
+        // Filed there by hand already: another row would be a correction that
+        // corrects nothing, in the one dataset kept deliberately clean.
+        let already = self
+            .store
+            .paper_overrides(mailbox_id)?
+            .into_iter()
+            .find(|(document, _)| *document == document_id)
+            .map(|(_, filed)| filed);
+        if already.as_deref() == Some(category.as_str()) {
+            return Ok(());
+        }
+
+        self.store.record_paper_correction(
+            mailbox_id,
+            document_id,
+            correspondent.filter(|name| !name.trim().is_empty()),
+            shown,
+            category.as_str(),
+        )?;
+        Ok(())
+    }
+
+    /// Files a piece of post by hand, asking Paperless who sent it.
+    pub async fn file_post(&self, mailbox_id: i64, document_id: i64, category: &str) -> Result<()> {
+        let detail = self
+            .paper_session(mailbox_id)?
+            .document(document_id)
+            .await?;
+        self.record_paper_correction(
+            mailbox_id,
+            document_id,
+            detail.correspondent.as_deref(),
+            detail.row.category.as_deref(),
+            category,
+        )
     }
 
     // -- internals ---------------------------------------------------------
@@ -218,8 +292,9 @@ impl Core {
     /// Carries every account's corrections rather than none: post has no
     /// account of its own, and a correspondent a user has already filed once
     /// on the mail side should not have to be filed again because the letter
-    /// came on paper. Corrections made *on* post are not recorded yet — that
-    /// needs a table of its own, since `correction` hangs off a message.
+    /// came on paper. Corrections made on post are loaded after, so where the
+    /// two disagree about a correspondent the letter's filing wins — it is the
+    /// one made about paper.
     fn paper_classifier(&self) -> Result<core_rules::Classifier> {
         let mut learned = core_rules::Learned::new();
         for account in self.store.accounts()? {
@@ -235,6 +310,13 @@ impl Core {
                 }
             }
         }
+        for (correspondent, category) in self.store.paper_learned()? {
+            if let Some(category) = core_rules::Category::parse(&category) {
+                // Documents use the correspondent as their address, so this is
+                // the key the classifier will look them up by.
+                learned.insert_sender(&correspondent, category);
+            }
+        }
         Ok(core_rules::Classifier::new(learned))
     }
 }
@@ -244,6 +326,9 @@ pub struct PaperSession {
     client: Paperless,
     selector: Selector,
     classifier: core_rules::Classifier,
+    /// Documents the user filed by hand, and where. A person's filing of one
+    /// letter is not evidence to weigh against the rules — it is the answer.
+    overrides: std::collections::HashMap<i64, core_rules::Category>,
 }
 
 impl PaperSession {
@@ -265,7 +350,7 @@ impl PaperSession {
             rows: page
                 .documents
                 .iter()
-                .map(|document| to_row(document, &self.classifier))
+                .map(|document| to_row(document, &self.classifier, &self.overrides))
                 .collect(),
         })
     }
@@ -278,7 +363,8 @@ impl PaperSession {
             .map_err(paper_error)?;
 
         Ok(PaperDetail {
-            row: to_row(&document, &self.classifier),
+            row: to_row(&document, &self.classifier, &self.overrides),
+            correspondent: document.correspondent.clone(),
             body_text: document.content.clone(),
             download_url: document.download_path.clone(),
         })
@@ -289,8 +375,15 @@ impl PaperSession {
     }
 }
 
-fn to_row(document: &Document, classifier: &core_rules::Classifier) -> PaperRow {
-    let verdict = classifier.classify(&document.facts());
+fn to_row(
+    document: &Document,
+    classifier: &core_rules::Classifier,
+    overrides: &std::collections::HashMap<i64, core_rules::Category>,
+) -> PaperRow {
+    let category = overrides
+        .get(&document.id)
+        .copied()
+        .unwrap_or_else(|| classifier.classify(&document.facts()).category);
     PaperRow {
         id: document.id,
         date_utc: document.created_utc,
@@ -301,7 +394,7 @@ fn to_row(document: &Document, classifier: &core_rules::Classifier) -> PaperRow 
         subject: document.title.clone(),
         unread: false,
         has_attachments: true,
-        category: Some(verdict.category.as_str().to_string()),
+        category: Some(category.as_str().to_string()),
         snippet: document.content.as_ref().map(|text| snippet(text)),
         tags: document.tags.clone(),
         page_count: document.page_count,
