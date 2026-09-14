@@ -1140,3 +1140,51 @@ So the default is the model under half the size and more than twice as fast as
 the one measured first, whose only misses are on a message a careful person could
 file either way. `make ai-model` pulls it, and `--model` still overrides it.
 
+
+---
+
+## 20. The view gets tests, and they find a bug on their first run
+
+**2026-09-14.**
+
+The triage surface was the one part of the JavaScript half with no tests — the
+model, the adapters and the classifier all had them; the thing a person actually
+touches had none. It had already produced two bugs found by hand: keys that
+explained nothing, and a teardown that would have made every keystroke act twice
+after switching accounts.
+
+`fuckbird/test/view.test.js` mounts the real surface into jsdom over the
+in-memory host and drives it through the keyboard and clicks: the legend and the
+scope bar say what they should, `j`/`k` move the cursor, archiving keeps the
+cursor where it was, typing into the search box never fires a shortcut, digits
+file by category, a row that refuses an action says so on screen, unmounting lets
+go of the keyboard, an empty filtered list says why and offers the way out,
+Escape closes the panel before it touches the filter, the reading pane explains a
+verdict and shows a user's filing beside what the rules said, and nothing a
+sender wrote is ever parsed as markup.
+
+**Its first run failed, on a real bug.** The explanation panel was written to
+open by itself on first launch, and never did. The line that opened it was added
+by a patch whose search text had already changed underneath it; that one
+replacement had no assertion, so it matched nothing and said nothing. The person
+it was written for — who reported not knowing what triage was for, twice — never
+saw it unless they pressed `?`. The test was run against the unfixed view first
+and failed exactly there, so it is known to catch the bug rather than merely to
+pass once it is gone. The fix is one line, and the replacement that added it
+asserts that it matched.
+
+### What it cannot see
+
+jsdom has no layout and no CSS cascade. These tests can say an element is
+`hidden`; they cannot say it is off screen. The bug found earlier in the settings
+sheet — `display: flex` beating the hidden attribute, which would have put both
+forms on screen at once — is outside what they check. That wants a real engine:
+Playwright against `hosts/fuckmail/ui/triage.html` with a stand-in bridge would
+catch it, at the cost of a browser download.
+
+### The dependency
+
+jsdom 24.1.3, pinned exactly, as the only dev dependency. Not the current
+release: that one needs a newer Node than the 20.10 this was developed on, and
+fails on import rather than at install. `make test-js` installs from the lock file
+only when `node_modules` is missing, so an ordinary run stays offline.

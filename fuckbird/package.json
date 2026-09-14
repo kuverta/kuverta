@@ -11,5 +11,8 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3"
   }
 }

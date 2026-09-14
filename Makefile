@@ -54,7 +54,9 @@ test: ## Run tests (integration tests skip if the dev server is down)
 	$(MAKE) test-js
 
 test-js: ## Run the triage surface's tests (no mail client needed)
-	cd fuckbird && npm test
+	@# jsdom is the one dependency, for the view's tests; installed from the lock
+	@# file, and only when it is missing, so a normal run stays offline.
+	cd fuckbird && (test -d node_modules || npm ci --no-audit --no-fund) && npm test
 
 test-all: dev-up ## Run tests with the dev server required, as CI does
 	FUCKMAIL_REQUIRE_DEV_SERVER=1 cargo test -j 2 --workspace

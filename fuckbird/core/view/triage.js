@@ -121,6 +121,12 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
 
   draw(true);
 
+  // First launch: say what this is before anyone has to ask. This line was
+  // meant to exist from the start and did not — a patch that should have added
+  // it matched nothing, silently — so the person it was written for never saw
+  // the panel unless they pressed `?`. test/view.test.js now fails without it.
+  if (!seenBefore()) help.hidden = false;
+
   /**
    * Lets go of the document.
    *
