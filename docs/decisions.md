@@ -1327,3 +1327,69 @@ the dev instance runs. The test changes case the way a person mistyping would.
   without a prompt,** whatever `-A` says: the item's partition list admits Apple's
   tools only. Paste tokens into the settings sheet, which files them as the app.
 
+## 23. The scanner, without a Pi: what reading it found, and letters
+
+No Raspberry Pi here, so this round was what can be settled without one: reading
+`scannerd` closely, driving its loop by hand, and running the whole binary on a
+laptop with ffmpeg standing in for `rpicam-still`.
+
+### Found by reading
+
+- **A failed upload waited for the next letter.** The spool was drained at start
+  and after a capture, never otherwise, while the readme promised a retry "within
+  the minute". It now drains on a timer (`--drain-every-secs`, 30) too, including
+  while the camera fails.
+- **The backoff did not back off.** It was measured from the capture, so anything
+  older than five minutes was always due. It is measured from the last attempt,
+  which the sidecar now records.
+- **Uploads had no timeout**, and the loop waits on them: a link that dropped
+  mid-request would stop the daemon seeing the next page. Two minutes.
+- **Detection ignored `--roi`.** The crop applied to the photograph only, so the
+  thresholds were fractions of the whole desk.
+- **The systemd unit passed no arguments.** `ExecStart` never mentioned
+  `$SCANNERD_ARGS`, and `SCANNERD_ROI` was offered by the env example but read by
+  nothing — so on a Pi the tags and the crop in `/etc/scannerd.env` would never
+  have arrived. Tags (`SCANNERD_TAGS`, comma-separated, since a tag may hold a
+  space), button and crop are environment variables now.
+- **The readme never created the `scannerd` user** the unit runs as.
+- **Two captures in one second shared a name** (seconds plus the process id), and
+  the second rename replaced the first. Nanoseconds instead.
+
+`Scanner::turn` is the loop as a library function with the clock passed in, and
+`tests/run.rs` drives it with a scripted camera and a Paperless that fails on
+request; with the timer drain removed, two of its three tests fail.
+
+### Letters of more than one page
+
+Asked, and decided: **a button**. Grouping by time would merge a quickly scanned
+stack of one-page letters, which is how post gets scanned; a separator sheet is
+paper to print and handle; one page per document leaves the merging to be done by
+hand. With `--button`, pages collect in the spool's `open/` until it is pressed and
+the letter goes as one PDF. Details that matter:
+
+- **The button is a key.** The kernel's `gpio-key` overlay turns a push button on
+  GPIO 17 into Enter on an input device and debounces it, so `scannerd` reads
+  24-byte `input_event` records — no GPIO library, no libgpiod version to match, a
+  USB keypad works too, and `--button stdin` is Enter in a terminal.
+- **A press while the last page is settling waits for it.** Putting the page down
+  and pressing is one movement, and the press arrives first.
+- **A letter nobody closes closes itself** five minutes after its last page.
+- **The PDF embeds the photographs unchanged** (`/DCTDecode`), with no image
+  library: a JPEG's size is in its frame header. Written as `.partial` and renamed;
+  pages removed only after, so a crash leaves the same PDF twice (refused by
+  Paperless by checksum) rather than nothing. A page that is not a readable JPEG is
+  queued on its own rather than blocking the letter.
+- Checked beyond the unit tests: a PDF built from the three real letter photographs
+  passes Ghostscript and renders each page with its proportions.
+
+### Not verified
+
+- **On a Pi:** `rpicam-still`'s start-up time per frame, exposure, the overlay's
+  device name under `/dev/input/by-path/`, and the unit file. Each is a first-run
+  check on the device.
+- **Against Paperless:** the laptop run of the whole binary and the `make
+  scannerd-pi` build were stopped by the Mac's disk filling (302 MB free): Docker's
+  storage went read-error, Paperless answered 500, and a frame from ffmpeg took 18
+  seconds. Space was freed — build output, Docker's build cache, three benchmark
+  models — but Docker needs restarting before either can run.
+

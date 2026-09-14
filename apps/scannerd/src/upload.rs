@@ -178,11 +178,21 @@ fn multipart(boundary: &str, fields: &[(String, String)], filename: &str, file: 
         format!("Content-Disposition: form-data; name=\"document\"; filename=\"{filename}\"\r\n")
             .as_bytes(),
     );
-    body.extend_from_slice(b"Content-Type: image/jpeg\r\n\r\n");
+    body.extend_from_slice(format!("Content-Type: {}\r\n\r\n", content_type(filename)).as_bytes());
     body.extend_from_slice(file);
     body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
 
     body
+}
+
+/// What a file is, by its extension: a letter is a PDF, a single page a
+/// photograph.
+fn content_type(filename: &str) -> &'static str {
+    if filename.to_ascii_lowercase().ends_with(".pdf") {
+        "application/pdf"
+    } else {
+        "image/jpeg"
+    }
 }
 
 /// A filename without its extension, for the document title.

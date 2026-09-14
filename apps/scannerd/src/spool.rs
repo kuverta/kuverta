@@ -10,6 +10,9 @@
 //! unplugged mid-write should be recoverable with `ls`, and a half-written
 //! photograph should be obvious rather than a row claiming a file that is not
 //! there.
+//!
+//! When pages are collected into letters, they wait in `open/` until the
+//! letter is closed, and only the finished PDF joins the queue.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -23,7 +26,12 @@ use anyhow::{Context, Result};
 /// atomic and a copy is not: without it, a crash mid-write leaves a truncated
 /// JPEG that looks exactly like a whole one.
 const PARTIAL: &str = "partial";
+/// A single page, sent as it is.
 const READY: &str = "jpg";
+/// A letter of one or more pages.
+const LETTER: &str = "pdf";
+/// Where the pages of the letter being collected wait.
+const OPEN: &str = "open";
 
 pub struct Spool {
     dir: PathBuf,
@@ -77,18 +85,25 @@ impl Spool {
     /// reads a `.partial` file, so an interrupted capture is skipped rather
     /// than uploaded half-formed.
     pub fn reserve(&self) -> (PathBuf, PathBuf) {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_secs())
-            .unwrap_or(0);
-        // The counter disambiguates two captures within one second, which
-        // happens when a page is replaced quickly.
-        let unique = std::process::id();
-        let stem = format!("{stamp}-{unique}");
+        let stem = unique_stem();
         (
             self.dir.join(format!("{stem}.{PARTIAL}")),
             self.dir.join(format!("{stem}.{READY}")),
         )
+    }
+
+    /// Like [`Spool::reserve`], for a page of the letter being collected.
+    ///
+    /// Pages wait in `open/` and nothing there is uploaded: a letter sent a
+    /// page at a time is exactly what collecting them is for preventing.
+    pub fn reserve_page(&self) -> Result<(PathBuf, PathBuf)> {
+        let open = self.dir.join(OPEN);
+        fs::create_dir_all(&open).with_context(|| format!("could not open {}", open.display()))?;
+        let stem = unique_stem();
+        Ok((
+            open.join(format!("{stem}.{PARTIAL}")),
+            open.join(format!("{stem}.{READY}")),
+        ))
     }
 
     pub fn commit(&self, partial: &Path, ready: &Path) -> Result<()> {
@@ -110,18 +125,12 @@ impl Spool {
         let mut found = Vec::new();
         for entry in fs::read_dir(&self.dir)? {
             let path = entry?.path();
-            if path.extension().and_then(|e| e.to_str()) != Some(READY) {
+            let extension = path.extension().and_then(|e| e.to_str());
+            if !matches!(extension, Some(READY) | Some(LETTER)) {
                 continue;
             }
-            let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
-                continue;
-            };
             found.push(Pending {
-                captured_at: stem
-                    .split('-')
-                    .next()
-                    .and_then(|s| s.parse().ok())
-                    .unwrap_or(0),
+                captured_at: stamp_of(&path).unwrap_or(0),
                 attempts: self.attempts(&path),
                 last_attempt: self.last_attempt(&path),
                 path,
@@ -129,6 +138,82 @@ impl Spool {
         }
         found.sort_by(|a, b| a.captured_at.cmp(&b.captured_at).then(a.path.cmp(&b.path)));
         Ok(found)
+    }
+
+    /// The pages of the letter being collected, in the order they were taken.
+    pub fn open_pages(&self) -> Result<Vec<PathBuf>> {
+        let open = self.dir.join(OPEN);
+        if !open.exists() {
+            return Ok(Vec::new());
+        }
+        let mut pages = Vec::new();
+        for entry in fs::read_dir(&open)? {
+            let path = entry?.path();
+            if path.extension().and_then(|e| e.to_str()) == Some(READY) {
+                pages.push(path);
+            }
+        }
+        // Names are the capture time and then zero-padded nanoseconds, so
+        // their order is the order they were photographed in.
+        pages.sort();
+        Ok(pages)
+    }
+
+    /// When the newest page of the open letter was taken, if there is one.
+    pub fn last_page_at(&self) -> Result<Option<u64>> {
+        Ok(self.open_pages()?.last().and_then(|page| stamp_of(page)))
+    }
+
+    /// Makes the open letter one PDF in the queue, and returns its path.
+    ///
+    /// Written as `.partial` and renamed, like a capture, and the pages are
+    /// removed only after the rename. A crash in between leaves the letter
+    /// twice — as a PDF and as pages that make the same PDF again, byte for
+    /// byte, which Paperless refuses by checksum. The other order could leave
+    /// it nowhere.
+    pub fn close_letter(&self) -> Result<Option<PathBuf>> {
+        let mut jpegs = Vec::new();
+        let mut used = Vec::new();
+        for page in self.open_pages()? {
+            let bytes =
+                fs::read(&page).with_context(|| format!("could not read {}", page.display()))?;
+            if crate::pdf::jpeg_info(&bytes).is_ok() {
+                jpegs.push(bytes);
+                used.push(page);
+            } else {
+                // Sent on its own rather than holding the letter back forever:
+                // Paperless may make something of it, and if not it is in the
+                // queue to be looked at, not stuck in a letter that can never
+                // close.
+                let aside = self
+                    .dir
+                    .join(page.file_name().context("a page with no name")?);
+                self.commit(&page, &aside)?;
+                tracing::warn!(page = %aside.display(), "a page could not go into a PDF; queued on its own");
+            }
+        }
+
+        let Some(first) = used.first() else {
+            return Ok(None);
+        };
+        let pdf = crate::pdf::from_jpegs(&jpegs)?;
+
+        // Named for its first page: the letter arrived when it was put down,
+        // not when the button was pressed.
+        let stem = first
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .context("a page with no name")?;
+        let partial = self.dir.join(format!("{stem}.{PARTIAL}"));
+        let ready = self.dir.join(format!("{stem}.{LETTER}"));
+        fs::write(&partial, &pdf)
+            .with_context(|| format!("could not write {}", partial.display()))?;
+        self.commit(&partial, &ready)?;
+
+        for page in &used {
+            let _ = fs::remove_file(page);
+        }
+        Ok(Some(ready))
     }
 
     /// Forgets a capture, once Paperless has it.
@@ -181,6 +266,23 @@ impl Spool {
             .parse()
             .ok()
     }
+}
+
+/// `<seconds>-<nanoseconds>`: sortable, and unique for one camera.
+///
+/// The nanoseconds replace the process id this used to carry, which was the
+/// same for every capture a daemon made — so two captures within one second
+/// shared a name, and the rename of the second replaced the first.
+fn unique_stem() -> String {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    format!("{}-{:09}", elapsed.as_secs(), elapsed.subsec_nanos())
+}
+
+/// The capture time a file's name starts with.
+fn stamp_of(path: &Path) -> Option<u64> {
+    path.file_stem()?.to_str()?.split('-').next()?.parse().ok()
 }
 
 fn now_secs() -> u64 {

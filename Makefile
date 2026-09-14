@@ -145,6 +145,22 @@ fill-dev: dev-up ## Put ~250 varied messages in the dev mailbox, then sync them
 	FUCKMAIL_DEV_PASSWORD=devpass FUCKMAIL_DATA_DIR=.devdata \
 	    ./target/debug/fuckmail sync --password-env FUCKMAIL_DEV_PASSWORD
 
+## -- the scanner -----------------------------------------------------------
+
+# Built in an arm64 container rather than cross-compiled: Docker on an Apple
+# silicon Mac runs arm64 natively, and bookworm's glibc (2.36) is what 64-bit
+# Raspberry Pi OS ships, so the binary runs there as it is. rustls throughout,
+# so no OpenSSL to match. The registry is cached in a volume between builds.
+scannerd-pi: ## Build scannerd for 64-bit Raspberry Pi OS (bookworm), in Docker
+	docker run --rm --platform linux/arm64 \
+	  -v "$(CURDIR)":/src -w /src \
+	  -v fuckmail-pi-cargo:/usr/local/cargo/registry \
+	  -e CARGO_TARGET_DIR=/src/target/pi \
+	  rust:1-slim-bookworm \
+	  cargo build --release -j 2 -p scannerd
+	@file target/pi/release/scannerd
+	@echo "  -> copy it and apps/scannerd/scannerd.service to the Pi (apps/scannerd/readme.md)"
+
 clean: ## Remove build output and the scratch store
 	cargo clean
 	rm -rf .devdata

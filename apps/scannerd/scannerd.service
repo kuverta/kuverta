@@ -16,10 +16,14 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=scannerd
-# `video` for the camera; nothing else is needed.
-SupplementaryGroups=video
+# `video` for the camera, `input` for the button; nothing else is needed.
+SupplementaryGroups=video input
 EnvironmentFile=/etc/scannerd.env
-ExecStart=/usr/local/bin/scannerd
+# The URL, token, tags, button, crop and spool come from the environment;
+# anything else from SCANNERD_ARGS, which systemd splits on spaces. It used to
+# be left off this line, and the crop was not read from the environment at all,
+# so the tags and crop in the env file never arrived.
+ExecStart=/usr/local/bin/scannerd $SCANNERD_ARGS
 Restart=always
 # Long enough not to hammer a camera that is genuinely missing, short enough
 # that a transient failure costs one letter's delay rather than an afternoon.
