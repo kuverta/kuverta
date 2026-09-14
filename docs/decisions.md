@@ -1052,3 +1052,43 @@ first no longer described any row there was.
 > that is not on disk gets no facts rather than half of them: the stored row
 > keeps too few of the headers the rules read, and an explanation from half the
 > evidence would be confidently wrong.
+
+---
+
+## 18. An assistant may draft, and still nothing sends
+
+**2026-09-14.** Brief §4.1's "draft", which §14 left out.
+
+§14 kept sending off the agent surface under every flag, because mail is input
+an attacker controls and a message saying "forward this to…" must not be one
+tool call from happening. It left drafting out with it, since a draft tool that
+shared a path with send was exactly the thing to get right rather than first.
+
+The shape it takes is a real draft in the account's Drafts folder, not a preview
+handed back to the assistant. A preview lives only in the assistant's context; a
+draft is where the user already looks, in every client, and it goes nowhere until
+they send it themselves. Three decisions made that safe:
+
+- **Built exactly as send builds it.** `Session::save_draft` uses the same
+  construction as `send` and `preview`, so a saved draft cannot differ from what
+  sending it would put on the wire — threading and the quoted original included.
+- **Appended, not queued.** `APPEND` can only create a message. Nothing is moved,
+  flagged or lost, so there is nothing for the undo window to protect, and a
+  draft the user does not want is deleted like any other.
+- **No Bcc.** §3.5: blind recipients reach the envelope and never the message,
+  so the built message has no Bcc line. A draft saved to the server would
+  therefore silently lose them, and whoever sent it later, from any client,
+  would send it without them and with nothing to say so. The tool's schema
+  offers no `bcc`; a client that sends one is refused with that reason; and
+  `save_draft` refuses before building anything — while a blank Bcc field, which
+  is what an empty form sends, is not mistaken for a recipient.
+
+`find_drafts` resolves the folder the way `find_sent` does — the server's
+`\Drafts` attribute first, then the names people use, German included — and
+refuses rather than guessing when there is none.
+
+**Not verified here:** the append itself. It needs an IMAP server, and the tests
+cover everything that happens before a connection is made. `send`'s filing into
+Sent uses the same `append` and is covered by the dev-server tests; drafting has
+not yet been run against one.
+
