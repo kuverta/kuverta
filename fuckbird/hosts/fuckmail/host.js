@@ -196,7 +196,9 @@ export class FuckmailHost extends MailHost {
       return {
         row: paperRow(detail.row, paper.mailboxId),
         body: detail.body_text ?? null,
-        facts: null,
+        // What the rules read, so the reading pane can say why a letter was
+        // filed where it was — the same explanation mail gets.
+        facts: detail.facts ?? null,
       };
     }
 
@@ -223,7 +225,10 @@ export class FuckmailHost extends MailHost {
       // An HTML-only message yields no text here — the store says so rather
       // than inventing a rendering.
       body: detail.body_text ?? null,
-      facts: null,
+      // The facts the rules read, re-parsed from the stored message. Without
+      // them the reading pane can name a category but not say why, which is
+      // the half of the rules layer that makes a wrong answer arguable.
+      facts: detail.facts ?? null,
     };
   }
 

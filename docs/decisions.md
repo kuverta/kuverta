@@ -1044,3 +1044,11 @@ host contract, a letter's `actions` is now `[setCategory]` rather than `[]` —
 which moved the conformance rule about rows refusing what they declared from
 "a row that allows nothing" to "a row that does not allow archiving", since the
 first no longer described any row there was.
+
+> **Since (2026-09-14):** §9's gap is closed. `fuckmail`'s message detail now
+> carries the classifier's facts, re-parsed from the stored message, so the
+> reading pane explains mail there the way it does in Thunderbird — and a
+> letter's detail carries them too, so post is explained the same way. A message
+> that is not on disk gets no facts rather than half of them: the stored row
+> keeps too few of the headers the rules read, and an explanation from half the
+> evidence would be confidently wrong.

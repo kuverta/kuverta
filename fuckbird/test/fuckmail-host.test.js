@@ -15,6 +15,7 @@ import { fakeInvoke } from './support/fake-invoke.js';
 import { FuckmailHost } from '../hosts/fuckmail/host.js';
 import { Triage } from '../core/triage.js';
 import { ACTIONS } from '../core/host.js';
+import { Classifier } from '../core/classify.js';
 
 const account = { id: 1, email: 'you@example.com' };
 
@@ -221,4 +222,36 @@ test('fuckmail: an address with no token is not offered', async () => {
   const host = await new FuckmailHost(fakeInvoke({ paper }), account).open();
 
   assert.ok(!(await host.scopes()).some((scope) => scope.kind === 'paper'));
+});
+
+// -- explaining a verdict ----------------------------------------------------
+
+test('fuckmail: an opened message carries the facts its verdict is explained from', async () => {
+  // Without them the reading pane can name a category but not say why — and
+  // the explanation is the half of the rules layer that makes a wrong answer
+  // arguable rather than annoying.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  const mail = rows.find((row) => !row.id.startsWith('paper:'));
+
+  const opened = await host.message(mail.id);
+  assert.ok(opened.facts, 'facts should be present');
+  assert.equal(opened.facts.subject, mail.subject);
+
+  const verdict = Classifier.withoutHistory().classify(opened.facts);
+  assert.ok(verdict.reasons.length > 0, 'the rules should have something to say');
+});
+
+test('fuckmail: an opened letter is explained the same way as mail', async () => {
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  const letter = rows.find((row) => row.id.startsWith('paper:'));
+
+  const opened = await host.message(letter.id);
+  assert.equal(opened.facts.fromAddr, 'Stadtwerke München');
+  assert.equal(opened.facts.hasAttachments, true, 'a document is its own attachment');
+
+  const verdict = Classifier.withoutHistory().classify(opened.facts);
+  assert.equal(verdict.category, 'transactional');
+  assert.ok(verdict.reasons.some((reason) => reason.rule === 'subject.transactional'));
 });
