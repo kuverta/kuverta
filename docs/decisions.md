@@ -1011,3 +1011,36 @@ corrected messages once and keeping the vectors — a table keyed by message and
 embedding model — so the filings are not re-embedded on every pass. That is worth
 building when there are corrections for it to use, and the decision about when a
 model verdict may change what the list shows is still §15's, still open.
+
+---
+
+## 17. Filing post by hand
+
+**2026-09-14.** Closes the gap §11 recorded.
+
+§11 left post readable and unfilable: pressing `1`–`6` on a letter was refused,
+because `correction` hangs off a message row and a document is not one. Post now
+has its own append-only table, `paper_correction`, and a correction on a letter
+does two things on purpose.
+
+**It pins the letter.** The document shows the category it was filed under from
+then on, whatever the rules make of it — a person's filing of one letter is not
+evidence to weigh, it is the answer.
+
+**It teaches the correspondent, when there is one.** A document's facts already
+use its correspondent as the sender address, so the learning path mail uses
+needed nothing new: the next letter from the same sender is filed the same way
+unasked. Post corrections are loaded after mail's, so where a correspondent was
+filed differently on paper and by email, the paper filing wins for paper.
+
+A letter with no correspondent pins itself and teaches nothing. That is enforced
+at the edge rather than trusted: the row shows a dash for "unknown", and a dash
+learned as if it were a correspondent would file every anonymous letter alike.
+So the command asks Paperless who sent the document instead of reading the row
+the list happens to hold, and blank names are dropped before recording.
+
+Filing a letter where it already is records nothing, as with mail. And in the
+host contract, a letter's `actions` is now `[setCategory]` rather than `[]` —
+which moved the conformance rule about rows refusing what they declared from
+"a row that allows nothing" to "a row that does not allow archiving", since the
+first no longer described any row there was.

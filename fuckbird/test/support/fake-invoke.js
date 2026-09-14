@@ -157,6 +157,15 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       return { total: rows.length, offset, rows: rows.slice(offset, offset + limit) };
     },
 
+    file_post: async ({ id, documentId, category }) => {
+      // The real command validates against core-rules and asks Paperless who
+      // sent the letter; the fake keeps the part a test can observe.
+      if (!CATEGORIES.includes(category)) throw new Error(`not a category: ${category}`);
+      const found = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!found) throw new Error(`no such document: ${documentId}`);
+      found.category = category;
+    },
+
     paper_document: async ({ id, documentId }) => {
       const found = documents.find((d) => d.mailbox === id && d.id === documentId);
       if (!found) throw new Error(`no such document: ${documentId}`);

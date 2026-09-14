@@ -232,6 +232,26 @@ CREATE TABLE paper_mailbox (
 CREATE UNIQUE INDEX paper_mailbox_target
     ON paper_mailbox (base_url, selector_kind, IFNULL(selector_value, ''));
 "#,
+    // v8 — corrections to post. `correction` hangs off a message row and a
+    // document is not one, so post has its own table. Append-only for the
+    // reason §3.4 gives: a correction reversed is two events, not an edit, and
+    // the reversals are the most interesting rows.
+    r#"
+CREATE TABLE paper_correction (
+    id            INTEGER PRIMARY KEY,
+    mailbox_id    INTEGER NOT NULL REFERENCES paper_mailbox(id) ON DELETE CASCADE,
+    -- Paperless's id. Not a foreign key: the document lives in Paperless.
+    document_id   INTEGER NOT NULL,
+    -- Who sent it, when Paperless knew. What a correction teaches.
+    correspondent TEXT,
+    from_category TEXT,
+    to_category   TEXT NOT NULL,
+    created_at    INTEGER NOT NULL
+);
+
+CREATE INDEX paper_correction_by_document ON paper_correction (mailbox_id, document_id);
+CREATE INDEX paper_correction_by_correspondent ON paper_correction (correspondent);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
