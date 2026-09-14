@@ -8,5 +8,6 @@
 
 pub mod camera;
 pub mod detect;
+pub mod run;
 pub mod spool;
 pub mod upload;

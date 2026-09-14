@@ -41,10 +41,18 @@ impl Uploader {
         if !base.starts_with("http://") && !base.starts_with("https://") {
             bail!("{base_url} is not a usable Paperless URL");
         }
+        // Bounded, because the capture loop waits on uploads: a Wi-Fi link that
+        // drops mid-request must fail the upload, which keeps the capture, not
+        // hang the loop so that the next letter is never seen.
+        let http = reqwest::Client::builder()
+            .connect_timeout(std::time::Duration::from_secs(10))
+            .timeout(std::time::Duration::from_secs(120))
+            .build()
+            .context("could not set up an HTTP client")?;
         Ok(Self {
             base,
             token: token.to_string(),
-            http: reqwest::Client::new(),
+            http,
             tags,
             tag_ids: Mutex::new(None),
             title_prefix,
