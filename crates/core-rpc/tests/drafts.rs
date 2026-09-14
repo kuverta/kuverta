@@ -72,6 +72,42 @@ async fn a_blank_bcc_field_is_not_a_blind_recipient() {
     assert!(matches!(err, RpcError::UnknownAccount(_)), "got {err:?}");
 }
 
+#[test]
+fn blank_address_fields_are_empty_fields_not_malformed_addresses() {
+    // Found against the dev server: a blank Cc was parsed as the address ""
+    // and the whole draft refused, while a blank Bcc was already accepted.
+    let dir = TempDir::new("blank-fields");
+    let store = core_store::Store::open(dir.0.join("fuckmail.db")).unwrap();
+    store
+        .add_account(&core_store::model::NewAccount {
+            label: "me@example.com".into(),
+            email: "me@example.com".into(),
+            imap_host: "127.0.0.1".into(),
+            imap_port: 1,
+            username: "me@example.com".into(),
+            auth_method: "app_password".into(),
+            ..Default::default()
+        })
+        .unwrap();
+
+    let preview = Session::new(dir.0.clone())
+        .preview(
+            "me@example.com",
+            &DraftInput {
+                to: vec!["a@example.com".into(), "".into()],
+                cc: vec!["  ".into()],
+                bcc: vec!["".into()],
+                subject: "s".into(),
+                body: "b".into(),
+                ..Default::default()
+            },
+        )
+        .expect("blank fields should not refuse the draft");
+
+    assert_eq!(preview.recipients, vec!["a@example.com".to_string()]);
+    assert!(!preview.rfc822.contains("\r\nCc:"), "{}", preview.rfc822);
+}
+
 #[tokio::test]
 async fn a_draft_for_an_account_that_does_not_exist_is_refused_before_connecting() {
     let dir = TempDir::new("no-account");

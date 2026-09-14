@@ -1238,3 +1238,66 @@ Playwright 1.63.0 and its headless Chromium (~94 MB), both pinned by the lock fi
 and installed only when missing. Kept out of `make test` because they take seconds
 and need the download; `make test-e2e` runs them.
 
+## 22. Drafting and post, against the real servers
+
+Everything in §17 and §18 had been tested against fakes: a canned Paperless on a
+loopback socket, and drafting only up to the point a connection is made. With the
+Docker stack up, both now have tests against the real thing, which skip when it is
+down and fail under `FUCKMAIL_REQUIRE_DEV_SERVER=1`:
+
+- `core-rpc/tests/drafts_dev_server.rs` saves a draft through `Session`, syncs,
+  and reads it back from the store — on the plain Dovecot (`Drafts`) and on the
+  Gmail-shaped one (`[Gmail]/Drafts`, where the plain `Drafts` exists but is not
+  the special-use folder), flagged `\Draft \Seen`.
+- `core-paper/tests/dev_server.rs` holds on an empty instance or a used one, by
+  asserting agreement — report against listing, listing against each document,
+  every existing tag against the documents that carry it — rather than contents.
+
+The rest was checked by hand, on the stack, and is listed so it can be repeated:
+`scannerd --drain-only` with two generated letters; `fuckmail paper` with
+`--check`, `--tag` and `--query`; and a postal address registered in `.devdata`,
+read through `core-rpc` exactly as the desktop commands read it — token filed, check,
+listing, opening a letter, filing it.
+
+### What the real servers found
+
+**`scannerd` could never have uploaded a tagged letter.** Paperless's upload
+endpoint takes tag *ids* and answers a name with `400 Expected pk value, received
+str`. The unit file example says `--tag post --tag home`; every capture would have
+failed and waited in the spool forever. The fake accepted anything, so nothing had
+said so. Names are still what a person writes: `scannerd` now looks each one up
+once (`name__iexact`), sends ids, and a tag Paperless does not have fails the upload
+*by name* and keeps the capture. The fake answers lookups now, and a test says why.
+
+**A blank Cc refused the whole draft.** `save_draft` already read a blank Bcc as
+no recipient; `build_draft`, shared with preview and send, parsed a blank Cc or To
+as the address `""`. A compose form sends exactly that for an empty field. Blank
+fields are now skipped for all three, with a test that needs no server.
+
+**The dev stack's Paperless did not start.** `latest` moved to a release that
+refuses to run without `PAPERLESS_SECRET_KEY`. The compose file sets a dev-only key
+and pins the image (3.1.3), so the next such change is a decision rather than a
+broken `make dev-up`.
+
+### And one the test got wrong
+
+The tag test first upper-cased names with Unicode rules, and "Hauptstraße 12"
+became "HAUPTSTRASSE 12", which Paperless does not match. That is another spelling,
+not another case; an ASCII case change ("HAUPTSTRAßE 12") does match, on the SQLite
+the dev instance runs. The test changes case the way a person mistyping would.
+
+### Still open
+
+- **The keychain entry for a paper token is `paper:{id}`,** keyed by row id alone.
+  Two data directories — `.devdata` and the real store — each start at id 1 and
+  would share one entry, so registering an address in one overwrites the other's
+  token. IMAP passwords are keyed by address and do not have this problem. Needs a
+  key that is unique across stores without being orphaned by an edit.
+- **Post reads poorly until Paperless knows who sent it.** Freshly scanned letters
+  have no correspondent and a title of `Post <timestamp>`, so triage shows "—" and a
+  number, and filing one teaches nothing (§17). Paperless learns correspondents
+  once some are assigned; the first letters need it done by hand.
+- **A token filed with `security add-generic-password` cannot be read by the app
+  without a prompt,** whatever `-A` says: the item's partition list admits Apple's
+  tools only. Paste tokens into the settings sheet, which files them as the app.
+

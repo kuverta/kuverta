@@ -588,13 +588,17 @@ fn build_draft(
 
     let parse =
         |address: &String| Mailbox::parse(address).map_err(|e| RpcError::Rejected(e.to_string()));
-    for address in &input.to {
+    // A compose form sends an empty string for an empty field. That is the
+    // absence of a recipient, not a malformed one — the Bcc refusal in
+    // `save_draft` already reads it that way, and so must every field here.
+    let present = |address: &&String| !address.trim().is_empty();
+    for address in input.to.iter().filter(present) {
         draft = draft.to(parse(address)?);
     }
-    for address in &input.cc {
+    for address in input.cc.iter().filter(present) {
         draft = draft.cc(parse(address)?);
     }
-    for address in &input.bcc {
+    for address in input.bcc.iter().filter(present) {
         draft = draft.bcc(parse(address)?);
     }
     if !input.subject.is_empty() {
