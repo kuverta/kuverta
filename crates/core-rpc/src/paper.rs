@@ -112,10 +112,13 @@ pub struct PaperPage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperDetail {
     pub row: PaperRow,
-    /// Who sent it, as Paperless knows it — `None` when it does not. Carried
-    /// separately from `row.from`, which shows a dash for "unknown" and would
-    /// otherwise be learned from as if a dash were a correspondent.
+    /// Who sent it, as Paperless knows it — `None` when it does not.
     pub correspondent: Option<String>,
+    /// Who sent it as far as can be told: the correspondent, or failing that
+    /// the letterhead. What filing the letter teaches. Carried separately from
+    /// `row.from`, which shows a dash for "unknown" and would otherwise be
+    /// learned from as if a dash were a sender.
+    pub sender: Option<String>,
     /// What the rules read, so a letter's verdict is explained the way mail's
     /// is — from the same facts the classifier filed it by.
     pub facts: crate::FactsView,
@@ -245,10 +248,11 @@ impl Core {
     /// Records that the user filed a piece of post by hand.
     ///
     /// Two effects, deliberately. The document itself shows the chosen
-    /// category from now on, whatever the rules say. And if Paperless knows who
-    /// sent it, the correspondent is learned: the next letter from the same
-    /// sender is filed the same way without being asked. A document with no
-    /// correspondent teaches nothing, because there is nothing to key it on.
+    /// category from now on, whatever the rules say. And if it can be told who
+    /// sent it — the correspondent, or the letterhead when Paperless has none —
+    /// the sender is learned: the next letter from them is filed the same way
+    /// without being asked. A document with neither teaches nothing, because
+    /// there is nothing to key it on.
     ///
     /// Takes the correspondent and the shown category from the caller because
     /// finding them means asking Paperless, and a caller holding `Core` behind
@@ -297,7 +301,7 @@ impl Core {
         self.record_paper_correction(
             mailbox_id,
             document_id,
-            detail.correspondent.as_deref(),
+            detail.sender.as_deref(),
             detail.row.category.as_deref(),
             category,
         )
@@ -400,6 +404,7 @@ impl PaperSession {
         Ok(PaperDetail {
             row: to_row(&document, &self.classifier, &self.overrides),
             correspondent: document.correspondent.clone(),
+            sender: document.sender().map(str::to_string),
             facts: crate::FactsView::from(&document.facts()),
             body_text: document.content.clone(),
             download_url: document.download_path.clone(),
@@ -423,11 +428,8 @@ fn to_row(
     PaperRow {
         id: document.id,
         date_utc: document.created_utc,
-        from: document
-            .correspondent
-            .clone()
-            .unwrap_or_else(|| "—".to_string()),
-        subject: document.title.clone(),
+        from: document.sender().unwrap_or("—").to_string(),
+        subject: document.subject().to_string(),
         unread: false,
         has_attachments: true,
         category: Some(category.as_str().to_string()),
