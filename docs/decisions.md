@@ -1092,3 +1092,44 @@ cover everything that happens before a connection is made. `send`'s filing into
 Sent uses the same `append` and is covered by the dev-server tests; drafting has
 not yet been run against one.
 
+---
+
+## 19. The default model: `llama3.2:3b`
+
+**2026-09-14.** Resolves the loose end §15 left.
+
+§15 measured an 8B model and left the default pointing at it, with the Makefile
+pulling a different and unmeasured one — `qwen3:8b`, a thinking model that may
+never get past its reasoning inside a twelve-token answer. Asked for a small,
+good default, three small instruct models were measured the same way, on both
+splits, with nothing else on the CPU:
+
+| model | size | every other message | senders never seen | p50 |
+|---|---|---|---|---|
+| Dolphin3 | 8.0B | 100% | 100% | ~620 ms |
+| **`llama3.2:3b`** | **3.2B** | **97.6%** | **100%** | **~267 ms** |
+| `qwen2.5:3b` | 3.1B | 87.2% | 97.3% | ~285 ms |
+
+`gemma3:4b` was the third candidate and had not finished downloading; it is the
+largest of the three, so it could only change this by being perfect on both
+splits and no slower.
+
+**The rule stated in advance was wrong, and is corrected here.** It was "the
+smallest model that holds 100% on senders never seen", on the reasoning that that
+split tests understanding. That reasoning belongs to embeddings, which learn from
+filings. A prompted model learns nothing from filings, so both splits test it
+equally, and a miss on either is a miss.
+
+**What decided it was which messages were missed, not how many.** `eval
+--show-wrong` now lists them. All three of `llama3.2:3b`'s are one template —
+the Sparkasse's "Kontoauszug verfügbar", a portal notice that a statement is
+ready — read as notification where the label says transactional. The taxonomy
+files statements under transactional and machine-generated status under
+notification, and this message is both. It misfiled no invoice, newsletter,
+advert or person. `qwen2.5:3b`'s twelve were transactional mail it simply got
+wrong, and it also missed on senders it had never seen.
+
+So the default is the model under half the size and more than twice as fast as
+the one measured first, whose only misses are on a message a careful person could
+file either way. `make ai-model` pulls it, and `--model` still overrides it.
+
