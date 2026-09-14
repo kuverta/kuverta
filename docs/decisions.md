@@ -1109,10 +1109,17 @@ splits, with nothing else on the CPU:
 | Dolphin3 | 8.0B | 100% | 100% | ~620 ms |
 | **`llama3.2:3b`** | **3.2B** | **97.6%** | **100%** | **~267 ms** |
 | `qwen2.5:3b` | 3.1B | 87.2% | 97.3% | ~285 ms |
+| `gemma3:4b` | 4.3B | 87.2% | 76.8% | ~850 ms |
 
-`gemma3:4b` was the third candidate and had not finished downloading; it is the
-largest of the three, so it could only change this by being perfect on both
-splits and no slower.
+`gemma3:4b`, the largest candidate, finished downloading after the default was
+set, and would only have changed it by being perfect on both splits and no
+slower. It was the worst of the three and the slowest: it read every DHL "Ihre
+Sendung wurde zugestellt" as transactional although the taxonomy names delivery
+notices as notification, and filed people asking about a quote as transactional
+too. That first mistake is the one embeddings made on senders they had never
+filed — a no-reply address and a number pulled toward receipts — which suggests
+it is a property of the message rather than of either method, and a good first
+case for a correction to settle.
 
 **The rule stated in advance was wrong, and is corrected here.** It was "the
 smallest model that holds 100% on senders never seen", on the reasoning that that
