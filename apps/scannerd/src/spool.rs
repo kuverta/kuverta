@@ -38,6 +38,25 @@ pub struct Pending {
     pub captured_at: u64,
     /// How many uploads have been tried and failed.
     pub attempts: u32,
+    /// When the last of those was, in seconds since the epoch. `None` before
+    /// the first failure, and for counters written before attempts were timed.
+    pub last_attempt: Option<u64>,
+}
+
+impl Pending {
+    /// Whether it is time to try this one again.
+    ///
+    /// Measured from the last failed attempt, not from when the page was
+    /// photographed: measured from the capture, anything more than five
+    /// minutes old was always due, and a spool that had been failing for an
+    /// hour was retried on every pass — the backoff reduced to decoration.
+    pub fn due(&self, now: u64) -> bool {
+        let since = self.last_attempt.unwrap_or(self.captured_at);
+        // A Pi has no real-time clock, and time can jump when NTP arrives. A
+        // clock that went backwards makes `since` look like the future; retry
+        // rather than wait for the clock to catch up.
+        now < since || now - since >= retry_delay(self.attempts).as_secs()
+    }
 }
 
 impl Spool {
@@ -104,6 +123,7 @@ impl Spool {
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0),
                 attempts: self.attempts(&path),
+                last_attempt: self.last_attempt(&path),
                 path,
             });
         }
@@ -130,7 +150,12 @@ impl Spool {
     /// halfway would be a capture that exists twice or not at all.
     pub fn failed(&self, pending: &Pending) -> Result<u32> {
         let attempts = self.attempts(&pending.path).saturating_add(1);
-        fs::write(self.attempts_path(&pending.path), attempts.to_string())?;
+        // `<attempts> <when>`: the count for the backoff's size, the time for
+        // where it starts.
+        fs::write(
+            self.attempts_path(&pending.path),
+            format!("{attempts} {}", now_secs()),
+        )?;
         Ok(attempts)
     }
 
@@ -139,11 +164,30 @@ impl Spool {
     }
 
     fn attempts(&self, capture: &Path) -> u32 {
-        fs::read_to_string(self.attempts_path(capture))
-            .ok()
-            .and_then(|text| text.trim().parse().ok())
-            .unwrap_or(0)
+        self.sidecar_field(capture, 0).unwrap_or(0)
     }
+
+    fn last_attempt(&self, capture: &Path) -> Option<u64> {
+        self.sidecar_field(capture, 1)
+    }
+
+    /// One whitespace-separated field of the sidecar. A counter written before
+    /// attempts were timed has only the first.
+    fn sidecar_field<T: std::str::FromStr>(&self, capture: &Path, index: usize) -> Option<T> {
+        fs::read_to_string(self.attempts_path(capture))
+            .ok()?
+            .split_whitespace()
+            .nth(index)?
+            .parse()
+            .ok()
+    }
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
 }
 
 /// How long to wait before retrying, given how many attempts have failed.

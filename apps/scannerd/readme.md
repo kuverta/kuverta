@@ -16,8 +16,10 @@ the dev stack sets `PAPERLESS_OCR_DESKEW` explicitly so the dependency is
 visible rather than inherited.
 
 **No page-finding.** The camera is bolted above a fixed spot, so the page is
-always in the same part of the frame. `--roi x,y,w,h` crops on the sensor,
-which makes cropping a line of configuration instead of a page of geometry —
+always in the same part of the frame. `--roi x,y,w,h` crops on the sensor —
+for the frames it watches as well as the photograph, so "half the frame changed"
+means half the page area and not half the desk — which makes cropping a line of
+configuration instead of a page of geometry —
 and geometry that cannot be tested against real photographs is geometry that is
 guessed at.
 
@@ -49,9 +51,14 @@ files rather than a database, so a Pi that was unplugged mid-write is
 recoverable with `ls`; a half-written photograph keeps a `.partial` extension
 and is never uploaded.
 
-Retries back off to a five-minute ceiling rather than growing without bound — a
-Pi that has been offline overnight should try again within the minute once the
-network returns.
+Waiting uploads are retried on a timer (`--drain-every-secs`, 30 by default) as
+well as straight after each capture, and whether or not the camera is working —
+so a letter photographed while the network was down is sent once it is back, not
+when the next letter arrives. Each capture backs off from its last failed attempt
+to a five-minute ceiling rather than growing without bound: a Pi that has been
+offline overnight tries again within minutes once the network returns. An upload
+that has not finished in two minutes fails and is kept, rather than holding up
+the loop that watches for the next page.
 
 ## Running it
 
@@ -90,7 +97,8 @@ user's home directory.
 cargo test -p scannerd
 ```
 
-Twenty-six of them, none needing a camera: the detector against synthetic
+Thirty-eight of them, none needing a camera: the detector against synthetic
 frames, the spool against a real directory, the uploader against a server on
-loopback. What they cannot check is whether `rpicam-still` behaves as
+loopback, and the loop itself (`tests/run.rs`) turned by hand with a scripted
+camera and a Paperless that fails when told to. What they cannot check is whether `rpicam-still` behaves as
 documented — that is what `--drain-only` and a first run on the device are for.
