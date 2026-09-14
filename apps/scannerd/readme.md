@@ -66,6 +66,10 @@ PAPERLESS_TOKEN=... scannerd --tag post --tag home --roi 0.15,0.10,0.70,0.80
 `--drain-only` is for a cron job, and for checking the upload half works before
 there is a camera to test the other half with.
 
+Tags are given by name and must exist in Paperless first. Its upload endpoint
+only takes tag ids, so `scannerd` looks each name up once and sends the id; a
+name Paperless does not know fails the upload by name and keeps the capture.
+
 ## On the Pi
 
 Cross-compile from the workspace root:

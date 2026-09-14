@@ -27,8 +27,14 @@ curl -X POST http://localhost:8000/api/token/ \
 ```
 
 Then `PAPERLESS_TOKEN=... fuckmail paper --check`. Drop PDFs or images into
-`docker/paperless/consume/` and Paperless will OCR and file them; that is the
-directory `scannerd` will write to from the Pi.
+`docker/paperless/consume/` and Paperless will OCR and file them, or send them the
+way the Pi does, without a camera: put JPEGs named `<unix-seconds>-<n>.jpg` in a
+directory and run `scannerd --drain-only --spool <dir> --tag "<address>"`.
+
+A postal address is a tag. Create it in Paperless first (`scannerd` refuses a
+tag Paperless does not have, and keeps the capture), then add the address in the
+app's settings sheet with that tag and paste the token there — the sheet files it
+in the keychain as the app, which a token added with `security` is not.
 
 ## Dovecot — test IMAP server
 
@@ -76,10 +82,13 @@ run Ollama natively for real development. `make ai-model` pulls a chat model and
 
 ## Paperless-ngx
 
-`http://localhost:8000`, admin/admin, profile `paperless`. OCR is configured for
-German and English.
+`http://localhost:8000`, admin/admin, in the default stack. OCR is configured for
+German and English, with deskew and page rotation on for `scannerd`'s photographs.
 
-This is the paper half of the product (month 6+): `scannerd` on the Pi will drop
-captured pages into `docker/paperless/consume/`, Paperless does OCR and archival,
-and fuckmail pulls documents into the same triage inbox as email over its API.
-Not wired up yet.
+The image is pinned (3.1.3) and the compose file sets a dev-only
+`PAPERLESS_SECRET_KEY`: `latest` once moved to a release that will not start
+without one. Bump the pin on purpose.
+
+The paper half of the product: `scannerd` on the Pi uploads captured pages over
+the API, Paperless does OCR and archival, and fuckmail reads each address's
+documents into the same triage surface as email (`docs/decisions.md` §17, §22).
