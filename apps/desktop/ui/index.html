@@ -86,8 +86,9 @@
   <div id="settings" class="sheet" hidden>
     <div class="sheet-panel">
       <div class="sheet-head">
-        <strong>Accounts</strong>
+        <strong>Accounts and addresses</strong>
         <button id="settings-add">Add account</button>
+        <button id="settings-add-paper">Add postal address</button>
         <button id="settings-close">Done</button>
       </div>
 
@@ -151,6 +152,38 @@
             <button type="submit" id="settings-save">Save</button>
             <button type="button" id="settings-verify">Verify</button>
             <button type="button" id="settings-delete" class="danger">Remove account</button>
+          </div>
+        </form>
+
+        <!--
+          A physical address is an account whose server is Paperless-ngx: the
+          post scanned into it reads like mail, beside mail. Same shape as the
+          account form on purpose, so it is one thing to learn rather than two.
+        -->
+        <form id="paper-form" autocomplete="off" hidden>
+          <p class="hint">Post scanned into Paperless-ngx shows up beside your mail. Paperless does the scanning, OCR and archive; this only reads it, and never changes a document.</p>
+          <label>Description<input name="label" placeholder="Home" required></label>
+          <label>Paperless-ngx address<input name="base_url" placeholder="http://paperless.local:8000" required spellcheck="false"></label>
+
+          <div class="form-heading">Which post belongs here <span class="hint">one Paperless can hold several addresses' post</span></div>
+          <div class="row3">
+            <label>Documents<select name="selector_kind">
+              <option value="everything">all of them</option>
+              <option value="tag">with the tag</option>
+              <option value="correspondent">from the correspondent</option>
+              <option value="storage_path">in the storage path</option>
+            </select></label>
+            <label id="paper-selector-value">Name, as it is in Paperless<input name="selector_value" spellcheck="false"></label>
+          </div>
+
+          <div class="form-heading">Authentication</div>
+          <label>API token<input name="token" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
+          <p class="hint" id="paper-token-state"></p>
+
+          <div class="form-actions">
+            <button type="submit" id="paper-save">Save</button>
+            <button type="button" id="paper-verify">Verify</button>
+            <button type="button" id="paper-delete" class="danger">Remove address</button>
           </div>
         </form>
 
