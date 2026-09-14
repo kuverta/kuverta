@@ -123,7 +123,8 @@ See [hosts/fuckmail/readme.md](hosts/fuckmail/readme.md).
 From this directory:
 
 ```sh
-npm test       # 181 tests, no mail client required
+npm test       # the model, the adapters, the classifier, and the view in jsdom
+npm run e2e    # the triage page and the settings sheet in real Chromium
 npm run corpus # the classifier over 250 generated messages, with the rules that fired
 ```
 

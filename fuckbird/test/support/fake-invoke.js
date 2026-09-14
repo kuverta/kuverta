@@ -62,6 +62,35 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
   });
 
   const commands = {
+    // The first thing the real mount asks. One account, so the picker stays
+    // hidden — a second would be a test of the picker.
+    accounts: async () => [{ id: 1, email: 'you@example.com', label: 'Dev', can_send: false }],
+
+    // What the desktop app's own window asks on its way to the settings sheet,
+    // kept in this one double so its browser test and the adapter's tests
+    // cannot disagree about a command.
+    queue: async () => [],
+    account_settings: async () => [
+      {
+        id: 1,
+        label: 'Dev',
+        email: 'you@example.com',
+        username: 'you@example.com',
+        imap_host: '127.0.0.1',
+        imap_port: 10143,
+        imap_security: 'plaintext',
+        smtp_host: null,
+        smtp_port: null,
+        smtp_security: null,
+        auth_method: 'app_password',
+        oauth_provider: null,
+        oauth_client_id: null,
+        oauth_tenant: null,
+        has_password: true,
+        excluded_folders: [],
+      },
+    ],
+
     special_folders: async () => ({ archive: ARCHIVE, trash: TRASH }),
 
     folders: async () => [
@@ -306,4 +335,26 @@ export function defaultPaper() {
       },
     ],
   };
+}
+
+/**
+ * A long mailbox, for anything that has to scroll.
+ *
+ * Six messages fit on any screen, which makes "does the cursor stay in view"
+ * pass whether or not it does. Same shape as the default seed.
+ */
+export function manySeed(count) {
+  const base = Math.floor(Date.UTC(2026, 8, 11, 12, 0, 0) / 1000);
+  return Array.from({ length: count }, (_, i) => ({
+    subject: `Message ${String(i).padStart(3, '0')} about Rechnung ${1000 + i}`,
+    from: `Sender ${i} <sender${i}@example.com>`,
+    date_utc: base - i * 3600,
+    unread: i % 2 === 0,
+    has_attachments: false,
+    category: null,
+    folder: 'INBOX',
+    message_id: `many-${i}@example.com`,
+    snippet: `Body of message ${i}.`,
+    body: `Body of message ${i}.`,
+  }));
 }
