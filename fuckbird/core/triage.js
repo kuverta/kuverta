@@ -266,7 +266,12 @@ export class Triage {
     // The host may be able to do it and this particular row still not allow
     // it — post in a list of mail. Checked here so the answer is immediate and
     // specific rather than a round trip that comes back refused.
-    if (!allows(row, action)) return this.#refuses(row, action);
+    // Reading is not a change a row can refuse. Every row in a list can be
+    // opened; only what it allows *done* to it is per-row. Checking Open here
+    // made every letter unreadable from the keyboard — a list entry allowing
+    // filing but not reading — and only a real browser noticed, because a
+    // click opens a row without going through `act`.
+    if (action !== ACTIONS.Open && !allows(row, action)) return this.#refuses(row, action);
 
     this.#busy = true;
     this.#changed();
