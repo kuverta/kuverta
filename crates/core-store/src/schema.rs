@@ -252,6 +252,16 @@ CREATE TABLE paper_correction (
 CREATE INDEX paper_correction_by_document ON paper_correction (mailbox_id, document_id);
 CREATE INDEX paper_correction_by_correspondent ON paper_correction (correspondent);
 "#,
+    // v9 — what an address's API token is filed under in the keychain. It was
+    // the row id, and row ids start at 1 in every store: `.devdata` and the
+    // real store would share `paper:1`, and saving a token in one silently
+    // replaced the other's. A random key is unique across stores and, being
+    // part of the row, survives every edit that the id survived.
+    r#"
+ALTER TABLE paper_mailbox ADD COLUMN token_key TEXT;
+UPDATE paper_mailbox SET token_key = lower(hex(randomblob(16))) WHERE token_key IS NULL;
+CREATE UNIQUE INDEX paper_mailbox_token_key ON paper_mailbox (token_key);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

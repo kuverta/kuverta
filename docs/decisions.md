@@ -1288,11 +1288,14 @@ the dev instance runs. The test changes case the way a person mistyping would.
 
 ### Still open
 
-- **The keychain entry for a paper token is `paper:{id}`,** keyed by row id alone.
-  Two data directories — `.devdata` and the real store — each start at id 1 and
-  would share one entry, so registering an address in one overwrites the other's
-  token. IMAP passwords are keyed by address and do not have this problem. Needs a
-  key that is unique across stores without being orphaned by an edit.
+- ~~**The keychain entry for a paper token is `paper:{id}`**~~ — fixed. Row ids
+  start at 1 in every store, so `.devdata` and the real store shared `paper:1`.
+  Schema v9 gives each address a random `token_key`, fixed when it is added and
+  kept through edits; the token is filed as `paper:{token_key}`. An old
+  `paper:{id}` entry moves on first read — claimed by whichever store asks first,
+  since the old entry cannot say whose it was; if that is the wrong store, the
+  check reports the token rejected and it is entered again. Checked against the
+  real keychain: the entry moved, the old one was removed, Paperless accepted it.
 - **Post reads poorly until Paperless knows who sent it.** Freshly scanned letters
   have no correspondent and a title of `Post <timestamp>`, so triage shows "—" and a
   number, and filing one teaches nothing (§17). Paperless learns correspondents

@@ -971,7 +971,7 @@ impl Store {
     /// Every configured physical address, oldest first.
     pub fn paper_mailboxes(&self) -> Result<Vec<StoredPaperMailbox>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, label, base_url, selector_kind, selector_value
+            "SELECT id, label, base_url, selector_kind, selector_value, token_key
              FROM paper_mailbox ORDER BY id",
         )?;
         let rows = stmt.query_map([], row_to_paper_mailbox)?;
@@ -983,7 +983,7 @@ impl Store {
         Ok(self
             .conn
             .query_row(
-                "SELECT id, label, base_url, selector_kind, selector_value
+                "SELECT id, label, base_url, selector_kind, selector_value, token_key
                  FROM paper_mailbox WHERE id = ?1",
                 params![id],
                 row_to_paper_mailbox,
@@ -995,8 +995,8 @@ impl Store {
     pub fn upsert_paper_mailbox(&self, mailbox: &NewPaperMailbox) -> Result<i64> {
         self.conn.execute(
             "INSERT INTO paper_mailbox
-                 (label, base_url, selector_kind, selector_value, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+                 (label, base_url, selector_kind, selector_value, created_at, token_key)
+             VALUES (?1, ?2, ?3, ?4, ?5, lower(hex(randomblob(16))))
              ON CONFLICT (base_url, selector_kind, IFNULL(selector_value, ''))
              DO UPDATE SET label = excluded.label",
             params![
@@ -1271,6 +1271,9 @@ pub struct StoredPaperMailbox {
     pub base_url: String,
     pub selector_kind: String,
     pub selector_value: Option<String>,
+    /// What the token is filed under in the keychain. Random, fixed when the
+    /// address is added, and unique across stores — unlike `id`.
+    pub token_key: String,
 }
 
 /// A physical address, as configured.
@@ -1289,6 +1292,7 @@ fn row_to_paper_mailbox(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredPaper
         base_url: row.get(2)?,
         selector_kind: row.get(3)?,
         selector_value: row.get(4)?,
+        token_key: row.get(5)?,
     })
 }
 

@@ -1629,6 +1629,75 @@ fn an_assistants_filing_is_never_learned_from() {
 
 // -- corrections to post ---------------------------------------------------
 
+#[test]
+fn every_address_gets_a_token_key_no_other_store_shares() {
+    // Row ids start at 1 in every store, and the token used to be filed under
+    // the id: `.devdata` and the real store shared `paper:1`.
+    let (first, _) = store_with_account();
+    let (second, _) = store_with_account();
+    let a = first.paper_mailbox(paper_mailbox(&first)).unwrap().unwrap();
+    let b = second.paper_mailbox(paper_mailbox(&second)).unwrap().unwrap();
+
+    assert_eq!(a.id, b.id, "the collision needs the same id in both stores");
+    assert_ne!(a.token_key, b.token_key);
+    assert_eq!(a.token_key.len(), 32, "{}", a.token_key);
+}
+
+#[test]
+fn a_token_key_survives_every_change_to_its_address() {
+    // A key that changed would orphan the token, exactly as keying on the URL
+    // would have.
+    let (store, _) = store_with_account();
+    let id = paper_mailbox(&store);
+    let before = store.paper_mailbox(id).unwrap().unwrap().token_key;
+
+    // Saved again at the same target: the upsert's update path.
+    paper_mailbox(&store);
+    store
+        .update_paper_mailbox(
+            id,
+            &core_store::NewPaperMailbox {
+                label: "Zuhause".into(),
+                base_url: "http://elsewhere.local:8000".into(),
+                selector_kind: "tag".into(),
+                selector_value: Some("home".into()),
+            },
+        )
+        .unwrap();
+
+    let after = store.paper_mailbox(id).unwrap().unwrap();
+    assert_eq!(after.base_url, "http://elsewhere.local:8000");
+    assert_eq!(after.token_key, before);
+}
+
+#[test]
+fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
+    let dir = std::env::temp_dir().join(format!("fuckmail-store-v9-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("test.db");
+
+    let id = paper_mailbox(&Store::open(&path).unwrap());
+
+    // Put the file back the way a v8 store left it.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "DROP INDEX paper_mailbox_token_key;
+             ALTER TABLE paper_mailbox DROP COLUMN token_key;
+             PRAGMA user_version = 8;",
+        )
+        .unwrap();
+    }
+
+    let store = Store::open(&path).unwrap();
+    let mailbox = store.paper_mailbox(id).unwrap().unwrap();
+    assert_eq!(mailbox.token_key.len(), 32, "{}", mailbox.token_key);
+    assert_ne!(mailbox.token_key, id.to_string());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 fn paper_mailbox(store: &Store) -> i64 {
     store
         .upsert_paper_mailbox(&core_store::NewPaperMailbox {
