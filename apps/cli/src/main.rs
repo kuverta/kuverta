@@ -1796,6 +1796,11 @@ async fn evaluate_models(
 
     let ollama = core_ai::Ollama::new(ollama_url)?;
 
+    // Kept per message, not just scored, so the combined classifier below can
+    // be tried at every threshold without asking the model a second time.
+    let mut prompted: Option<(Vec<Option<core_rules::Category>>, Vec<i64>)> = None;
+    let mut embedded_nearest: Option<(Vec<Option<core_ai::Nearest>>, Vec<i64>)> = None;
+
     if !options.skip_prompt {
         let classifier = core_ai::PromptClassifier::new(model);
         // One call first, untimed. The first request loads the model, and a
@@ -1821,6 +1826,7 @@ async fn evaluate_models(
             &predicted,
             Some(&latency),
         );
+        prompted = Some((predicted, latency));
     }
 
     if !options.skip_embeddings {
@@ -1839,6 +1845,7 @@ async fn evaluate_models(
         }
 
         let mut predicted = Vec::with_capacity(test.len());
+        let mut nearest = Vec::with_capacity(test.len());
         let mut latency = Vec::with_capacity(test.len());
         for batch in test.chunks(16) {
             let inputs: Vec<String> = batch
@@ -1848,7 +1855,9 @@ async fn evaluate_models(
             let embedded = ollama.embed(embed_model, &inputs).await?;
             let each = embedded.latency_ms / batch.len().max(1) as i64;
             for vector in &embedded.vectors {
-                predicted.push(neighbours.classify(vector).map(|(category, _)| category));
+                let found = neighbours.nearest(vector);
+                predicted.push(found.map(|found| found.category));
+                nearest.push(found);
                 latency.push(each);
             }
         }
@@ -1862,9 +1871,70 @@ async fn evaluate_models(
             &predicted,
             Some(&latency),
         );
+        embedded_nearest = Some((nearest, latency));
+    }
+
+    if let (Some((prompted, prompt_ms)), Some((nearest, embed_ms))) = (&prompted, &embedded_nearest)
+    {
+        combined(&truth, prompted, prompt_ms, nearest, embed_ms);
     }
 
     Ok(())
+}
+
+/// The nearest filings when they are close and agree, the model otherwise.
+///
+/// Tried at every threshold from answers already in hand, so choosing one is a
+/// matter of reading a table rather than guessing. Every message pays for its
+/// embedding; the ones the filings cannot answer pay for the model as well.
+fn combined(
+    truth: &[core_rules::Category],
+    prompted: &[Option<core_rules::Category>],
+    prompt_ms: &[i64],
+    nearest: &[Option<core_ai::Nearest>],
+    embed_ms: &[i64],
+) {
+    let total = truth.len().max(1);
+    println!();
+    println!("combined: nearest filings when close and agreed (share ≥ 0.8), the model otherwise");
+    println!(
+        "  {:>12} {:>9} {:>11} {:>10}",
+        "similarity", "accuracy", "by filings", "mean ms"
+    );
+
+    for threshold in [0.60f32, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, f32::INFINITY] {
+        let policy = core_ai::Hybrid {
+            min_similarity: threshold,
+            min_share: 0.8,
+        };
+        let (mut correct, mut by_filings, mut spent) = (0usize, 0usize, 0i64);
+
+        for (i, expected) in truth.iter().enumerate() {
+            let (answer, cost) = match nearest[i].filter(|found| policy.accepts(found)) {
+                Some(found) => {
+                    by_filings += 1;
+                    (Some(found.category), embed_ms[i])
+                }
+                None => (prompted[i], embed_ms[i] + prompt_ms[i]),
+            };
+            if answer == Some(*expected) {
+                correct += 1;
+            }
+            spent += cost;
+        }
+
+        let label = if threshold.is_finite() {
+            format!("≥ {threshold:.2}")
+        } else {
+            "model only".to_string()
+        };
+        println!(
+            "  {label:>12} {:>8.1}% {:>10.0}% {:>10}",
+            100.0 * correct as f64 / total as f64,
+            100.0 * by_filings as f64 / total as f64,
+            spent / total as i64
+        );
+    }
 }
 
 fn score(

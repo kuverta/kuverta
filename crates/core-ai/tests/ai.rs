@@ -10,7 +10,9 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
 
-use core_ai::{cosine, embedding_input, AiError, Neighbours, Ollama, PromptClassifier};
+use core_ai::{
+    cosine, embedding_input, AiError, Hybrid, Nearest, Neighbours, Ollama, PromptClassifier,
+};
 use core_rules::{Category, MessageFacts};
 
 fn invoice() -> MessageFacts<'static> {
@@ -150,6 +152,48 @@ fn the_nearest_filings_decide() {
 #[test]
 fn with_nothing_filed_there_is_no_answer() {
     assert!(Neighbours::new(5).classify(&[1.0, 0.0]).is_none());
+}
+
+#[test]
+fn the_nearest_filing_says_how_close_it_was() {
+    let mut neighbours = Neighbours::new(1);
+    neighbours.add(vec![1.0, 0.0], Category::Transactional);
+    neighbours.add(vec![0.0, 1.0], Category::Newsletter);
+
+    let close = neighbours.nearest(&[1.0, 0.0]).unwrap();
+    assert_eq!(close.category, Category::Transactional);
+    assert!((close.similarity - 1.0).abs() < 1e-6);
+
+    let far = neighbours.nearest(&[1.0, 1.0]).unwrap();
+    assert!(far.similarity < 0.8, "similarity {}", far.similarity);
+}
+
+#[test]
+fn the_filings_answer_only_when_close_and_agreed() {
+    // A close filing its neighbours contradict is a sender filed two ways; a
+    // unanimous vote among distant filings is a stranger. Neither is cheap.
+    let policy = Hybrid {
+        min_similarity: 0.9,
+        min_share: 0.8,
+    };
+    let found = |similarity, share| Nearest {
+        category: Category::Newsletter,
+        share,
+        similarity,
+    };
+
+    assert!(policy.accepts(&found(0.95, 1.0)));
+    assert!(!policy.accepts(&found(0.85, 1.0)), "too far");
+    assert!(!policy.accepts(&found(0.95, 0.6)), "not agreed");
+}
+
+#[test]
+fn the_default_threshold_keeps_its_margin_above_the_measured_knee() {
+    // §16: accuracy on unseen senders recovered at 0.80. The default sits
+    // above that on purpose; lowering it to the knee would tune it to one corpus.
+    let policy = Hybrid::default();
+    assert!(policy.min_similarity > 0.80, "{}", policy.min_similarity);
+    assert!(policy.min_share >= 0.8);
 }
 
 #[test]
