@@ -16,12 +16,39 @@ use crate::{Core, Result, RpcError};
 
 /// The keychain account name for an address's API token.
 ///
-/// Keyed on the mailbox id rather than the URL so that moving an instance does
-/// not orphan its token, and so two addresses on one instance keep separate
+/// Keyed on the row rather than the URL so that moving an instance does not
+/// orphan its token, and so two addresses on one instance keep separate
 /// credentials — which they may well need, since Paperless tokens carry a
-/// user's permissions.
-fn token_entry(id: i64) -> core_accounts::KeychainPassword {
-    core_accounts::KeychainPassword::new(format!("paper:{id}"))
+/// user's permissions. On the row's random key rather than its id, because ids
+/// start at 1 in every store and two stores would share one entry.
+fn token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword {
+    core_accounts::KeychainPassword::new(format!("paper:{}", mailbox.token_key))
+}
+
+/// Where tokens were filed before store schema v9.
+fn legacy_token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword {
+    core_accounts::KeychainPassword::new(format!("paper:{}", mailbox.id))
+}
+
+/// An address's token, moving it from where it used to be filed if need be.
+///
+/// The old entry cannot say which store it belonged to — that is the bug. So
+/// the first store to ask claims it. If that was the wrong store, the token is
+/// for another instance and the check says it was rejected: a token to enter
+/// again, rather than one store quietly reading with the other's credentials
+/// forever, which is what sharing the entry meant.
+fn stored_token(mailbox: &StoredPaperMailbox) -> Result<Option<String>> {
+    let keychain = |err: core_accounts::AuthError| RpcError::Auth(err.to_string());
+    if let Some(token) = token_entry(mailbox).peek().map_err(keychain)? {
+        return Ok(Some(token));
+    }
+    let legacy = legacy_token_entry(mailbox);
+    let Some(token) = legacy.peek().map_err(keychain)? else {
+        return Ok(None);
+    };
+    token_entry(mailbox).store(&token).map_err(keychain)?;
+    let _ = legacy.delete();
+    Ok(Some(token))
 }
 
 /// A configured physical address, as the shell sees it.
@@ -105,7 +132,7 @@ impl Core {
             .paper_mailboxes()?
             .into_iter()
             .map(|stored| PaperMailboxView {
-                has_token: token_entry(stored.id).peek().ok().flatten().is_some(),
+                has_token: stored_token(&stored).ok().flatten().is_some(),
                 id: stored.id,
                 label: stored.label,
                 base_url: stored.base_url,
@@ -150,15 +177,22 @@ impl Core {
         // The token goes with it. Leaving a credential behind for a mailbox
         // nobody can see is how a keychain fills with things nobody can
         // account for.
-        let _ = token_entry(id).delete();
+        if let Some(mailbox) = self.store.paper_mailbox(id)? {
+            let _ = token_entry(&mailbox).delete();
+            let _ = legacy_token_entry(&mailbox).delete();
+        }
         Ok(self.store.delete_paper_mailbox(id)?)
     }
 
     pub fn set_paper_token(&self, id: i64, token: &str) -> Result<()> {
-        self.mailbox(id)?;
-        token_entry(id)
+        let mailbox = self.mailbox(id)?;
+        token_entry(&mailbox)
             .store(token)
-            .map_err(|err| RpcError::Auth(err.to_string()))
+            .map_err(|err| RpcError::Auth(err.to_string()))?;
+        // An old entry left behind would be claimed later by whichever store
+        // shares this id — the very mix-up the new key exists to end.
+        let _ = legacy_token_entry(&mailbox).delete();
+        Ok(())
     }
 
     /// Everything needed to read one address, with no lock held.
@@ -279,9 +313,7 @@ impl Core {
 
     fn client(&self, id: i64) -> Result<(Paperless, Selector)> {
         let mailbox = self.mailbox(id)?;
-        let token = token_entry(id)
-            .peek()
-            .map_err(|err| RpcError::Auth(err.to_string()))?
+        let token = stored_token(&mailbox)?
             .ok_or_else(|| RpcError::Auth(format!("no API token stored for {}", mailbox.label)))?;
 
         let client = Paperless::new(&mailbox.base_url, &token)
