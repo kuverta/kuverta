@@ -524,8 +524,8 @@ async fn paper(args: &Paper) -> Result<()> {
         println!(
             "{:<14} {when}  {:<26} {}",
             verdict.category.as_str(),
-            truncate(document.correspondent.as_deref().unwrap_or("—"), 26),
-            truncate(&document.title, 58),
+            truncate(document.sender().unwrap_or("—"), 26),
+            truncate(document.subject(), 58),
         );
     }
     Ok(())
