@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# A stand-in for `rpicam-still`, for running scannerd without a Raspberry Pi.
+#
+# Implements only the flags scannerd passes, on top of ffmpeg:
+#
+#   preview   --encoding yuv420 --width W --height H --output -   raw greyscale on stdout
+#   capture   --output FILE                                        a JPEG
+#
+# `--roi x,y,w,h` crops both, as it does on the Pi. The picture comes from
+# $SCANNERD_FAKE_INPUT:
+#
+#   unset, or a number   a camera through AVFoundation (macOS; 0 is usually the
+#                        built-in one, and the terminal will ask for access)
+#   a file path          a still image, read afresh on every call — point it at a
+#                        symlink and swap the target to "put a page down"
+#
+#   scannerd --camera apps/scannerd/tools/rpicam-still-ffmpeg ...
+#
+# Greyscale is exactly what scannerd reads from the Pi's YUV output: the first
+# plane of yuv420 is the luma, and `-pix_fmt gray` is the luma alone.
+set -euo pipefail
+
+me=rpicam-still-ffmpeg
+width="" height="" output="" encoding="" roi=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --width) width="$2"; shift 2 ;;
+        --height) height="$2"; shift 2 ;;
+        --output | -o) output="$2"; shift 2 ;;
+        --encoding | -e) encoding="$2"; shift 2 ;;
+        --roi) roi="$2"; shift 2 ;;
+        --timeout | -t | --autofocus-mode) shift 2 ;;
+        --nopreview | -n | --immediate) shift ;;
+        *) echo "$me: unsupported flag $1" >&2; exit 2 ;;
+    esac
+done
+[[ -n $output ]] || { echo "$me: --output is required" >&2; exit 2; }
+
+source="${SCANNERD_FAKE_INPUT:-0}"
+if [[ $source =~ ^[0-9]+$ ]]; then
+    input=(-f avfoundation -framerate 30 -video_size 1280x720 -i "$source")
+else
+    [[ -r $source ]] || { echo "$me: cannot read $source" >&2; exit 1; }
+    input=(-i "$source")
+fi
+
+filters=()
+if [[ -n $roi ]]; then
+    IFS=, read -r x y w h <<<"$roi"
+    filters+=("crop=iw*$w:ih*$h:iw*$x:ih*$y")
+fi
+
+if [[ $encoding == yuv420 ]]; then
+    [[ -n $width && -n $height ]] || { echo "$me: a preview needs --width and --height" >&2; exit 2; }
+    filters+=("scale=$width:$height")
+    vf=$(IFS=,; echo "${filters[*]}")
+    exec ffmpeg -v error -nostdin "${input[@]}" -frames:v 1 -vf "$vf" \
+        -pix_fmt gray -f rawvideo "$output"
+fi
+
+# scannerd writes to `<name>.partial` and renames, so the format cannot come
+# from the extension.
+scale=()
+if [[ ${#filters[@]} -gt 0 ]]; then
+    scale=(-vf "$(IFS=,; echo "${filters[*]}")")
+fi
+exec ffmpeg -v error -nostdin -y "${input[@]}" -frames:v 1 ${scale[@]+"${scale[@]}"} \
+    -q:v 2 -c:v mjpeg -f mjpeg "$output"
