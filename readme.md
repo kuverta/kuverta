@@ -160,6 +160,13 @@ several addresses. `--check` exists because a selector that matches nothing
 looks exactly like an address that has had no post, which is the §3.6 lesson
 applied to paper.
 
+A physical address is set up like an account: **Settings → Add postal
+address**, with the Paperless URL, which of its documents belong to this address
+(all of them, or those with a tag, correspondent or storage path), and an API
+token from Paperless's profile menu. **Verify** runs a preflight that says how
+many documents the address matches — and names the tags that exist when it
+matches none, because a mistyped tag looks exactly like an address with no post.
+
 ### Capturing it
 
 [`scannerd`](apps/scannerd/) is the other end: a Pi with a camera over a fixed
