@@ -262,8 +262,9 @@ export class FuckmailHost extends MailHost {
     const paper = parsePaperId(id);
     if (paper) {
       // Post has its own corrections, pinned to the letter and learned from
-      // its correspondent. Who that is lives in Paperless, which the command
-      // asks rather than trusting the row this list happens to hold.
+      // its sender — the correspondent, or the letterhead when Paperless has
+      // none. The command asks Paperless rather than trusting the row this
+      // list happens to hold.
       await this.#invoke('file_post', {
         id: paper.mailboxId,
         documentId: paper.documentId,

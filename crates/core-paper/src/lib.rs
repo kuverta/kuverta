@@ -110,6 +110,49 @@ pub struct Document {
 }
 
 impl Document {
+    /// Who sent it: Paperless's correspondent, or failing that the letterhead.
+    ///
+    /// A freshly scanned letter has no correspondent — Paperless only suggests
+    /// ones it already knows — so without this the first letters from anyone
+    /// show a dash, and filing them teaches nothing. The letterhead is the first
+    /// line of the OCR text with words in it, cut before any address that
+    /// follows on the same line: on a letter, that is who it is from far more
+    /// often than not. Only ever a fallback; a correspondent set in Paperless is
+    /// the answer.
+    pub fn sender(&self) -> Option<&str> {
+        self.correspondent.as_deref().or_else(|| self.letterhead())
+    }
+
+    /// Whether [`Document::sender`] was read off the page rather than set in
+    /// Paperless — worth showing, since a guess should look like one.
+    pub fn sender_is_inferred(&self) -> bool {
+        self.correspondent.is_none() && self.letterhead().is_some()
+    }
+
+    /// What it is about: the title, unless the title is only a scan's name.
+    ///
+    /// `scannerd` titles uploads `Post <timestamp>`, and Paperless titles
+    /// anything else from its filename. A list of those says nothing, so a
+    /// machine-made title gives way to the line a letter states its business
+    /// on — after the letterhead and the address block, and not the date. A
+    /// title a person set is always kept.
+    pub fn subject(&self) -> &str {
+        if !machine_made(&self.title) {
+            return &self.title;
+        }
+        self.content
+            .as_deref()
+            .and_then(subject_line)
+            .unwrap_or(&self.title)
+    }
+
+    fn letterhead(&self) -> Option<&str> {
+        self.content
+            .as_deref()
+            .and_then(|text| lines(text).next())
+            .map(letterhead_name)
+    }
+
     /// What the classifier reads, from a document instead of a message.
     ///
     /// This is the whole point of the framing: post is filed by exactly the
@@ -131,9 +174,9 @@ impl Document {
     /// emailed one.
     pub fn facts(&self) -> core_rules::MessageFacts<'_> {
         core_rules::MessageFacts {
-            from_addr: self.correspondent.as_deref(),
-            from_name: self.correspondent.as_deref(),
-            subject: Some(&self.title),
+            from_addr: self.sender(),
+            from_name: self.sender(),
+            subject: Some(self.subject()),
             // Paper has no bulk headers. It is post: somebody sent it to an
             // address, and none of `List-Id`, `Precedence` or `Auto-Submitted`
             // has any meaning here.
@@ -433,6 +476,109 @@ fn encode(value: &str) -> String {
         }
     }
     out
+}
+
+// -- reading a letter --------------------------------------------------------
+//
+// Heuristics, and meant to stay small: they only ever stand in for what
+// Paperless has not been told, and a letter a person has given a correspondent
+// and a title never reaches them.
+
+/// Lines of OCR text worth reading: trimmed, with at least three letters.
+fn lines(text: &str) -> impl Iterator<Item = &str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| line.chars().filter(|c| c.is_alphabetic()).count() >= 3)
+}
+
+/// A letterhead line, cut to the name. "Stadtwerke Musterstadt GmbH · Postfach
+/// 1234 · 80000 München" is from the Stadtwerke, not from a Postfach.
+fn letterhead_name(line: &str) -> &str {
+    let name = line
+        .find(['·', '|', ','])
+        .map(|at| line[..at].trim())
+        .filter(|name| name.chars().filter(|c| c.is_alphabetic()).count() >= 3)
+        .unwrap_or(line);
+    clip(name, 80)
+}
+
+/// A title that is only a filename: "Post 1789400000-1", "IMG_2044",
+/// "scan-0003", or none at all.
+fn machine_made(title: &str) -> bool {
+    let lowered = title.trim().to_lowercase();
+    if lowered.is_empty() || lowered == "(no title)" {
+        return true;
+    }
+    let rest = ["dokument", "document", "post", "scan", "img", "doc"]
+        .iter()
+        .find_map(|prefix| lowered.strip_prefix(prefix))
+        .unwrap_or(&lowered)
+        .trim_matches(|c: char| !c.is_alphanumeric());
+    !rest.is_empty()
+        && rest
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '-' | '_' | '.' | ' ' | ':'))
+}
+
+/// The line a letter states its business on.
+///
+/// DIN 5008 order: letterhead, the address block (often with the sender's
+/// return line above it), the date, then the subject. So: skip past the last
+/// line near the top that looks like an address, then past any date.
+fn subject_line(text: &str) -> Option<&str> {
+    let top: Vec<&str> = lines(text).take(12).collect();
+    let past_address = top
+        .iter()
+        .rposition(|line| looks_like_address(line))
+        .map_or(1, |at| at + 1);
+    lines(text)
+        .skip(past_address)
+        .find(|line| !looks_like_date(line))
+        .map(|line| clip(line, 120))
+}
+
+/// A postcode followed by a place: "80331 München", "D-80331 München",
+/// "A-1010 Wien". Four digits only with a country prefix, because "2025
+/// Einkommensteuer" is a year.
+fn looks_like_address(line: &str) -> bool {
+    let words: Vec<&str> = line
+        .split(|c: char| c.is_whitespace() || c == ',')
+        .filter(|word| !word.is_empty())
+        .collect();
+    words.windows(2).any(|pair| {
+        let (prefixed, code) = match pair[0].split_once('-') {
+            Some((country, code))
+                if (1..=2).contains(&country.len())
+                    && country.chars().all(|c| c.is_ascii_uppercase()) =>
+            {
+                (true, code)
+            }
+            _ => (false, pair[0]),
+        };
+        let digits = code.chars().all(|c| c.is_ascii_digit());
+        let length_fits = code.len() == 5 || (prefixed && code.len() == 4);
+        digits && length_fits && pair[1].chars().next().is_some_and(char::is_uppercase)
+    })
+}
+
+/// A short line carrying a date: "München, 01.09.2026", "Datum: 2026-09-01".
+fn looks_like_date(line: &str) -> bool {
+    let has_date = line.split_whitespace().any(|word| {
+        let word = word.trim_matches(|c: char| !c.is_ascii_digit());
+        let parts: Vec<&str> = word.split(['.', '-', '/']).collect();
+        parts.len() == 3
+            && parts
+                .iter()
+                .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()))
+    });
+    has_date && line.split_whitespace().count() <= 4
+}
+
+/// At most `max` characters, cut on a character boundary.
+fn clip(text: &str, max: usize) -> &str {
+    text.char_indices()
+        .nth(max)
+        .map_or(text, |(at, _)| text[..at].trim_end())
 }
 
 fn list(names: &[String]) -> String {

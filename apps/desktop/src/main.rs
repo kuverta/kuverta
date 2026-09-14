@@ -235,7 +235,7 @@ async fn file_post(
         .record_paper_correction(
             id,
             document_id,
-            detail.correspondent.as_deref(),
+            detail.sender.as_deref(),
             detail.row.category.as_deref(),
             &category,
         )

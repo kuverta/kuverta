@@ -1296,10 +1296,33 @@ the dev instance runs. The test changes case the way a person mistyping would.
   since the old entry cannot say whose it was; if that is the wrong store, the
   check reports the token rejected and it is entered again. Checked against the
   real keychain: the entry moved, the old one was removed, Paperless accepted it.
-- **Post reads poorly until Paperless knows who sent it.** Freshly scanned letters
-  have no correspondent and a title of `Post <timestamp>`, so triage shows "—" and a
-  number, and filing one teaches nothing (§17). Paperless learns correspondents
-  once some are assigned; the first letters need it done by hand.
+- ~~**Post reads poorly until Paperless knows who sent it**~~ — fixed. Paperless's
+  suggestions are no help for first letters: they only propose correspondents that
+  already exist, and a new instance has none. So `core-paper` reads the letter
+  itself, and only for what Paperless has not been told:
+  - the **sender** is the correspondent, or else the letterhead — the first line of
+    OCR text with words in it, cut before an address on the same line;
+  - the **subject** is the title, unless the title is a scan's name (`Post
+    <timestamp>`, `IMG_2044`, none), in which case it is the first line after the
+    address block (the last postcode-and-place line near the top) that is not a
+    date — DIN 5008 order.
+
+  Rows, the CLI and the classifier use both, and filing a letter learns its sender,
+  so it is no longer the correspondent or nothing. On the dev stack the three
+  scanned letters list as *Finanzamt Muenchen — Bescheid fuer 2025 ueber
+  Einkommensteuer* and *Stadtwerke Musterstadt GmbH — Rechnung Nr. 2026-48211* /
+  *Ihr neuer Abschlag ab November 2026*; filing the September invoice as a
+  notification through `core-rpc` filed October's letter the same way, and left the
+  Finanzamt alone. `tests/letters.rs` holds the verbatim OCR of those letters, a
+  multi-line DIN layout, and the cases where a person's title or correspondent wins.
+
+  Learned against a letterhead, a rule stops matching once Paperless is given a
+  correspondent for that sender, because the key changes; the letter is then filed
+  by whatever is taught about the correspondent. And a two-word letterhead such as
+  "Finanzamt Muenchen" passes the rules' "looks like a person" test, as a
+  two-word correspondent always did — outweighed here by the transactional
+  evidence, but a reason `ROLE_WORDS` (shared with the JS port) may want
+  institution words.
 - **A token filed with `security add-generic-password` cannot be read by the app
   without a prompt,** whatever `-A` says: the item's partition list admits Apple's
   tools only. Paste tokens into the settings sheet, which files them as the app.
