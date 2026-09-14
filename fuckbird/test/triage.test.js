@@ -280,3 +280,15 @@ test('a row that says nothing allows whatever its host can do', async () => {
   await triage.act(ACTIONS.Archive);
   assert.equal(triage.total, 9);
 });
+
+test('a row that allows no changes can still be opened', async () => {
+  // Found by the browser tests: a letter allows filing and nothing else, and
+  // Enter on it was refused as though reading were a change.
+  const triage = await started();
+  Object.assign(triage.selectedRow, { actions: ['setCategory'] });
+
+  await triage.act(ACTIONS.Open);
+
+  assert.ok(triage.open, 'the row should have opened');
+  assert.equal(triage.notice, null, 'and nothing should have been refused');
+});

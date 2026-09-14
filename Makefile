@@ -3,7 +3,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
-        triage-ui triage test-js \
+        triage-ui triage test-js test-e2e \
         fill-mailbox fill-dev clean
 
 help: ## Show this help
@@ -52,6 +52,12 @@ build: ## Build everything
 test: ## Run tests (integration tests skip if the dev server is down)
 	cargo test -j 2 --workspace
 	$(MAKE) test-js
+
+test-e2e: ## Run the browser tests: the triage page and the settings sheet in Chromium
+	@# Kept out of `make test`: they need a browser download and take seconds.
+	@# Chromium is installed only when Playwright does not already have it.
+	cd fuckbird && (test -d node_modules || npm ci --no-audit --no-fund) \
+	  && npx playwright install chromium && npm run e2e
 
 test-js: ## Run the triage surface's tests (no mail client needed)
 	@# jsdom is the one dependency, for the view's tests; installed from the lock

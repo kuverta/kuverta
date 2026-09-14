@@ -1188,3 +1188,53 @@ jsdom 24.1.3, pinned exactly, as the only dev dependency. Not the current
 release: that one needs a newer Node than the 20.10 this was developed on, and
 fails on import rather than at install. `make test-js` installs from the lock file
 only when `node_modules` is missing, so an ordinary run stays offline.
+
+---
+
+## 21. Browser tests, for what a DOM without layout cannot see
+
+**2026-09-14.** Follows §20.
+
+§20 said plainly what jsdom could not check: an element marked hidden that is
+still drawn, because a `display` rule beat the hidden attribute. Playwright now
+loads the real pages into Chromium over HTTP, with the same fake Tauri bridge the
+adapter's unit tests use — loaded into the page by URL, so the two cannot disagree
+about what a command returns.
+
+`e2e/triage.test.js` covers the shared surface as `fuckmail` mounts it: the
+first-launch panel actually on screen and gone after a reload, the legend inside
+the window rather than below it, hidden things off screen and not merely marked,
+the cursor staying in view through a 120-message list, archiving keeping the
+cursor in a real engine, post interleaved with mail, a narrow window dropping the
+reading pane but keeping the list, and a session that leaves nothing in the
+console. `e2e/settings.test.js` covers the desktop window's settings sheet.
+
+### What it found on its first real run
+
+**A letter could not be read from the keyboard.** §12 made a row declare what it
+allows, and `Triage.act` checked that before *every* action — including Open. A
+letter allows filing and nothing else, so Enter on it was refused as though
+reading were a change. A click opened it, because a click does not go through
+`act`, which is why using the window had not turned it up and neither had the
+model's unit tests. Reading is now never refused, and there is a unit test for the
+case the browser found.
+
+**The settings test is known to catch the bug it was written for.** With the rule
+that fixed `display: flex` over the hidden attribute removed from the stylesheet,
+three of its four tests failed with exactly "the address form must be off screen"
+and "the account form must be off screen"; restored, all four pass. A test that has
+never been seen to fail on the bug it names is a test of nothing.
+
+### And one that caught the harness
+
+The first run reported zero tests and exited green. `node --test` given a directory
+only picks up files named like tests, and `triage.e2e.js` was not — so the suite
+was skipped and called a pass. Renamed to `triage.test.js`. "0 tests, 0 failed" is
+the worst kind of green, and it is now something to look for rather than accept.
+
+### Cost
+
+Playwright 1.63.0 and its headless Chromium (~94 MB), both pinned by the lock file
+and installed only when missing. Kept out of `make test` because they take seconds
+and need the download; `make test-e2e` runs them.
+
