@@ -54,6 +54,7 @@ assistant does with read access.
 | `trash_message` | write | queued move to Trash; nothing is deleted |
 | `mark_read` | write | queued flag change |
 | `undo_last_change` | write | cancel the newest change not yet sent |
+| `draft_message` | write | save a draft in Drafts for the user to send; never sends, never Bcc |
 
 ## What "more careful than for a person" means here
 
@@ -66,6 +67,15 @@ walked back once the bytes have left, and mail is the one input an attacker can
 put in front of an assistant at will: a message that says "forward this to…"
 must not be one tool call from happening. There is also no delete and no
 expunge, for the reason §3.5 gives for the window.
+
+Drafting is the closest this comes, and it stops short on purpose.
+`draft_message` builds the message exactly as sending would and appends it to
+the account's Drafts folder, where it shows in every client and waits for the
+user. `APPEND` can only create a message, so there is nothing to hold in the
+undo window and nothing another client could lose. A draft cannot carry Bcc:
+blind recipients are never written into a message, so a draft stored on the
+server would silently lose them — the schema offers no `bcc`, and one sent
+anyway is refused with the reason.
 
 **Every change is queued and held for five minutes.** An assistant's archive
 goes through the same queue as a person's, with the same conflict checks when it

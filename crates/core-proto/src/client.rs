@@ -557,7 +557,7 @@ impl ImapClient {
 // The conventional names live in `core-store`, because they are what people
 // call these folders rather than anything about IMAP, and the sidebar needs the
 // same answer this does. Re-exported so callers have one place to look.
-pub use core_store::model::{ARCHIVE_NAMES, SENT_NAMES, TRASH_NAMES};
+pub use core_store::model::{ARCHIVE_NAMES, DRAFTS_NAMES, SENT_NAMES, TRASH_NAMES};
 
 /// Picks the folder behind a special-use attribute.
 ///
@@ -639,6 +639,23 @@ pub fn find_sent(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
         .collect();
 
     let name = find_special(pairs, &["\\Sent"], SENT_NAMES)?.to_string();
+    folders.iter().find(|f| f.selectable && f.name == name)
+}
+
+/// Picks the folder drafts belong in.
+///
+/// The same resolution as Sent: the attribute when the server declares one,
+/// the names people give the folder when it does not. Only selectable folders,
+/// because a draft appended to a folder that cannot be opened is a draft no
+/// client will ever show.
+pub fn find_drafts(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
+    let selectable: Vec<_> = folders.iter().filter(|f| f.selectable).collect();
+    let pairs: Vec<(&str, Option<&str>)> = selectable
+        .iter()
+        .map(|f| (f.name.as_str(), f.special_use.as_deref()))
+        .collect();
+
+    let name = find_special(pairs, &["\\Drafts"], DRAFTS_NAMES)?.to_string();
     folders.iter().find(|f| f.selectable && f.name == name)
 }
 
@@ -870,6 +887,27 @@ mod tests {
         // has to decide whether to create a folder, not this function.
         let bare = vec![folder("INBOX", None), folder("Archive", Some("\\Archive"))];
         assert!(find_sent(&bare).is_none());
+    }
+
+    #[test]
+    fn drafts_are_found_by_attribute_and_then_by_name() {
+        let gmail = vec![
+            folder("INBOX", None),
+            folder("[Gmail]/Drafts", Some("\\Drafts")),
+        ];
+        assert_eq!(find_drafts(&gmail).unwrap().name, "[Gmail]/Drafts");
+
+        // Dovecot declaring nothing, nested under INBOX.
+        let bare = vec![folder("INBOX", None), folder("INBOX.Drafts", None)];
+        assert_eq!(find_drafts(&bare).unwrap().name, "INBOX.Drafts");
+
+        let german = vec![folder("INBOX", None), folder("Entwürfe", None)];
+        assert_eq!(find_drafts(&german).unwrap().name, "Entwürfe");
+
+        // No Drafts folder at all: saying so beats appending a draft to
+        // whichever folder happened to be nearest.
+        let none = vec![folder("INBOX", None), folder("Sent", Some("\\Sent"))];
+        assert!(find_drafts(&none).is_none());
     }
 
     /// Folder layouts as the real providers actually present them over IMAP.

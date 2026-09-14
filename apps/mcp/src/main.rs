@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
         Config {
             allow_writes: args.allow_writes,
             undo_window_secs: args.undo_window.max(0),
+            data_dir: Some(data_dir.clone()),
         },
     );
     tracing::info!(store = %data_dir.display(), writes = args.allow_writes, "serving");

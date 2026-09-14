@@ -36,6 +36,7 @@ pub enum Tool {
     TrashMessage,
     MarkRead,
     UndoLastChange,
+    DraftMessage,
 }
 
 const ALL: &[Tool] = &[
@@ -54,6 +55,7 @@ const ALL: &[Tool] = &[
     Tool::TrashMessage,
     Tool::MarkRead,
     Tool::UndoLastChange,
+    Tool::DraftMessage,
 ];
 
 impl Tool {
@@ -74,6 +76,7 @@ impl Tool {
             Self::TrashMessage => "trash_message",
             Self::MarkRead => "mark_read",
             Self::UndoLastChange => "undo_last_change",
+            Self::DraftMessage => "draft_message",
         }
     }
 
@@ -86,6 +89,7 @@ impl Tool {
                 | Self::TrashMessage
                 | Self::MarkRead
                 | Self::UndoLastChange
+                | Self::DraftMessage
         )
     }
 
@@ -106,6 +110,7 @@ impl Tool {
             Self::ArchiveMessage => format!("Move a message to the account's Archive folder. Queued, not immediate: held for {held} seconds, during which undo_last_change cancels it and nothing reaches the server."),
             Self::TrashMessage => format!("Move a message to Trash. Nothing is deleted — it is a move, held for {held} seconds and cancellable in that time."),
             Self::MarkRead => format!("Mark a message read, or unread with read: false. Held for {held} seconds before it can reach the server."),
+            Self::DraftMessage => "Save a draft in the account's Drafts folder for the user to read and send themselves. Nothing is ever sent from here. It is built exactly as sending would build it, threading and quoting included when `reply_to` is given. Drafts cannot carry Bcc: blind recipients are never written into a message, so a draft stored on the server would silently lose them — the user adds them when sending.".into(),
             Self::UndoLastChange => "Cancel the most recent change on an account that has not yet reached the server — whoever made it, the user or an assistant. A change already sent cannot be taken back from here.".into(),
         }
     }
@@ -155,6 +160,19 @@ impl Tool {
                 json!({"account": account, "id": id, "read": {"type": "boolean", "default": true}}),
                 &["account", "id"],
             ),
+            Self::DraftMessage => (
+                json!({
+                    "account": account,
+                    "to": {"type": "array", "items": {"type": "string"}, "description": "Recipients, as a person would type them."},
+                    "cc": {"type": "array", "items": {"type": "string"}},
+                    "subject": {"type": "string"},
+                    "body": {"type": "string", "description": "What the user will read and may send. For a reply it goes above the quoted original."},
+                    "reply_to": {"type": "integer", "description": "Reply to this message id: threaded, and the original quoted."},
+                    "reply_all": {"type": "boolean", "default": false},
+                    "forward": {"type": "integer", "description": "Forward this message id."},
+                }),
+                &["account", "subject", "body"],
+            ),
             Self::ListPost => (
                 json!({"address": address, "query": {"type": "string"}, "offset": offset, "limit": limit}),
                 &["address"],
@@ -190,8 +208,9 @@ pub fn list(config: &Config) -> Vec<Value> {
                     // change is held and cancellable before it is sent.
                     "destructiveHint": false,
                     "idempotentHint": matches!(tool, Tool::FileMessage | Tool::MarkRead) || !tool.writes(),
-                    // Only post reaches beyond the local store, to Paperless.
-                    "openWorldHint": matches!(tool, Tool::ListPost | Tool::ReadPost),
+                    // Beyond the local store: post reaches Paperless, and a
+                    // draft is appended to the mail server.
+                    "openWorldHint": matches!(tool, Tool::ListPost | Tool::ReadPost | Tool::DraftMessage),
                 },
             })
         })
@@ -330,6 +349,69 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
             )
         }
 
+        Tool::DraftMessage => {
+            // Refused before anything else: a draft stored on the server cannot
+            // keep blind recipients, because they are never written into the
+            // message. The schema offers no `bcc`; this is for a client that
+            // sends one anyway.
+            if args.get("bcc").is_some() {
+                bail!(
+                    "drafts cannot carry Bcc: blind recipients are never written into a message, \
+                     so a draft saved to the server would lose them. The user adds them when sending."
+                );
+            }
+            let account = int(args, "account")?;
+            let email = core
+                .accounts()?
+                .into_iter()
+                .find(|view| view.id == account)
+                .map(|view| view.email)
+                .ok_or_else(|| anyhow!("no account {account}"))?;
+            let data_dir = config.data_dir.clone().ok_or_else(|| {
+                anyhow!("this server was started without a data directory, so it cannot reach the account")
+            })?;
+
+            let input = core_rpc::DraftInput {
+                to: strings(args, "to"),
+                cc: strings(args, "cc"),
+                bcc: Vec::new(),
+                subject: args
+                    .get("subject")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                body: args
+                    .get("body")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string(),
+                reply_to: args.get("reply_to").and_then(Value::as_i64),
+                reply_all: args
+                    .get("reply_all")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                forward: args.get("forward").and_then(Value::as_i64),
+            };
+            if input.to.is_empty() && input.reply_to.is_none() {
+                bail!(
+                    "a draft needs someone to go to: at least one address in `to`, or a `reply_to`"
+                );
+            }
+
+            let saved = core_rpc::Session::new(data_dir)
+                .save_draft(&email, &input)
+                .await?;
+            json!({
+                "saved_in": saved.folder,
+                "sent": false,
+                "from": saved.preview.from,
+                "recipients": saved.preview.recipients,
+                "subject": saved.preview.subject,
+                "body": saved.preview.body,
+                "note": "Saved as a draft for the user to read and send. Nothing is sent from here.",
+            })
+        }
+
         Tool::UndoLastChange => match core.undo(int(args, "account")?)? {
             Some(change) => json!({ "undone": change.what, "change": change.id }),
             None => json!({
@@ -383,6 +465,22 @@ fn text<'a>(args: &'a Value, key: &str) -> Result<&'a str> {
         Some(value) if !value.trim().is_empty() => Ok(value),
         _ => bail!("{key} is required"),
     }
+}
+
+/// A list of non-blank strings, or none.
+fn strings(args: &Value, key: &str) -> Vec<String> {
+    args.get(key)
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn limit(args: &Value) -> usize {

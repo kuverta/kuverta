@@ -117,6 +117,15 @@ pub struct DraftPreview {
     pub rfc822: String,
 }
 
+/// A draft that was saved rather than sent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SavedDraft {
+    /// The folder it was appended to.
+    pub folder: String,
+    /// What was saved, exactly as a preview would show it.
+    pub preview: DraftPreview,
+}
+
 /// What happened when a message went out.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SentSummary {
@@ -421,6 +430,51 @@ impl Session {
         })
     }
 
+    /// Saves a draft in the account's Drafts folder, for a person to read and send.
+    ///
+    /// Never sends. Built by the same construction `send` uses, so the draft
+    /// cannot differ from what sending it would put on the wire, and appended
+    /// rather than submitted — `APPEND` can only create a message, so there is
+    /// nothing to hold in an undo window and nothing another client could lose.
+    ///
+    /// Refuses Bcc before anything is built. Blind recipients reach the
+    /// envelope and never the message (brief §3.5), so the built message has no
+    /// Bcc line — which means a draft saved to the server would silently lose
+    /// them, and whoever sent it later, from any client, would send it without.
+    pub async fn save_draft(&self, email: &str, input: &DraftInput) -> Result<SavedDraft> {
+        if input.bcc.iter().any(|address| !address.trim().is_empty()) {
+            return Err(RpcError::Rejected(
+                "a draft cannot keep Bcc recipients: Bcc is never written into the message, \
+                 so a draft saved to the server would lose them. Add them when sending."
+                    .into(),
+            ));
+        }
+
+        let (store, blobs) = self.open()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+
+        let draft = build_draft(&store, &blobs, &account, input)?;
+        let built = draft
+            .build()
+            .map_err(|e| RpcError::Rejected(e.to_string()))?;
+
+        let auth = provider_for(&account, self.password_env.as_deref())?;
+        let folder = file_in_drafts(&account, auth.as_ref(), &built.rfc822).await?;
+
+        Ok(SavedDraft {
+            folder,
+            preview: DraftPreview {
+                from: built.sender.clone(),
+                recipients: built.recipients.clone(),
+                subject: draft.subject.clone(),
+                body: draft.body.clone(),
+                rfc822: String::from_utf8_lossy(&built.rfc822).into_owned(),
+            },
+        })
+    }
+
     /// Sends a message, and files a copy in Sent unless told not to.
     ///
     /// `file_in_sent` is a parameter rather than a field on the draft because
@@ -574,6 +628,32 @@ fn reply_source(
 
     ReplySource::from_rfc822(&raw)
         .ok_or_else(|| RpcError::Rejected(format!("the stored body of {id} is not a message")))
+}
+
+/// Appends a draft, returning the folder it went to.
+async fn file_in_drafts(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) -> Result<String> {
+    let config = core_proto::ImapConfig {
+        host: account.imap_host.clone(),
+        port: account.imap_port,
+        security: account.imap_security.clone(),
+        username: account.username.clone(),
+    };
+
+    let mut client = core_proto::ImapClient::connect(&config, auth).await?;
+    let folders = client.folders().await?;
+    let drafts = core_proto::client::find_drafts(&folders)
+        .map(|folder| folder.name.clone())
+        .ok_or_else(|| {
+            RpcError::Rejected(
+                "the server declares no Drafts folder and none of the usual names exist".into(),
+            )
+        })?;
+
+    // \Draft so every client shows it as one; \Seen because nobody needs
+    // telling about a draft that was just written for them.
+    client.append(&drafts, &["\\Draft", "\\Seen"], raw).await?;
+    client.logout().await.ok();
+    Ok(drafts)
 }
 
 /// Files the sent copy, returning the folder it went to.

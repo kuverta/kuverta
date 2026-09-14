@@ -86,6 +86,7 @@ fn writes() -> Config {
     Config {
         allow_writes: true,
         undo_window_secs: 300,
+        ..Config::default()
     }
 }
 
@@ -464,4 +465,60 @@ fn over_stdio_stdout_carries_the_protocol_and_nothing_else() {
     assert_eq!(first["result"]["protocolVersion"], "2025-06-18");
     assert_eq!(second["id"], 2);
     assert!(second["result"]["tools"].as_array().unwrap().len() >= 10);
+}
+
+// -- drafting --------------------------------------------------------------
+
+#[tokio::test]
+async fn drafting_is_offered_only_with_writes() {
+    let (read_only, _, _dir) = server("draft-offer-ro", 0, Config::default());
+    assert!(!tool_names(&read_only)
+        .await
+        .contains(&"draft_message".to_string()));
+
+    let (writable, _, _dir2) = server("draft-offer-rw", 0, writes());
+    assert!(tool_names(&writable)
+        .await
+        .contains(&"draft_message".to_string()));
+}
+
+#[tokio::test]
+async fn the_draft_tool_offers_no_bcc_at_all() {
+    let (server, _, _dir) = server("draft-schema", 0, writes());
+    let reply = request(&server, "tools/list", json!({})).await;
+    let draft = reply["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "draft_message")
+        .unwrap()
+        .clone();
+    assert!(draft["inputSchema"]["properties"].get("bcc").is_none());
+    assert_eq!(draft["inputSchema"]["additionalProperties"], false);
+}
+
+#[tokio::test]
+async fn a_draft_with_bcc_is_refused_and_says_why() {
+    // For a client that sends a field the schema never offered.
+    let (server, account, _dir) = server("draft-bcc", 0, writes());
+    let reply = call(
+        &server,
+        "draft_message",
+        json!({ "account": account, "to": ["a@example.com"], "bcc": ["b@example.com"], "subject": "s", "body": "b" }),
+    )
+    .await;
+    assert!(is_error(&reply));
+    assert!(result(&reply)["error"].as_str().unwrap().contains("Bcc"));
+}
+
+#[tokio::test]
+async fn a_draft_needs_someone_to_go_to() {
+    let (server, account, _dir) = server("draft-nobody", 0, writes());
+    let reply = call(
+        &server,
+        "draft_message",
+        json!({ "account": account, "subject": "s", "body": "b" }),
+    )
+    .await;
+    assert!(is_error(&reply));
 }
