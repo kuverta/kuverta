@@ -350,8 +350,12 @@ export function runConformance(name, makeHost) {
     // the key appears to work, and nothing happens.
     const host = await makeHost();
     const { rows } = await host.page({ scope: everything(), offset: 0, limit: 50 });
-    const limited = rows.find((row) => Array.isArray(row.actions) && row.actions.length === 0);
-    if (!limited) return t.skip('every row in this host allows everything');
+    // Any row that declares it does not allow archiving — not only one that
+    // allows nothing, since a letter allows filing and nothing else.
+    const limited = rows.find(
+      (row) => Array.isArray(row.actions) && !row.actions.includes(ACTIONS.Archive),
+    );
+    if (!limited) return t.skip('every row in this host allows archiving');
 
     await assert.rejects(() => host.archive(limited.id));
   });

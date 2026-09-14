@@ -167,6 +167,9 @@ token from Paperless's profile menu. **Verify** runs a preflight that says how
 many documents the address matches — and names the tags that exist when it
 matches none, because a mistyped tag looks exactly like an address with no post.
 
+Post is filed like mail, with `1`–`6`. Filing a letter pins it, and if Paperless
+knows who sent it, the next letter from that correspondent is filed the same way.
+
 ### Capturing it
 
 [`scannerd`](apps/scannerd/) is the other end: a Pi with a camera over a fixed

@@ -564,3 +564,101 @@ fn a_new_address_without_an_id_is_still_added() {
     core.save_paper_mailbox(&first).unwrap();
     assert_eq!(core.store().paper_mailboxes().unwrap().len(), 1);
 }
+
+// -- filing post by hand ---------------------------------------------------
+
+fn paper_events(core: &Core) -> i64 {
+    core.store()
+        .connection()
+        .query_row("SELECT COUNT(*) FROM paper_correction", [], |row| {
+            row.get(0)
+        })
+        .unwrap()
+}
+
+#[test]
+fn filing_post_records_the_correction_and_what_it_teaches() {
+    let (core, _account, _inbox, _archive, _dir) = core_with("file-post", 0);
+    let home = core
+        .save_paper_mailbox(&address(None, "Home", "http://paper.local:8000"))
+        .unwrap();
+
+    core.record_paper_correction(
+        home,
+        41,
+        Some("Stadtwerke München"),
+        Some("personal"),
+        "transactional",
+    )
+    .unwrap();
+
+    assert_eq!(
+        core.store().paper_overrides(home).unwrap(),
+        vec![(41, "transactional".to_string())]
+    );
+    assert_eq!(
+        core.store().paper_learned().unwrap(),
+        vec![(
+            "Stadtwerke München".to_string(),
+            "transactional".to_string()
+        )]
+    );
+}
+
+#[test]
+fn filing_post_where_it_already_is_records_nothing() {
+    let (core, _account, _inbox, _archive, _dir) = core_with("file-post-twice", 0);
+    let home = core
+        .save_paper_mailbox(&address(None, "Home", "http://paper.local:8000"))
+        .unwrap();
+
+    core.record_paper_correction(home, 41, Some("Finanzamt"), None, "transactional")
+        .unwrap();
+    core.record_paper_correction(
+        home,
+        41,
+        Some("Finanzamt"),
+        Some("transactional"),
+        "transactional",
+    )
+    .unwrap();
+
+    assert_eq!(paper_events(&core), 1);
+}
+
+#[test]
+fn an_unknown_correspondent_pins_its_letter_and_teaches_nothing() {
+    // A dash for "unknown" must not be learned as if it were somebody.
+    let (core, _account, _inbox, _archive, _dir) = core_with("file-post-anon", 0);
+    let home = core
+        .save_paper_mailbox(&address(None, "Home", "http://paper.local:8000"))
+        .unwrap();
+
+    core.record_paper_correction(home, 7, Some("  "), None, "personal")
+        .unwrap();
+
+    assert_eq!(core.store().paper_overrides(home).unwrap().len(), 1);
+    assert!(core.store().paper_learned().unwrap().is_empty());
+}
+
+#[test]
+fn filing_post_under_something_that_is_not_a_category_is_refused() {
+    let (core, _account, _inbox, _archive, _dir) = core_with("file-post-bad", 0);
+    let home = core
+        .save_paper_mailbox(&address(None, "Home", "http://paper.local:8000"))
+        .unwrap();
+
+    let err = core
+        .record_paper_correction(home, 1, None, None, "invoices")
+        .unwrap_err();
+    assert!(matches!(err, RpcError::Rejected(_)), "got {err:?}");
+
+    let err = core
+        .record_paper_correction(999, 1, None, None, "personal")
+        .unwrap_err();
+    assert!(
+        matches!(err, RpcError::Rejected(_)),
+        "an address that does not exist: {err:?}"
+    );
+    assert_eq!(paper_events(&core), 0);
+}

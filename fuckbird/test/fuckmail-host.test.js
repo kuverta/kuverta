@@ -13,6 +13,8 @@ import { test } from 'node:test';
 import { runConformance } from './support/conformance.js';
 import { fakeInvoke } from './support/fake-invoke.js';
 import { FuckmailHost } from '../hosts/fuckmail/host.js';
+import { Triage } from '../core/triage.js';
+import { ACTIONS } from '../core/host.js';
 
 const account = { id: 1, email: 'you@example.com' };
 
@@ -160,7 +162,7 @@ test('fuckmail: a category scope takes in post as well as mail', async () => {
   assert.ok(page.rows.every((row) => row.category === 'transactional'));
 });
 
-test('fuckmail: acting on post is refused rather than quietly doing nothing', async () => {
+test('fuckmail: acting on post is refused, except filing it', async () => {
   // Paperless owns its documents. Appearing to archive one would be far worse
   // than saying no.
   const host = await new FuckmailHost(fakeInvoke(), account).open();
@@ -170,7 +172,32 @@ test('fuckmail: acting on post is refused rather than quietly doing nothing', as
   await assert.rejects(() => host.archive(letter.id), /cannot archive post/);
   await assert.rejects(() => host.trash(letter.id), /cannot move post to Trash/);
   await assert.rejects(() => host.setRead(letter.id, true), /cannot mark post read/);
-  await assert.rejects(() => host.setCategory(letter.id, 'personal'), /cannot file post/);
+  assert.deepEqual(letter.actions, ['setCategory'], 'filing is the one thing a letter allows');
+});
+
+test('fuckmail: post filed by hand shows where it was filed', async () => {
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  const letter = rows.find((row) => row.id.startsWith('paper:'));
+
+  await host.setCategory(letter.id, 'personal');
+
+  const after = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 50 });
+  assert.equal(after.rows.find((row) => row.id === letter.id).category, 'personal');
+});
+
+test('fuckmail: the triage surface files a letter instead of refusing it', async () => {
+  // The model checks a row's actions before it asks the host. A letter that
+  // allows filing must get through that check and nothing else must.
+  const host = await new FuckmailHost(fakeInvoke(), account).open();
+  const triage = new Triage(host);
+  await triage.setScope((await host.scopes()).find((scope) => scope.kind === 'paper'));
+
+  await triage.setCategory('personal');
+  assert.match(triage.notice.text, /filed as personal/);
+
+  await triage.act(ACTIONS.Archive);
+  assert.match(triage.notice.text, /cannot be archived from here/);
 });
 
 test('fuckmail: a Paperless that is down does not take the mail with it', async () => {
