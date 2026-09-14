@@ -956,3 +956,58 @@ Two loose ends, stated rather than tidied:
   some of the headers the rules read and not others, so the model pass re-parses
   the message from disk where there is one and falls back to the summary where
   there is not.
+
+---
+
+## 16. Nearest filings first, the model when they are far away
+
+**2026-09-14.** Follows §15.
+
+§15 found the two methods failing in complementary places: embeddings perfect
+and sixty times faster on senders filed before, poor on strangers; prompting
+right on both, at six hundred milliseconds. The obvious combination is to ask the
+nearest filings first and the model only when they are not good enough. The
+question is what "good enough" means, and the answer was measured rather than
+chosen.
+
+`Neighbours::nearest` now reports how close the single closest filing is, and
+`Hybrid` accepts the filings' answer only when that similarity clears a threshold
+*and* the neighbours agree (a share of at least 0.8). Both conditions: a close
+filing its neighbours contradict is a sender filed two ways, and a unanimous vote
+among distant filings is a stranger who happens to resemble one kind of mail.
+
+`fuckmail eval` keeps the model's answer and the nearest filings for every scored
+message, so the combination can be tried at every threshold without asking the
+model again:
+
+| similarity ≥ | known senders: accuracy · by filings · ms | new senders: accuracy · by filings · ms |
+|---|---|---|
+| 0.60 | 100% · 100% · 11 | 79.5% · 96% · 37 |
+| 0.75 | 100% · 100% · 11 | 83.0% · 69% · 175 |
+| 0.80 | 100% · 100% · 11 | **100%** · 52% · 277 |
+| **0.85** | **100% · 100% · 11** | **100% · 25% · 452** |
+| 0.90 | 100% · 100% · 11 | 100% · 18% · 499 |
+| model only | 100% · 0% · 600 | 100% · 0% · 596 |
+
+**The default is 0.85, and deliberately not 0.80.** 0.80 is exactly where accuracy
+on new senders recovers, and a threshold placed on the knee of a curve measured on
+one corpus is a threshold tuned to that corpus. 0.85 keeps a margin, still answers
+every known sender from the filings at 11 ms, and still spares the model a quarter
+of the strangers. A test pins the default above the knee so it cannot drift down
+to it quietly.
+
+**Real mail should move the error the safe way.** Messages from one real sender
+vary far more than the generator's templates do, so real similarities will run
+lower than these. That means more messages go to the model, not more wrong
+answers from the filings — the combination degrades towards "model only", whose
+accuracy it already matches.
+
+### What is not done
+
+The combination is measured, not running. In production the filings are the
+user's own corrections, and there are almost none yet, so a combined pass today
+would ask the model about nearly everything anyway. Wiring it in means embedding
+corrected messages once and keeping the vectors — a table keyed by message and
+embedding model — so the filings are not re-embedded on every pass. That is worth
+building when there are corrections for it to use, and the decision about when a
+model verdict may change what the list shows is still §15's, still open.
