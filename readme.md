@@ -201,6 +201,11 @@ mail the model disagreed with the rules 30 times and was right in 29. The corpus
 is templated, so read that as "not worse anywhere", not as a forecast — see
 [docs/decisions.md](docs/decisions.md) §15.
 
+`eval` also tries both together — the nearest filings when they are close and
+agree, the model otherwise — at every threshold. At the default of 0.85 that is
+100% on both splits, 11 ms for senders filed before, and the model for strangers
+(§16).
+
 ## For an assistant
 
 [`fuckmail-mcp`](apps/mcp/) serves the mailbox — mail and scanned post — over
