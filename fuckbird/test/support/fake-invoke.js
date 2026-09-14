@@ -113,6 +113,20 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
         cc: [],
         folders: [m.folder],
         body_text: m.body ?? null,
+        // The shape core-rpc sends: the classifier's facts, camelCase.
+        facts: {
+          fromAddr: m.from?.match(/<([^>]+)>/)?.[1] ?? m.from ?? null,
+          fromName: m.from?.split(' <')[0] ?? null,
+          subject: m.subject ?? null,
+          listId: m.list_id ?? null,
+          listUnsubscribe: null,
+          precedence: null,
+          autoSubmitted: null,
+          inReplyTo: null,
+          hasAttachments: Boolean(m.has_attachments),
+          recipientCount: 1,
+          snippet: m.snippet ?? null,
+        },
       };
     },
 
@@ -169,7 +183,26 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     paper_document: async ({ id, documentId }) => {
       const found = documents.find((d) => d.mailbox === id && d.id === documentId);
       if (!found) throw new Error(`no such document: ${documentId}`);
-      return { row: found, body_text: found.snippet, download_url: 'http://x/1/download/' };
+      return {
+        row: found,
+        body_text: found.snippet,
+        download_url: 'http://x/1/download/',
+        correspondent: found.from,
+        // As core-paper builds them: the correspondent is the address.
+        facts: {
+          fromAddr: found.from,
+          fromName: found.from,
+          subject: found.subject,
+          listId: null,
+          listUnsubscribe: null,
+          precedence: null,
+          autoSubmitted: null,
+          inReplyTo: null,
+          hasAttachments: true,
+          recipientCount: 1,
+          snippet: found.snippet,
+        },
+      };
     },
 
     undo: async () => {

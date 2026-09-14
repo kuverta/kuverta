@@ -662,3 +662,81 @@ fn filing_post_under_something_that_is_not_a_category_is_refused() {
     );
     assert_eq!(paper_events(&core), 0);
 }
+
+// -- explaining a verdict --------------------------------------------------
+
+#[test]
+fn an_opened_message_carries_the_facts_its_verdict_is_explained_from() {
+    // The reading pane re-runs the rules over these to say why a message was
+    // filed where it was. Without them it can name a category and not argue
+    // for it, which is the half of the rules layer that makes a wrong answer
+    // correctable instead of infuriating.
+    let (core, account, inbox, _, _dir) = core_with("facts", 0);
+    let raw = b"Message-ID: <invoice@hosting.example.de>\r\n\
+                From: Hosting AG <rechnung@hosting.example.de>\r\n\
+                To: you@example.com\r\n\
+                Subject: Ihre Rechnung 4471182\r\n\
+                List-Id: Hosting News <news.hosting.example.de>\r\n\
+                Precedence: bulk\r\n\
+                \r\n\
+                anbei Ihre Rechnung.\r\n";
+
+    let blob = core
+        .blobs()
+        .put(account, "mid:invoice@hosting.example.de", raw)
+        .unwrap();
+    core.store()
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("invoice@hosting.example.de".into()),
+                subject: Some("Ihre Rechnung 4471182".into()),
+                body_path: Some(blob),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: inbox,
+                uid: 1,
+                flags: String::new(),
+            }),
+        )
+        .unwrap();
+    let id = core
+        .messages(account, 0, 1, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+
+    let facts = core
+        .message(account, id)
+        .unwrap()
+        .facts
+        .expect("facts from the stored message");
+    assert_eq!(
+        facts.from_addr.as_deref(),
+        Some("rechnung@hosting.example.de")
+    );
+    assert_eq!(facts.subject.as_deref(), Some("Ihre Rechnung 4471182"));
+    // The headers the stored row does not keep, which is why this re-parses.
+    assert_eq!(facts.list_id.as_deref(), Some("news.hosting.example.de"));
+    assert_eq!(facts.precedence.as_deref(), Some("bulk"));
+    assert_eq!(facts.recipient_count, 1);
+
+    // camelCase on the wire, because facts.js reads it.
+    let wire = serde_json::to_value(&facts).unwrap();
+    assert!(wire.get("fromAddr").is_some(), "{wire}");
+    assert!(wire.get("listId").is_some(), "{wire}");
+}
+
+#[test]
+fn a_message_that_is_not_on_disk_has_no_facts_rather_than_half_of_them() {
+    // An explanation from the stored row alone would miss List-Id, Precedence
+    // and Auto-Submitted, and explain confidently from half the evidence.
+    let (core, account, _inbox, _archive, _dir) = core_with("no-facts", 1);
+    let id = core
+        .messages(account, 0, 1, &ListFilter::default())
+        .unwrap()
+        .rows[0]
+        .id;
+    assert!(core.message(account, id).unwrap().facts.is_none());
+}
