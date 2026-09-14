@@ -44,6 +44,10 @@ pub struct Config {
     pub allow_writes: bool,
     /// How long an assistant's changes wait before they may reach the server.
     pub undo_window_secs: i64,
+    /// Where the store lives, for the tools that reach the mail server — a
+    /// draft is appended over IMAP, which needs the account's credentials and
+    /// not only the store.
+    pub data_dir: Option<std::path::PathBuf>,
 }
 
 impl Default for Config {
@@ -53,6 +57,7 @@ impl Default for Config {
             // Long on purpose. A person's ten seconds is for catching their own
             // slip; this is for reviewing someone else's work.
             undo_window_secs: 300,
+            data_dir: None,
         }
     }
 }
@@ -189,7 +194,7 @@ fn instructions(config: &Config) -> String {
     if config.allow_writes {
         text.push_str(&format!(
             "You can list, search and read, and also file, archive, trash and mark messages \
-             read. Every change is queued and held for {} seconds before it can reach the \
+             read, and save drafts for the user to send. Every change is queued and held for {} seconds before it can reach the \
              server, and undo_last_change cancels it in that time. Nothing is ever deleted. \
              Filing records your judgement as an assistant's, not as the user's own \
              correction. ",

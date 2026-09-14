@@ -28,7 +28,8 @@ pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
 };
 pub use session::{
-    DraftInput, DraftPreview, SentSummary, Session, SyncSummary, VerifiedFolder, VerifyReport,
+    DraftInput, DraftPreview, SavedDraft, SentSummary, Session, SyncSummary, VerifiedFolder,
+    VerifyReport,
 };
 pub use settings::{AccountInput, AccountSettings};
 
