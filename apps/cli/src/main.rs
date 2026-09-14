@@ -209,7 +209,7 @@ enum Command {
     Classify {
         #[arg(long)]
         email: Option<String>,
-        #[arg(long, default_value = "Dolphin3:latest")]
+        #[arg(long, default_value = "llama3.2:3b")]
         model: String,
         #[arg(long, env = "OLLAMA_URL", default_value = "http://127.0.0.1:11434")]
         ollama: String,
@@ -228,7 +228,7 @@ enum Command {
     Eval {
         /// Facts with a `label`, one JSON object per line.
         facts: PathBuf,
-        #[arg(long, default_value = "Dolphin3:latest")]
+        #[arg(long, default_value = "llama3.2:3b")]
         model: String,
         #[arg(long, default_value = "nomic-embed-text")]
         embed_model: String,
@@ -241,6 +241,9 @@ enum Command {
         /// category — the second scores only senders never filed before.
         #[arg(long, value_enum, default_value_t = Split::Alternate)]
         split: Split,
+        /// List every message a method got wrong, with its sender and subject.
+        #[arg(long)]
+        show_wrong: bool,
         #[arg(long)]
         skip_prompt: bool,
         #[arg(long)]
@@ -637,12 +640,14 @@ async fn main() -> Result<()> {
             ollama,
             k,
             split,
+            show_wrong,
             skip_prompt,
             skip_embeddings,
         } => {
             let options = EvalOptions {
                 k,
                 split,
+                show_wrong,
                 skip_prompt,
                 skip_embeddings,
             };
@@ -1793,6 +1798,9 @@ async fn evaluate_models(
         .map(|(row, _)| Some(rules.classify(&row.facts()).category))
         .collect();
     score("rules, no corrections", &truth, &predicted, None);
+    if options.show_wrong {
+        print_wrong(&test, &predicted);
+    }
 
     let ollama = core_ai::Ollama::new(ollama_url)?;
 
@@ -1826,6 +1834,9 @@ async fn evaluate_models(
             &predicted,
             Some(&latency),
         );
+        if options.show_wrong {
+            print_wrong(&test, &predicted);
+        }
         prompted = Some((predicted, latency));
     }
 
@@ -2006,6 +2017,35 @@ fn score(
     }
 }
 
+/// Every scored message a method filed differently from its label.
+///
+/// A count says how often a method is wrong; this says whether it is wrong in a
+/// way that matters. Three misses on invoices and three on a message that sits
+/// on the line between two categories are the same number and not the same
+/// result — brief §3.3's "record where they disagree and which was right".
+fn print_wrong(
+    test: &[&(LabelledFacts, core_rules::Category)],
+    predicted: &[Option<core_rules::Category>],
+) {
+    for ((row, expected), got) in test.iter().map(|pair| (&pair.0, pair.1)).zip(predicted) {
+        if *got != Some(expected) {
+            println!(
+                "    {:<13} → {:<13} {:<22} {}",
+                expected.as_str(),
+                got.map(|category| category.as_str()).unwrap_or("nothing"),
+                truncate(
+                    row.from_name
+                        .as_deref()
+                        .or(row.from_addr.as_deref())
+                        .unwrap_or("?"),
+                    22
+                ),
+                truncate(row.subject.as_deref().unwrap_or("(no subject)"), 50)
+            );
+        }
+    }
+}
+
 /// How `eval` chooses the messages it scores on.
 #[derive(Clone, Copy, Debug, ValueEnum)]
 enum Split {
@@ -2029,6 +2069,7 @@ impl Split {
 struct EvalOptions {
     k: usize,
     split: Split,
+    show_wrong: bool,
     skip_prompt: bool,
     skip_embeddings: bool,
 }

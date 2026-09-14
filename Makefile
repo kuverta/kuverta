@@ -31,7 +31,9 @@ ai-up: ## Start Ollama in a container (see docker/README.md before using this)
 	$(COMPOSE) --profile ai up -d
 
 ai-model: ## Pull the chat model and the embedding model into the Ollama container
-	$(COMPOSE) --profile ai exec ollama ollama pull qwen3:8b
+	@# The chat model fuckmail classify and eval default to: the smallest that
+	@# held its accuracy on senders it had never seen (decisions §19).
+	$(COMPOSE) --profile ai exec ollama ollama pull llama3.2:3b
 	@# The embedding model `fuckmail eval` scores against prompting. Plan §4 asks
 	@# for both to be tried before either is committed to.
 	$(COMPOSE) --profile ai exec ollama ollama pull nomic-embed-text
