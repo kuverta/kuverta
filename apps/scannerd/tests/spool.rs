@@ -174,3 +174,50 @@ fn a_capture_time_comes_from_the_name_not_the_filesystem() {
     let pending: Vec<Pending> = spool.pending().unwrap();
     assert_eq!(pending[0].captured_at, 1_757_600_000);
 }
+
+#[test]
+fn the_backoff_is_counted_from_the_last_attempt_not_from_the_capture() {
+    // Counted from the capture, anything photographed more than five minutes
+    // ago was always due, and a spool that had been failing for an hour was
+    // retried on every pass.
+    let dir = TempDir::new("backoff-from-attempt");
+    let spool = Spool::open(&dir.0).unwrap();
+    fs::write(dir.0.join("1000-1.jpg"), b"jpeg").unwrap();
+    for _ in 0..3 {
+        let item = spool.pending().unwrap().remove(0);
+        spool.failed(&item).unwrap();
+    }
+
+    let item = spool.pending().unwrap().remove(0);
+    assert_eq!(item.attempts, 3);
+    let tried = item.last_attempt.expect("a failed attempt is timed");
+    assert!(!item.due(tried + 10), "a minute's backoff, ten seconds in");
+    assert!(item.due(tried + 60));
+}
+
+#[test]
+fn a_counter_written_before_attempts_were_timed_still_reads() {
+    let dir = TempDir::new("old-sidecar");
+    let spool = Spool::open(&dir.0).unwrap();
+    fs::write(dir.0.join("1000-1.jpg"), b"jpeg").unwrap();
+    fs::write(dir.0.join("1000-1.attempts"), "2").unwrap();
+
+    let item = spool.pending().unwrap().remove(0);
+    assert_eq!(item.attempts, 2);
+    assert_eq!(item.last_attempt, None);
+    // Falls back to the capture time: fifteen seconds for a second retry.
+    assert!(!item.due(1014));
+    assert!(item.due(1015));
+}
+
+#[test]
+fn a_clock_that_went_backwards_does_not_hold_a_retry_back() {
+    // A Pi has no real-time clock. Booted before NTP, it can believe it is
+    // earlier than the last attempt it recorded.
+    let dir = TempDir::new("clock-back");
+    let spool = Spool::open(&dir.0).unwrap();
+    fs::write(dir.0.join("5000-1.jpg"), b"jpeg").unwrap();
+    fs::write(dir.0.join("5000-1.attempts"), "4 5000").unwrap();
+
+    assert!(spool.pending().unwrap()[0].due(100));
+}

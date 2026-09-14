@@ -69,6 +69,14 @@ impl Camera for RpiCamera {
             .args(["--timeout", &self.settle_ms.to_string()])
             .args(["--output", "-"]);
 
+        // The same crop as the photograph. Detection's thresholds are fractions
+        // of the frame, so without it they were fractions of the whole desk: a
+        // page filling a tight crop could change too little of the full view
+        // to count as present, and a hand beside the crop could count as one.
+        if let Some(roi) = &self.roi {
+            command.args(["--roi", roi]);
+        }
+
         let output = command
             .output()
             .with_context(|| format!("could not run {}", self.program))?;
