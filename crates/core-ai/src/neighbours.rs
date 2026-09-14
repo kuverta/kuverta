@@ -81,6 +81,18 @@ impl Neighbours {
     /// The category of the nearest filings, weighted by how near they are, and
     /// the share of that weight the winner holds.
     pub fn classify(&self, vector: &[f32]) -> Option<(Category, f32)> {
+        self.nearest(vector)
+            .map(|found| (found.category, found.share))
+    }
+
+    /// The same answer, with how close the closest filing was.
+    ///
+    /// The similarity is what makes a combined classifier possible: a message
+    /// whose nearest filing is almost identical to it is a sender filed before,
+    /// and the filings can be trusted; one whose nearest filing is merely the
+    /// least unlike it is a stranger, and should go to the model. §15 found
+    /// embeddings perfect on the first and poor on the second.
+    pub fn nearest(&self, vector: &[f32]) -> Option<Nearest> {
         if self.examples.is_empty() {
             return None;
         }
@@ -112,9 +124,64 @@ impl Neighbours {
                 .then_with(|| b.0.as_str().cmp(a.0.as_str()))
         })?;
 
-        if total <= 0.0 {
-            return Some((scored[0].1, 0.0));
+        Some(if total <= 0.0 {
+            Nearest {
+                category: scored[0].1,
+                share: 0.0,
+                similarity: scored[0].0,
+            }
+        } else {
+            Nearest {
+                category: winner,
+                share: weight / total,
+                similarity: scored[0].0,
+            }
+        })
+    }
+}
+
+/// What the nearest filings said, and how sure they were.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Nearest {
+    pub category: Category,
+    /// The winning category's share of the neighbours' weight: 1.0 when all of
+    /// them agree.
+    pub share: f32,
+    /// Cosine similarity to the single closest filing.
+    pub similarity: f32,
+}
+
+/// When the nearest filings are enough, and the model need not be asked.
+///
+/// Both conditions, not either. A close filing that its neighbours contradict
+/// is a sender filed two ways; a unanimous vote among distant filings is a
+/// stranger who happens to resemble one kind of mail. Neither is the cheap case.
+#[derive(Debug, Clone, Copy)]
+pub struct Hybrid {
+    pub min_similarity: f32,
+    pub min_share: f32,
+}
+
+/// The measured default: a similarity of 0.85 and a four-in-five agreement.
+///
+/// From `fuckmail eval`'s sweep on the generated corpus (decisions §16). On
+/// senders never filed, accuracy fell below the model's from 0.75 down and
+/// matched it from 0.80 up; on senders filed before, every threshold to 0.90
+/// answered everything from the filings. 0.80 is exactly where the curve
+/// recovers, which is the reason not to choose it — a threshold on the knee of
+/// one corpus is tuned to that corpus. 0.85 keeps a margin and still answers
+/// every known sender without the model.
+impl Default for Hybrid {
+    fn default() -> Self {
+        Self {
+            min_similarity: 0.85,
+            min_share: 0.8,
         }
-        Some((winner, weight / total))
+    }
+}
+
+impl Hybrid {
+    pub fn accepts(&self, found: &Nearest) -> bool {
+        found.similarity >= self.min_similarity && found.share >= self.min_share
     }
 }

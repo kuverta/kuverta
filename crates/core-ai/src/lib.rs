@@ -26,6 +26,6 @@ mod neighbours;
 mod ollama;
 mod prompt;
 
-pub use neighbours::{cosine, embedding_input, Neighbours};
+pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
 pub use ollama::{AiError, ChatReply, Embedded, Ollama};
 pub use prompt::{ModelVerdict, PromptClassifier};
