@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use anyhow::{Context, Result};
 
+use crate::button::Button;
 use crate::camera::Camera;
-use crate::detect::{Detector, Step, Thresholds};
+use crate::detect::{Detector, State, Step, Thresholds};
 use crate::spool::Spool;
 use crate::upload::Uploader;
 
@@ -24,12 +25,25 @@ pub enum Turn {
     NoFrame,
 }
 
+/// Collecting pages into letters, closed by a button or by being left alone.
+pub struct Letters {
+    pub button: Button,
+    /// A letter nobody closed is closed this long after its last page, so a
+    /// forgotten press delays post rather than keeping it forever.
+    pub idle: Duration,
+}
+
 pub struct Scanner {
     detector: Detector,
     /// How often the spool is looked at when nothing is being captured.
     drain_every: Duration,
     last_drain: Option<u64>,
     preview_failures: u32,
+    /// `None`: every page is its own document.
+    letters: Option<Letters>,
+    /// The button was pressed, and the letter closes as soon as no page is
+    /// settling.
+    close_requested: bool,
 }
 
 impl Scanner {
@@ -39,11 +53,20 @@ impl Scanner {
             drain_every,
             last_drain: None,
             preview_failures: 0,
+            letters: None,
+            close_requested: false,
         }
     }
 
-    /// Looks at one frame, captures if a page has settled, and sends whatever
-    /// is due. `now` is seconds since the epoch.
+    /// Collects pages into letters instead of sending each on its own.
+    pub fn collecting(mut self, letters: Letters) -> Self {
+        self.letters = Some(letters);
+        self
+    }
+
+    /// Looks at one frame, captures if a page has settled, closes the letter if
+    /// it is finished, and sends whatever is due. `now` is seconds since the
+    /// epoch.
     pub async fn turn(
         &mut self,
         camera: &dyn Camera,
@@ -51,15 +74,24 @@ impl Scanner {
         uploader: &Uploader,
         now: u64,
     ) -> Turn {
+        if self.close_if_due(spool, now) {
+            // The letter someone just finished goes now, not on the timer.
+            self.drain_now(spool, uploader, now).await;
+        }
+
+        let collecting = self.letters.is_some();
         let turn = match camera.preview() {
             Ok(frame) => {
                 self.preview_failures = 0;
                 if self.detector.observe(&frame) == Step::Capture {
-                    match capture(camera, spool) {
+                    match capture(camera, spool, collecting) {
                         Ok(path) => {
-                            // Straight away, not on the timer: this is the
-                            // letter someone is standing next to.
-                            self.drain_now(spool, uploader, now).await;
+                            // A single page goes straight away: it is the
+                            // letter someone is standing next to. A page of a
+                            // letter waits for the rest.
+                            if !collecting {
+                                self.drain_now(spool, uploader, now).await;
+                            }
                             return Turn::Captured(path);
                         }
                         Err(err) => {
@@ -107,11 +139,71 @@ impl Scanner {
             Some(last) => now < last || now - last >= self.drain_every.as_secs(),
         }
     }
+
+    /// Closes the open letter if the button was pressed or it has been left
+    /// alone, and says whether a letter was closed.
+    fn close_if_due(&mut self, spool: &Spool, now: u64) -> bool {
+        let (pressed, idle) = match &self.letters {
+            Some(letters) => (letters.button.pressed(), letters.idle),
+            None => return false,
+        };
+        if pressed {
+            self.close_requested = true;
+        }
+
+        // Not while a page is settling. Putting the last page down and
+        // pressing the button is one movement, and the press arrives before
+        // the page has been still long enough to photograph — closing then
+        // would send the letter without its last page.
+        if matches!(self.detector.state(), State::Settling { .. }) {
+            return false;
+        }
+
+        let left_alone = match spool.last_page_at() {
+            // Not when the clock went backwards: the button still works, and
+            // closing a letter early is worse than closing it late.
+            Ok(Some(at)) => now >= at && now - at >= idle.as_secs(),
+            Ok(None) => false,
+            Err(err) => {
+                tracing::error!(%err, "could not read the open letter");
+                false
+            }
+        };
+        if !self.close_requested && !left_alone {
+            return false;
+        }
+        self.close_requested = false;
+
+        match spool.close_letter() {
+            Ok(Some(letter)) => {
+                let how = if pressed || !left_alone {
+                    "button"
+                } else {
+                    "left alone"
+                };
+                tracing::info!(letter = %letter.display(), how, "letter closed");
+                true
+            }
+            Ok(None) => {
+                tracing::info!("button pressed with no pages photographed; nothing to close");
+                false
+            }
+            Err(err) => {
+                tracing::error!(%err, "could not close the letter; its pages are kept");
+                false
+            }
+        }
+    }
 }
 
-/// Photographs the page and puts it in the spool.
-fn capture(camera: &dyn Camera, spool: &Spool) -> Result<PathBuf> {
-    let (partial, ready) = spool.reserve();
+/// Photographs the page and puts it in the spool — in the open letter when
+/// collecting, or straight in the queue.
+fn capture(camera: &dyn Camera, spool: &Spool, collecting: bool) -> Result<PathBuf> {
+    let (partial, ready) = if collecting {
+        spool.reserve_page()?
+    } else {
+        spool.reserve()
+    };
 
     camera
         .capture(&partial)

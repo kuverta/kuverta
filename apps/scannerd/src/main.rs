@@ -21,8 +21,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use clap::Parser;
+use scannerd::button::Button;
 use scannerd::camera::RpiCamera;
-use scannerd::run::Scanner;
+use scannerd::run::{Letters, Scanner};
 use scannerd::spool::Spool;
 use scannerd::upload::Uploader;
 
@@ -48,7 +49,9 @@ struct Args {
 
     /// Tag every upload with these, so post from this rig is identifiable —
     /// and so one Paperless can serve several addresses.
-    #[arg(long = "tag")]
+    /// Or `SCANNERD_TAGS=a,b`, which is how a tag with a space in it gets
+    /// through a systemd environment file.
+    #[arg(long = "tag", env = "SCANNERD_TAGS", value_delimiter = ',')]
     tags: Vec<String>,
 
     /// Prefix for document titles.
@@ -57,7 +60,7 @@ struct Args {
 
     /// Crop, as `x,y,w,h` fractions of the sensor. Applied by the camera, to
     /// the frames it watches as well as to the photograph.
-    #[arg(long)]
+    #[arg(long, env = "SCANNERD_ROI")]
     roi: Option<String>,
 
     /// The capture program.
@@ -76,6 +79,22 @@ struct Args {
     /// captured. Each capture's own backoff still applies.
     #[arg(long, default_value_t = 30)]
     drain_every_secs: u64,
+
+    /// Collect pages into one letter until this button is pressed: an input
+    /// device such as the one the `gpio-key` overlay makes
+    /// (`/dev/input/by-path/…`), or `stdin` to press Enter in the terminal.
+    /// Without it, every page is its own document.
+    #[arg(long, env = "SCANNERD_BUTTON")]
+    button: Option<PathBuf>,
+
+    /// The key the button sends. 28 is Enter, which the overlay line in the
+    /// readme configures.
+    #[arg(long, default_value_t = scannerd::button::KEY_ENTER)]
+    button_key: u16,
+
+    /// Close a letter nobody closed this long after its last page.
+    #[arg(long, default_value_t = 300)]
+    letter_idle_secs: u64,
 
     /// Drain the spool and exit, without watching for pages. For a cron job,
     /// and for checking the other half works before there is a camera.
@@ -115,6 +134,21 @@ async fn main() -> Result<()> {
 
     if args.drain_only {
         return Ok(());
+    }
+
+    // After the drain: a button that is not there must not stop post that is
+    // already photographed from being sent.
+    if let Some(device) = &args.button {
+        let button = if device.as_os_str() == "stdin" {
+            Button::stdin()
+        } else {
+            Button::input_device(device, args.button_key)?
+        };
+        tracing::info!(button = %device.display(), "collecting pages into letters");
+        scanner = scanner.collecting(Letters {
+            button,
+            idle: Duration::from_secs(args.letter_idle_secs),
+        });
     }
 
     let camera = RpiCamera {

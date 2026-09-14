@@ -6,8 +6,10 @@
 //! a daemon whose logic can only be exercised on the device it runs on is one
 //! that gets changed by guessing.
 
+pub mod button;
 pub mod camera;
 pub mod detect;
+pub mod pdf;
 pub mod run;
 pub mod spool;
 pub mod upload;
