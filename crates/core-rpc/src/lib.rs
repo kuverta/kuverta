@@ -152,6 +152,11 @@ pub struct MessageDetail {
     pub cc: Vec<String>,
     /// Folders this message is in. On Gmail this is its labels.
     pub folders: Vec<String>,
+    /// What the rules classifier reads, so the shell can say why the message
+    /// was filed where it was. `None` when the message is not on disk: the
+    /// stored row keeps too few of the headers to explain from, and an
+    /// explanation built from half the evidence would be confidently wrong.
+    pub facts: Option<FactsView>,
     /// The plain-text body.
     ///
     /// Text rather than the raw message: parsing MIME is not the shell's job,
@@ -174,6 +179,48 @@ pub struct ModelPass {
     pub mean_latency_ms: Option<i64>,
     /// Set when the pass gave up — three failures in a row — with the last reason.
     pub stopped: Option<String>,
+}
+
+/// The facts the rules classifier reads, as the shell's classifier takes them.
+///
+/// camelCase because the other end is `fuckbird/core/facts.js`, which runs the
+/// same rules — ported line for line and verified against `core-rules` — to
+/// explain a verdict in the reading pane. The explanation is the half of the
+/// rules layer that makes a wrong answer arguable rather than annoying, and it
+/// needs exactly these fields and no others.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FactsView {
+    pub from_addr: Option<String>,
+    pub from_name: Option<String>,
+    pub subject: Option<String>,
+    pub list_id: Option<String>,
+    pub list_unsubscribe: Option<String>,
+    pub precedence: Option<String>,
+    pub auto_submitted: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub has_attachments: bool,
+    pub recipient_count: usize,
+    pub snippet: Option<String>,
+}
+
+impl From<&core_rules::MessageFacts<'_>> for FactsView {
+    fn from(facts: &core_rules::MessageFacts<'_>) -> Self {
+        let owned = |value: Option<&str>| value.map(str::to_string);
+        Self {
+            from_addr: owned(facts.from_addr),
+            from_name: owned(facts.from_name),
+            subject: owned(facts.subject),
+            list_id: owned(facts.list_id),
+            list_unsubscribe: owned(facts.list_unsubscribe),
+            precedence: owned(facts.precedence),
+            auto_submitted: owned(facts.auto_submitted),
+            in_reply_to: owned(facts.in_reply_to),
+            has_attachments: facts.has_attachments,
+            recipient_count: facts.recipient_count,
+            snippet: owned(facts.snippet),
+        }
+    }
 }
 
 /// Where archiving and trashing move mail to.
@@ -387,7 +434,16 @@ impl Core {
             }
         };
 
+        // Re-parsed for the classifier's facts. A second parse of one message,
+        // on open, is cheap; storing every header the rules read for every
+        // message in case one is opened is not.
+        let facts = raw
+            .as_deref()
+            .and_then(|bytes| core_proto::parse::parse_message(bytes, None))
+            .map(|parsed| FactsView::from(&parsed.facts.as_message_facts()));
+
         Ok(MessageDetail {
+            facts,
             id: stored.id,
             message_id: stored.rfc822_message_id,
             subject: stored.subject,

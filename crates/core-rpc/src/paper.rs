@@ -89,6 +89,9 @@ pub struct PaperDetail {
     /// separately from `row.from`, which shows a dash for "unknown" and would
     /// otherwise be learned from as if a dash were a correspondent.
     pub correspondent: Option<String>,
+    /// What the rules read, so a letter's verdict is explained the way mail's
+    /// is — from the same facts the classifier filed it by.
+    pub facts: crate::FactsView,
     /// The OCR text, which is the body.
     pub body_text: Option<String>,
     /// Where the PDF is, for a viewer that wants it.
@@ -365,6 +368,7 @@ impl PaperSession {
         Ok(PaperDetail {
             row: to_row(&document, &self.classifier, &self.overrides),
             correspondent: document.correspondent.clone(),
+            facts: crate::FactsView::from(&document.facts()),
             body_text: document.content.clone(),
             download_url: document.download_path.clone(),
         })
