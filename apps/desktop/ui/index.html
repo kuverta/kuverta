@@ -22,8 +22,12 @@
        navigation happens; the list only ever shows what is selected here. -->
   <aside id="sidebar">
     <div id="accounts"></div>
+    <!-- Postal addresses, each an inbox of its own: post scanned into
+         Paperless-ngx, read beside the mail. -->
+    <div class="sidebar-heading" id="postboxes-heading" hidden>Post</div>
+    <nav id="postboxes"></nav>
     <nav id="folders"></nav>
-    <div class="sidebar-heading">Categories</div>
+    <div class="sidebar-heading" id="categories-heading">Categories</div>
     <nav id="categories"></nav>
   </aside>
 

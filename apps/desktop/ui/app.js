@@ -31,6 +31,7 @@ const ICONS = {
   folder: "M3 15.5v-10a1 1 0 011-1h3.8a1 1 0 01.78.37l1.04 1.26a1 1 0 00.78.37H16a1 1 0 011 1v8a1 1 0 01-1 1H4a1 1 0 01-1-1z",
   all: "M3 5.5h14M3 10h14M3 14.5h9",
   tag: "M3 3h6.3a1 1 0 01.7.3l6.7 6.7a1 1 0 010 1.4l-5.3 5.3a1 1 0 01-1.4 0L3.3 10A1 1 0 013 9.3zM6.5 6.5v.01",
+  post: "M3 6h14v8.5a1 1 0 01-1 1H4a1 1 0 01-1-1zM3 6.5l7 5 7-5",
 };
 
 /// Which glyph a folder gets, from its special-use attribute and then its name.
@@ -75,7 +76,10 @@ const searchBox = el("search");
 const toast = el("toast");
 const sidebar = {
   accounts: el("accounts"),
+  postboxesHeading: el("postboxes-heading"),
+  postboxes: el("postboxes"),
   folders: el("folders"),
+  categoriesHeading: el("categories-heading"),
   categories: el("categories"),
 };
 const scopeBar = el("scope");
@@ -83,6 +87,11 @@ const scopeBar = el("scope");
 const state = {
   accounts: [],
   account: null,
+  // A postal address shown as an inbox in place of the account, or null.
+  postbox: null,
+  postboxes: [],
+  // Letters per postbox, as Paperless last said.
+  postboxTotals: new Map(),
   email: null,
   syncing: false,
   archive: null,
@@ -107,14 +116,18 @@ async function loadPage(offset) {
   state.requested.add(offset);
 
   try {
-    const page = await invoke("messages", {
-      account: state.account,
-      offset,
-      limit: PAGE,
-      category: state.filter.category,
-      unreadOnly: state.filter.unreadOnly,
-      folder: state.filter.folder,
-    });
+    // A postbox's page comes from Paperless, in the shape a page of mail has,
+    // so everything below draws it without knowing which it is.
+    const page = state.postbox
+      ? await invoke("paper_documents", { id: state.postbox.id, offset, limit: PAGE, query: null })
+      : await invoke("messages", {
+          account: state.account,
+          offset,
+          limit: PAGE,
+          category: state.filter.category,
+          unreadOnly: state.filter.unreadOnly,
+          folder: state.filter.folder,
+        });
 
     // The total can move under us while a sync is running, so it is taken
     // from every page rather than once at the start.
@@ -122,11 +135,13 @@ async function loadPage(offset) {
       state.total = page.total;
       spacer.style.height = `${state.total * ROW_HEIGHT}px`;
     }
+    if (state.postbox) state.postboxTotals.set(state.postbox.id, page.total);
     page.rows.forEach((row, i) => state.rows.set(page.offset + i, row));
     render(true);
   } catch (err) {
     state.requested.delete(offset);
-    say(`could not load messages: ${err}`, true);
+    const what = state.postbox ? `post from ${state.postbox.label}` : "messages";
+    say(`could not load ${what}: ${err}`, true);
   }
 }
 
@@ -200,20 +215,50 @@ function navItem({ label, count, unread, active, className, onClick, title, icon
 
 async function refreshSidebar() {
   // Accounts. Hidden when there is only one, because a list of one is a label
-  // pretending to be a choice.
+  // pretending to be a choice — unless there is post beside it, when the
+  // account is the way back to mail.
   sidebar.accounts.textContent = "";
-  if (state.accounts.length > 1) {
+  if (state.accounts.length > 1 || state.postboxes.length) {
     for (const account of state.accounts) {
       sidebar.accounts.append(
         navItem({
           label: account.email,
           className: "account",
-          active: account.id === state.account,
+          active: !state.postbox && account.id === state.account,
           onClick: () => selectAccount(account),
         }),
       );
     }
   }
+
+  // Each postal address is an inbox of its own: its post, beside the mail.
+  sidebar.postboxes.textContent = "";
+  sidebar.postboxesHeading.hidden = state.postboxes.length === 0;
+  for (const postbox of state.postboxes) {
+    sidebar.postboxes.append(
+      navItem({
+        label: postbox.label || postbox.base_url,
+        icon: "post",
+        className: "account",
+        count: state.postboxTotals.get(postbox.id) ?? null,
+        active: state.postbox?.id === postbox.id,
+        // A token-less address is configured and unreadable, which is worth
+        // seeing without opening it.
+        title: postbox.has_token
+          ? `${postbox.label} — post in Paperless at ${postbox.base_url}`
+          : `${postbox.label} — no Paperless token stored (settings)`,
+        onClick: () => selectPostbox(postbox),
+      }),
+    );
+  }
+
+  // Folders and categories belong to a mail account. A postbox has neither:
+  // Paperless keeps post under its own tags, and this only reads it.
+  const onPost = state.postbox !== null;
+  sidebar.folders.hidden = onPost;
+  sidebar.categories.hidden = onPost;
+  sidebar.categoriesHeading.hidden = onPost;
+  if (onPost) return;
 
   state.folders = await invoke("folders", { account: state.account });
   sidebar.folders.textContent = "";
@@ -293,9 +338,12 @@ function renderScope() {
   if (state.filter.unreadOnly) parts.push("unread");
 
   const label = document.createElement("span");
+  const letters = `letter${state.total === 1 ? "" : "s"}`;
   label.textContent = parts.length
     ? `${state.total} in ${parts.join(" · ")}`
-    : `${state.total} messages`;
+    : state.postbox
+      ? `${state.total} ${letters} to ${state.postbox.label}`
+      : `${state.total} messages`;
   scopeBar.append(label);
 
   if (parts.length) {
@@ -310,7 +358,43 @@ function renderScope() {
   }
 }
 
+/// Shows a postal address's post as an inbox: what Paperless holds for it,
+/// newest first, read like mail.
+async function selectPostbox(postbox) {
+  state.postbox = postbox;
+  statusBar.textContent = postbox.label;
+  state.filter = { category: null, unreadOnly: false, folder: null };
+  closeCompose();
+  if (!postbox.has_token) {
+    say(`${postbox.label} has no Paperless token stored — add it in settings (,)`, true);
+  }
+  await reload();
+}
+
+/// Moving, deleting, marking read, undo and replying: things mail has and post
+/// does not. Paperless owns a letter and this only reads it, so in a postbox
+/// these keys say so rather than doing something to the account behind it.
+function mailOnly(action) {
+  return () =>
+    state.postbox ? say(`${state.postbox.label} is post — that is done in Paperless`, true) : action();
+}
+
+/// How many letters each postbox holds, asked in the background: the sidebar
+/// shows it when it arrives, and a slow or absent Paperless holds nothing up.
+function countPostboxes() {
+  for (const postbox of state.postboxes) {
+    if (!postbox.has_token) continue;
+    invoke("paper_documents", { id: postbox.id, offset: 0, limit: 1, query: null })
+      .then((page) => {
+        state.postboxTotals.set(postbox.id, page.total);
+        if (state.account !== null || state.postbox) return refreshSidebar();
+      })
+      .catch(() => {});
+  }
+}
+
 async function selectAccount(account) {
+  state.postbox = null;
   state.account = account.id;
   state.email = account.email;
   statusBar.textContent = account.email;
@@ -468,6 +552,28 @@ async function openSelected() {
   if (!row) return;
 
   try {
+    if (state.postbox) {
+      const detail = await invoke("paper_document", { id: state.postbox.id, documentId: row.id });
+      const pages = detail.row.page_count;
+      reading.hidden = false;
+      emptyPane.hidden = true;
+      el("reading-subject").textContent = detail.row.subject || "(untitled)";
+      el("reading-meta").textContent = [
+        detail.row.from,
+        formatDate(detail.row.date_utc),
+        state.postbox.label,
+        pages ? `${pages} page${pages === 1 ? "" : "s"}` : "",
+        `Paperless document ${detail.row.id}`,
+      ]
+        .filter(Boolean)
+        .join("  ·  ");
+      // The OCR text is the body. It is missing while Paperless is still
+      // reading a scan, which is not the same as a letter with nothing on it.
+      el("reading-body").textContent =
+        detail.body_text ?? "(no text yet — Paperless may still be reading this scan)";
+      return;
+    }
+
     const detail = await invoke("message", { account: state.account, id: row.id });
     reading.hidden = false;
     emptyPane.hidden = true;
@@ -721,6 +827,12 @@ for (const field of [compose.to, compose.cc, compose.bcc]) {
 /// two syncs of one account racing each other is a way to discover locking
 /// behaviour, not a feature.
 async function sync() {
+  if (state.postbox) {
+    // Post is read from Paperless as it is shown, so syncing is asking again.
+    await reload({ keepPosition: true });
+    say(`${state.postbox.label}: ${state.total} letter${state.total === 1 ? "" : "s"} in Paperless`);
+    return;
+  }
   if (state.syncing) return;
   state.syncing = true;
   statusBar.textContent = `${state.email} — syncing…`;
@@ -750,11 +862,14 @@ async function runSearch(query) {
     return;
   }
   try {
-    const rows = await invoke("search", {
-      account: state.account,
-      query,
-      limit: 200,
-    });
+    // In a postbox, Paperless's own full-text search, over the scanned text.
+    const rows = state.postbox
+      ? (await invoke("paper_documents", { id: state.postbox.id, offset: 0, limit: 200, query })).rows
+      : await invoke("search", {
+          account: state.account,
+          query,
+          limit: 200,
+        });
     state.rows.clear();
     state.requested.clear();
     state.searching = true;
@@ -780,17 +895,17 @@ const KEYS = {
   ArrowUp: () => select(state.selected - 1),
   Enter: openSelected,
   o: openSelected,
-  e: archive,
-  "#": trash,
-  Delete: trash,
-  u: toggleRead,
-  z: undo,
+  e: mailOnly(archive),
+  "#": mailOnly(trash),
+  Delete: mailOnly(trash),
+  u: mailOnly(toggleRead),
+  z: mailOnly(undo),
   r: sync,
-  c: () => openCompose(),
+  c: mailOnly(() => openCompose()),
   ",": openSettings,
-  R: () => openCompose({ replyAll: false }),
-  A: () => openCompose({ replyAll: true }),
-  f: () => openCompose({ forward: true }),
+  R: mailOnly(() => openCompose({ replyAll: false })),
+  A: mailOnly(() => openCompose({ replyAll: true })),
+  f: mailOnly(() => openCompose({ forward: true })),
 };
 
 document.addEventListener("keydown", async (event) => {
@@ -855,10 +970,18 @@ content.addEventListener("click", (event) => {
 
 async function start() {
   const accounts = await invoke("accounts");
+  // Post is an addition: a Paperless that is down or not set up must not keep
+  // mail from opening.
+  state.postboxes = await invoke("paper_mailboxes").catch(() => []);
+  countPostboxes();
   if (!accounts.length) {
+    buildPool();
+    if (state.postboxes.length) {
+      await selectPostbox(state.postboxes[0]);
+      return;
+    }
     // Nothing to show and nowhere to go but settings, so go there.
     statusBar.textContent = "no accounts yet";
-    buildPool();
     await openSettings();
     return;
   }
@@ -1018,7 +1141,22 @@ async function closeSettings() {
   // Accounts may have come or gone, so the window reloads rather than trusting
   // what it had before.
   state.accounts = await invoke("accounts");
+  // Postal addresses too: one added, renamed or removed shows in the sidebar.
+  state.postboxes = await invoke("paper_mailboxes").catch(() => []);
+  countPostboxes();
+  if (state.postbox) {
+    const box = state.postboxes.find((p) => p.id === state.postbox.id);
+    if (box) {
+      await selectPostbox(box);
+      return;
+    }
+    state.postbox = null;
+  }
   if (!state.accounts.length) {
+    if (state.postboxes.length) {
+      await selectPostbox(state.postboxes[0]);
+      return;
+    }
     statusBar.textContent = "no accounts — add one in settings";
     return;
   }
