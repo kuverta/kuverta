@@ -626,6 +626,7 @@ dependencies = [
 name = "core-ai"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "core-rules",
  "reqwest",
  "serde",

@@ -365,6 +365,44 @@ footer {
   margin-top: 6px;
 }
 
+#reading-post {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: baseline;
+  margin: -6px 0 12px;
+}
+
+#reading-post .file-status { margin-top: 0; }
+
+#reading-post button,
+#scope .order button {
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg);
+  cursor: pointer;
+}
+
+/* Post's two dates, at the right of the list's header. */
+#scope .order {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+}
+
+#scope .order button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+#reading-post[hidden],
+#reading-transcribe[hidden] { display: none !important; }
+
 .tabs[hidden],
 #reading-body[hidden],
 #reading-file[hidden],

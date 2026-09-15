@@ -1683,7 +1683,9 @@ fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(
-            "DROP INDEX paper_mailbox_token_key;
+            "DROP TABLE paper_read;
+             DROP TABLE paper_transcript;
+             DROP INDEX paper_mailbox_token_key;
              ALTER TABLE paper_mailbox DROP COLUMN token_key;
              PRAGMA user_version = 8;",
         )
