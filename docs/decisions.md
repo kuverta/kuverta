@@ -1384,9 +1384,20 @@ the letter goes as one PDF. Details that matter:
 
 ### Not verified
 
-- **On a Pi:** `rpicam-still`'s start-up time per frame, exposure, the overlay's
-  device name under `/dev/input/by-path/`, and the unit file. Each is a first-run
-  check on the device.
+- **On a Pi:** since checked on the user's Pi, which is a **Zero W Rev 1.1** —
+  ARMv6, single core, 427 MB, 32-bit bookworm, OV5647 camera. That made the first
+  `make scannerd-pi` (an arm64 container) the wrong build: it now cross-compiles
+  with cargo-zigbuild for `arm-unknown-linux-gnueabihf.2.36` in about a minute and
+  a half. On the device the binary's libraries resolve, and an HTTPS upload
+  completes its handshake — which matters because that runs the TLS provider's
+  compiled code, where ARMv7-only instructions would have crashed. scannerd's
+  reqwest now uses ring as the provider rather than aws-lc, whose ARM assembly
+  has not been run on an ARMv6. A preview frame takes 1.1–1.7 s (the camera
+  starts per call) and a capture 3.7 s, so a page is photographed eight or nine
+  seconds after it is put down; a streaming preview (`rpicam-vid`) would cut that,
+  if it proves worth it. Still open on the device: detection against a real
+  surface (the camera was pointed at a ceiling), exposure, the `gpio-key`
+  overlay's device name, and the unit file.
 - **Against Paperless:** the laptop run of the whole binary and the `make
   scannerd-pi` build were stopped by the Mac's disk filling (302 MB free): Docker's
   storage went read-error, Paperless answered 500, and a frame from ffmpeg took 18

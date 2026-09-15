@@ -101,12 +101,25 @@ name Paperless does not know fails the upload by name and keeps the capture.
 
 ## On the Pi
 
-Cross-compile from the workspace root:
+Cross-compile from the workspace root, with
+[cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild) and zig as the C
+compiler and linker:
 
 ```sh
-rustup target add aarch64-unknown-linux-gnu
-cargo build --release -p scannerd --target aarch64-unknown-linux-gnu
+rustup target add arm-unknown-linux-gnueabihf     # Pi Zero W: ARMv6, 32-bit
+cargo install cargo-zigbuild                      # and zig from ziglang.org on PATH
+make scannerd-pi                                  # target/arm-unknown-linux-gnueabihf/release/scannerd
+make scannerd-to-pi PI_HOST=pi@raspberrypi.local  # copies it to ~/scannerd, installs nothing
 ```
+
+A Pi Zero W is ARMv6 and runs neither 64-bit Raspberry Pi OS nor an aarch64
+binary; a Zero 2 W, 3, 4 or 5 on the 64-bit OS wants
+`PI_TARGET=aarch64-unknown-linux-gnu.2.36` (after `rustup target add
+aarch64-unknown-linux-gnu`). The `.2.36` pins glibc to bookworm's. On a Zero W
+(checked on a Rev 1.1 with the OV5647 camera), a 320×240 preview frame takes 1.1–1.7
+seconds because `rpicam-still` starts the camera every time, and a full capture
+about 3.7 — so a page is photographed eight or nine seconds after it is put
+down.
 
 Then `scannerd.service` and `scannerd.env.example` in this directory. It runs as
 its own user with the `video` group and nothing else: a daemon that can reach
