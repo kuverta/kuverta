@@ -209,10 +209,13 @@ enum Command {
     Classify {
         #[arg(long)]
         email: Option<String>,
-        #[arg(long, default_value = "llama3.2:3b")]
-        model: String,
-        #[arg(long, env = "OLLAMA_URL", default_value = "http://127.0.0.1:11434")]
-        ollama: String,
+        /// The model to ask. Without it, the one chosen for sorting mail in the
+        /// app's settings (llama3.2:3b until one is chosen).
+        #[arg(long)]
+        model: Option<String>,
+        /// Ask the Ollama at this address instead of the provider chosen in settings.
+        #[arg(long, env = "OLLAMA_URL")]
+        ollama: Option<String>,
         #[arg(short = 'n', long, default_value_t = 100)]
         limit: usize,
     },
@@ -631,7 +634,14 @@ async fn main() -> Result<()> {
             model,
             ollama,
             limit,
-        } => model_classify(&data_dir, &store, email.as_deref(), &model, &ollama, limit).await,
+        } => model_classify(
+            &data_dir,
+            &store,
+            email.as_deref(),
+            model.as_deref(),
+            ollama.as_deref(),
+            limit,
+        ).await,
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
         Command::Eval {
             facts,
@@ -1642,19 +1652,41 @@ async fn model_classify(
     data_dir: &std::path::Path,
     store: &Store,
     email: Option<&str>,
-    model: &str,
-    ollama_url: &str,
+    model: Option<&str>,
+    ollama_url: Option<&str>,
     limit: usize,
 ) -> Result<()> {
     let account = resolve_account(store, email)?;
     let core = core_rpc::Core::open(data_dir)
         .with_context(|| format!("opening the store in {}", data_dir.display()))?;
-    let ollama = core_ai::Ollama::new(ollama_url)?;
-    let classifier = core_ai::PromptClassifier::new(model);
+    // An address on the command line is an Ollama asked on purpose; otherwise
+    // the provider and model chosen in settings, which a flag's model overrides.
+    let (server, model) = match ollama_url {
+        Some(url) => (
+            core_ai::Provider::Ollama(core_ai::Ollama::new(url)?),
+            model
+                .map(str::to_string)
+                .unwrap_or_else(|| core_rpc::Task::Chat.default_model()),
+        ),
+        None => {
+            let choice = core.ai_for(core_rpc::Task::Chat)?;
+            if !choice.local {
+                println!(
+                    "sorting with {} at {}: senders, subjects and the start of each message go there",
+                    choice.model, choice.provider_label
+                );
+            }
+            (
+                choice.provider,
+                model.map(str::to_string).unwrap_or(choice.model),
+            )
+        }
+    };
+    let classifier = core_ai::PromptClassifier::new(model.clone());
 
     println!("asking {model} about up to {limit} message(s) it has not seen");
     let pass = core
-        .model_pass(account, &ollama, &classifier, limit)
+        .model_pass(account, &server, &classifier, limit)
         .await?;
 
     println!(

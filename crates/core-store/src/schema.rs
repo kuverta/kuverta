@@ -284,6 +284,30 @@ CREATE TABLE paper_transcript (
     PRIMARY KEY (base_url, document_id)
 );
 "#,
+    // v11 — where models run, and which model each job uses. The local Ollama
+    // is there from the start, as it was before this was configurable; a
+    // hosted service is added beside it, its key in the keychain under
+    // `key_name`. A job with no row uses its default.
+    r#"
+CREATE TABLE ai_provider (
+    id         INTEGER PRIMARY KEY,
+    kind       TEXT NOT NULL CHECK (kind IN ('ollama', 'openai')),
+    label      TEXT NOT NULL,
+    base_url   TEXT NOT NULL,
+    key_name   TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+
+INSERT INTO ai_provider (id, kind, label, base_url, key_name, created_at)
+VALUES (1, 'ollama', 'Ollama on this computer', 'http://127.0.0.1:11434',
+        lower(hex(randomblob(16))), CAST(strftime('%s', 'now') AS INTEGER));
+
+CREATE TABLE ai_task (
+    task        TEXT PRIMARY KEY,
+    provider_id INTEGER NOT NULL REFERENCES ai_provider (id),
+    model       TEXT NOT NULL
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

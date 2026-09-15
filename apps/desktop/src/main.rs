@@ -239,12 +239,12 @@ async fn paper_category_counts(
     session.category_counts().await.map_err(fail)
 }
 
-/// Has the local vision model read a letter's scan, keeps what it read, and
-/// returns `[model, text]`.
+/// Has a vision model read a letter's scan, keeps what it read, and returns
+/// `[model, text]`.
 ///
-/// The model and server come from `FUCKMAIL_VISION_MODEL` and `OLLAMA_URL`.
+/// The model and provider are the ones chosen for reading scans in settings.
 /// Reading takes seconds a page, and all of it happens with no store lock held:
-/// the lock is taken only to keep the result.
+/// the lock is taken only to choose the model and to keep the result.
 #[tauri::command]
 async fn paper_transcribe(
     app: State<'_, App>,
@@ -252,19 +252,17 @@ async fn paper_transcribe(
     document_id: i64,
 ) -> Result<(String, String), String> {
     let session = paper_session(&app, id)?;
-    let model =
-        std::env::var("FUCKMAIL_VISION_MODEL").unwrap_or_else(|_| "qwen2.5vl:3b".to_string());
-    let url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+    let choice = ai_choice(&app, core_rpc::Task::Vision)?;
     let text = session
-        .transcribe(document_id, &url, &model)
+        .transcribe(document_id, &choice.provider, &choice.model)
         .await
         .map_err(fail)?;
     app.core
         .lock()
         .unwrap()
-        .save_paper_transcript(id, document_id, &model, &text)
+        .save_paper_transcript(id, document_id, &choice.model, &text)
         .map_err(fail)?;
-    Ok((model, text))
+    Ok((choice.model, text))
 }
 
 #[tauri::command]
@@ -324,6 +322,96 @@ async fn file_post(
             detail.row.category.as_deref(),
             &category,
         )
+        .map_err(fail)
+}
+
+// -- models -------------------------------------------------------------------
+//
+// Where models run and which each job uses. Listing and trying models go over
+// the network, so, as with post, the lock is held only to build a client.
+
+fn ai_choice(app: &State<'_, App>, task: core_rpc::Task) -> Result<core_rpc::AiChoice, String> {
+    app.core.lock().unwrap().ai_for(task).map_err(fail)
+}
+
+fn ai_client(app: &State<'_, App>, provider_id: i64) -> Result<core_rpc::ModelProvider, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .ai_provider_client(provider_id)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn ai_providers(app: State<'_, App>) -> Result<Vec<core_rpc::AiProviderView>, String> {
+    app.core.lock().unwrap().ai_providers().map_err(fail)
+}
+
+#[tauri::command]
+fn save_ai_provider(app: State<'_, App>, input: core_rpc::AiProviderInput) -> Result<i64, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_ai_provider(&input)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_ai_provider(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .delete_ai_provider(id)
+        .map_err(fail)
+}
+
+/// Stores a hosted service's API key in the keychain. One way only, like
+/// passwords: nothing here hands a key back to the window.
+#[tauri::command]
+fn set_ai_key(app: State<'_, App>, id: i64, key: String) -> Result<(), String> {
+    app.core.lock().unwrap().set_ai_key(id, &key).map_err(fail)
+}
+
+#[tauri::command]
+fn ai_tasks(app: State<'_, App>) -> Result<Vec<core_rpc::AiTaskView>, String> {
+    app.core.lock().unwrap().ai_tasks().map_err(fail)
+}
+
+#[tauri::command]
+fn set_ai_task(
+    app: State<'_, App>,
+    task: core_rpc::Task,
+    provider_id: i64,
+    model: String,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_ai_task(task, provider_id, &model)
+        .map_err(fail)
+}
+
+/// The models a provider offers, with what each can do where it says.
+#[tauri::command]
+async fn ai_models(
+    app: State<'_, App>,
+    provider_id: i64,
+) -> Result<Vec<core_rpc::ModelInfo>, String> {
+    let provider = ai_client(&app, provider_id)?;
+    core_rpc::ai::list_models(&provider).await.map_err(fail)
+}
+
+/// Asks a model to do a job once, on a sample rather than anyone's mail.
+#[tauri::command]
+async fn ai_try(
+    app: State<'_, App>,
+    task: core_rpc::Task,
+    provider_id: i64,
+    model: String,
+) -> Result<core_rpc::AiTrial, String> {
+    let provider = ai_client(&app, provider_id)?;
+    core_rpc::ai::try_model(&provider, task, &model)
+        .await
         .map_err(fail)
 }
 
@@ -564,6 +652,14 @@ fn main() {
             set_password,
             clear_password,
             verify_account,
+            ai_providers,
+            save_ai_provider,
+            delete_ai_provider,
+            set_ai_key,
+            ai_tasks,
+            set_ai_task,
+            ai_models,
+            ai_try,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

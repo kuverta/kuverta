@@ -204,6 +204,15 @@ fuckmail eval labelled.jsonl                # rules vs prompting vs embeddings
 fuckmail eval labelled.jsonl --split sender # the same, on senders never filed
 ```
 
+Which model sorts mail, and which reads scanned post, is chosen in the desktop
+app's settings under **Models**: the Ollama on this computer by default, another
+Ollama, or a hosted service with an OpenAI-compatible API such as DeepSeek,
+OpenAI or OpenRouter, its key kept in the keychain. The page lists each
+provider's models, marks the ones that can see images where the provider says,
+and says plainly when a job would send mail or scans off this computer.
+`classify --model` overrides the chosen model; `--ollama` (or `OLLAMA_URL`) asks
+that Ollama directly instead.
+
 Measured on the generated corpus with an 8B model: prompting 100% on both
 splits at ~620 ms a message, embeddings 100% on known senders and 79.5% on new
 ones at 11 ms, the rules 86.4% where their known blind spot is scored. On stored

@@ -571,7 +571,7 @@ impl PaperSession {
     pub async fn transcribe(
         &self,
         document_id: i64,
-        ollama_url: &str,
+        provider: &core_ai::Provider,
         model: &str,
     ) -> Result<String> {
         let original = self
@@ -591,11 +591,12 @@ impl PaperSession {
             ));
         }
 
-        let ollama =
-            core_ai::Ollama::new(ollama_url).map_err(|err| RpcError::Rejected(err.to_string()))?;
         let mut texts = Vec::with_capacity(pages.len());
         for page in &pages {
-            let reply = ollama.transcribe(model, page).await.map_err(ai_error)?;
+            let reply = provider
+                .transcribe(model, page)
+                .await
+                .map_err(|err| crate::ai::ai_error(provider.base_url(), err))?;
             texts.push(reply.content.trim().to_string());
         }
         Ok(texts.join("\n\n"))
@@ -713,15 +714,6 @@ fn selector_from(kind: &str, value: Option<&str>) -> Result<Selector> {
             )))
         }
     })
-}
-
-fn ai_error(err: core_ai::AiError) -> RpcError {
-    match err {
-        core_ai::AiError::Network(detail) => RpcError::Network(format!(
-            "the vision model server is not answering ({detail}); is Ollama running?"
-        )),
-        other => RpcError::Rejected(other.to_string()),
-    }
 }
 
 fn paper_error(err: core_paper::PaperError) -> RpcError {

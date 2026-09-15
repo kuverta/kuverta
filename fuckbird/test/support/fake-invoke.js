@@ -61,6 +61,35 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     snippet: m.snippet ?? null,
   });
 
+  // Models: the Ollama every store starts with, and what it has pulled.
+  const aiProviders = [
+    {
+      id: 1,
+      kind: 'ollama',
+      label: 'Ollama on this computer',
+      base_url: 'http://127.0.0.1:11434',
+      has_key: false,
+      local: true,
+    },
+  ];
+  const aiTasks = new Map();
+  const AI_DEFAULTS = { vision: 'qwen2.5vl:3b', chat: 'llama3.2:3b' };
+  const OLLAMA_MODELS = [
+    { name: 'llama3.2:3b', size_bytes: 2019393189, vision: false, embedding: false },
+    { name: 'nomic-embed-text:latest', size_bytes: 274302450, vision: false, embedding: true },
+    { name: 'qwen2.5vl:3b', size_bytes: 3200000000, vision: true, embedding: false },
+  ];
+  // A service that, like most, lists names and says nothing of what they see.
+  const HOSTED_MODELS = [
+    { name: 'deepseek-chat', size_bytes: null, vision: null, embedding: false },
+    { name: 'deepseek-reasoner', size_bytes: null, vision: null, embedding: false },
+  ];
+  const aiProvider = (id) => {
+    const found = aiProviders.find((p) => p.id === id);
+    if (!found) throw new Error(`no model provider ${id}`);
+    return found;
+  };
+
   const commands = {
     // The first thing the real mount asks. One account, so the picker stays
     // hidden — a second would be a test of the picker.
@@ -185,6 +214,74 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     },
 
     // -- post ------------------------------------------------------------
+
+    // -- models ------------------------------------------------------------
+
+    ai_providers: async () => aiProviders.map((p) => ({ ...p })),
+
+    save_ai_provider: async ({ input }) => {
+      if (!['ollama', 'openai'].includes(input.kind)) {
+        throw new Error(`${input.kind} is not a kind of model provider fuckmail knows`);
+      }
+      if (!/^https?:\/\/[^/]/.test(input.base_url)) {
+        throw new Error(`${input.base_url} is not a usable model server URL`);
+      }
+      if (!input.label.trim()) throw new Error('a provider needs a name');
+      const fields = {
+        kind: input.kind,
+        label: input.label,
+        base_url: input.base_url.replace(/\/+$/, ''),
+        local: /^https?:\/\/(localhost|127\.)/.test(input.base_url),
+      };
+      if (input.id !== null) {
+        Object.assign(aiProvider(input.id), fields);
+        return input.id;
+      }
+      const id = Math.max(...aiProviders.map((p) => p.id)) + 1;
+      aiProviders.push({ id, has_key: false, ...fields });
+      return id;
+    },
+
+    set_ai_key: async ({ id, key }) => {
+      if (!key.trim()) throw new Error('an empty key is not a key');
+      aiProvider(id).has_key = true;
+    },
+
+    delete_ai_provider: async ({ id }) => {
+      if (id === 1) throw new Error('the Ollama on this computer stays; point it at another address instead');
+      aiProviders.splice(aiProviders.indexOf(aiProvider(id)), 1);
+      for (const [task, chosen] of aiTasks) if (chosen.provider_id === id) aiTasks.delete(task);
+    },
+
+    ai_tasks: async () =>
+      Object.keys(AI_DEFAULTS).map((task) => ({
+        task,
+        provider_id: aiTasks.get(task)?.provider_id ?? 1,
+        model: aiTasks.get(task)?.model ?? AI_DEFAULTS[task],
+        chosen: aiTasks.has(task),
+      })),
+
+    set_ai_task: async ({ task, providerId, model }) => {
+      if (!(task in AI_DEFAULTS)) throw new Error(`unknown variant \`${task}\``);
+      aiProvider(providerId);
+      if (!model.trim()) throw new Error(`choose a model for ${task}`);
+      aiTasks.set(task, { provider_id: providerId, model: model.trim() });
+    },
+
+    ai_models: async ({ providerId }) => {
+      const provider = aiProvider(providerId);
+      if (provider.kind === 'ollama') return OLLAMA_MODELS;
+      if (!provider.has_key) throw new Error(`credentials: ${provider.base_url} refused the key: no key given`);
+      return HOSTED_MODELS;
+    },
+
+    // A model that does every job perfectly, in under a second.
+    ai_try: async ({ task, providerId }) => {
+      aiProvider(providerId);
+      return task === 'vision'
+        ? { reply: 'Rechnung 4711', latency_ms: 850, passed: true, verdict: 'read the sample page' }
+        : { reply: 'ok', latency_ms: 300, passed: true, verdict: 'answered' };
+    },
 
     paper_mailboxes: async () => paperMailboxes,
 

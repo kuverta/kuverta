@@ -2,7 +2,7 @@
 
 use core_rules::{Category, MessageFacts};
 
-use crate::ollama::{AiError, Ollama};
+use crate::ollama::AiError;
 
 /// How much body a model is shown. Enough to tell an invoice from a newsletter,
 /// short enough that one long message does not cost ten short ones.
@@ -123,11 +123,11 @@ impl PromptClassifier {
 
     pub async fn classify(
         &self,
-        ollama: &Ollama,
+        server: &impl crate::Chat,
         facts: &MessageFacts<'_>,
     ) -> Result<ModelVerdict, AiError> {
         let user = Self::message(facts);
-        let reply = ollama.chat(&self.model, SYSTEM, &user).await?;
+        let reply = server.chat(&self.model, SYSTEM, &user).await?;
         Ok(ModelVerdict {
             category: Self::parse(&reply.content),
             latency_ms: reply.latency_ms,
