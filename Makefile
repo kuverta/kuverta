@@ -4,7 +4,7 @@ COMPOSE := docker compose -f docker/docker-compose.yml
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
         triage-ui triage test-js test-e2e \
-        fill-mailbox fill-dev clean
+        fill-mailbox fill-dev scannerd-pi scannerd-to-pi clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -147,19 +147,25 @@ fill-dev: dev-up ## Put ~250 varied messages in the dev mailbox, then sync them
 
 ## -- the scanner -----------------------------------------------------------
 
-# Built in an arm64 container rather than cross-compiled: Docker on an Apple
-# silicon Mac runs arm64 natively, and bookworm's glibc (2.36) is what 64-bit
-# Raspberry Pi OS ships, so the binary runs there as it is. rustls throughout,
-# so no OpenSSL to match. The registry is cached in a volume between builds.
-scannerd-pi: ## Build scannerd for 64-bit Raspberry Pi OS (bookworm), in Docker
-	docker run --rm --platform linux/arm64 \
-	  -v "$(CURDIR)":/src -w /src \
-	  -v fuckmail-pi-cargo:/usr/local/cargo/registry \
-	  -e CARGO_TARGET_DIR=/src/target/pi \
-	  rust:1-slim-bookworm \
-	  cargo build --release -j 2 -p scannerd
-	@file target/pi/release/scannerd
-	@echo "  -> copy it and apps/scannerd/scannerd.service to the Pi (apps/scannerd/readme.md)"
+# Cross-compiled with cargo-zigbuild, which uses zig as the C compiler and
+# linker and can pin the glibc version: 2.36 is what bookworm ships. The default
+# target is the Pi Zero W's ARMv6 hard-float; a Pi 3, 4, 5 or Zero 2 W on 64-bit
+# Raspberry Pi OS wants PI_TARGET=aarch64-unknown-linux-gnu.2.36. Needs
+# `rustup target add <target without .2.36>`, `cargo install cargo-zigbuild`,
+# and zig on PATH (ziglang.org; ~/.local/zig is looked in too).
+PI_TARGET ?= arm-unknown-linux-gnueabihf.2.36
+PI_HOST ?= pi@192.168.8.241
+# The target without its glibc suffix: `basename` would strip only `.36`.
+PI_BIN = target/$(firstword $(subst ., ,$(PI_TARGET)))/release/scannerd
+
+scannerd-pi: ## Cross-compile scannerd for the Pi (PI_TARGET=, default Zero W ARMv6)
+	PATH="$(HOME)/.local/zig:$(PATH)" cargo zigbuild --release -j 2 -p scannerd --target $(PI_TARGET)
+	@file $(PI_BIN)
+
+scannerd-to-pi: scannerd-pi ## Copy scannerd and its unit file to ~/scannerd on PI_HOST (installs nothing)
+	ssh $(PI_HOST) 'mkdir -p scannerd'
+	scp $(PI_BIN) apps/scannerd/scannerd.service apps/scannerd/scannerd.env.example $(PI_HOST):scannerd/
+	@echo "  -> on the Pi: ~/scannerd/scannerd --help; installing is in apps/scannerd/readme.md"
 
 clean: ## Remove build output and the scratch store
 	cargo clean

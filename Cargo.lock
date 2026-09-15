@@ -3684,6 +3684,7 @@ dependencies = [
  "anyhow",
  "clap",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tokio",
