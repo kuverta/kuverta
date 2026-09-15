@@ -1425,9 +1425,17 @@ steps shows the cliff Tesseract falls off:
 | Gaussian blur radius | 0 | 1.2 | 2.0 | 2.8 |
 |---|---|---|---|---|
 | Tesseract, character similarity | 100% | 100% | 86% | 5% |
+| `qwen2.5vl:3b`, character similarity | 100% | 100% | 100% | 99% |
+| `qwen2.5vl:3b`, seconds for the page (Apple M2, 24 GB) | 45 | 34 | 33 | 33 |
 
 Asked, and decided: **a local vision model reads the scans.** Nothing leaves the
 machine, as with the rest of the AI here.
+
+The 1% it lost on the blurriest page is worth more attention than its size: all
+three errors were digits in dates — "3. September" read as "1.", and "2026" as
+"2025" twice — and none was marked `[?]` as the prompt asks. A blurred number
+comes back as a confident, plausible wrong one. So the scan stays one tab away,
+and a date or amount that matters is checked against it.
 
 ### How
 
