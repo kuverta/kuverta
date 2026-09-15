@@ -968,6 +968,104 @@ impl Store {
 
     // -- postal addresses --------------------------------------------------
 
+    // -- where models run ----------------------------------------------------
+
+    /// Every model provider, the local Ollama first.
+    pub fn ai_providers(&self) -> Result<Vec<StoredAiProvider>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, kind, label, base_url, key_name FROM ai_provider ORDER BY id")?;
+        let rows = stmt.query_map([], row_to_ai_provider)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn ai_provider(&self, id: i64) -> Result<Option<StoredAiProvider>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT id, kind, label, base_url, key_name FROM ai_provider WHERE id = ?1",
+                params![id],
+                row_to_ai_provider,
+            )
+            .optional()?)
+    }
+
+    pub fn add_ai_provider(&self, provider: &NewAiProvider) -> Result<i64> {
+        self.conn.execute(
+            "INSERT INTO ai_provider (kind, label, base_url, key_name, created_at)
+             VALUES (?1, ?2, ?3, lower(hex(randomblob(16))), ?4)",
+            params![
+                provider.kind,
+                provider.label,
+                provider.base_url.trim().trim_end_matches('/'),
+                now()
+            ],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Changes a provider in place, keeping its key where it is filed.
+    ///
+    /// Returns whether there was such a provider.
+    pub fn update_ai_provider(&self, id: i64, provider: &NewAiProvider) -> Result<bool> {
+        let changed = self.conn.execute(
+            "UPDATE ai_provider SET kind = ?2, label = ?3, base_url = ?4 WHERE id = ?1",
+            params![
+                id,
+                provider.kind,
+                provider.label,
+                provider.base_url.trim().trim_end_matches('/')
+            ],
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Removes a provider and every job given one of its models, so those jobs
+    /// go back to their defaults rather than pointing at nothing.
+    pub fn delete_ai_provider(&self, id: i64) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM ai_task WHERE provider_id = ?1", params![id])?;
+        tx.execute("DELETE FROM ai_provider WHERE id = ?1", params![id])?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The jobs a model has been chosen for. A job not listed uses its default.
+    pub fn ai_tasks(&self) -> Result<Vec<StoredAiTask>> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT task, provider_id, model FROM ai_task ORDER BY task")?;
+        let rows = stmt.query_map([], |row| {
+            Ok(StoredAiTask {
+                task: row.get(0)?,
+                provider_id: row.get(1)?,
+                model: row.get(2)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn set_ai_task(&self, task: &str, provider_id: i64, model: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO ai_task (task, provider_id, model) VALUES (?1, ?2, ?3)
+             ON CONFLICT (task) DO UPDATE
+             SET provider_id = excluded.provider_id, model = excluded.model",
+            params![task, provider_id, model],
+        )?;
+        Ok(())
+    }
+
+    /// Sends a job back to its default.
+    pub fn clear_ai_task(&self, task: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM ai_task WHERE task = ?1", params![task])?;
+        Ok(())
+    }
+
+    // -- postal addresses, continued -----------------------------------------
+
     /// Every configured physical address, oldest first.
     pub fn paper_mailboxes(&self) -> Result<Vec<StoredPaperMailbox>> {
         let mut stmt = self.conn.prepare(
@@ -1327,6 +1425,44 @@ pub struct MessageSummary {
     /// First line or so of the body, recorded at parse time. A list that shows
     /// only sender and subject makes you open mail to find out what it is.
     pub snippet: Option<String>,
+}
+
+/// Somewhere models run. A hosted service's key lives in the keychain.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredAiProvider {
+    pub id: i64,
+    /// `ollama`, or `openai` for a service that speaks OpenAI's API.
+    pub kind: String,
+    pub label: String,
+    pub base_url: String,
+    /// What the key is filed under in the keychain: random, fixed when the
+    /// provider is added, and unique across stores.
+    pub key_name: String,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct NewAiProvider {
+    pub kind: String,
+    pub label: String,
+    pub base_url: String,
+}
+
+/// The model chosen for one job, and where it runs.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredAiTask {
+    pub task: String,
+    pub provider_id: i64,
+    pub model: String,
+}
+
+fn row_to_ai_provider(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredAiProvider> {
+    Ok(StoredAiProvider {
+        id: row.get(0)?,
+        kind: row.get(1)?,
+        label: row.get(2)?,
+        base_url: row.get(3)?,
+        key_name: row.get(4)?,
+    })
 }
 
 /// A physical address, as stored. The API token lives in the keychain.
