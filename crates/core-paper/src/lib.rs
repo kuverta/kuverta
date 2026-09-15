@@ -222,6 +222,14 @@ pub struct PaperReport {
     pub notes: Vec<String>,
 }
 
+/// A document's file, as Paperless served it.
+#[derive(Debug, Clone)]
+pub struct Download {
+    /// Without parameters: `application/pdf`, `image/jpeg`.
+    pub content_type: String,
+    pub bytes: Vec<u8>,
+}
+
 pub struct Paperless {
     base: String,
     token: String,
@@ -412,7 +420,51 @@ impl Paperless {
             .collect())
     }
 
+    /// A document's file, for a reader that wants the page rather than its
+    /// OCR text.
+    ///
+    /// What Paperless's download serves: the archived PDF it made — pages
+    /// turned the right way up and straightened, with a text layer — when it
+    /// made one, and the original otherwise, which may be a JPEG.
+    pub async fn download(&self, id: i64) -> Result<Download> {
+        let response = self
+            .send(
+                &format!("/api/documents/{id}/download/"),
+                &[],
+                "application/pdf, image/*;q=0.8, */*;q=0.5",
+            )
+            .await?;
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(|value| value.split(';').next().unwrap_or(value).trim().to_string())
+            .unwrap_or_else(|| "application/octet-stream".to_string());
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|err| PaperError::Network(err.to_string()))?
+            .to_vec();
+        Ok(Download {
+            content_type,
+            bytes,
+        })
+    }
+
     async fn get(&self, path: &str, params: &[(String, String)]) -> Result<serde_json::Value> {
+        self.send(path, params, "application/json")
+            .await?
+            .json()
+            .await
+            .map_err(|err| PaperError::Shape(err.to_string()))
+    }
+
+    async fn send(
+        &self,
+        path: &str,
+        params: &[(String, String)],
+        accept: &str,
+    ) -> Result<reqwest::Response> {
         let url = format!("{}{path}{}", self.base, query_string(params));
         let response = self
             .http
@@ -420,7 +472,7 @@ impl Paperless {
             // Paperless's own scheme. Not Bearer: a Bearer token is silently
             // treated as anonymous, which reads as an empty mailbox.
             .header("Authorization", format!("Token {}", self.token))
-            .header("Accept", "application/json")
+            .header("Accept", accept)
             .send()
             .await
             .map_err(|err| PaperError::Network(err.to_string()))?;
@@ -435,11 +487,7 @@ impl Paperless {
                 path: path.to_string(),
             });
         }
-
-        response
-            .json()
-            .await
-            .map_err(|err| PaperError::Shape(err.to_string()))
+        Ok(response)
     }
 }
 
