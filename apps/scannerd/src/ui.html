@@ -139,8 +139,15 @@
     if (s.state === 'settling') return ['var(--warn)', `Hold still… ${s.frames_still} of ${s.settle_frames}`,
       cropped ? 'Take your hand away. The photograph is taken once nothing moves.'
               : 'Take your hand away. If this never finishes, something else in view keeps moving: choose the spot for letters in Setup.'];
-    if (s.state === 'photographed') return ['var(--ok)', 'Photographed — take the page away',
-      s.collecting ? 'Then put the next page down, or press Finish letter.' : 'Then put the next letter down.'];
+    if (s.state === 'photographed') {
+      // Still, and still well away from the empty table: either the page is
+      // lying there, or the table no longer looks as it did when it was learnt.
+      // Only the person looking can tell which.
+      const lingering = s.movement < 0.01 && s.table_change >= 0.18;
+      return ['var(--ok)', 'Photographed — take the page away',
+        lingering ? 'If the spot is already empty, the table looks different from when it was learnt: press “Learn empty table”.'
+          : s.collecting ? 'Then put the next page down, or press Finish letter.' : 'Then put the next letter down.'];
+    }
     return ['var(--ok)', 'Ready — put a page down', s.open_pages.length ? 'Next page, or Finish letter.' : ''];
   }
 
