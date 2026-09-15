@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>scannerd</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #fff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
+    --accent: #2f62c8; --ok: #2e8b57; --warn: #b86e00; --bad: #c0392b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161616; --card: #212121; --ink: #ecebe8; --muted: #9a9893; --line: #343434; --accent: #6b9cff; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 12px 16px 40px; font: 16px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
+  main { max-width: 720px; margin: 0 auto; display: grid; gap: 14px; }
+  h1 { font-size: 1.05rem; margin: 4px 0; color: var(--muted); font-weight: 600; }
+  h2 { font-size: 1rem; margin: 0 0 6px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  #state { display: flex; gap: 10px; align-items: center; font-size: 1.3rem; font-weight: 650; }
+  #dot { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); flex: none; }
+  .hint { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
+  .bad { color: var(--bad); }
+  .view { position: relative; width: 100%; aspect-ratio: 4 / 3; margin-top: 10px; background: #000; border-radius: 8px; overflow: hidden; touch-action: none; }
+  .view img { display: block; width: 100%; height: 100%; object-fit: fill; }
+  #crop { position: absolute; display: none; pointer-events: none; border: 2px solid #ffd400; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .4); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  button { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  #pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  #pages img { width: 72px; height: 96px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  ul { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
+  li { display: flex; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  .time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
+  label { display: block; margin-top: 10px; font-size: .9rem; color: var(--muted); }
+  input { width: 100%; margin-top: 3px; padding: 9px 10px; font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
+  summary { cursor: pointer; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>scannerd</h1>
+
+  <section>
+    <div id="state"><span id="dot"></span><span id="state-text">Connecting…</span></div>
+    <p class="hint" id="state-hint"></p>
+    <div class="view"><img id="live" alt="What the camera sees"></div>
+  </section>
+
+  <section>
+    <h2>This letter</h2>
+    <p class="hint" id="letter-hint">No pages yet.</p>
+    <div id="pages"></div>
+    <div class="row">
+      <button class="primary" id="finish" disabled>Finish letter</button>
+      <button id="learn">Learn empty table</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sending</h2>
+    <ul id="queue"></ul>
+    <ul id="events"><li><span class="time"></span><span class="hint">Nothing yet.</span></li></ul>
+    <div class="row"><button id="retry">Retry uploads now</button></div>
+  </section>
+
+  <section>
+    <details id="setup">
+      <summary>Setup</summary>
+      <p class="hint">Clear the table and show the whole view. Drag across where the page will lie; the crop keeps the camera's shape, so photographs are not stretched.</p>
+      <div class="row"><button id="full">Show whole view</button><button id="nocrop" type="button">No crop</button></div>
+      <div class="view" id="full-wrap"><img id="full-img" alt="The whole camera view"><div id="crop"></div></div>
+      <form id="settings">
+        <label>Crop — x, y, width, height as fractions<input id="roi" placeholder="none" autocomplete="off"></label>
+        <label>Paperless address<input id="url" placeholder="http://paperless.local:8000" inputmode="url" autocomplete="off"></label>
+        <label>API token<input id="token" type="password" autocomplete="off"></label>
+        <label>Tags, separated by commas<input id="tags" placeholder="Hauptstraße 12" autocomplete="off"></label>
+        <div class="row">
+          <button class="primary" type="submit">Save</button>
+          <button type="button" id="check-button">Check connection</button>
+        </div>
+        <p class="hint" id="check"></p>
+      </form>
+    </details>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  // Every button sends the header the server requires, which another site's
+  // page cannot make this browser send.
+  const post = (path, body) => fetch(path, {
+    method: 'POST',
+    headers: { 'X-Scannerd': '1', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  }).then(async (response) => { if (!response.ok) throw new Error(await response.text()); });
+
+  const clock = (at) => new Date(at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const seen = { frame: -1, full: -1 };
+  let filled = false;
+
+  function describe(s) {
+    if (s.state === 'no-camera') return ['var(--bad)', 'The camera is not answering', 'Check its ribbon cable, then restart scannerd.'];
+    if (s.state === 'starting') return ['var(--muted)', 'Starting the camera…', 'The first picture takes a few seconds.'];
+    if (s.state === 'settling') return ['var(--warn)', `Hold still… ${s.frames_still} of ${s.settle_frames}`, 'Take your hand away. The photograph is taken once nothing moves.'];
+    if (s.state === 'photographed') return ['var(--ok)', 'Photographed — take the page away',
+      s.collecting ? 'Then put the next page down, or finish the letter. If the table is already empty, learn it again.' : 'Then put the next letter down.'];
+    if (!s.has_baseline) return ['var(--warn)', 'Learn the empty table first', 'Clear the table under the camera and press “Learn empty table”.'];
+    return ['var(--ok)', 'Ready — put a page down', 'If a page lies there and nothing happens, clear the table and learn it again.'];
+  }
+
+  function fill(list, rows) {
+    list.replaceChildren(...rows.map(([when, text, bad]) => {
+      const item = document.createElement('li');
+      const time = Object.assign(document.createElement('span'), { className: 'time', textContent: when });
+      const body = Object.assign(document.createElement('span'), { textContent: text, className: bad ? 'bad' : '' });
+      item.append(time, body);
+      return item;
+    }));
+  }
+
+  async function refresh() {
+    let s;
+    try {
+      s = await (await fetch('/api/status', { cache: 'no-store' })).json();
+    } catch {
+      $('dot').style.background = 'var(--bad)';
+      $('state-text').textContent = 'Lost contact with the scanner';
+      return;
+    }
+
+    const [colour, text, hint] = describe(s);
+    $('dot').style.background = colour;
+    $('state-text').textContent = text;
+    $('state-hint').textContent = hint;
+    if (s.frame_at !== seen.frame && s.frame_at > 0) { seen.frame = s.frame_at; $('live').src = `/frame.bmp?n=${s.frame_at}`; }
+    if (s.full_view_at !== seen.full && s.full_view_at > 0) { seen.full = s.full_view_at; $('full-img').src = `/full-view.bmp?n=${s.full_view_at}`; }
+
+    const pages = s.open_pages;
+    $('letter-hint').textContent = !s.collecting ? 'Each page is sent on its own.'
+      : pages.length ? `${pages.length} page${pages.length === 1 ? '' : 's'} so far.` : 'No pages yet.';
+    const shown = [...$('pages').children].map((image) => image.dataset.name).join();
+    if (shown !== pages.join()) {
+      $('pages').replaceChildren(...pages.map((name) => Object.assign(document.createElement('img'),
+        { src: `/page/${encodeURIComponent(name)}`, alt: name, loading: 'lazy', dataset: { name } })));
+      [...$('pages').children].forEach((image, index) => { image.dataset.name = pages[index]; });
+    }
+    $('finish').disabled = !s.collecting || pages.length === 0;
+
+    fill($('queue'), s.queue.map((item) => ['waiting', item.attempts ? `${item.name} — tried ${item.attempts}×` : item.name, item.attempts > 0]));
+    if (s.events.length) fill($('events'), s.events.map((event) => [clock(event.at), event.text, !event.ok]));
+    if (s.check) {
+      $('check').textContent = `${clock(s.check.at)} — ${s.check.text}`;
+      $('check').className = s.check.ok ? 'hint' : 'hint bad';
+    }
+
+    if (!filled) {
+      filled = true;
+      $('url').value = s.settings.url;
+      $('tags').value = s.settings.tags.join(', ');
+      $('roi').value = s.settings.roi || '';
+      $('token').placeholder = s.settings.token_set ? 'set — leave empty to keep it' : 'not set yet';
+      showCrop($('roi').value);
+    }
+  }
+
+  function showCrop(roi) {
+    const box = $('crop');
+    const parts = roi.split(',').map(Number);
+    if (parts.length !== 4 || parts.some(Number.isNaN)) { box.style.display = 'none'; return; }
+    const [x, y, w, h] = parts.map((part) => `${part * 100}%`);
+    Object.assign(box.style, { display: 'block', left: x, top: y, width: w, height: h });
+  }
+
+  // Dragging out a crop. Equal fractions of width and height keep the sensor's
+  // 4:3, so the photograph fills its full size without being stretched.
+  const wrap = $('full-wrap');
+  let start = null;
+  const fraction = (event) => {
+    const box = wrap.getBoundingClientRect();
+    const clamp = (value) => Math.min(1, Math.max(0, value));
+    return [clamp((event.clientX - box.left) / box.width), clamp((event.clientY - box.top) / box.height)];
+  };
+  wrap.addEventListener('pointerdown', (event) => { start = fraction(event); wrap.setPointerCapture(event.pointerId); });
+  wrap.addEventListener('pointermove', (event) => {
+    if (!start) return;
+    const [x, y] = fraction(event);
+    const size = Math.min(1, Math.max(0.05, Math.abs(x - start[0]), Math.abs(y - start[1])));
+    const left = Math.min(Math.max(0, x < start[0] ? start[0] - size : start[0]), 1 - size);
+    const top = Math.min(Math.max(0, y < start[1] ? start[1] - size : start[1]), 1 - size);
+    $('roi').value = [left, top, size, size].map((value) => value.toFixed(3)).join(',');
+    showCrop($('roi').value);
+  });
+  wrap.addEventListener('pointerup', () => { start = null; });
+
+  const complain = (error) => alert(error.message);
+  $('roi').addEventListener('input', (event) => showCrop(event.target.value));
+  $('nocrop').onclick = () => { $('roi').value = ''; showCrop(''); };
+  $('full').onclick = () => post('/api/full-view').catch(complain);
+  $('finish').onclick = () => post('/api/finish').catch(complain);
+  $('retry').onclick = () => post('/api/retry').catch(complain);
+  $('learn').onclick = () => {
+    if (confirm('Is the table empty under the camera?')) post('/api/learn-empty').catch(complain);
+  };
+  $('check-button').onclick = () => { $('check').textContent = 'Checking…'; post('/api/check').catch(complain); };
+  $('settings').onsubmit = (event) => {
+    event.preventDefault();
+    const tags = $('tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
+    post('/api/settings', { url: $('url').value.trim(), token: $('token').value, tags, roi: $('roi').value.trim() })
+      .then(() => { $('token').value = ''; $('check').textContent = 'Saved. Checking the connection…'; return post('/api/check'); })
+      .catch(complain);
+  };
+
+  refresh();
+  setInterval(refresh, 1500);
+</script>
+</body>
+</html>

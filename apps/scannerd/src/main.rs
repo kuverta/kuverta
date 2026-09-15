@@ -16,16 +16,22 @@
 //! flat battery or a Wi-Fi drop in between means a retry rather than a letter
 //! nobody has.
 
+use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use clap::Parser;
 use scannerd::button::Button;
-use scannerd::camera::RpiCamera;
-use scannerd::run::{Letters, Scanner};
+use scannerd::camera::{Camera, RpiCamera};
+use scannerd::detect::State;
+use scannerd::hub::{Command, Event, Hub, Queued, SettingsView};
+use scannerd::run::{Letters, Scanner, Turn};
+use scannerd::settings::Settings;
 use scannerd::spool::Spool;
 use scannerd::upload::Uploader;
+use scannerd::web::{self, Web};
 
 #[derive(Parser)]
 #[command(name = "scannerd", about = "Capture post and hand it to Paperless-ngx")]
@@ -35,11 +41,13 @@ struct Args {
     url: String,
 
     /// An API token. From the environment by preference, so it stays out of
-    /// the process list on a machine anyone on the network can see.
-    #[arg(long, env = "PAPERLESS_TOKEN")]
-    token: String,
+    /// the process list on a machine anyone on the network can see. May be
+    /// left out when the setup page will set it.
+    #[arg(long, env = "PAPERLESS_TOKEN", hide_env_values = true)]
+    token: Option<String>,
 
-    /// Where captures wait until Paperless has them.
+    /// Where captures wait until Paperless has them. The setup page's
+    /// settings and the learnt empty table are kept here too.
     #[arg(
         long,
         env = "SCANNERD_SPOOL",
@@ -83,7 +91,7 @@ struct Args {
     /// Collect pages into one letter until this button is pressed: an input
     /// device such as the one the `gpio-key` overlay makes
     /// (`/dev/input/by-path/…`), or `stdin` to press Enter in the terminal.
-    /// Without it, every page is its own document.
+    /// With neither this nor the setup page, every page is its own document.
     #[arg(long, env = "SCANNERD_BUTTON")]
     button: Option<PathBuf>,
 
@@ -96,13 +104,22 @@ struct Args {
     #[arg(long, default_value_t = 300)]
     letter_idle_secs: u64,
 
+    /// Serve the setup page here, e.g. `0.0.0.0:8080`. Anything but a loopback
+    /// address needs SCANNERD_UI_PASSWORD: the page shows photographs of post.
+    #[arg(long, env = "SCANNERD_UI")]
+    ui: Option<SocketAddr>,
+
+    /// The setup page's password (any user name).
+    #[arg(long, env = "SCANNERD_UI_PASSWORD", hide_env_values = true)]
+    ui_password: Option<String>,
+
     /// Drain the spool and exit, without watching for pages. For a cron job,
     /// and for checking the other half works before there is a camera.
     #[arg(long)]
     drain_only: bool,
 }
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -114,18 +131,15 @@ async fn main() -> Result<()> {
     let args = Args::parse();
 
     let spool = Spool::open(&args.spool)?;
-    let uploader = Uploader::new(
-        &args.url,
-        &args.token,
-        args.tags.clone(),
-        args.title_prefix.clone(),
-    )?;
+    let mut settings = Settings::load(spool.dir())?;
+    let mut uploader = uploader_for(&args, &settings)?;
     let mut scanner = Scanner::new(
         args.settle_frames,
         Duration::from_secs(args.drain_every_secs),
-    );
+    )
+    .keep_baseline_in(spool.dir().join("empty-table.gray"));
 
-    tracing::info!(spool = %spool.dir().display(), paperless = %args.url, "starting");
+    tracing::info!(spool = %spool.dir().display(), "starting");
 
     // Whatever is already waiting goes first, before anything new is taken.
     // A daemon that photographs eagerly and uploads lazily is one that fills a
@@ -136,31 +150,185 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // After the drain: a button that is not there must not stop post that is
-    // already photographed from being sent.
-    if let Some(device) = &args.button {
-        let button = if device.as_os_str() == "stdin" {
-            Button::stdin()
-        } else {
-            Button::input_device(device, args.button_key)?
-        };
-        tracing::info!(button = %device.display(), "collecting pages into letters");
+    let mut camera = RpiCamera {
+        program: args.camera.clone(),
+        roi: settings.effective_roi(args.roi.as_deref()),
+        ..RpiCamera::default()
+    };
+    let hub = Arc::new(Hub::new(camera.preview_width, camera.preview_height));
+
+    if let Some(address) = args.ui {
+        let password = args
+            .ui_password
+            .clone()
+            .filter(|password| !password.is_empty());
+        if password.is_none() && !address.ip().is_loopback() {
+            bail!(
+                "the setup page on {address} would show photographs of your post to anyone on \
+                 the network: set SCANNERD_UI_PASSWORD, or serve it on 127.0.0.1"
+            );
+        }
+        let listener = tokio::net::TcpListener::bind(address)
+            .await
+            .with_context(|| format!("could not serve the setup page on {address}"))?;
+        tracing::info!(%address, "setup page");
+        let web = Web::new(hub.clone(), spool.dir().to_path_buf(), password);
+        tokio::spawn(web::serve(listener, Arc::new(web)));
+    }
+
+    // Pages collect into letters whenever there is a way to finish one: the
+    // button on the device, or the one on the page.
+    let button = match &args.button {
+        Some(device) if device.as_os_str() == "stdin" => Some(Button::stdin()),
+        Some(device) => Some(Button::input_device(device, args.button_key)?),
+        None if args.ui.is_some() => Some(Button::channel().1),
+        None => None,
+    };
+    if let Some(button) = button {
+        tracing::info!("collecting pages into letters");
         scanner = scanner.collecting(Letters {
             button,
             idle: Duration::from_secs(args.letter_idle_secs),
         });
     }
 
-    let camera = RpiCamera {
-        program: args.camera.clone(),
-        roi: args.roi.clone(),
-        ..RpiCamera::default()
-    };
     let interval = Duration::from_millis(args.interval_ms);
     loop {
         tokio::time::sleep(interval).await;
-        scanner.turn(&camera, &spool, &uploader, now()).await;
+        let now = now();
+
+        // Between turns, never during one: the loop owns the camera.
+        for command in hub.take_commands() {
+            match command {
+                Command::FinishLetter => {
+                    if !scanner.request_close() {
+                        hub.event(now, false, "pages are not being collected into letters");
+                    }
+                }
+                Command::LearnEmpty => {
+                    scanner.learn_empty(now);
+                }
+                Command::RetryNow => scanner.retry_all(&spool, &uploader, now).await,
+                Command::FullView => match camera.full_view() {
+                    Ok(frame) => hub.set_full_view(frame),
+                    Err(err) => {
+                        hub.event(now, false, format!("no picture of the whole view: {err:#}"))
+                    }
+                },
+                Command::CheckPaperless => {
+                    let (ok, text) = match uploader.check().await {
+                        Ok(text) => (true, text),
+                        Err(err) => (false, format!("{err:#}")),
+                    };
+                    hub.update(|status| status.check = Some(Event { at: now, ok, text }));
+                }
+                Command::Settings(newer) => {
+                    settings.merge(newer);
+                    match settings.save(spool.dir()) {
+                        Ok(()) => hub.event(now, true, "settings saved"),
+                        Err(err) => {
+                            hub.event(now, false, format!("could not save the settings: {err:#}"))
+                        }
+                    }
+                    match uploader_for(&args, &settings) {
+                        Ok(changed) => uploader = changed,
+                        Err(err) => hub.event(now, false, format!("{err:#}")),
+                    }
+                    let roi = settings.effective_roi(args.roi.as_deref());
+                    if roi != camera.roi {
+                        camera.roi = roi;
+                        // The camera now shows a different part of the table.
+                        scanner.forget_baseline();
+                        hub.event(
+                            now,
+                            true,
+                            "crop changed: clear the table and learn it again",
+                        );
+                    }
+                }
+            }
+        }
+
+        let turn = scanner.turn(&camera, &spool, &uploader, now).await;
+
+        if args.ui.is_some() {
+            let view = SettingsView {
+                url: settings.url.clone().unwrap_or_else(|| args.url.clone()),
+                tags: settings.tags.clone().unwrap_or_else(|| args.tags.clone()),
+                roi: camera.roi.clone(),
+                token_set: settings.token.is_some()
+                    || args.token.as_deref().is_some_and(|t| !t.is_empty()),
+            };
+            publish(&hub, &mut scanner, &spool, view, &turn);
+        } else {
+            scanner.take_events();
+        }
     }
+}
+
+/// The uploader for the settings in force: the page's, then the env file's.
+fn uploader_for(args: &Args, settings: &Settings) -> Result<Uploader> {
+    let url = settings.url.clone().unwrap_or_else(|| args.url.clone());
+    let token = settings
+        .token
+        .clone()
+        .or_else(|| args.token.clone())
+        .unwrap_or_default();
+    let tags = settings.tags.clone().unwrap_or_else(|| args.tags.clone());
+    Uploader::new(&url, &token, tags, args.title_prefix.clone())
+}
+
+/// Tells the page what the last turn saw.
+fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsView, turn: &Turn) {
+    for event in scanner.take_events() {
+        hub.event(event.at, event.ok, event.text);
+    }
+    if *turn != Turn::NoFrame {
+        if let Some(frame) = scanner.last_frame() {
+            hub.set_frame(frame.to_vec());
+        }
+    }
+
+    let name = |path: &std::path::Path| {
+        path.file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
+    let open_pages = spool
+        .open_pages()
+        .unwrap_or_default()
+        .iter()
+        .map(|page| name(page))
+        .collect();
+    let queue = spool
+        .pending()
+        .unwrap_or_default()
+        .iter()
+        .map(|item| Queued {
+            name: name(&item.path),
+            attempts: item.attempts,
+        })
+        .collect();
+    let (state, frames_still) = match (turn, scanner.state()) {
+        (Turn::NoFrame, _) => ("no-camera", 0),
+        (_, State::Waiting) => ("waiting", 0),
+        (_, State::Settling { frames_still }) => ("settling", frames_still),
+        (_, State::Spent) => ("photographed", 0),
+    };
+
+    let settle_frames = scanner.settle_frames();
+    let has_baseline = scanner.has_baseline();
+    let collecting = scanner.collecting_letters();
+    hub.update(|status| {
+        status.state = state.to_string();
+        status.frames_still = frames_still;
+        status.settle_frames = settle_frames;
+        status.has_baseline = has_baseline;
+        status.collecting = collecting;
+        status.open_pages = open_pages;
+        status.queue = queue;
+        status.settings = settings;
+    });
 }
 
 fn now() -> u64 {
