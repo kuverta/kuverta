@@ -72,6 +72,12 @@ pub struct Status {
     /// Counters, not times: the page reloads an image when its number changes.
     pub frame_at: u64,
     pub full_view_at: u64,
+    /// Finishing was asked for and is waiting for things to be still.
+    pub finishing: bool,
+    /// The last frame's change from the empty table, and from the frame
+    /// before, as fractions — what a person tuning the rig looks at.
+    pub table_change: f32,
+    pub movement: f32,
 }
 
 impl Default for Status {
@@ -89,6 +95,9 @@ impl Default for Status {
             check: None,
             frame_at: 0,
             full_view_at: 0,
+            finishing: false,
+            table_change: 0.0,
+            movement: 0.0,
         }
     }
 }

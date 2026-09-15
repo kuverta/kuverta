@@ -164,7 +164,11 @@ scannerd-pi: ## Cross-compile scannerd for the Pi (PI_TARGET=, default Zero W AR
 
 scannerd-to-pi: scannerd-pi ## Copy scannerd and its unit file to ~/scannerd on PI_HOST (installs nothing)
 	ssh $(PI_HOST) 'mkdir -p scannerd'
-	scp $(PI_BIN) apps/scannerd/scannerd.service apps/scannerd/scannerd.env.example $(PI_HOST):scannerd/
+	@# Copied under another name and renamed: Linux refuses to open a running
+	@# executable for writing, but lets a rename replace it.
+	scp $(PI_BIN) $(PI_HOST):scannerd/scannerd.new
+	scp apps/scannerd/scannerd.service apps/scannerd/scannerd.env.example $(PI_HOST):scannerd/
+	ssh $(PI_HOST) 'mv scannerd/scannerd.new scannerd/scannerd'
 	@echo "  -> on the Pi: ~/scannerd/scannerd --help; installing is in apps/scannerd/readme.md"
 
 clean: ## Remove build output and the scratch store
