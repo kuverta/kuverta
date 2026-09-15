@@ -7,9 +7,12 @@ use std::thread;
 
 use core_ai::{Ollama, TRANSCRIBE};
 
-/// Answers one chat request with `reply` as the model's text and hands back
-/// the request body.
-fn serve(reply: &'static str) -> (String, mpsc::Receiver<serde_json::Value>) {
+/// Answers chat requests with `reply` as the model's text and `done_reason` as
+/// why it stopped, and hands back the request bodies.
+fn serve(
+    reply: &'static str,
+    done_reason: &'static str,
+) -> (String, mpsc::Receiver<serde_json::Value>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
     let (tx, rx) = mpsc::channel();
@@ -32,7 +35,12 @@ fn serve(reply: &'static str) -> (String, mpsc::Receiver<serde_json::Value>) {
             if let Ok(json) = serde_json::from_slice(&body) {
                 let _ = tx.send(json);
             }
-            let answer = serde_json::json!({ "message": { "role": "assistant", "content": reply } }).to_string();
+            let answer = serde_json::json!({
+                "message": { "role": "assistant", "content": reply },
+                "done": true,
+                "done_reason": done_reason,
+            })
+            .to_string();
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
                 answer.len()
@@ -45,7 +53,7 @@ fn serve(reply: &'static str) -> (String, mpsc::Receiver<serde_json::Value>) {
 
 #[tokio::test]
 async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
-    let (base, requests) = serve("Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211");
+    let (base, requests) = serve("Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211", "stop");
     let jpeg = b"\xff\xd8a photographed page";
 
     let reply = Ollama::new(&base)
@@ -54,6 +62,7 @@ async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
         .await
         .unwrap();
     assert_eq!(reply.content, "Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211");
+    assert!(!reply.truncated);
 
     let body = requests.recv().unwrap();
     assert_eq!(body["model"], "qwen2.5vl:3b");
@@ -65,6 +74,41 @@ async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
     // classification gets.
     assert_eq!(body["options"]["temperature"], 0);
     assert!(body["options"]["num_predict"].as_u64().unwrap() >= 2048);
+    // A scan is thousands of tokens on its own; in Ollama's default 4096 the
+    // text has no room and is cut off mid-page.
+    let context = body["options"]["num_ctx"].as_u64().unwrap();
+    assert!(context >= 3_341 + 4096, "{context}");
+}
+
+#[tokio::test]
+async fn a_second_reading_penalises_repetition_and_the_first_does_not() {
+    let (base, requests) = serve("text", "stop");
+    let ollama = Ollama::new(&base).unwrap();
+    ollama.transcribe("qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    ollama
+        .transcribe_guarded("qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
+
+    let plain = requests.recv().unwrap();
+    let guarded = requests.recv().unwrap();
+    // The penalty costs numbers on pages that read cleanly, so only the
+    // second reading has it.
+    assert!(plain["options"].get("repeat_penalty").is_none());
+    assert!(guarded["options"]["repeat_penalty"].as_f64().unwrap() > 1.0);
+    assert_eq!(guarded["options"]["num_ctx"], plain["options"]["num_ctx"]);
+    assert_eq!(guarded["messages"], plain["messages"]);
+}
+
+#[tokio::test]
+async fn a_page_the_model_ran_out_of_room_on_says_so() {
+    let (base, _requests) = serve("EUR\nCt\nEUR\nCt", "length");
+    let reply = Ollama::new(&base)
+        .unwrap()
+        .transcribe("qwen2.5vl:3b", b"\xff\xd8a photographed page")
+        .await
+        .unwrap();
+    assert!(reply.truncated);
 }
 
 #[test]

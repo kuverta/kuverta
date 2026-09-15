@@ -162,6 +162,10 @@ impl OpenAiCompatible {
         Ok(ChatReply {
             content: content.to_string(),
             latency_ms: started.elapsed().as_millis() as i64,
+            truncated: reply
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                == Some("length"),
         })
     }
 
@@ -243,6 +247,20 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.transcribe(model, jpeg).await,
             Self::OpenAi(service) => service.transcribe(model, jpeg).await,
+        }
+    }
+
+    /// A second reading of a page the first looped on, where the provider has
+    /// a measured way to discourage repetition: Ollama's repeat penalty. `None`
+    /// for a hosted service, whose penalties are on another scale and untried.
+    pub async fn transcribe_guarded(
+        &self,
+        model: &str,
+        jpeg: &[u8],
+    ) -> Result<Option<ChatReply>, AiError> {
+        match self {
+            Self::Ollama(ollama) => ollama.transcribe_guarded(model, jpeg).await.map(Some),
+            Self::OpenAi(_) => Ok(None),
         }
     }
 }
