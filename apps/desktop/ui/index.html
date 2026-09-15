@@ -50,7 +50,18 @@
     <article id="reading" hidden>
       <h2 id="reading-subject"></h2>
       <p id="reading-meta"></p>
+      <!-- Post only: the OCR text, or the scan itself for when the text is no
+           use. The choice is kept from letter to letter. -->
+      <div id="reading-tabs" class="tabs" role="tablist" hidden>
+        <button type="button" role="tab" data-view="text">Text</button>
+        <button type="button" role="tab" data-view="pdf">PDF</button>
+      </div>
       <pre id="reading-body"></pre>
+      <div id="reading-file" hidden>
+        <iframe id="reading-pdf" title="The scanned letter" hidden></iframe>
+        <img id="reading-image" alt="The scanned letter" hidden>
+        <div id="reading-file-status" class="file-status"></div>
+      </div>
     </article>
 
     <section id="compose" hidden>
@@ -81,6 +92,7 @@
     <span>c compose</span>
     <span>R reply</span>
     <span>r sync</span>
+    <span>v text/pdf</span>
     <span>/ search</span>
     <span>, settings</span>
   </footer>

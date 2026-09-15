@@ -209,6 +209,23 @@ async fn paper_document(
     session.document(document_id).await.map_err(fail)
 }
 
+/// A letter's file — the scan itself — as raw bytes.
+///
+/// A binary response rather than JSON: a scan is megabytes, and as a JSON
+/// array of numbers it would be several times that across the bridge. Through
+/// the app at all because the window's content policy keeps it from reaching
+/// Paperless, and the download needs the token the window never sees.
+#[tauri::command]
+async fn paper_file(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+) -> Result<tauri::ipc::Response, String> {
+    let session = paper_session(&app, id)?;
+    let download = session.download(document_id).await.map_err(fail)?;
+    Ok(tauri::ipc::Response::new(download.bytes))
+}
+
 #[tauri::command]
 async fn paper_check(app: State<'_, App>, id: i64) -> Result<core_rpc::PaperReport, String> {
     let session = paper_session(&app, id)?;
@@ -460,6 +477,7 @@ fn main() {
             set_paper_token,
             paper_documents,
             paper_document,
+            paper_file,
             paper_check,
             file_post,
             undo,
