@@ -38,6 +38,9 @@ pub struct Letters {
 /// takes them.
 const EVENTS: usize = 50;
 
+/// How long a finish waits for something that keeps moving.
+pub const FINISH_WAIT_SECS: u64 = 15;
+
 pub struct Scanner {
     detector: Detector,
     /// How often the spool is looked at when nothing is being captured.
@@ -46,9 +49,9 @@ pub struct Scanner {
     preview_failures: u32,
     /// `None`: every page is its own document.
     letters: Option<Letters>,
-    /// Finishing was asked for, and the letter closes as soon as no page is
-    /// settling.
-    close_requested: bool,
+    /// When finishing was asked for. The letter closes as soon as no page is
+    /// settling, or after [`FINISH_WAIT_SECS`] if something never stops moving.
+    close_requested_at: Option<u64>,
     /// The camera's last frame: what the page shows, and what "learn empty
     /// table" learns.
     last_frame: Option<Vec<u8>>,
@@ -70,7 +73,7 @@ impl Scanner {
             last_drain: None,
             preview_failures: 0,
             letters: None,
-            close_requested: false,
+            close_requested_at: None,
             last_frame: None,
             baseline_file: None,
             saved_generation: 0,
@@ -136,14 +139,27 @@ impl Scanner {
     }
 
     /// The page's "Finish letter". Goes through the same wait as the button,
-    /// so a page still settling is not left out. False when pages are not
-    /// being collected.
-    pub fn request_close(&mut self) -> bool {
+    /// so a page still settling is not left out, and says so at once. False
+    /// when pages are not being collected.
+    pub fn request_close(&mut self, now: u64) -> bool {
         if self.letters.is_none() {
             return false;
         }
-        self.close_requested = true;
+        if self.close_requested_at.is_none() {
+            self.close_requested_at = Some(now);
+            self.event(now, true, "finishing the letter");
+        }
         true
+    }
+
+    /// Whether finishing was asked for and the letter is not closed yet.
+    pub fn finishing(&self) -> bool {
+        self.close_requested_at.is_some()
+    }
+
+    /// The last frame's change from the empty table and from the frame before.
+    pub fn measure(&self) -> Option<(f32, f32)> {
+        self.detector.last_measure()
     }
 
     /// "The table is empty now": learns the last frame as the empty table and
@@ -328,16 +344,26 @@ impl Scanner {
             Some(letters) => (letters.button.pressed(), letters.idle),
             None => return false,
         };
-        if pressed {
-            self.close_requested = true;
+        if pressed && self.close_requested_at.is_none() {
+            self.close_requested_at = Some(now);
         }
 
         // Not while a page is settling. Putting the last page down and
         // pressing the button is one movement, and the press arrives before
         // the page has been still long enough to photograph — closing then
         // would send the letter without its last page.
+        //
+        // But not for ever. On the Pi, with the room in view, something was
+        // always moving, and a press on the page did nothing at all until the
+        // letter closed itself five minutes later. After a while the press
+        // wins; anything not yet photographed starts the next letter.
         if matches!(self.detector.state(), State::Settling { .. }) {
-            return false;
+            let waited = self
+                .close_requested_at
+                .is_some_and(|at| now.saturating_sub(at) >= FINISH_WAIT_SECS);
+            if !waited {
+                return false;
+            }
         }
 
         let left_alone = match spool.last_page_at() {
@@ -350,11 +376,11 @@ impl Scanner {
                 false
             }
         };
-        let requested = self.close_requested;
+        let requested = self.close_requested_at.is_some();
         if !requested && !left_alone {
             return false;
         }
-        self.close_requested = false;
+        self.close_requested_at = None;
 
         let pages = spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
         match spool.close_letter() {
