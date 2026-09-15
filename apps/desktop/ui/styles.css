@@ -164,6 +164,18 @@ footer {
 
 .account .label { font-weight: 600; font-size: 12px; }
 
+/* Postboxes read as inboxes of their own, set off from the account's folders
+   the way the accounts are. */
+#postboxes:not(:empty) {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+}
+
+/* A postbox has no folders or categories. The hidden attribute says so, and
+   must win over any display rule a nav picks up. */
+#sidebar [hidden] { display: none !important; }
+
 /* -- message list -------------------------------------------------------- */
 
 #list {
