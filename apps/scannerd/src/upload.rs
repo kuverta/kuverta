@@ -41,6 +41,11 @@ impl Uploader {
         if !base.starts_with("http://") && !base.starts_with("https://") {
             bail!("{base_url} is not a usable Paperless URL");
         }
+        // reqwest is built without a crypto provider (see Cargo.toml), so one
+        // has to be the process default before a client is made. An error only
+        // means one already is.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+
         // Bounded, because the capture loop waits on uploads: a Wi-Fi link that
         // drops mid-request must fail the upload, which keeps the capture, not
         // hang the loop so that the next letter is never seen.
