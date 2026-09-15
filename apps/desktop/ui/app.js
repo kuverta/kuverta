@@ -571,9 +571,13 @@ async function openSelected() {
       // reading a scan, which is not the same as a letter with nothing on it.
       el("reading-body").textContent =
         detail.body_text ?? "(no text yet — Paperless may still be reading this scan)";
+      if (scan.key !== scanKey(row)) clearScan();
+      showReadingView();
       return;
     }
 
+    clearScan();
+    showReadingView();
     const detail = await invoke("message", { account: state.account, id: row.id });
     reading.hidden = false;
     emptyPane.hidden = true;
@@ -592,6 +596,106 @@ async function openSelected() {
   } catch (err) {
     say(`could not open: ${err}`, true);
   }
+}
+
+// -- post: the text, or the scan itself ----------------------------------------
+
+/// Which view a letter opens on. Kept across letters and restarts: someone
+/// whose scans read badly wants the page every time, not a click per letter.
+let readingView = (() => {
+  try {
+    return localStorage.getItem("readingView") === "pdf" ? "pdf" : "text";
+  } catch {
+    return "text";
+  }
+})();
+
+/// The scan on screen, by postbox and document: ids are Paperless's, so two
+/// postboxes on two instances can share one.
+const scan = { key: null, url: null, loading: null };
+const scanKey = (row) => (state.postbox ? `${state.postbox.id}:${row.id}` : null);
+
+function showReadingView() {
+  const onPost = state.postbox !== null;
+  const pdf = onPost && readingView === "pdf";
+  el("reading-tabs").hidden = !onPost;
+  el("reading-body").hidden = pdf;
+  el("reading-file").hidden = !pdf;
+  for (const tab of el("reading-tabs").querySelectorAll("[data-view]")) {
+    const active = tab.dataset.view === (pdf ? "pdf" : "text");
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", String(active));
+  }
+  if (pdf) loadScan();
+}
+
+function setReadingView(view) {
+  readingView = view;
+  try {
+    localStorage.setItem("readingView", view);
+  } catch {
+    // A preference, not state: without storage it lasts until the window closes.
+  }
+  if (!reading.hidden) showReadingView();
+}
+
+/// Fetches the letter's file through the app — the window may not reach
+/// Paperless itself, and the download needs the token — and shows it.
+async function loadScan() {
+  const row = state.rows.get(state.selected);
+  if (!row || !state.postbox) return;
+  const key = scanKey(row);
+  if (scan.key === key && (scan.url || scan.loading)) return;
+
+  clearScan();
+  scan.key = key;
+  el("reading-file-status").textContent = "Loading the scan from Paperless…";
+  const loading = invoke("paper_file", { id: state.postbox.id, documentId: row.id });
+  scan.loading = loading;
+  try {
+    const bytes = new Uint8Array(await loading);
+    if (scan.key !== key) return; // moved on to another letter meanwhile
+    const type = sniff(bytes);
+    scan.url = URL.createObjectURL(new Blob([bytes], { type }));
+    const frame = el("reading-pdf");
+    const image = el("reading-image");
+    if (type === "application/pdf") {
+      frame.src = scan.url;
+      frame.hidden = false;
+    } else {
+      image.src = scan.url;
+      image.hidden = false;
+    }
+    el("reading-file-status").textContent = "";
+  } catch (err) {
+    if (scan.key === key) el("reading-file-status").textContent = `could not load the scan: ${err}`;
+  } finally {
+    if (scan.loading === loading) scan.loading = null;
+  }
+}
+
+function clearScan() {
+  if (scan.url) URL.revokeObjectURL(scan.url);
+  Object.assign(scan, { key: null, url: null, loading: null });
+  for (const id of ["reading-pdf", "reading-image"]) {
+    el(id).removeAttribute("src");
+    el(id).hidden = true;
+  }
+  el("reading-file-status").textContent = "";
+}
+
+/// What the bytes are. The app hands over only bytes, and Paperless's download
+/// is a PDF when it archived the scan and the original — often a JPEG — when not.
+function sniff(bytes) {
+  const starts = (...prefix) => prefix.every((value, i) => bytes[i] === value);
+  if (starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";
+  if (starts(0xff, 0xd8)) return "image/jpeg";
+  if (starts(0x89, 0x50, 0x4e, 0x47)) return "image/png";
+  return "application/octet-stream";
+}
+
+for (const tab of el("reading-tabs").querySelectorAll("[data-view]")) {
+  tab.onclick = () => setReadingView(tab.dataset.view);
 }
 
 function select(index) {
@@ -901,6 +1005,9 @@ const KEYS = {
   u: mailOnly(toggleRead),
   z: mailOnly(undo),
   r: sync,
+  v: () => {
+    if (state.postbox) setReadingView(readingView === "pdf" ? "text" : "pdf");
+  },
   c: mailOnly(() => openCompose()),
   ",": openSettings,
   R: mailOnly(() => openCompose({ replyAll: false })),
