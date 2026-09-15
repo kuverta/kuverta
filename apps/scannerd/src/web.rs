@@ -27,6 +27,7 @@ use tokio::net::TcpListener;
 
 use crate::hub::{Command, Hub};
 use crate::settings::Settings;
+use crate::spool::is_page_name;
 
 const PAGE: &str = include_str!("ui.html");
 
@@ -93,6 +94,10 @@ impl Web {
             "/api/retry" => Command::RetryNow,
             "/api/full-view" => Command::FullView,
             "/api/check" => Command::CheckPaperless,
+            "/api/delete-page" => match read_page_name(body).await {
+                Ok(name) => Command::DeletePage(name),
+                Err(message) => return text(StatusCode::BAD_REQUEST, &message),
+            },
             "/api/settings" => match read_settings(body).await {
                 Ok(settings) => Command::Settings(settings),
                 Err(message) => return text(StatusCode::BAD_REQUEST, &message),
@@ -127,12 +132,7 @@ impl Web {
     /// A page of the letter being collected, by file name — and nothing that
     /// could climb out of the spool's `open/` directory.
     fn page(&self, name: &str) -> Reply {
-        let plain = name.ends_with(".jpg")
-            && !name.starts_with('.')
-            && name
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.');
-        if !plain {
+        if !is_page_name(name) {
             return not_found();
         }
         match std::fs::read(self.spool_dir.join("open").join(name)) {
@@ -168,6 +168,25 @@ pub async fn serve(listener: TcpListener, web: Arc<Web>) {
             }
         });
     }
+}
+
+/// `{"name": "<page file name>"}`, checked to be a page's name before the loop
+/// ever sees it.
+async fn read_page_name(body: Incoming) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct Page {
+        name: String,
+    }
+    let bytes = Limited::new(body, 1024)
+        .collect()
+        .await
+        .map_err(|err| format!("could not read which page: {err}"))?
+        .to_bytes();
+    let page: Page = serde_json::from_slice(&bytes).map_err(|err| format!("which page? {err}"))?;
+    if !is_page_name(&page.name) {
+        return Err(format!("{:?} is not a page", page.name));
+    }
+    Ok(page.name)
 }
 
 async fn read_settings(body: Incoming) -> Result<Settings, String> {

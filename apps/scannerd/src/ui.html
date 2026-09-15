@@ -35,7 +35,14 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   button:disabled { opacity: .45; cursor: default; }
   #pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  #pages img { width: 72px; height: 96px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); }
+  #pages img { width: 72px; height: 96px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
+  .thumb { display: grid; gap: 2px; justify-items: center; font-size: .85rem; color: var(--muted); }
+  .thumb button { padding: 2px 10px; font-size: .85rem; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
+  dialog { border: 0; border-radius: 12px; padding: 14px; width: min(92vw, 520px); background: var(--card); color: var(--ink); }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog img { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
+  dialog h2 { margin: 0 0 8px; }
   ul { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
   ul li { display: flex; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); }
   ul li:first-child { border-top: 0; }
@@ -103,6 +110,16 @@
   </section>
 </main>
 
+<dialog id="viewer">
+  <h2 id="viewer-title"></h2>
+  <img id="viewer-image" alt="">
+  <p class="hint">Delete it if it is not a page of this letter — a hand, the empty table, or a page taken twice.</p>
+  <div class="row">
+    <button class="danger" id="viewer-delete" type="button">Delete this page</button>
+    <button id="viewer-keep" type="button">Keep</button>
+  </div>
+</dialog>
+
 <script>
   const $ = (id) => document.getElementById(id);
 
@@ -118,6 +135,19 @@
   const percent = (fraction) => `${Math.round(fraction * 100)}%`;
   const seen = { frame: -1, full: -1, todo: '' };
   let filled = false;
+  const deleting = new Set();
+  let viewing = null;
+
+  // A page is looked at before it is deleted: thumbnails are small, and the
+  // wrong one is easy to tap.
+  function showPage(name, number) {
+    viewing = name;
+    $('viewer-title').textContent = `Page ${number} of this letter`;
+    $('viewer-image').src = `/page/${encodeURIComponent(name)}`;
+    $('viewer-image').alt = `Page ${number}`;
+    $('viewer-delete').textContent = `Delete page ${number}`;
+    $('viewer').showModal();
+  }
   // A press shows at once; the status catches up within a turn or two.
   let pressedFinishAt = 0;
 
@@ -204,16 +234,24 @@
     if (s.frame_at !== seen.frame && s.frame_at > 0) { seen.frame = s.frame_at; $('live').src = `/frame.bmp?n=${s.frame_at}`; }
     if (s.full_view_at !== seen.full && s.full_view_at > 0) { seen.full = s.full_view_at; $('full-img').src = `/full-view.bmp?n=${s.full_view_at}`; }
 
-    const pages = s.open_pages;
+    // A page someone deleted goes at once, before the loop has got round to it.
+    for (const name of [...deleting]) if (!s.open_pages.includes(name)) deleting.delete(name);
+    const pages = s.open_pages.filter((name) => !deleting.has(name));
     $('letter-hint').textContent = !s.collecting ? 'Each page is sent on its own.'
-      : pages.length ? `${pages.length} page${pages.length === 1 ? '' : 's'} so far. Press Finish letter after the last one.`
+      : pages.length ? `${pages.length} page${pages.length === 1 ? '' : 's'} so far. Tap a page to look at it or delete it; press Finish letter after the last one.`
       : 'No pages yet — put the first page down.';
-    const shown = [...$('pages').children].map((image) => image.dataset.name).join();
+    const shown = [...$('pages').children].map((card) => card.dataset.name).join();
     if (shown !== pages.join()) {
-      $('pages').replaceChildren(...pages.map((name) => {
-        const image = Object.assign(document.createElement('img'), { src: `/page/${encodeURIComponent(name)}`, alt: name, loading: 'lazy' });
-        image.dataset.name = name;
-        return image;
+      $('pages').replaceChildren(...pages.map((name, index) => {
+        const card = Object.assign(document.createElement('div'), { className: 'thumb' });
+        card.dataset.name = name;
+        const image = Object.assign(document.createElement('img'),
+          { src: `/page/${encodeURIComponent(name)}`, alt: `Page ${index + 1}`, loading: 'lazy' });
+        const label = Object.assign(document.createElement('span'), { textContent: `Page ${index + 1}` });
+        const remove = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Delete' });
+        image.onclick = remove.onclick = () => showPage(name, index + 1);
+        card.append(image, label, remove);
+        return card;
       }));
     }
 
@@ -278,6 +316,17 @@
     post('/api/finish').catch((error) => { pressedFinishAt = 0; complain(error); });
   };
   $('retry').onclick = () => post('/api/retry').catch(complain);
+  $('viewer-keep').onclick = () => $('viewer').close();
+  $('viewer-delete').onclick = () => {
+    const name = viewing;
+    $('viewer').close();
+    deleting.add(name);
+    // Gone from the screen now, not after the next status arrives — on a Pi
+    // Zero that can be long enough to wonder whether the tap worked.
+    [...$('pages').children].find((card) => card.dataset.name === name)?.remove();
+    refresh();
+    post('/api/delete-page', { name }).catch((error) => { deleting.delete(name); complain(error); });
+  };
   $('learn').onclick = learn;
   $('check-button').onclick = () => { $('check').textContent = 'Checking…'; post('/api/check').catch(complain); };
   $('settings').onsubmit = (event) => {

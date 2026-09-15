@@ -208,6 +208,32 @@ async fn main() -> Result<()> {
                 Command::LearnEmpty => {
                     scanner.learn_empty(now);
                 }
+                Command::DeletePage(name) => {
+                    // Numbered as the page showed it, before it goes.
+                    let number = spool.open_pages().ok().and_then(|pages| {
+                        pages
+                            .iter()
+                            .position(|page| page.file_name().is_some_and(|n| n == name.as_str()))
+                            .map(|index| index + 1)
+                    });
+                    match spool.delete_page(&name) {
+                        Ok(true) => {
+                            let text = match number {
+                                Some(number) => format!("deleted page {number}"),
+                                None => "deleted a page".to_string(),
+                            };
+                            hub.event(now, true, text);
+                        }
+                        Ok(false) => hub.event(
+                            now,
+                            false,
+                            "that page was already gone — the letter may have been sent",
+                        ),
+                        Err(err) => {
+                            hub.event(now, false, format!("could not delete the page: {err:#}"))
+                        }
+                    }
+                }
                 Command::RetryNow => scanner.retry_all(&spool, &uploader, now).await,
                 Command::FullView => match camera.full_view() {
                     Ok(frame) => hub.set_full_view(frame),

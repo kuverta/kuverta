@@ -26,6 +26,9 @@ pub enum Command {
     FullView,
     /// Connect to Paperless and say whether the token and tags work.
     CheckPaperless,
+    /// Delete a page of the open letter, by file name — one photographed by
+    /// mistake.
+    DeletePage(String),
     Settings(Settings),
 }
 

@@ -74,7 +74,9 @@ headless Pi needs no screen, no desktop and no second program: open
   of it — *Ready — put a page down*, *Hold still…*, *Photographed — take the
   page away*;
 - the pages of the letter so far, with **Finish letter** — the same as the
-  button, so a hardware button is optional;
+  button, so a hardware button is optional. Tap a page to see it large and
+  delete it if it was photographed by mistake (a hand, the empty table, a page
+  taken twice); a letter already sent is Paperless's to change;
 - what was sent and what is waiting, with **Retry uploads now**;
 - **Learn empty table**, and setup: the whole uncropped view to drag a crop
   on (kept to the camera's 4:3 so photographs are not stretched), the Paperless
