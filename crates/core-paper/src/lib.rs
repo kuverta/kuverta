@@ -17,6 +17,8 @@
 
 use std::collections::HashMap;
 
+pub mod scan;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, thiserror::Error)]
@@ -83,6 +85,26 @@ impl Selector {
             Self::Tag(name) => vec![("tags__name__iexact", name.clone())],
             Self::Correspondent(name) => vec![("correspondent__name__iexact", name.clone())],
             Self::StoragePath(name) => vec![("storage_path__name__iexact", name.clone())],
+        }
+    }
+}
+
+/// Which date post is listed by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Order {
+    /// The date on the letter, as Paperless read it — when it was written.
+    #[default]
+    Created,
+    /// When it reached Paperless — when it was scanned.
+    Added,
+}
+
+impl Order {
+    fn param(self) -> &'static str {
+        match self {
+            Self::Created => "-created",
+            Self::Added => "-added",
         }
     }
 }
@@ -260,6 +282,43 @@ impl Paperless {
         limit: usize,
         query: Option<&str>,
     ) -> Result<DocumentPage> {
+        self.documents_in_order(selector, offset, limit, query, Order::Created)
+            .await
+    }
+
+    /// Every document id the selector matches, and nothing else about them —
+    /// what telling read from unread needs, at a few bytes a letter.
+    pub async fn document_ids(&self, selector: &Selector) -> Result<Vec<i64>> {
+        const PAGE: usize = 1000;
+        let mut ids = Vec::new();
+        for page in 1.. {
+            let mut params = vec![
+                ("fields".to_string(), "id".to_string()),
+                ("page".to_string(), page.to_string()),
+                ("page_size".to_string(), PAGE.to_string()),
+            ];
+            params.extend(selector.params().into_iter().map(|(k, v)| (k.to_string(), v)));
+            let body = self.get("/api/documents/", &params).await?;
+            let listing: Listing =
+                serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))?;
+            let got = listing.results.len();
+            ids.extend(listing.results.into_iter().map(|raw| raw.id));
+            if got < PAGE || ids.len() >= listing.count {
+                break;
+            }
+        }
+        Ok(ids)
+    }
+
+    /// One window of a mailbox, newest first by the date given.
+    pub async fn documents_in_order(
+        &self,
+        selector: &Selector,
+        offset: usize,
+        limit: usize,
+        query: Option<&str>,
+        order: Order,
+    ) -> Result<DocumentPage> {
         // Paperless pages by number, not by offset, and the page number means
         // nothing without the size: page 2 of 4 and page 2 of 5 start in
         // different places. So the size stays fixed at the caller's limit and a
@@ -272,7 +331,9 @@ impl Paperless {
 
         let mut gathered = Vec::new();
         let total = loop {
-            let listing = self.page(selector, page, page_size, query).await?;
+            let listing = self
+                .page(selector, page, page_size, query, order)
+                .await?;
             let (count, got) = (listing.count, listing.results.len());
             gathered.extend(listing.results);
 
@@ -310,11 +371,11 @@ impl Paperless {
         page: usize,
         page_size: usize,
         query: Option<&str>,
+        order: Order,
     ) -> Result<Listing> {
         let mut params = vec![
-            // Newest first, and by the date on the letter rather than the date
-            // it happened to be scanned.
-            ("ordering".to_string(), "-created".to_string()),
+            // Newest first.
+            ("ordering".to_string(), order.param().to_string()),
             ("page".to_string(), page.to_string()),
             ("page_size".to_string(), page_size.to_string()),
         ];
@@ -427,10 +488,26 @@ impl Paperless {
     /// turned the right way up and straightened, with a text layer — when it
     /// made one, and the original otherwise, which may be a JPEG.
     pub async fn download(&self, id: i64) -> Result<Download> {
+        self.fetch_file(id, false).await
+    }
+
+    /// The document as it was uploaded, before Paperless re-encoded it into
+    /// its archive — for scannerd's letters, the photographs themselves, which
+    /// is what a vision model should read.
+    pub async fn download_original(&self, id: i64) -> Result<Download> {
+        self.fetch_file(id, true).await
+    }
+
+    async fn fetch_file(&self, id: i64, original: bool) -> Result<Download> {
+        let params = if original {
+            vec![("original".to_string(), "true".to_string())]
+        } else {
+            Vec::new()
+        };
         let response = self
             .send(
                 &format!("/api/documents/{id}/download/"),
-                &[],
+                &params,
                 "application/pdf, image/*;q=0.8, */*;q=0.5",
             )
             .await?;
