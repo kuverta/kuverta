@@ -64,6 +64,34 @@ the device, and `SCANNERD_BUTTON` points at it. The kernel debounces it and
 USB keypad works as well (`--button-key` for a key other than Enter). On a
 laptop, `--button stdin` makes Enter in the terminal the button.
 
+## The setup page
+
+`--ui 0.0.0.0:8080` (or `SCANNERD_UI`) serves a page from scannerd itself, so a
+headless Pi needs no screen, no desktop and no second program: open
+`http://<pi>.local:8080` on a phone. It shows:
+
+- what the camera sees, refreshed every second or two, and what scannerd makes
+  of it — *Ready — put a page down*, *Hold still…*, *Photographed — take the
+  page away*;
+- the pages of the letter so far, with **Finish letter** — the same as the
+  button, so a hardware button is optional;
+- what was sent and what is waiting, with **Retry uploads now**;
+- **Learn empty table**, and setup: the whole uncropped view to drag a crop
+  on (kept to the camera's 4:3 so photographs are not stretched), the Paperless
+  address, token and tags, and **Check connection**.
+
+Settings saved on the page go to `settings.toml` in the spool directory
+(owner-only, it holds the token) and win over the env file. The learnt empty
+table is kept there too (`empty-table.gray`), so a restart with a letter lying
+on the table sees the letter instead of taking it for the table.
+
+The page shows photographs of post, so anything but a loopback address needs
+`SCANNERD_UI_PASSWORD` (any user name). Its buttons also require a header that
+another site open in the same browser cannot send. The page never touches the
+camera or the queue itself: it reads the status the capture loop publishes and
+leaves commands for it, so a button pressed mid-photograph waits a moment
+instead of starting a second `rpicam-still`.
+
 ## Nothing is lost
 
 A capture is written to the spool *before* any upload is attempted and removed
