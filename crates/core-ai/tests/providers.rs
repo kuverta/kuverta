@@ -119,6 +119,26 @@ async fn a_page_goes_to_a_hosted_model_as_a_data_url() {
 }
 
 #[tokio::test]
+async fn a_hosted_model_that_ran_out_of_room_says_so() {
+    let (base, _seen) = serve(|_, _, _| {
+        (
+            200,
+            json!({ "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": "EUR Ct EUR" },
+                "finish_reason": "length",
+            }] }),
+        )
+    });
+    let reply = OpenAiCompatible::new(&base, Some("sk-test".into()))
+        .unwrap()
+        .transcribe("some-vl-model", b"\xff\xd8a photographed page")
+        .await
+        .unwrap();
+    assert!(reply.truncated);
+}
+
+#[tokio::test]
 async fn a_blank_key_is_no_key() {
     let (base, seen) = serve(|_, _, _| (200, completion("ok")));
     OpenAiCompatible::new(&base, Some("   ".into()))

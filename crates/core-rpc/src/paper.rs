@@ -593,11 +593,7 @@ impl PaperSession {
 
         let mut texts = Vec::with_capacity(pages.len());
         for page in &pages {
-            let reply = provider
-                .transcribe(model, page)
-                .await
-                .map_err(|err| crate::ai::ai_error(provider.base_url(), err))?;
-            texts.push(reply.content.trim().to_string());
+            texts.push(crate::ai::read_page(provider, model, page).await?);
         }
         Ok(texts.join("\n\n"))
     }
