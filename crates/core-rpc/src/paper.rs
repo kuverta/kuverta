@@ -414,6 +414,11 @@ impl PaperSession {
     pub async fn check(&self) -> Result<PaperReport> {
         self.client.check(&self.selector).await.map_err(paper_error)
     }
+
+    /// The document's file — the scan itself, for when its OCR text is no use.
+    pub async fn download(&self, document_id: i64) -> Result<core_paper::Download> {
+        self.client.download(document_id).await.map_err(paper_error)
+    }
 }
 
 fn to_row(

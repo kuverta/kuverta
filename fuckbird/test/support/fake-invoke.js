@@ -209,6 +209,14 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       found.category = category;
     },
 
+    paper_file: async ({ id, documentId }) => {
+      const found = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!found) throw new Error(`no such document: ${documentId}`);
+      // What Tauri hands over for a binary response: an ArrayBuffer. Enough of
+      // a PDF to be recognised as one, and different for every letter.
+      return new TextEncoder().encode(`%PDF-1.4\n% ${found.subject}\n%%EOF\n`).buffer;
+    },
+
     paper_document: async ({ id, documentId }) => {
       const found = documents.find((d) => d.mailbox === id && d.id === documentId);
       if (!found) throw new Error(`no such document: ${documentId}`);

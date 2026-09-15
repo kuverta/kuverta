@@ -142,6 +142,57 @@ test('opening a letter shows its text, where it was sent and how many pages it h
   await context.close();
 });
 
+test('a letter opens on its text or its scan, and the choice is kept for the next letter', async () => {
+  const { page, context, problems } = await openWindow();
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
+  await page.locator('#content .row', { hasText: 'Ihre Abschlagszahlung für April' }).click();
+  await page.waitForSelector('#reading', { state: 'visible' });
+
+  const active = () => page.locator('#reading-tabs button.active').innerText();
+  const frameSrc = () => page.locator('#reading-pdf').getAttribute('src');
+
+  assert.equal(await page.locator('#reading-tabs').isVisible(), true);
+  assert.equal(await active(), 'Text');
+  assert.equal(await page.locator('#reading-body').isVisible(), true);
+  assert.equal(await page.locator('#reading-file').isVisible(), false);
+
+  await page.locator('#reading-tabs button', { hasText: 'PDF' }).click();
+  await page.waitForFunction(() => document.getElementById('reading-pdf')?.getAttribute('src')?.startsWith('blob:'));
+  assert.equal(await active(), 'PDF');
+  assert.equal(await page.locator('#reading-body').isVisible(), false);
+  assert.equal(await page.locator('#reading-pdf').isVisible(), true);
+  const first = await frameSrc();
+
+  // The next letter opens on the scan too, and it is that letter's scan.
+  await page.keyboard.press('j');
+  await page.waitForFunction(
+    (was) => {
+      const src = document.getElementById('reading-pdf')?.getAttribute('src');
+      return src?.startsWith('blob:') && src !== was;
+    },
+    first,
+  );
+  assert.equal(await page.locator('#reading-subject').innerText(), 'Bescheid über Einkommensteuer');
+  assert.equal(await active(), 'PDF');
+
+  // v goes back to the text.
+  await page.keyboard.press('v');
+  assert.equal(await active(), 'Text');
+  assert.equal(await page.locator('#reading-body').isVisible(), true);
+
+  // Mail has no scan, and no tabs.
+  await page.locator('#accounts .nav-item', { hasText: 'you@example.com' }).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('messages'));
+  await page.locator('#content .row').first().click();
+  await page.waitForSelector('#reading', { state: 'visible' });
+  assert.equal(await page.locator('#reading-tabs').isVisible(), false);
+  assert.equal(await page.locator('#reading-body').isVisible(), true);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('archiving post is refused in words, and the account leads back to mail', async () => {
   const { page, context, problems } = await openWindow();
   await postbox(page).click();
