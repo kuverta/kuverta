@@ -20,6 +20,17 @@ pub enum AiError {
     Url(String),
 }
 
+/// What a vision model is told before it is shown a page.
+///
+/// Exactly, and in the page's own language: a transcript is text to search and
+/// sort a letter by, and a translation or a summary would be neither. And no
+/// guessing: an unreadable word marked as one is honest, a plausible one made up
+/// is not.
+pub const TRANSCRIBE: &str = "You transcribe photographed letters. Write out all of the text on \
+the page exactly as it is printed, in its original language, top to bottom, one printed line per \
+line. Do not translate, summarise, correct, explain or add anything. Where a word cannot be read, \
+write [?] instead of guessing it. Reply with the transcription only.";
+
 pub struct Ollama {
     base: String,
     http: reqwest::Client,
@@ -72,8 +83,38 @@ impl Ollama {
             "options": { "temperature": 0, "num_predict": 12 },
         });
 
+        self.exchange(&body).await
+    }
+
+    /// The text on a photographed page, as a vision model reads it.
+    ///
+    /// For scans a camera took, where Tesseract's OCR is no use: a vision model
+    /// reads through blur and uneven light far better. It can also put a
+    /// plausible word where it could not read one, which is why whoever shows
+    /// a transcript should keep the scan itself a click away.
+    pub async fn transcribe(&self, model: &str, jpeg: &[u8]) -> Result<ChatReply, AiError> {
+        use base64::Engine as _;
+        let body = json!({
+            "model": model,
+            "stream": false,
+            "messages": [
+                { "role": "system", "content": TRANSCRIBE },
+                {
+                    "role": "user",
+                    "content": "Transcribe this page.",
+                    "images": [base64::engine::general_purpose::STANDARD.encode(jpeg)],
+                },
+            ],
+            // Deterministic, so reading a page twice gives the same text, and
+            // room for a full page of it.
+            "options": { "temperature": 0, "num_predict": 4096 },
+        });
+        self.exchange(&body).await
+    }
+
+    async fn exchange(&self, body: &Value) -> Result<ChatReply, AiError> {
         let started = Instant::now();
-        let reply = self.post("/api/chat", &body).await?;
+        let reply = self.post("/api/chat", body).await?;
         let content = reply
             .get("message")
             .and_then(|message| message.get("content"))

@@ -1050,6 +1050,72 @@ impl Store {
         Ok(())
     }
 
+    // -- what Paperless does not keep ---------------------------------------
+
+    /// Marks a letter read or unread here.
+    ///
+    /// Unread is the absence of a row: a letter nobody has opened in fuckmail
+    /// is unread, however long it has been in Paperless — which is what a
+    /// freshly scanned letter should be.
+    pub fn set_paper_read(&self, base_url: &str, document_id: i64, read: bool) -> Result<()> {
+        let base = base_url.trim_end_matches('/');
+        if read {
+            self.conn.execute(
+                "INSERT INTO paper_read (base_url, document_id, read_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (base_url, document_id) DO NOTHING",
+                params![base, document_id, now()],
+            )?;
+        } else {
+            self.conn.execute(
+                "DELETE FROM paper_read WHERE base_url = ?1 AND document_id = ?2",
+                params![base, document_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// The letters on an instance that have been read here.
+    pub fn paper_read_ids(&self, base_url: &str) -> Result<Vec<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT document_id FROM paper_read WHERE base_url = ?1 ORDER BY document_id",
+        )?;
+        let rows = stmt.query_map(params![base_url.trim_end_matches('/')], |row| row.get(0))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Keeps a transcript of a scan, replacing any earlier one.
+    pub fn save_paper_transcript(
+        &self,
+        base_url: &str,
+        document_id: i64,
+        model: &str,
+        text: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO paper_transcript (base_url, document_id, model, text, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT (base_url, document_id)
+             DO UPDATE SET model = excluded.model, text = excluded.text,
+                           created_at = excluded.created_at",
+            params![base_url.trim_end_matches('/'), document_id, model, text, now()],
+        )?;
+        Ok(())
+    }
+
+    /// Every transcript kept for an instance, as `(document, model, text)`.
+    pub fn paper_transcripts(&self, base_url: &str) -> Result<Vec<(i64, String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT document_id, model, text FROM paper_transcript
+             WHERE base_url = ?1 ORDER BY document_id",
+        )?;
+        let rows = stmt.query_map(params![base_url.trim_end_matches('/')], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     // -- corrections to post ------------------------------------------------
 
     /// Records that the user filed a piece of post by hand.

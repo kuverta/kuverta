@@ -188,7 +188,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
 
     paper_mailboxes: async () => paperMailboxes,
 
-    paper_documents: async ({ id, offset, limit, query }) => {
+    paper_documents: async ({ id, offset, limit, query, order, category }) => {
       const box = paperMailboxes.find((m) => m.id === id);
       if (!box) throw new Error(`no postal address ${id}`);
       let rows = documents.filter((d) => d.mailbox === id);
@@ -196,8 +196,36 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
         const needle = String(query).toLowerCase();
         rows = rows.filter((d) => d.subject.toLowerCase().includes(needle));
       }
-      rows = [...rows].sort((a, b) => b.date_utc - a.date_utc);
+      if (category) rows = rows.filter((d) => d.category === category);
+      // As the real command: by the letter's date, or by when it was scanned.
+      const when = (d) => (order === 'added' ? d.added_utc ?? d.date_utc : d.date_utc);
+      rows = [...rows].sort((a, b) => when(b) - when(a));
       return { total: rows.length, offset, rows: rows.slice(offset, offset + limit) };
+    },
+
+    set_paper_read: async ({ id, documentId, read }) => {
+      const found = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!found) throw new Error(`no such document: ${documentId}`);
+      found.unread = !read;
+    },
+
+    paper_unread_count: async ({ id }) => documents.filter((d) => d.mailbox === id && d.unread).length,
+
+    paper_category_counts: async ({ id }) => {
+      const counts = new Map();
+      for (const d of documents.filter((doc) => doc.mailbox === id && doc.category)) {
+        counts.set(d.category, (counts.get(d.category) ?? 0) + 1);
+      }
+      return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    },
+
+    // A vision model that reads every scan perfectly and at once.
+    paper_transcribe: async ({ id, documentId }) => {
+      const found = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!found) throw new Error(`no such document: ${documentId}`);
+      found.transcript = `Transkript: ${found.subject}`;
+      found.transcribed_by = 'fake-vision';
+      return ['fake-vision', found.transcript];
     },
 
     file_post: async ({ id, documentId, category }) => {
@@ -222,7 +250,9 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       if (!found) throw new Error(`no such document: ${documentId}`);
       return {
         row: found,
-        body_text: found.snippet,
+        body_text: found.transcript ?? found.snippet,
+        ocr_text: found.snippet,
+        transcript_model: found.transcribed_by ?? null,
         download_url: 'http://x/1/download/',
         correspondent: found.from,
         // As core-paper builds them: the correspondent is the address.
@@ -321,6 +351,8 @@ export function defaultPaper() {
         id: 41,
         mailbox: 1,
         date_utc: base - 1800,
+        // Scanned before the tax letter, though written after it.
+        added_utc: base - 600,
         from: 'Stadtwerke München',
         subject: 'Ihre Abschlagszahlung für April',
         unread: false,
@@ -334,6 +366,7 @@ export function defaultPaper() {
         id: 40,
         mailbox: 1,
         date_utc: base - 9000,
+        added_utc: base - 60,
         from: 'Finanzamt',
         subject: 'Bescheid über Einkommensteuer',
         unread: false,

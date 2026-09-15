@@ -184,6 +184,8 @@ fn paper_session(app: &State<'_, App>, id: i64) -> Result<core_rpc::PaperSession
     app.core.lock().unwrap().paper_session(id).map_err(fail)
 }
 
+/// A window of a postbox: newest first by the letter's date, or by when it was
+/// scanned (`order: "added"`), and within one category when one is given.
 #[tauri::command]
 async fn paper_documents(
     app: State<'_, App>,
@@ -191,12 +193,78 @@ async fn paper_documents(
     offset: usize,
     limit: usize,
     query: Option<String>,
+    order: Option<String>,
+    category: Option<String>,
 ) -> Result<core_rpc::PaperPage, String> {
     let session = paper_session(&app, id)?;
     session
-        .documents(offset, limit, query.as_deref())
+        .documents_by(
+            offset,
+            limit,
+            query.as_deref(),
+            order.as_deref(),
+            category.as_deref(),
+        )
         .await
         .map_err(fail)
+}
+
+#[tauri::command]
+fn set_paper_read(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+    read: bool,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_paper_read(id, document_id, read)
+        .map_err(fail)
+}
+
+#[tauri::command]
+async fn paper_unread_count(app: State<'_, App>, id: i64) -> Result<usize, String> {
+    let session = paper_session(&app, id)?;
+    session.unread_count().await.map_err(fail)
+}
+
+/// Letters per category, as `[category, count]` pairs like `category_counts`.
+#[tauri::command]
+async fn paper_category_counts(
+    app: State<'_, App>,
+    id: i64,
+) -> Result<Vec<(String, usize)>, String> {
+    let session = paper_session(&app, id)?;
+    session.category_counts().await.map_err(fail)
+}
+
+/// Has the local vision model read a letter's scan, keeps what it read, and
+/// returns `[model, text]`.
+///
+/// The model and server come from `FUCKMAIL_VISION_MODEL` and `OLLAMA_URL`.
+/// Reading takes seconds a page, and all of it happens with no store lock held:
+/// the lock is taken only to keep the result.
+#[tauri::command]
+async fn paper_transcribe(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+) -> Result<(String, String), String> {
+    let session = paper_session(&app, id)?;
+    let model =
+        std::env::var("FUCKMAIL_VISION_MODEL").unwrap_or_else(|_| "qwen2.5vl:3b".to_string());
+    let url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| "http://127.0.0.1:11434".to_string());
+    let text = session
+        .transcribe(document_id, &url, &model)
+        .await
+        .map_err(fail)?;
+    app.core
+        .lock()
+        .unwrap()
+        .save_paper_transcript(id, document_id, &model, &text)
+        .map_err(fail)?;
+    Ok((model, text))
 }
 
 #[tauri::command]
@@ -478,6 +546,10 @@ fn main() {
             paper_documents,
             paper_document,
             paper_file,
+            set_paper_read,
+            paper_unread_count,
+            paper_category_counts,
+            paper_transcribe,
             paper_check,
             file_post,
             undo,

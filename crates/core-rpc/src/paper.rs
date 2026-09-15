@@ -8,7 +8,9 @@
 //!
 //! Nothing here writes to Paperless. It owns the documents; this reads them.
 
-use core_paper::{Document, PaperReport, Paperless, Selector};
+use std::collections::{HashMap, HashSet};
+
+use core_paper::{Document, Order, PaperReport, Paperless, Selector};
 use core_store::{NewPaperMailbox, StoredPaperMailbox};
 use serde::{Deserialize, Serialize};
 
@@ -87,12 +89,17 @@ pub struct PaperMailboxInput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperRow {
     pub id: i64,
+    /// The date on the letter.
     pub date_utc: Option<i64>,
+    /// When it reached Paperless — when it was scanned.
+    pub added_utc: Option<i64>,
     pub from: String,
     pub subject: String,
-    /// Always false. Paper has no read state — Paperless does not track one,
-    /// and inventing one here would be a promise this cannot keep.
+    /// Until it is opened in fuckmail. Paperless keeps no read state, so this
+    /// is fuckmail's own, which is what a freshly scanned letter should be.
     pub unread: bool,
+    /// The vision model whose transcript the row was read from, if any.
+    pub transcribed_by: Option<String>,
     /// Always true. The document *is* the attachment.
     pub has_attachments: bool,
     pub category: Option<String>,
@@ -122,8 +129,13 @@ pub struct PaperDetail {
     /// What the rules read, so a letter's verdict is explained the way mail's
     /// is — from the same facts the classifier filed it by.
     pub facts: crate::FactsView,
-    /// The OCR text, which is the body.
+    /// The body: a vision model's transcript when there is one, Paperless's
+    /// OCR text otherwise.
     pub body_text: Option<String>,
+    /// Paperless's OCR text, whatever the body is.
+    pub ocr_text: Option<String>,
+    /// The model that transcribed the body, when it is a transcript.
+    pub transcript_model: Option<String>,
     /// Where the PDF is, for a viewer that wants it.
     pub download_url: String,
 }
@@ -206,6 +218,7 @@ impl Core {
     /// So the store is consulted here and released, and the network happens
     /// against what came back.
     pub fn paper_session(&self, id: i64) -> Result<PaperSession> {
+        let mailbox = self.mailbox(id)?;
         let (client, selector) = self.client(id)?;
         let overrides = self
             .store
@@ -215,12 +228,53 @@ impl Core {
                 core_rules::Category::parse(&category).map(|category| (document, category))
             })
             .collect();
+        let read = self
+            .store
+            .paper_read_ids(&mailbox.base_url)?
+            .into_iter()
+            .collect();
+        let transcripts = self
+            .store
+            .paper_transcripts(&mailbox.base_url)?
+            .into_iter()
+            .map(|(document, model, text)| (document, Transcript { model, text }))
+            .collect();
         Ok(PaperSession {
             client,
             selector,
             classifier: self.paper_classifier()?,
             overrides,
+            read,
+            transcripts,
         })
+    }
+
+    /// Marks a letter read or unread in fuckmail.
+    ///
+    /// Paperless keeps no read state, so this is fuckmail's own — kept per
+    /// instance, so a letter read under one address is read under any other
+    /// that shows it.
+    pub fn set_paper_read(&self, mailbox_id: i64, document_id: i64, read: bool) -> Result<()> {
+        let mailbox = self.mailbox(mailbox_id)?;
+        Ok(self
+            .store
+            .set_paper_read(&mailbox.base_url, document_id, read)?)
+    }
+
+    /// Keeps a vision model's transcript of a letter. From then on it is what
+    /// the letter is shown, searched by eye and sorted by, in place of
+    /// Paperless's OCR.
+    pub fn save_paper_transcript(
+        &self,
+        mailbox_id: i64,
+        document_id: i64,
+        model: &str,
+        text: &str,
+    ) -> Result<()> {
+        let mailbox = self.mailbox(mailbox_id)?;
+        Ok(self
+            .store
+            .save_paper_transcript(&mailbox.base_url, document_id, model, text)?)
     }
 
     /// One window of an address's post, classified.
@@ -360,6 +414,13 @@ impl Core {
     }
 }
 
+/// A vision model's reading of a scan.
+#[derive(Debug, Clone)]
+struct Transcript {
+    model: String,
+    text: String,
+}
+
 /// One address, ready to read.
 pub struct PaperSession {
     client: Paperless,
@@ -367,7 +428,11 @@ pub struct PaperSession {
     classifier: core_rules::Classifier,
     /// Documents the user filed by hand, and where. A person's filing of one
     /// letter is not evidence to weigh against the rules — it is the answer.
-    overrides: std::collections::HashMap<i64, core_rules::Category>,
+    overrides: HashMap<i64, core_rules::Category>,
+    /// Letters opened in fuckmail.
+    read: HashSet<i64>,
+    /// Transcripts kept for this instance, by document.
+    transcripts: HashMap<i64, Transcript>,
 }
 
 impl PaperSession {
@@ -377,21 +442,99 @@ impl PaperSession {
         limit: usize,
         query: Option<&str>,
     ) -> Result<PaperPage> {
+        self.documents_in_order(offset, limit, query, Order::Created, None)
+            .await
+    }
+
+    /// One window of the address's post, newest first by the letter's date or
+    /// by when it was scanned, and within one category when one is given.
+    ///
+    /// A category is fuckmail's, not Paperless's, so it cannot be a filter in
+    /// the request: the letters are classified here and the window taken from
+    /// those in the category. That means fetching them all, which for a
+    /// household's post is a few requests.
+    pub async fn documents_in_order(
+        &self,
+        offset: usize,
+        limit: usize,
+        query: Option<&str>,
+        order: Order,
+        category: Option<&str>,
+    ) -> Result<PaperPage> {
+        if let Some(category) = category {
+            let rows: Vec<PaperRow> = self
+                .all_rows(query, order)
+                .await?
+                .into_iter()
+                .filter(|row| row.category.as_deref() == Some(category))
+                .collect();
+            return Ok(PaperPage {
+                total: rows.len(),
+                offset,
+                rows: rows.into_iter().skip(offset).take(limit).collect(),
+            });
+        }
+
         let page = self
             .client
-            .documents(&self.selector, offset, limit, query)
+            .documents_in_order(&self.selector, offset, limit, query, order)
             .await
             .map_err(paper_error)?;
-
         Ok(PaperPage {
             total: page.total,
             offset: page.offset,
             rows: page
                 .documents
                 .iter()
-                .map(|document| to_row(document, &self.classifier, &self.overrides))
+                .map(|document| self.row(document))
                 .collect(),
         })
+    }
+
+    /// [`PaperSession::documents_in_order`] with the order by name — `"added"`
+    /// for when a letter was scanned, anything else for its date — for callers
+    /// on the far side of a bridge.
+    pub async fn documents_by(
+        &self,
+        offset: usize,
+        limit: usize,
+        query: Option<&str>,
+        order: Option<&str>,
+        category: Option<&str>,
+    ) -> Result<PaperPage> {
+        let order = if order == Some("added") {
+            Order::Added
+        } else {
+            Order::Created
+        };
+        self.documents_in_order(offset, limit, query, order, category)
+            .await
+    }
+
+    /// How many of the address's letters are in each category, most first.
+    pub async fn category_counts(&self) -> Result<Vec<(String, usize)>> {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for row in self.all_rows(None, Order::Created).await? {
+            let Some(category) = row.category else {
+                continue;
+            };
+            match counts.iter_mut().find(|(name, _)| *name == category) {
+                Some((_, count)) => *count += 1,
+                None => counts.push((category, 1)),
+            }
+        }
+        counts.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        Ok(counts)
+    }
+
+    /// How many of the address's letters have not been opened in fuckmail.
+    pub async fn unread_count(&self) -> Result<usize> {
+        let ids = self
+            .client
+            .document_ids(&self.selector)
+            .await
+            .map_err(paper_error)?;
+        Ok(ids.iter().filter(|id| !self.read.contains(id)).count())
     }
 
     pub async fn document(&self, document_id: i64) -> Result<PaperDetail> {
@@ -400,15 +543,108 @@ impl PaperSession {
             .document(document_id)
             .await
             .map_err(paper_error)?;
+        let readable = self.readable(&document);
 
         Ok(PaperDetail {
-            row: to_row(&document, &self.classifier, &self.overrides),
+            row: self.row(&document),
             correspondent: document.correspondent.clone(),
-            sender: document.sender().map(str::to_string),
-            facts: crate::FactsView::from(&document.facts()),
-            body_text: document.content.clone(),
+            sender: readable.sender().map(str::to_string),
+            facts: crate::FactsView::from(&readable.facts()),
+            body_text: readable.content.clone(),
+            ocr_text: document.content.clone(),
+            transcript_model: self
+                .transcripts
+                .get(&document_id)
+                .map(|transcript| transcript.model.clone()),
             download_url: document.download_path.clone(),
         })
+    }
+
+    /// Has a vision model read the letter's scan, page by page, and returns
+    /// the text. Keeping it is the caller's: this holds no store.
+    ///
+    /// From the original upload rather than Paperless's archive — for a
+    /// scannerd letter, the photographs as the camera took them rather than a
+    /// re-encoding. A document that is a photograph is read as it is; a PDF
+    /// with no photographs in it was never a scan, has nothing for a vision
+    /// model to read, and is refused.
+    pub async fn transcribe(
+        &self,
+        document_id: i64,
+        ollama_url: &str,
+        model: &str,
+    ) -> Result<String> {
+        let original = self
+            .client
+            .download_original(document_id)
+            .await
+            .map_err(paper_error)?;
+        let pages = if original.bytes.starts_with(&[0xFF, 0xD8]) {
+            vec![original.bytes]
+        } else {
+            core_paper::scan::jpeg_pages(&original.bytes)
+        };
+        if pages.is_empty() {
+            return Err(RpcError::Rejected(
+                "this document has no photographed pages to read; Paperless's text is all there is"
+                    .into(),
+            ));
+        }
+
+        let ollama =
+            core_ai::Ollama::new(ollama_url).map_err(|err| RpcError::Rejected(err.to_string()))?;
+        let mut texts = Vec::with_capacity(pages.len());
+        for page in &pages {
+            let reply = ollama.transcribe(model, page).await.map_err(ai_error)?;
+            texts.push(reply.content.trim().to_string());
+        }
+        Ok(texts.join("\n\n"))
+    }
+
+    /// Every letter the address holds, as rows — for what Paperless cannot
+    /// filter or count by. Capped, so a runaway instance is not read whole.
+    async fn all_rows(&self, query: Option<&str>, order: Order) -> Result<Vec<PaperRow>> {
+        const PAGE: usize = 100;
+        const MOST: usize = 5000;
+        let mut rows = Vec::new();
+        loop {
+            let page = self
+                .client
+                .documents_in_order(&self.selector, rows.len(), PAGE, query, order)
+                .await
+                .map_err(paper_error)?;
+            let got = page.documents.len();
+            rows.extend(page.documents.iter().map(|document| self.row(document)));
+            if got < PAGE || rows.len() >= page.total || rows.len() >= MOST {
+                break;
+            }
+        }
+        Ok(rows)
+    }
+
+    fn row(&self, document: &Document) -> PaperRow {
+        to_row(
+            &self.readable(document),
+            &self.classifier,
+            &self.overrides,
+            self.read.contains(&document.id),
+            self.transcripts
+                .get(&document.id)
+                .map(|transcript| transcript.model.as_str()),
+        )
+    }
+
+    /// The document as it is best read: with a transcript in place of
+    /// Paperless's OCR text when there is one, so the sender, subject, snippet
+    /// and category all come from text a person could actually read.
+    fn readable(&self, document: &Document) -> Document {
+        match self.transcripts.get(&document.id) {
+            Some(transcript) => Document {
+                content: Some(transcript.text.clone()),
+                ..document.clone()
+            },
+            None => document.clone(),
+        }
     }
 
     pub async fn check(&self) -> Result<PaperReport> {
@@ -424,7 +660,9 @@ impl PaperSession {
 fn to_row(
     document: &Document,
     classifier: &core_rules::Classifier,
-    overrides: &std::collections::HashMap<i64, core_rules::Category>,
+    overrides: &HashMap<i64, core_rules::Category>,
+    read: bool,
+    transcribed_by: Option<&str>,
 ) -> PaperRow {
     let category = overrides
         .get(&document.id)
@@ -433,9 +671,11 @@ fn to_row(
     PaperRow {
         id: document.id,
         date_utc: document.created_utc,
+        added_utc: document.added_utc,
         from: document.sender().unwrap_or("—").to_string(),
         subject: document.subject().to_string(),
-        unread: false,
+        unread: !read,
+        transcribed_by: transcribed_by.map(str::to_string),
         has_attachments: true,
         category: Some(category.as_str().to_string()),
         snippet: document.content.as_ref().map(|text| snippet(text)),
@@ -473,6 +713,15 @@ fn selector_from(kind: &str, value: Option<&str>) -> Result<Selector> {
             )))
         }
     })
+}
+
+fn ai_error(err: core_ai::AiError) -> RpcError {
+    match err {
+        core_ai::AiError::Network(detail) => RpcError::Network(format!(
+            "the vision model server is not answering ({detail}); is Ollama running?"
+        )),
+        other => RpcError::Rejected(other.to_string()),
+    }
 }
 
 fn paper_error(err: core_paper::PaperError) -> RpcError {

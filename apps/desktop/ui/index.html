@@ -56,6 +56,11 @@
         <button type="button" role="tab" data-view="text">Text</button>
         <button type="button" role="tab" data-view="pdf">PDF</button>
       </div>
+      <!-- Post only: whose reading the text is, and a way to have the scan read. -->
+      <div id="reading-post" hidden>
+        <span id="reading-note" class="file-status"></span>
+        <button id="reading-transcribe" type="button" hidden>Read with the vision model</button>
+      </div>
       <pre id="reading-body"></pre>
       <div id="reading-file" hidden>
         <iframe id="reading-pdf" title="The scanned letter" hidden></iframe>
