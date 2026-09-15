@@ -73,13 +73,12 @@ async function openWindow() {
   });
 
   await page.addInitScript((fake) => {
-    let bridge;
+    // Post is polled for; a test cannot wait twenty seconds each time.
+    window.__fuckmailPostPollMs = 300;
+    window.__fakeBridge = import(fake).then((module) => module.fakeInvoke());
     window.__TAURI__ = {
       core: {
-        invoke: async (command, args) => {
-          bridge ??= import(fake).then((module) => module.fakeInvoke());
-          return (await bridge)(command, args);
-        },
+        invoke: async (command, args) => (await window.__fakeBridge)(command, args),
       },
     };
   }, FAKE);
@@ -188,6 +187,50 @@ test('a letter opens on its text or its scan, and the choice is kept for the nex
   await page.waitForSelector('#reading', { state: 'visible' });
   assert.equal(await page.locator('#reading-tabs').isVisible(), false);
   assert.equal(await page.locator('#reading-body').isVisible(), true);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a letter scanned while the postbox is open appears on its own, and the letter being read stays open', async () => {
+  // Found on the Pi: a page went to Paperless in eleven seconds and never
+  // showed in the window, which only asked when the postbox was opened.
+  const { page, context, problems } = await openWindow();
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
+  await page.locator('#content .row', { hasText: 'Bescheid über Einkommensteuer' }).click();
+  await page.waitForSelector('#reading', { state: 'visible' });
+
+  await page.evaluate(async () => {
+    const invoke = await window.__fakeBridge;
+    invoke._documents.push({
+      id: 42,
+      mailbox: 1,
+      date_utc: Math.floor(Date.UTC(2026, 8, 12, 9, 0, 0) / 1000),
+      from: 'Hausverwaltung Nord',
+      subject: 'Ankündigung Treppenhausreinigung',
+      unread: false,
+      has_attachments: true,
+      category: 'notification',
+      snippet: 'Am Montag wird das Treppenhaus gereinigt.',
+      tags: ['home'],
+      page_count: 1,
+    });
+  });
+
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('3 letters'), null, { timeout: 5000 });
+  const subjects = await page.locator('#content .row:not([hidden]) .subject').allInnerTexts();
+  assert.equal(subjects[0], 'Ankündigung Treppenhausreinigung', 'new post on top');
+  await page.waitForSelector('#toast:not([hidden])');
+  assert.match(await page.locator('#toast').innerText(), /1 new letter to Home/);
+
+  // The letter being read was not pulled out from under the reader.
+  assert.equal(await page.locator('#reading').isVisible(), true);
+  assert.equal(await page.locator('#reading-subject').innerText(), 'Bescheid über Einkommensteuer');
+  assert.equal(
+    await page.locator('#content .row.selected .subject').innerText(),
+    'Bescheid über Einkommensteuer',
+  );
 
   assert.deepEqual(problems, []);
   await context.close();
