@@ -393,6 +393,61 @@ function countPostboxes() {
   }
 }
 
+// -- post arriving -------------------------------------------------------------
+
+/// Post has no push: Paperless tells nobody when a letter arrives. So the window
+/// asks — the open postbox every so often, every postbox's count less often —
+/// and a scanned letter appears on its own, the way mail does after a sync.
+/// A test page may shorten the wait.
+const POST_POLL_MS = window.__fuckmailPostPollMs ?? 20000;
+const COUNT_EVERY = 3; // polls between count refreshes: a minute at the default
+let postPolls = 0;
+
+async function checkForPost() {
+  postPolls += 1;
+  // Hidden, there is no one to show it to.
+  if (document.hidden) return;
+  if (postPolls % COUNT_EVERY === 0) countPostboxes();
+
+  const box = state.postbox;
+  if (!box || state.searching || !box.has_token) return;
+  try {
+    const newest = await invoke("paper_documents", { id: box.id, offset: 0, limit: 1, query: null });
+    if (state.postbox !== box) return; // moved elsewhere while asking
+    const shownNewest = state.rows.get(0)?.id ?? null;
+    const topId = newest.rows[0]?.id ?? null;
+    if (newest.total === state.total && topId === shownNewest) return;
+
+    const arrived = newest.total - state.total;
+    await refreshPostbox();
+    if (arrived > 0) say(`${arrived} new letter${arrived === 1 ? "" : "s"} to ${box.label}`);
+  } catch {
+    // Paperless away or the Mac asleep: ask again next time, quietly.
+  }
+}
+
+/// Reloads the open postbox without losing the place: the letter that was
+/// selected stays selected — new post lands above it and moves it down — and
+/// stays open if it was being read.
+async function refreshPostbox() {
+  const readingOpen = !reading.hidden;
+  const selectedId = state.rows.get(state.selected)?.id ?? null;
+  const scrolled = viewport.scrollTop;
+
+  await reload();
+
+  if (selectedId === null) return;
+  for (const [index, row] of state.rows) {
+    if (row.id !== selectedId) continue;
+    viewport.scrollTop = scrolled;
+    select(index);
+    if (readingOpen) await openSelected();
+    return;
+  }
+}
+
+setInterval(checkForPost, POST_POLL_MS);
+
 async function selectAccount(account) {
   state.postbox = null;
   state.account = account.id;
