@@ -1404,3 +1404,106 @@ the letter goes as one PDF. Details that matter:
   seconds. Space was freed — build output, Docker's build cache, three benchmark
   models — but Docker needs restarting before either can run.
 
+## 24. Post read by a vision model, unread, and sorted like mail
+
+Scans reached the desktop app and read badly. Four things were asked for: post
+arrives unread, the text is readable, post is sorted into categories, and the list
+can go by the date on the letter or by when it was scanned.
+
+### Why the OCR was bad, and why not fix the image
+
+The photographs are soft. The OV5647's lens is fixed-focus, set for distance, and
+the page is at desk distance: the last scan's sharpness measured 0.08 where a
+sharp synthetic page measures 0.32 and a deliberately blurred one 0.03. Tesseract
+(`deu+eng`, as Paperless runs it) found about 170 words on it at 68% mean
+confidence, only 24 of them confident. Upscaling, flattening the light and
+sharpening did not raise that: what the lens did not resolve is not in the file.
+
+A made-up letter drawn at the camera's resolution (about 150 dpi) and blurred by
+steps shows the cliff Tesseract falls off:
+
+| Gaussian blur radius | 0 | 1.2 | 2.0 | 2.8 |
+|---|---|---|---|---|
+| Tesseract, character similarity | 100% | 100% | 86% | 5% |
+
+Asked, and decided: **a local vision model reads the scans.** Nothing leaves the
+machine, as with the rest of the AI here.
+
+### How
+
+- **The original, not Paperless's archive PDF.** The archive is re-rendered with an
+  OCR layer; the original is what `scannerd` sent — JPEG pages inside a PDF. The
+  pages are taken out by `core_paper::scan::jpeg_pages` (the `/DCTDecode` streams,
+  whole), so no PDF renderer is needed. A document that is not like that is
+  refused in words rather than sent to the model as something it cannot see.
+- **One request per page**, to Ollama's chat endpoint with the image, temperature 0,
+  and a prompt that asks for the text as printed, untranslated, with `[?]` for a
+  word that cannot be read — a model filling a blur with a plausible word is worse
+  than an OCR gap, because it reads as right.
+- **The transcript replaces the OCR everywhere**: the reading pane, and the sender,
+  subject and category, which come from the text. It is stored per Paperless
+  instance and document (`paper_transcript`), with the model's name, which the
+  reading pane shows next to the text, with a button to read it again.
+- **New post is read as it arrives**, one letter at a time — two at once on a
+  laptop is both slowly. Once the model fails (Ollama not running, model missing),
+  automatic reading stops for the session and the reason is shown, rather than
+  every new letter failing the same way.
+- `qwen2.5vl:3b` by default, `FUCKMAIL_VISION_MODEL` to change it.
+
+### Unread, categories and the two dates
+
+- **Read state is fuckmail's.** Paperless has no notion of it, and writing a tag
+  per letter back into Paperless would change the archive from a reader that
+  promises not to. `paper_read`, keyed like the transcripts; `u` toggles, opening
+  reads, the postbox shows an unread count.
+- **Categories are mail's**, from the same classifier, with the same counts and
+  filter in the sidebar. Paperless cannot filter by a category it has never heard
+  of, so a filtered list is built from all the postbox's rows (at most 5000) and
+  paged here; unfiltered lists still page in Paperless.
+- **Letter date or scan date**: Paperless's `created` (from the letter, or the
+  upload when it found none) or `added`. The list sorts and dates by the choice,
+  and keeps it.
+
+
+## 25. Choosing models, and hosted providers beside Ollama
+
+Asked for: a settings page to choose between models, see which are available, and
+connect an external provider such as DeepSeek.
+
+### Shape
+
+- **Providers and jobs.** A provider is somewhere models run: the Ollama on this
+  computer (in every store from schema v11; its address can change, it cannot be
+  removed), another Ollama, or a hosted service with an OpenAI-compatible API. A
+  job is something fuckmail asks a model to do: reading scans, and sorting mail
+  (`fuckmail classify`). Each job has one provider and model. A job with none
+  chosen runs where it did before: the local Ollama, with `qwen2.5vl:3b` (or
+  `FUCKMAIL_VISION_MODEL`, which §24 named and is now only the default) and
+  `llama3.2:3b`.
+- **One client for hosted services.** DeepSeek, OpenAI, OpenRouter and most others
+  take the same `/chat/completions` request and list `/models`; the page's presets
+  fill in each one's address. A page goes to them as an `image_url` data URL.
+- **What a model can do is shown only where the provider says.** Ollama reports
+  each model's capabilities and OpenRouter its input modalities; most services,
+  DeepSeek among them, list names only. There the page says "not said" rather
+  than guessing, and **Try them** runs each job once on a sample, which is the only
+  way to know: a drawn page reading "Rechnung 4711" for reading, a one-word
+  question for sorting.
+- **Keys are in the keychain**, filed under a random name per provider, as
+  Paperless tokens are; nothing hands one back to the window. Removing a provider
+  removes its key and sends its jobs back to their defaults.
+- **Leaving the computer is said, not implied.** Nothing falls back to a hosted
+  service. When a job's provider is not this computer (decided by the address
+  being a loopback one, so an Ollama elsewhere on the network counts as elsewhere),
+  the note under the job says what goes there: scans of letters, or senders,
+  subjects and the start of each message. `fuckmail classify` prints the same
+  before it starts.
+- `classify --ollama` (or `OLLAMA_URL` in the environment) still asks that Ollama
+  directly, past the settings; `--model` overrides the chosen model.
+
+### Not verified
+
+- **Against a real hosted service.** The client is tested against servers that
+  answer in the documented shapes, not against DeepSeek itself: there was no key
+  to test with. Whether a given service's models accept images is what Try them is
+  for.

@@ -1397,8 +1397,8 @@ function formFields() {
 function fillForm(account) {
   settings.editing = account.id;
   settings.mode = "account";
+  hideSettingsForms();
   settings.form.hidden = false;
-  paper.form.hidden = true;
   const f = settings.form;
   f.label.value = account.label ?? "";
   f.email.value = account.email ?? "";
@@ -1437,7 +1437,7 @@ function syncAuthFields() {
 
 function renderSettingsList() {
   settings.list.textContent = "";
-  const onAccounts = settings.mode !== "paper";
+  const onAccounts = settings.mode === "account";
 
   for (const account of settings.accounts) {
     settings.list.append(
@@ -1466,7 +1466,7 @@ function renderSettingsList() {
     settings.list.append(
       navItem({
         label: address.label || address.base_url,
-        active: !onAccounts && address.id === paper.editing,
+        active: settings.mode === "paper" && address.id === paper.editing,
         onClick: () => fillPaper(address),
         // A token-less address is configured and unreadable, which is worth
         // seeing without opening it.
@@ -1474,9 +1474,40 @@ function renderSettingsList() {
       }),
     );
   }
-  if (!onAccounts && paper.editing === null) {
+  if (settings.mode === "paper" && paper.editing === null) {
     settings.list.append(
       navItem({ label: "New address…", active: true, onClick: () => {} }),
+    );
+  }
+
+  // Models last: where they run is set up once and seldom visited.
+  const modelsHeading = document.createElement("div");
+  modelsHeading.className = "sidebar-heading";
+  modelsHeading.textContent = "Models";
+  settings.list.append(modelsHeading);
+  settings.list.append(
+    navItem({
+      label: "Model for each job",
+      active: settings.mode === "models",
+      onClick: showModels,
+    }),
+  );
+  for (const provider of models.providers) {
+    settings.list.append(
+      navItem({
+        label: provider.label,
+        active: settings.mode === "provider" && provider.id === models.editing,
+        onClick: () => fillProvider(provider),
+        title:
+          provider.kind === "openai" && !provider.has_key
+            ? `${provider.base_url} — no key stored`
+            : provider.base_url,
+      }),
+    );
+  }
+  if (settings.mode === "provider" && models.editing === null) {
+    settings.list.append(
+      navItem({ label: "New provider…", active: true, onClick: () => {} }),
     );
   }
 }
@@ -1486,6 +1517,7 @@ async function openSettings() {
   // Post is an addition to the settings, not a prerequisite for them: a
   // failure to list addresses must not stop anyone editing an account.
   paper.addresses = await invoke("paper_mailboxes").catch(() => []);
+  models.providers = await invoke("ai_providers").catch(() => []);
   settings.sheet.hidden = false;
   fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
 }
@@ -1704,7 +1736,7 @@ function fillPaper(address) {
     : "No token stored yet. In Paperless: your profile menu → API Auth Token.";
 
   el("paper-delete").hidden = address.id === null;
-  settings.form.hidden = true;
+  hideSettingsForms();
   paper.form.hidden = false;
   settings.report.hidden = true;
   syncSelectorField();
@@ -1796,6 +1828,331 @@ el("paper-verify").onclick = async () => {
     button.disabled = false;
     button.textContent = "Verify";
   }
+};
+
+// -- models --------------------------------------------------------------------
+
+const models = {
+  form: el("ai-form"),
+  providerForm: el("provider-form"),
+  providers: [],
+  // What each provider offers, by id, as a promise: two jobs on one provider
+  // ask it once, and a provider's own page asks again.
+  offered: new Map(),
+  // Which provider the provider form is editing. Null means a new one.
+  editing: null,
+  // The kind of provider being edited: `ollama`, or `openai` for a service
+  // with an OpenAI-compatible API.
+  kind: "openai",
+};
+
+const LOCAL_PROVIDER = 1;
+const TASKS = ["vision", "chat"];
+const TASK_NAMES = { vision: "reading scans", chat: "sorting mail" };
+
+/// Where a new provider starts. Each address is the service's own documented
+/// base for its OpenAI-compatible API.
+const PRESETS = {
+  deepseek: { kind: "openai", label: "DeepSeek", base_url: "https://api.deepseek.com" },
+  openai: { kind: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1" },
+  openrouter: { kind: "openai", label: "OpenRouter", base_url: "https://openrouter.ai/api/v1" },
+  custom: { kind: "openai", label: "", base_url: "https://" },
+  ollama: { kind: "ollama", label: "Ollama", base_url: "http://" },
+};
+
+/// One form at a time in the sheet — see the note in styles.css on why each
+/// form's hidden attribute needs a rule of its own.
+function hideSettingsForms() {
+  settings.form.hidden = true;
+  paper.form.hidden = true;
+  models.form.hidden = true;
+  models.providerForm.hidden = true;
+  settings.report.hidden = true;
+}
+
+function formatSize(bytes) {
+  return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+}
+
+/// "sees images · 3.2 GB": what choosing a model needs to know about it.
+function describeModel(model) {
+  const sees = model.vision === true ? "sees images" : model.vision === false ? "text only" : "";
+  return [sees, model.size_bytes ? formatSize(model.size_bytes) : ""].filter(Boolean).join(" · ");
+}
+
+function offeredBy(providerId, { fresh = false } = {}) {
+  if (fresh || !models.offered.has(providerId)) {
+    const asking = invoke("ai_models", { providerId });
+    // A failure is asked again next time rather than remembered.
+    asking.catch(() => {
+      if (models.offered.get(providerId) === asking) models.offered.delete(providerId);
+    });
+    models.offered.set(providerId, asking);
+  }
+  return models.offered.get(providerId);
+}
+
+async function showModels() {
+  settings.mode = "models";
+  hideSettingsForms();
+  models.form.hidden = false;
+  renderSettingsList();
+  try {
+    const [providers, tasks] = await Promise.all([invoke("ai_providers"), invoke("ai_tasks")]);
+    models.providers = providers;
+    for (const task of tasks) {
+      const select = models.form[`${task.task}_provider`];
+      select.textContent = "";
+      for (const provider of providers) select.append(new Option(provider.label, String(provider.id)));
+      select.value = String(task.provider_id);
+      models.form[`${task.task}_model`].value = task.model;
+      fillOffered(task.task);
+    }
+    renderSettingsList();
+  } catch (err) {
+    say(String(err), true);
+  }
+}
+
+/// Offers the chosen provider's models under a job's model field, and says
+/// what the chosen model can do and what the job would send where.
+async function fillOffered(task) {
+  const providerField = models.form[`${task}_provider`];
+  const providerId = Number(providerField.value);
+  let offered = [];
+  let failed = null;
+  try {
+    offered = await offeredBy(providerId);
+  } catch (err) {
+    failed = String(err);
+  }
+  if (Number(providerField.value) !== providerId) return; // changed while asking
+
+  const list = el(`${task}-models`);
+  list.textContent = "";
+  for (const model of offered) {
+    // An embedding model can be asked nothing, so it is no answer to either job.
+    if (model.embedding) continue;
+    const option = document.createElement("option");
+    option.value = model.name;
+    option.label = describeModel(model);
+    list.append(option);
+  }
+  noteFor(task, offered, failed);
+}
+
+function noteFor(task, offered, failed) {
+  const f = models.form;
+  const provider = models.providers.find((p) => p.id === Number(f[`${task}_provider`].value));
+  const name = f[`${task}_model`].value.trim();
+  const model = offered.find((m) => m.name === name);
+  const notes = [];
+
+  if (failed) {
+    notes.push(`Could not list ${provider?.label ?? "the provider"}'s models: ${failed}`);
+  } else if (name && !model) {
+    notes.push(
+      provider?.kind === "ollama"
+        ? `${name} is not on this Ollama yet — pull it with: ollama pull ${name}`
+        : `${provider?.label} does not list ${name}.`,
+    );
+  }
+  if (task === "vision" && model?.vision === false) {
+    notes.push(`${name} cannot see images, so it cannot read scans.`);
+  }
+  if (task === "vision" && model && model.vision === null) {
+    notes.push(`${provider.label} does not say whether ${name} can see images — Try them to find out.`);
+  }
+  if (provider && !provider.local) {
+    notes.push(
+      task === "vision"
+        ? `Scans of your letters will be sent to ${provider.label}.`
+        : `The sender, subject and start of each message will be sent to ${provider.label}.`,
+    );
+  }
+
+  const note = f.querySelector(`[data-note="${task}"]`);
+  note.textContent = notes.join(" ");
+  note.classList.toggle("warn", Boolean(provider && !provider.local));
+}
+
+for (const task of TASKS) {
+  models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task));
+  models.form[`${task}_model`].addEventListener("input", () => fillOffered(task));
+}
+
+models.form.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    for (const task of TASKS) {
+      await invoke("set_ai_task", {
+        task,
+        providerId: Number(models.form[`${task}_provider`].value),
+        model: models.form[`${task}_model`].value.trim(),
+      });
+    }
+    say("saved");
+    await showModels();
+  } catch (err) {
+    say(String(err), true);
+  }
+});
+
+/// Each job once, on a sample rather than anyone's mail — the only way to know
+/// whether a service's model can see, since most services do not say.
+el("ai-try").onclick = async () => {
+  const button = el("ai-try");
+  button.disabled = true;
+  button.textContent = "Trying…";
+  settings.report.hidden = false;
+  settings.report.textContent = "Asking…";
+
+  const lines = [];
+  for (const task of TASKS) {
+    const providerId = Number(models.form[`${task}_provider`].value);
+    const model = models.form[`${task}_model`].value.trim();
+    const provider = models.providers.find((p) => p.id === providerId);
+    lines.push(`${TASK_NAMES[task]} — ${model} at ${provider?.label ?? providerId}`);
+    try {
+      const trial = await invoke("ai_try", { task, providerId, model });
+      const seconds = (trial.latency_ms / 1000).toFixed(1);
+      lines.push(`      ${trial.passed ? "ok" : "NOT OK"}: ${trial.verdict}, in ${seconds} s`);
+      if (trial.reply) lines.push(`      it said: ${trial.reply}`);
+    } catch (err) {
+      lines.push(`      FAILED — ${err}`);
+    }
+    lines.push("");
+    settings.report.textContent = lines.join("\n");
+  }
+  button.disabled = false;
+  button.textContent = "Try them";
+};
+
+function fillProvider(provider) {
+  settings.mode = "provider";
+  models.editing = provider.id;
+  models.kind = provider.kind;
+  hideSettingsForms();
+  models.providerForm.hidden = false;
+
+  const f = models.providerForm;
+  // The service is a starting point for a new provider; an existing one is
+  // edited by its address.
+  el("provider-preset").hidden = provider.id !== null;
+  f.label.value = provider.label ?? "";
+  f.base_url.value = provider.base_url ?? "";
+  f.key.value = "";
+  syncProviderKind(provider);
+  el("provider-delete").hidden = provider.id === null || provider.id === LOCAL_PROVIDER;
+  el("provider-models").hidden = true;
+  el("provider-models-status").textContent = provider.id === null ? "Save to see them." : "";
+  renderSettingsList();
+  if (provider.id !== null) listProviderModels(provider.id);
+}
+
+/// A key is for a hosted service; Ollama has none to ask for.
+function syncProviderKind(provider) {
+  const ollama = models.kind === "ollama";
+  el("provider-key").hidden = ollama;
+  el("provider-key-state").textContent = ollama
+    ? "Ollama needs no key."
+    : provider?.has_key
+      ? "A key is stored in the keychain. It is sent only to this address."
+      : "No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.";
+}
+
+async function listProviderModels(id) {
+  const table = el("provider-models");
+  const status = el("provider-models-status");
+  status.textContent = "Asking for its models…";
+  try {
+    const offered = await offeredBy(id, { fresh: true });
+    if (settings.mode !== "provider" || models.editing !== id) return;
+    const body = table.tBodies[0];
+    body.textContent = "";
+    for (const model of offered) {
+      const row = body.insertRow();
+      row.insertCell().textContent = model.name;
+      row.insertCell().textContent = model.embedding
+        ? "embeddings only"
+        : model.vision === true
+          ? "yes"
+          : model.vision === false
+            ? "no"
+            : "not said";
+      row.insertCell().textContent = model.size_bytes ? formatSize(model.size_bytes) : "";
+    }
+    table.hidden = offered.length === 0;
+    const provider = models.providers.find((p) => p.id === id);
+    status.textContent = offered.length
+      ? `${offered.length} model${offered.length === 1 ? "" : "s"}`
+      : provider?.kind === "ollama"
+        ? "No models pulled yet. For reading scans: ollama pull qwen2.5vl:3b"
+        : "The service lists no models for this key.";
+  } catch (err) {
+    if (settings.mode === "provider" && models.editing === id) {
+      status.textContent = `Could not list its models: ${err}`;
+    }
+  }
+}
+
+async function saveProvider() {
+  const f = models.providerForm;
+  const id = await invoke("save_ai_provider", {
+    input: {
+      id: models.editing,
+      kind: models.kind,
+      label: f.label.value.trim(),
+      base_url: f.base_url.value.trim(),
+    },
+  });
+  const key = f.key.value.trim();
+  // After the row, as with passwords and tokens: never a key with nothing to use it.
+  if (key) await invoke("set_ai_key", { id, key });
+  models.offered.delete(id);
+  models.providers = await invoke("ai_providers");
+  return id;
+}
+
+models.providerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    const id = await saveProvider();
+    fillProvider(models.providers.find((p) => p.id === id));
+    say("saved");
+  } catch (err) {
+    say(String(err), true);
+  }
+});
+
+models.providerForm.preset.addEventListener("change", () => {
+  const preset = PRESETS[models.providerForm.preset.value];
+  models.kind = preset.kind;
+  models.providerForm.label.value = preset.label;
+  models.providerForm.base_url.value = preset.base_url;
+  syncProviderKind(null);
+});
+
+el("provider-delete").onclick = async () => {
+  const provider = models.providers.find((p) => p.id === models.editing);
+  if (!provider) return;
+  if (!confirm(`Remove ${provider.label}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.`)) {
+    return;
+  }
+  try {
+    await invoke("delete_ai_provider", { id: provider.id });
+    models.offered.delete(provider.id);
+    await showModels();
+    say(`removed ${provider.label}`);
+  } catch (err) {
+    say(String(err), true);
+  }
+};
+
+el("settings-models").onclick = showModels;
+el("settings-add-provider").onclick = () => {
+  models.providerForm.preset.value = "deepseek";
+  fillProvider({ id: null, has_key: false, ...PRESETS.deepseek });
 };
 
 /// The Paperless preflight, as text — the same shape as the IMAP one above.

@@ -18,6 +18,9 @@ pub enum AiError {
 
     #[error("{0} is not a usable model server URL")]
     Url(String),
+
+    #[error("{0} is not a kind of model provider fuckmail knows")]
+    Kind(String),
 }
 
 /// What a vision model is told before it is shown a page.
@@ -110,6 +113,66 @@ impl Ollama {
             "options": { "temperature": 0, "num_predict": 4096 },
         });
         self.exchange(&body).await
+    }
+
+    /// The models pulled into this Ollama, with what each can do.
+    ///
+    /// The list gives names and sizes; what a model can do takes a `show` per
+    /// model, which is local and quick. A model `show` fails for is listed
+    /// anyway, with what it can do unknown.
+    pub async fn models(&self) -> Result<Vec<crate::ModelInfo>, AiError> {
+        #[derive(Deserialize)]
+        struct Tags {
+            models: Vec<Tag>,
+        }
+        #[derive(Deserialize)]
+        struct Tag {
+            name: String,
+            #[serde(default)]
+            size: Option<u64>,
+        }
+
+        let response = self
+            .http
+            .get(format!("{}/api/tags", self.base))
+            .send()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?;
+        if !status.is_success() {
+            return Err(AiError::Status {
+                status: status.as_u16(),
+                body: text.trim().to_string(),
+            });
+        }
+        let tags: Tags = serde_json::from_str(&text).map_err(|err| AiError::Shape(err.to_string()))?;
+
+        let mut models = Vec::with_capacity(tags.models.len());
+        for tag in tags.models {
+            let capabilities: Option<Vec<String>> = self
+                .post("/api/show", &json!({ "model": tag.name }))
+                .await
+                .ok()
+                .and_then(|show| show.get("capabilities").cloned())
+                .and_then(|capabilities| serde_json::from_value(capabilities).ok());
+            let has = |what: &str| {
+                capabilities
+                    .as_ref()
+                    .map(|list| list.iter().any(|capability| capability == what))
+            };
+            models.push(crate::ModelInfo {
+                vision: has("vision"),
+                embedding: has("embedding").unwrap_or_else(|| tag.name.contains("embed")),
+                size_bytes: tag.size,
+                name: tag.name,
+            });
+        }
+        models.sort_by(|a, b| a.name.cmp(&b.name));
+        Ok(models)
     }
 
     async fn exchange(&self, body: &Value) -> Result<ChatReply, AiError> {

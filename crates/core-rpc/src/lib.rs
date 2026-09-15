@@ -19,10 +19,13 @@
 //! single thing that would undo the 59.8 fps it otherwise reaches. See
 //! docs/spike-tauri-list.md.
 
+pub mod ai;
 pub mod paper;
 pub mod session;
 pub mod settings;
 
+pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
+pub use core_ai::{ModelInfo, Provider as ModelProvider};
 pub use core_paper::PaperReport;
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
@@ -634,7 +637,7 @@ impl Core {
     pub async fn model_pass(
         &self,
         account: AccountId,
-        ollama: &core_ai::Ollama,
+        server: &impl core_ai::Chat,
         classifier: &core_ai::PromptClassifier,
         limit: usize,
     ) -> Result<ModelPass> {
@@ -652,7 +655,7 @@ impl Core {
 
         for summary in &waiting {
             let facts = self.facts_for_model(account, summary);
-            match classifier.classify(ollama, &facts.as_message_facts()).await {
+            match classifier.classify(server, &facts.as_message_facts()).await {
                 Ok(verdict) => {
                     failures_in_a_row = 0;
                     // An answer that names no single category is the model not

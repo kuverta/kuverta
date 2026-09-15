@@ -101,6 +101,8 @@ test('the settings sheet opens on the account form alone', async () => {
   const { page, context } = await openSettings();
   assert.equal(await page.locator('#settings-form').isVisible(), true);
   assert.equal(await page.locator('#paper-form').isVisible(), false, 'the address form must be off screen');
+  assert.equal(await page.locator('#ai-form').isVisible(), false, 'the models form must be off screen');
+  assert.equal(await page.locator('#provider-form').isVisible(), false, 'the provider form must be off screen');
   await context.close();
 });
 
@@ -140,6 +142,122 @@ test('the list says where addresses go, even before there are any', async () => 
   const list = await page.locator('#settings-list').innerText();
   assert.match(list, /you@example\.com/);
   assert.match(list, /Postal addresses/);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+// -- models ------------------------------------------------------------------
+
+const noteOf = (page, task) => page.locator(`[data-note="${task}"]`);
+
+test('the models page says which model each job uses and what the provider has', async () => {
+  const { page, context, problems } = await openSettings();
+  await page.locator('#settings-models').click();
+  await page.waitForSelector('#ai-form', { state: 'visible' });
+  assert.equal(await page.locator('#settings-form').isVisible(), false, 'one form at a time');
+
+  assert.equal(await page.locator('#ai-form select[name="vision_provider"] option:checked').innerText(), 'Ollama on this computer');
+  assert.equal(await page.locator('#ai-form input[name="vision_model"]').inputValue(), 'qwen2.5vl:3b');
+  assert.equal(await page.locator('#ai-form input[name="chat_model"]').inputValue(), 'llama3.2:3b');
+
+  await page.waitForFunction(() => document.querySelectorAll('#vision-models option').length === 2);
+  const offered = await page.locator('#vision-models option').evaluateAll((options) => options.map((o) => [o.value, o.label]));
+  assert.deepEqual(
+    offered,
+    [
+      ['llama3.2:3b', 'text only · 2.0 GB'],
+      ['qwen2.5vl:3b', 'sees images · 3.2 GB'],
+    ],
+    'an embedding model is no answer to either job',
+  );
+  assert.equal(await noteOf(page, 'vision').textContent(), '', 'a local model that sees needs no note');
+
+  // A model that cannot see is no use for scans, and the page says so.
+  await page.locator('#ai-form input[name="vision_model"]').fill('llama3.2:3b');
+  await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('cannot see images'));
+
+  // One that is not pulled says how to get it.
+  await page.locator('#ai-form input[name="vision_model"]').fill('qwen2.5vl:7b');
+  await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('ollama pull qwen2.5vl:7b'));
+
+  await page.locator('#ai-try').click();
+  await page.waitForFunction(() => document.getElementById('settings-report')?.textContent.includes('sorting mail'));
+  const report = await page.locator('#settings-report').innerText();
+  assert.match(report, /reading scans — qwen2\.5vl:7b at Ollama on this computer/);
+  assert.match(report, /ok: read the sample page/);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a hosted service is added with its key, lists its models, and a job sent to it says what leaves the computer', async () => {
+  const { page, context, problems } = await openSettings();
+
+  await page.locator('#settings-add-provider').click();
+  await page.waitForSelector('#provider-form', { state: 'visible' });
+  assert.equal(await page.locator('#settings-form').isVisible(), false, 'one form at a time');
+  assert.equal(await page.locator('#provider-form input[name="label"]').inputValue(), 'DeepSeek');
+  assert.equal(await page.locator('#provider-form input[name="base_url"]').inputValue(), 'https://api.deepseek.com');
+  assert.equal(await page.locator('#provider-key').isVisible(), true);
+  assert.equal(await page.locator('#provider-delete').isVisible(), false, 'nothing to remove yet');
+
+  // Choosing another service fills in its address.
+  await page.locator('#provider-form select[name="preset"]').selectOption('openrouter');
+  assert.equal(await page.locator('#provider-form input[name="base_url"]').inputValue(), 'https://openrouter.ai/api/v1');
+  await page.locator('#provider-form select[name="preset"]').selectOption('deepseek');
+
+  await page.locator('#provider-form input[name="key"]').fill('sk-test');
+  await page.locator('#provider-save').click();
+  await page.waitForFunction(() => document.getElementById('provider-models-status')?.textContent === '2 models');
+  const rows = await page.locator('#provider-models tbody tr').evaluateAll((trs) => trs.map((tr) => [...tr.cells].map((td) => td.textContent)));
+  assert.deepEqual(rows, [
+    ['deepseek-chat', 'not said', ''],
+    ['deepseek-reasoner', 'not said', ''],
+  ]);
+  assert.match(await page.locator('#settings-list').innerText(), /DeepSeek/);
+  assert.match(await page.locator('#provider-key-state').innerText(), /A key is stored in the keychain/);
+  assert.equal(await page.locator('#provider-form input[name="key"]').inputValue(), '', 'the key is never shown again');
+  assert.equal(await page.locator('#provider-preset').isVisible(), false, 'a saved provider is edited by its address');
+
+  // Sorting mail on DeepSeek: the page says what that sends.
+  await page.locator('#settings-models').click();
+  await page.waitForSelector('#ai-form', { state: 'visible' });
+  await page.locator('#ai-form select[name="chat_provider"]').selectOption({ label: 'DeepSeek' });
+  await page.locator('#ai-form input[name="chat_model"]').fill('deepseek-chat');
+  await page.waitForFunction(() => document.querySelector('[data-note="chat"]').textContent.includes('will be sent to DeepSeek'));
+  assert.equal(await noteOf(page, 'chat').evaluate((note) => note.classList.contains('warn')), true);
+
+  // Reading scans there too: DeepSeek does not say whether its model can see.
+  await page.locator('#ai-form select[name="vision_provider"]').selectOption({ label: 'DeepSeek' });
+  await page.locator('#ai-form input[name="vision_model"]').fill('deepseek-chat');
+  await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('does not say whether deepseek-chat can see images'));
+  assert.match(await noteOf(page, 'vision').textContent(), /Scans of your letters will be sent to DeepSeek/);
+
+  await page.locator('#ai-save').click();
+  await page.waitForSelector('#toast:not([hidden])');
+
+  // Back from elsewhere, the page shows what was kept rather than what was typed.
+  await page.locator('#settings-add').click();
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('#ai-form select[name="chat_provider"] option:checked')?.textContent === 'DeepSeek');
+  assert.equal(await page.locator('#ai-form input[name="chat_model"]').inputValue(), 'deepseek-chat');
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('the Ollama on this computer needs no key and cannot be removed', async () => {
+  const { page, context, problems } = await openSettings();
+  await page.locator('#settings-list .nav-item', { hasText: 'Ollama on this computer' }).click();
+  await page.waitForSelector('#provider-form', { state: 'visible' });
+
+  assert.equal(await page.locator('#provider-key').isVisible(), false);
+  assert.equal(await page.locator('#provider-key-state').innerText(), 'Ollama needs no key.');
+  assert.equal(await page.locator('#provider-delete').isVisible(), false);
+  await page.waitForFunction(() => document.getElementById('provider-models-status')?.textContent === '3 models');
+  const sees = await page.locator('#provider-models tbody tr').evaluateAll((trs) => trs.map((tr) => tr.cells[1].textContent));
+  assert.deepEqual(sees, ['no', 'embeddings only', 'yes']);
+
   assert.deepEqual(problems, []);
   await context.close();
 });

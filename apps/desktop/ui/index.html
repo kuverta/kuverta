@@ -110,6 +110,8 @@
         <strong>Accounts and addresses</strong>
         <button id="settings-add">Add account</button>
         <button id="settings-add-paper">Add postal address</button>
+        <button id="settings-models">Models</button>
+        <button id="settings-add-provider">Add model provider</button>
         <button id="settings-close">Done</button>
       </div>
 
@@ -206,6 +208,66 @@
             <button type="button" id="paper-verify">Verify</button>
             <button type="button" id="paper-delete" class="danger">Remove address</button>
           </div>
+        </form>
+
+        <!--
+          Which model each job uses, and where it runs. A job moves off this
+          computer only when a hosted provider is chosen for it here, and the
+          note under it says what that sends.
+        -->
+        <form id="ai-form" autocomplete="off" hidden>
+          <p class="hint">Models run on this computer with Ollama unless you choose otherwise. A hosted service needs no download and is often better and faster — and whatever a job sends it leaves this computer.</p>
+
+          <div class="form-heading">Reading scanned letters <span class="hint">needs a model that can see images</span></div>
+          <div class="row3">
+            <label>Provider<select name="vision_provider"></select></label>
+            <label>Model<input name="vision_model" list="vision-models" spellcheck="false" required></label>
+          </div>
+          <datalist id="vision-models"></datalist>
+          <p class="hint ai-note" data-note="vision"></p>
+
+          <div class="form-heading">Sorting mail <span class="hint">fuckmail classify — any chat model</span></div>
+          <div class="row3">
+            <label>Provider<select name="chat_provider"></select></label>
+            <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>
+          </div>
+          <datalist id="chat-models"></datalist>
+          <p class="hint ai-note" data-note="chat"></p>
+
+          <div class="form-actions">
+            <button type="submit" id="ai-save">Save</button>
+            <button type="button" id="ai-try">Try them</button>
+          </div>
+        </form>
+
+        <!--
+          One place models run: an Ollama, or a hosted service with an
+          OpenAI-compatible API — DeepSeek, OpenAI, OpenRouter and most others.
+        -->
+        <form id="provider-form" autocomplete="off" hidden>
+          <label id="provider-preset">Service<select name="preset">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="custom">Another OpenAI-compatible service</option>
+            <option value="ollama">Ollama on another computer</option>
+          </select></label>
+          <label>Name<input name="label" required></label>
+          <label>Address<input name="base_url" required spellcheck="false"></label>
+          <label id="provider-key">API key<input name="key" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
+          <p class="hint" id="provider-key-state"></p>
+
+          <div class="form-actions">
+            <button type="submit" id="provider-save">Save</button>
+            <button type="button" id="provider-delete" class="danger">Remove provider</button>
+          </div>
+
+          <div class="form-heading">Models available here</div>
+          <p class="hint" id="provider-models-status"></p>
+          <table id="provider-models" hidden>
+            <thead><tr><th>Model</th><th>Sees images</th><th>Size</th></tr></thead>
+            <tbody></tbody>
+          </table>
         </form>
 
         <pre id="settings-report" hidden></pre>
