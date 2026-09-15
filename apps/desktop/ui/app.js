@@ -90,8 +90,9 @@ const state = {
   // A postal address shown as an inbox in place of the account, or null.
   postbox: null,
   postboxes: [],
-  // Letters per postbox, as Paperless last said.
+  // Letters per postbox, as Paperless last said, and how many are unread here.
   postboxTotals: new Map(),
+  postboxUnread: new Map(),
   email: null,
   syncing: false,
   archive: null,
@@ -109,6 +110,25 @@ const state = {
   firstRendered: -1,
 };
 
+/// Which date post is listed and sorted by: the date on the letter, or when it
+/// was scanned. Kept across restarts — it is how someone reads their post.
+let postOrder = (() => {
+  try {
+    return localStorage.getItem("postOrder") === "added" ? "added" : "created";
+  } catch {
+    return "created";
+  }
+})();
+
+function setPostOrder(value) {
+  postOrder = value;
+  try {
+    localStorage.setItem("postOrder", value);
+  } catch {
+    // A preference: without storage it lasts until the window closes.
+  }
+}
+
 // -- data ------------------------------------------------------------------
 
 async function loadPage(offset) {
@@ -119,7 +139,14 @@ async function loadPage(offset) {
     // A postbox's page comes from Paperless, in the shape a page of mail has,
     // so everything below draws it without knowing which it is.
     const page = state.postbox
-      ? await invoke("paper_documents", { id: state.postbox.id, offset, limit: PAGE, query: null })
+      ? await invoke("paper_documents", {
+          id: state.postbox.id,
+          offset,
+          limit: PAGE,
+          query: null,
+          order: postOrder,
+          category: state.filter.category,
+        })
       : await invoke("messages", {
           account: state.account,
           offset,
@@ -241,6 +268,7 @@ async function refreshSidebar() {
         icon: "post",
         className: "account",
         count: state.postboxTotals.get(postbox.id) ?? null,
+        unread: state.postboxUnread.get(postbox.id) || 0,
         active: state.postbox?.id === postbox.id,
         // A token-less address is configured and unreadable, which is worth
         // seeing without opening it.
@@ -252,13 +280,18 @@ async function refreshSidebar() {
     );
   }
 
-  // Folders and categories belong to a mail account. A postbox has neither:
-  // Paperless keeps post under its own tags, and this only reads it.
+  // Folders belong to a mail account; Paperless keeps post under its own tags.
+  // Categories are for both: post is sorted by the same rules as mail.
   const onPost = state.postbox !== null;
   sidebar.folders.hidden = onPost;
-  sidebar.categories.hidden = onPost;
-  sidebar.categoriesHeading.hidden = onPost;
-  if (onPost) return;
+  sidebar.categories.hidden = false;
+  sidebar.categoriesHeading.hidden = false;
+  if (onPost) {
+    const box = state.postbox;
+    const counts = await invoke("paper_category_counts", { id: box.id }).catch(() => []);
+    if (state.postbox === box) renderCategories(counts);
+    return;
+  }
 
   state.folders = await invoke("folders", { account: state.account });
   sidebar.folders.textContent = "";
@@ -292,19 +325,28 @@ async function refreshSidebar() {
     );
   }
 
-  const counts = await invoke("category_counts", { account: state.account });
+  renderCategories(await invoke("category_counts", { account: state.account }));
+}
+
+/// The categories, with counts, as filters — for mail or for post.
+function renderCategories(counts) {
   sidebar.categories.textContent = "";
-  sidebar.categories.append(
-    navItem({
-      label: "Unread only",
-      icon: "inbox",
-      active: state.filter.unreadOnly,
-      onClick: async () => {
-        state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
-        await reload();
-      },
-    }),
-  );
+  // Unread-only filters mail in the store. Post's read state is fuckmail's own
+  // and no filter Paperless can apply, so a postbox shows its unread count on
+  // the postbox instead.
+  if (!state.postbox) {
+    sidebar.categories.append(
+      navItem({
+        label: "Unread only",
+        icon: "inbox",
+        active: state.filter.unreadOnly,
+        onClick: async () => {
+          state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
+          await reload();
+        },
+      }),
+    );
+  }
   for (const [category, count] of counts) {
     sidebar.categories.append(
       navItem({
@@ -356,6 +398,29 @@ function renderScope() {
     };
     scopeBar.append(clear);
   }
+
+  // Post has two dates worth sorting by: when the letter was written, and when
+  // it came through the letterbox and was scanned.
+  if (state.postbox) {
+    const toggle = document.createElement("span");
+    toggle.className = "order";
+    for (const [value, text, title] of [
+      ["created", "letter date", "Sort and date by the date on the letter"],
+      ["added", "scanned", "Sort and date by when it was scanned"],
+    ]) {
+      const button = document.createElement("button");
+      button.textContent = text;
+      button.title = title;
+      if (postOrder === value) button.className = "active";
+      button.onclick = async () => {
+        if (postOrder === value) return;
+        setPostOrder(value);
+        await reload();
+      };
+      toggle.append(button);
+    }
+    scopeBar.append(toggle);
+  }
 }
 
 /// Shows a postal address's post as an inbox: what Paperless holds for it,
@@ -369,6 +434,7 @@ async function selectPostbox(postbox) {
     say(`${postbox.label} has no Paperless token stored — add it in settings (,)`, true);
   }
   await reload();
+  autoTranscribe();
 }
 
 /// Moving, deleting, marking read, undo and replying: things mail has and post
@@ -382,14 +448,118 @@ function mailOnly(action) {
 /// How many letters each postbox holds, asked in the background: the sidebar
 /// shows it when it arrives, and a slow or absent Paperless holds nothing up.
 function countPostboxes() {
+  const redraw = () => (state.account !== null || state.postbox ? refreshSidebar() : null);
   for (const postbox of state.postboxes) {
     if (!postbox.has_token) continue;
     invoke("paper_documents", { id: postbox.id, offset: 0, limit: 1, query: null })
       .then((page) => {
         state.postboxTotals.set(postbox.id, page.total);
-        if (state.account !== null || state.postbox) return refreshSidebar();
+        return redraw();
       })
       .catch(() => {});
+    invoke("paper_unread_count", { id: postbox.id })
+      .then((unread) => {
+        state.postboxUnread.set(postbox.id, unread);
+        return redraw();
+      })
+      .catch(() => {});
+  }
+}
+
+/// Post's read state is fuckmail's own: opening a letter reads it, u toggles.
+async function markPostRead(row, read) {
+  const box = state.postbox;
+  if (!box) return;
+  try {
+    await invoke("set_paper_read", { id: box.id, documentId: row.id, read });
+    row.unread = !read;
+    render(true);
+    state.postboxUnread.set(box.id, await invoke("paper_unread_count", { id: box.id }));
+    await refreshSidebar();
+  } catch (err) {
+    say(`could not mark it ${read ? "read" : "unread"}: ${err}`, true);
+  }
+}
+
+// -- reading scans with the vision model ---------------------------------------
+
+/// Letters being read now, by postbox and document. One at a time: a vision
+/// model reading two pages at once on a laptop reads both slowly.
+const transcribing = new Set();
+const transcribeQueue = [];
+let transcribeRunning = false;
+/// Why the vision model could not be used, once it has failed — so new post
+/// stops asking, and the reading pane can say why.
+let visionFailed = null;
+
+function transcribePost(box, documentId, { force = false } = {}) {
+  const key = `${box.id}:${documentId}`;
+  if (transcribing.has(key) || transcribeQueue.some((job) => job.key === key)) return;
+  if (visionFailed && !force) return;
+  if (force) visionFailed = null;
+  transcribeQueue.push({ key, box, documentId });
+  runTranscriptions();
+}
+
+async function runTranscriptions() {
+  if (transcribeRunning) return;
+  transcribeRunning = true;
+  while (transcribeQueue.length) {
+    const job = transcribeQueue.shift();
+    transcribing.add(job.key);
+    refreshOpenLetter(job.key);
+    try {
+      await invoke("paper_transcribe", { id: job.box.id, documentId: job.documentId });
+      transcribing.delete(job.key);
+      // The row's sender, subject and category may all change with readable
+      // text, so the list is asked again; the letter being read stays open.
+      if (state.postbox?.id === job.box.id) await refreshPostbox();
+    } catch (err) {
+      transcribing.delete(job.key);
+      visionFailed = String(err);
+      transcribeQueue.length = 0;
+      say(`the vision model could not read the scan: ${err}`, true);
+      refreshOpenLetter(job.key);
+    }
+  }
+  transcribeRunning = false;
+}
+
+/// New post is read as it arrives, so the list says who it is from and what it
+/// is about — and sorts it — from text a person could read. Only letters
+/// nobody has opened yet.
+function autoTranscribe() {
+  if (!state.postbox || visionFailed) return;
+  for (const row of state.rows.values()) {
+    if (row.unread && !row.transcribed_by) transcribePost(state.postbox, row.id);
+  }
+}
+
+/// Redraws the open letter if it is the one `key` names.
+function refreshOpenLetter(key) {
+  const row = state.rows.get(state.selected);
+  if (reading.hidden || !state.postbox || !row || `${state.postbox.id}:${row.id}` !== key) return;
+  openSelected();
+}
+
+function showTranscriptNote(detail, row) {
+  const note = el("reading-note");
+  const button = el("reading-transcribe");
+  const key = `${state.postbox.id}:${row.id}`;
+  button.onclick = () => transcribePost(state.postbox, row.id, { force: true });
+  if (transcribing.has(key) || transcribeQueue.some((job) => job.key === key)) {
+    note.textContent = "Reading the scan with the vision model… it takes a little while a page.";
+    button.hidden = true;
+  } else if (detail.transcript_model) {
+    note.textContent = `Read from the scan by ${detail.transcript_model}. Where the scan is unclear it can get a word wrong — the PDF tab has the page itself.`;
+    button.textContent = "Read again";
+    button.hidden = false;
+  } else {
+    note.textContent = visionFailed
+      ? `This is Paperless's OCR. The vision model could not read the scan: ${visionFailed}`
+      : "This is Paperless's OCR.";
+    button.textContent = "Read with the vision model";
+    button.hidden = false;
   }
 }
 
@@ -412,7 +582,14 @@ async function checkForPost() {
   const box = state.postbox;
   if (!box || state.searching || !box.has_token) return;
   try {
-    const newest = await invoke("paper_documents", { id: box.id, offset: 0, limit: 1, query: null });
+    const newest = await invoke("paper_documents", {
+      id: box.id,
+      offset: 0,
+      limit: 1,
+      query: null,
+      order: postOrder,
+      category: state.filter.category,
+    });
     if (state.postbox !== box) return; // moved elsewhere while asking
     const shownNewest = state.rows.get(0)?.id ?? null;
     const topId = newest.rows[0]?.id ?? null;
@@ -420,6 +597,8 @@ async function checkForPost() {
 
     const arrived = newest.total - state.total;
     await refreshPostbox();
+    autoTranscribe();
+    countPostboxes();
     if (arrived > 0) say(`${arrived} new letter${arrived === 1 ? "" : "s"} to ${box.label}`);
   } catch {
     // Paperless away or the Mac asleep: ask again next time, quietly.
@@ -578,7 +757,8 @@ function render(force = false) {
 
     node.row.classList.remove("pending");
     node.unread.className = row.unread ? "dot on" : "dot";
-    node.date.textContent = listDate(row.date_utc);
+    const scanned = state.postbox && postOrder === "added";
+    node.date.textContent = listDate(scanned ? (row.added_utc ?? row.date_utc) : row.date_utc);
     node.sender.textContent = row.from;
     node.subject.textContent = row.subject;
     node.snippet.textContent = row.snippet ?? "";
@@ -628,6 +808,12 @@ async function openSelected() {
         detail.body_text ?? "(no text yet — Paperless may still be reading this scan)";
       if (scan.key !== scanKey(row)) clearScan();
       showReadingView();
+      showTranscriptNote(detail, row);
+      if (row.unread) markPostRead(row, true);
+      if (!detail.transcript_model && !visionFailed) {
+        transcribePost(state.postbox, row.id);
+        showTranscriptNote(detail, row);
+      }
       return;
     }
 
@@ -674,6 +860,7 @@ function showReadingView() {
   const onPost = state.postbox !== null;
   const pdf = onPost && readingView === "pdf";
   el("reading-tabs").hidden = !onPost;
+  el("reading-post").hidden = !onPost || pdf;
   el("reading-body").hidden = pdf;
   el("reading-file").hidden = !pdf;
   for (const tab of el("reading-tabs").querySelectorAll("[data-view]")) {
@@ -819,6 +1006,11 @@ async function trash() {
 async function toggleRead() {
   const row = state.rows.get(state.selected);
   if (!row) return;
+  if (state.postbox) {
+    await markPostRead(row, row.unread);
+    say(row.unread ? "marked unread" : "marked read");
+    return;
+  }
   await act("set_read", { read: row.unread }, row.unread ? "marked read" : "marked unread");
 }
 
@@ -1057,7 +1249,7 @@ const KEYS = {
   e: mailOnly(archive),
   "#": mailOnly(trash),
   Delete: mailOnly(trash),
-  u: mailOnly(toggleRead),
+  u: toggleRead,
   z: mailOnly(undo),
   r: sync,
   v: () => {

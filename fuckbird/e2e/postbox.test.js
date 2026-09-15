@@ -90,6 +90,34 @@ async function openWindow() {
 
 const postbox = (page) => page.locator('#postboxes .nav-item', { hasText: 'Home' });
 
+/** Waits for the open letter to be shown as the fake vision model read it. */
+async function readByVision(page, subject) {
+  await page.waitForFunction(
+    (want) =>
+      document.getElementById('reading-subject')?.textContent === want &&
+      document.getElementById('reading-note')?.textContent.includes('fake-vision'),
+    subject,
+    { timeout: 5000 },
+  );
+  assert.equal(await page.locator('#reading-transcribe').innerText(), 'Read again');
+}
+
+/** A letter that has just come through the scanner: unread, never read by a model. */
+function scanned(fields) {
+  return {
+    mailbox: 1,
+    date_utc: Math.floor(Date.UTC(2026, 8, 1, 9, 0, 0) / 1000),
+    added_utc: Math.floor(Date.now() / 1000),
+    unread: true,
+    has_attachments: true,
+    category: 'notification',
+    snippet: 'Unleserlich',
+    tags: [],
+    page_count: 1,
+    ...fields,
+  };
+}
+
 test('each postal address is an inbox in the sidebar, beside the account', async () => {
   const { page, context, problems } = await openWindow();
 
@@ -104,7 +132,7 @@ test('each postal address is an inbox in the sidebar, beside the account', async
   await context.close();
 });
 
-test('selecting a postbox lists its post like mail, without folders or categories', async () => {
+test('selecting a postbox lists its post like mail, sorted into categories but without folders', async () => {
   const { page, context, problems } = await openWindow();
 
   await postbox(page).click();
@@ -115,8 +143,12 @@ test('selecting a postbox lists its post like mail, without folders or categorie
   assert.deepEqual(subjects, ['Ihre Abschlagszahlung für April', 'Bescheid über Einkommensteuer'], 'newest first');
   assert.equal(await postbox(page).evaluate((item) => item.classList.contains('active')), true);
   assert.equal(await page.locator('#folders').isVisible(), false);
-  assert.equal(await page.locator('#categories').isVisible(), false);
-  assert.equal(await page.locator('#categories-heading').isVisible(), false);
+  // Post is sorted like mail: the categories are there, counted for this postbox.
+  assert.equal(await page.locator('#categories-heading').isVisible(), true);
+  await page.locator('#categories .nav-item', { hasText: 'transactional' }).waitFor();
+  assert.equal(await page.locator('#categories .nav-item', { hasText: 'transactional' }).locator('.count').innerText(), '2');
+  // Unread-only is a filter over mail in the store; post has none.
+  assert.equal(await page.locator('#categories .nav-item', { hasText: 'Unread only' }).count(), 0);
 
   assert.deepEqual(problems, []);
   await context.close();
@@ -135,7 +167,10 @@ test('opening a letter shows its text, where it was sent and how many pages it h
   assert.match(meta, /Finanzamt/);
   assert.match(meta, /Home/);
   assert.match(meta, /4 pages/);
-  assert.equal(await page.locator('#reading-body').innerText(), 'Ihr Steuerbescheid liegt bei.');
+  // Opening a letter nobody has had read has the vision model read it, and the
+  // text says whose reading it is.
+  await readByVision(page, 'Bescheid über Einkommensteuer');
+  assert.equal(await page.locator('#reading-body').innerText(), 'Transkript: Bescheid über Einkommensteuer');
 
   assert.deepEqual(problems, []);
   await context.close();
@@ -147,6 +182,7 @@ test('a letter opens on its text or its scan, and the choice is kept for the nex
   await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
   await page.locator('#content .row', { hasText: 'Ihre Abschlagszahlung für April' }).click();
   await page.waitForSelector('#reading', { state: 'visible' });
+  await readByVision(page, 'Ihre Abschlagszahlung für April');
 
   const active = () => page.locator('#reading-tabs button.active').innerText();
   const frameSrc = () => page.locator('#reading-pdf').getAttribute('src');
@@ -163,6 +199,9 @@ test('a letter opens on its text or its scan, and the choice is kept for the nex
   assert.equal(await page.locator('#reading-pdf').isVisible(), true);
   const first = await frameSrc();
 
+  // The note on whose reading the text is belongs to the text, not the scan.
+  assert.equal(await page.locator('#reading-post').isVisible(), false);
+
   // The next letter opens on the scan too, and it is that letter's scan.
   await page.keyboard.press('j');
   await page.waitForFunction(
@@ -174,6 +213,8 @@ test('a letter opens on its text or its scan, and the choice is kept for the nex
   );
   assert.equal(await page.locator('#reading-subject').innerText(), 'Bescheid über Einkommensteuer');
   assert.equal(await active(), 'PDF');
+  await page.waitForFunction(async () =>
+    (await window.__fakeBridge)._documents.find((d) => d.id === 40)?.transcribed_by === 'fake-vision');
 
   // v goes back to the text.
   await page.keyboard.press('v');
@@ -200,6 +241,7 @@ test('a letter scanned while the postbox is open appears on its own, and the let
   await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
   await page.locator('#content .row', { hasText: 'Bescheid über Einkommensteuer' }).click();
   await page.waitForSelector('#reading', { state: 'visible' });
+  await readByVision(page, 'Bescheid über Einkommensteuer');
 
   await page.evaluate(async () => {
     const invoke = await window.__fakeBridge;
@@ -251,6 +293,100 @@ test('archiving post is refused in words, and the account leads back to mail', a
   await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('messages'));
   assert.equal(await page.locator('#folders').isVisible(), true);
   assert.equal(await postbox(page).evaluate((item) => item.classList.contains('active')), false);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a scanned letter is unread until it is opened, and u makes it unread again', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.evaluate(async (letter) => {
+    (await window.__fakeBridge)._documents.push(letter);
+  }, scanned({ id: 43, from: 'Hausverwaltung Nord', subject: 'Wasserablesung' }));
+
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('3 letters'));
+  const row = page.locator('#content .row', { hasText: 'Wasserablesung' });
+  assert.equal(await row.locator('.dot').evaluate((dot) => dot.classList.contains('on')), true);
+  // The postbox says how much post is unread, as a mail folder does.
+  await page.waitForFunction(() => document.querySelector('#postboxes .count.unread')?.textContent === '1');
+
+  // New post is read by the vision model as soon as it is seen, before anyone opens it.
+  await page.waitForFunction(async () =>
+    (await window.__fakeBridge)._documents.find((d) => d.id === 43)?.transcribed_by === 'fake-vision');
+
+  await row.click();
+  await page.waitForSelector('#reading', { state: 'visible' });
+  await page.waitForFunction(() => !document.querySelector('#postboxes .count.unread'));
+  assert.equal(await row.locator('.dot').evaluate((dot) => dot.classList.contains('on')), false);
+  assert.equal(await page.locator('#reading-body').innerText(), 'Transkript: Wasserablesung');
+
+  await page.keyboard.press('u');
+  await page.waitForFunction(() => document.querySelector('#postboxes .count.unread')?.textContent === '1');
+  assert.equal(await row.locator('.dot').evaluate((dot) => dot.classList.contains('on')), true);
+  assert.equal(
+    await page.evaluate(async () => (await window.__fakeBridge)._documents.find((d) => d.id === 43).unread),
+    true,
+    'kept, not just drawn',
+  );
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('post is listed by the date on the letter or by when it was scanned, and the choice is kept', async () => {
+  const { page, context, problems } = await openWindow();
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
+  const subjects = () => page.locator('#content .row:not([hidden]) .subject').allInnerTexts();
+  const order = () => page.locator('#scope .order button.active').innerText();
+
+  assert.equal(await order(), 'letter date');
+  assert.deepEqual(await subjects(), ['Ihre Abschlagszahlung für April', 'Bescheid über Einkommensteuer']);
+
+  // The tax letter is older but came through the scanner last.
+  await page.locator('#scope .order button', { hasText: 'scanned' }).click();
+  await page.waitForFunction(() => document.querySelector('#scope .order .active')?.textContent === 'scanned');
+  await page.waitForFunction(
+    () => document.querySelector('#content .row:not([hidden]) .subject')?.textContent === 'Bescheid über Einkommensteuer',
+  );
+  assert.deepEqual(await subjects(), ['Bescheid über Einkommensteuer', 'Ihre Abschlagszahlung für April']);
+
+  await page.reload();
+  await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('2 letters'));
+  assert.equal(await order(), 'scanned');
+  assert.deepEqual(await subjects(), ['Bescheid über Einkommensteuer', 'Ihre Abschlagszahlung für April']);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a category narrows the postbox to the post sorted into it', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.evaluate(async (letter) => {
+    const invoke = await window.__fakeBridge;
+    invoke._documents.push(letter);
+    // Read already, so nothing is sent to the vision model under the test.
+    for (const d of invoke._documents) {
+      d.unread = false;
+      d.transcribed_by = 'fake-vision';
+    }
+  }, scanned({ id: 44, from: 'Hausverwaltung Nord', subject: 'Treppenhausreinigung' }));
+
+  await postbox(page).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('3 letters'));
+  const notification = page.locator('#categories .nav-item', { hasText: 'notification' });
+  await notification.waitFor();
+  assert.equal(await notification.locator('.count').innerText(), '1');
+
+  await notification.click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('1 in notification'));
+  assert.deepEqual(await page.locator('#content .row:not([hidden]) .subject').allInnerTexts(), ['Treppenhausreinigung']);
+
+  await page.locator('#scope button', { hasText: 'clear' }).click();
+  await page.waitForFunction(() => document.getElementById('scope')?.textContent.includes('3 letters'));
 
   assert.deepEqual(problems, []);
   await context.close();

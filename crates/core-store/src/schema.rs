@@ -262,6 +262,28 @@ ALTER TABLE paper_mailbox ADD COLUMN token_key TEXT;
 UPDATE paper_mailbox SET token_key = lower(hex(randomblob(16))) WHERE token_key IS NULL;
 CREATE UNIQUE INDEX paper_mailbox_token_key ON paper_mailbox (token_key);
 "#,
+    // v10 — what fuckmail knows about post that Paperless does not keep:
+    // whether a letter has been read here, and a vision model's transcript of
+    // a scan whose OCR text is no use. Keyed by instance and document rather
+    // than by postal address, because two addresses on one instance can show
+    // the same letter, and reading it in one reads it.
+    r#"
+CREATE TABLE paper_read (
+    base_url    TEXT NOT NULL,
+    document_id INTEGER NOT NULL,
+    read_at     INTEGER NOT NULL,
+    PRIMARY KEY (base_url, document_id)
+);
+
+CREATE TABLE paper_transcript (
+    base_url    TEXT NOT NULL,
+    document_id INTEGER NOT NULL,
+    model       TEXT NOT NULL,
+    text        TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (base_url, document_id)
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

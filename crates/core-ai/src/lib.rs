@@ -27,5 +27,5 @@ mod ollama;
 mod prompt;
 
 pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
-pub use ollama::{AiError, ChatReply, Embedded, Ollama};
+pub use ollama::{AiError, ChatReply, Embedded, Ollama, TRANSCRIBE};
 pub use prompt::{ModelVerdict, PromptClassifier};
