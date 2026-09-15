@@ -29,11 +29,16 @@ pub trait Camera {
     fn preview(&self) -> Result<Vec<u8>>;
     /// A full-resolution JPEG, written to `path`.
     fn capture(&self, path: &Path) -> Result<()>;
-    /// A small greyscale frame of the whole view, ignoring the crop — what the
-    /// setup page shows to choose the crop on. The same as a preview for a
-    /// camera with no crop.
+    /// A small greyscale frame of the whole view, ignoring the crop — what
+    /// setup finds the page in. The same as a preview for a camera with no
+    /// crop.
     fn full_view(&self) -> Result<Vec<u8>> {
         self.preview()
+    }
+    /// A colour JPEG of the whole view, ignoring the crop, big enough to see
+    /// a table on a phone — what setup shows to choose the crop on.
+    fn snapshot(&self) -> Result<Vec<u8>> {
+        bail!("this camera takes no snapshots")
     }
 }
 
@@ -46,6 +51,10 @@ pub struct RpiCamera {
     pub roi: Option<String>,
     /// Milliseconds the sensor is given to settle before a frame is taken.
     pub settle_ms: u32,
+    /// The sensor's full size in pixels, which a crop's photograph is a share
+    /// of. The Pi camera v1 (OV5647) is 2592×1944.
+    pub sensor_width: u32,
+    pub sensor_height: u32,
 }
 
 impl Default for RpiCamera {
@@ -60,11 +69,38 @@ impl Default for RpiCamera {
             roi: None,
             // The shortest the sensor will accept and still expose sanely.
             settle_ms: 200,
+            sensor_width: 2592,
+            sensor_height: 1944,
         }
     }
 }
 
 impl RpiCamera {
+    /// The photograph's size for the crop: the crop's own share of the
+    /// sensor's pixels.
+    ///
+    /// Without it `rpicam-still` scales whatever the crop is to its full 4:3
+    /// output, so a crop the shape of a page came out stretched — which is why
+    /// the first setup page could only draw 4:3 boxes, and why that was no use
+    /// for a page. `None` without a crop, where the camera's own size applies.
+    pub fn capture_size(&self) -> Option<(u32, u32)> {
+        let parts: Vec<f64> = self
+            .roi
+            .as_deref()?
+            .split(',')
+            .map(|part| part.trim().parse().ok())
+            .collect::<Option<_>>()?;
+        let [_, _, width, height] = parts[..] else {
+            return None;
+        };
+        // Even sizes, which every encoder takes, and never absurdly small.
+        let even = |pixels: f64| ((pixels.round() as u32) / 2 * 2).max(64);
+        Some((
+            even(width * self.sensor_width as f64),
+            even(height * self.sensor_height as f64),
+        ))
+    }
+
     fn frame(&self, roi: Option<&str>) -> Result<Vec<u8>> {
         let mut command = Command::new(&self.program);
         command
@@ -79,30 +115,21 @@ impl RpiCamera {
             command.args(["--roi", roi]);
         }
 
-        let output = command
-            .output()
-            .with_context(|| format!("could not run {}", self.program))?;
-        if !output.status.success() {
-            bail!(
-                "{} failed: {}",
-                self.program,
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
-        }
+        let output = run(&self.program, &mut command)?;
 
         // The Y plane comes first and is one byte per pixel; U and V follow at
         // quarter resolution and are not wanted.
         let luma = (self.preview_width * self.preview_height) as usize;
-        if output.stdout.len() < luma {
+        if output.len() < luma {
             bail!(
                 "{} returned {} bytes, short of the {luma} a {}×{} frame needs",
                 self.program,
-                output.stdout.len(),
+                output.len(),
                 self.preview_width,
                 self.preview_height
             );
         }
-        let mut frame = output.stdout;
+        let mut frame = output;
         frame.truncate(luma);
         Ok(frame)
     }
@@ -121,6 +148,21 @@ impl Camera for RpiCamera {
         self.frame(None)
     }
 
+    fn snapshot(&self) -> Result<Vec<u8>> {
+        let mut command = Command::new(&self.program);
+        command
+            .arg("--nopreview")
+            .args(["--immediate", "--encoding", "jpg", "--quality", "85"])
+            .args(["--width", "1024", "--height", "768"])
+            .args(["--timeout", &self.settle_ms.to_string()])
+            .args(["--output", "-"]);
+        let jpeg = run(&self.program, &mut command)?;
+        if !jpeg.starts_with(&[0xFF, 0xD8]) {
+            bail!("{} did not return a JPEG", self.program);
+        }
+        Ok(jpeg)
+    }
+
     fn capture(&self, path: &Path) -> Result<()> {
         let mut command = Command::new(&self.program);
         command
@@ -133,20 +175,33 @@ impl Camera for RpiCamera {
         if let Some(roi) = &self.roi {
             command.args(["--roi", roi]);
         }
-
-        let output = command
-            .output()
-            .with_context(|| format!("could not run {}", self.program))?;
-        if !output.status.success() {
-            bail!(
-                "{} failed: {}",
-                self.program,
-                String::from_utf8_lossy(&output.stderr).trim()
-            );
+        if let Some((width, height)) = self.capture_size() {
+            command.args([
+                "--width",
+                &width.to_string(),
+                "--height",
+                &height.to_string(),
+            ]);
         }
+
+        run(&self.program, &mut command)?;
         if !path.exists() {
             bail!("{} reported success but wrote no file", self.program);
         }
         Ok(())
     }
+}
+
+/// Runs the camera program and returns what it wrote to standard output.
+fn run(program: &str, command: &mut Command) -> Result<Vec<u8>> {
+    let output = command
+        .output()
+        .with_context(|| format!("could not run {program}"))?;
+    if !output.status.success() {
+        bail!(
+            "{program} failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
+    }
+    Ok(output.stdout)
 }

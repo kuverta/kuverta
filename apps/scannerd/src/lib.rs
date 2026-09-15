@@ -10,6 +10,7 @@ pub mod button;
 pub mod camera;
 pub mod detect;
 pub mod hub;
+pub mod locate;
 pub mod pdf;
 pub mod run;
 pub mod settings;

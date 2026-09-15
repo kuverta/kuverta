@@ -27,6 +27,7 @@ use scannerd::button::Button;
 use scannerd::camera::{Camera, RpiCamera};
 use scannerd::detect::State;
 use scannerd::hub::{Command, Event, Hub, Queued, SettingsView};
+use scannerd::locate::find_page;
 use scannerd::run::{Letters, Scanner, Turn};
 use scannerd::settings::Settings;
 use scannerd::spool::Spool;
@@ -74,6 +75,16 @@ struct Args {
     /// The capture program.
     #[arg(long, default_value = "rpicam-still")]
     camera: String,
+
+    /// The camera sensor's full width in pixels, which a crop's photograph is
+    /// a share of. 2592×1944 is the Pi camera v1; the v2 is 3280×2464, the v3
+    /// 4608×2592.
+    #[arg(long, env = "SCANNERD_SENSOR_WIDTH", default_value_t = 2592)]
+    sensor_width: u32,
+
+    /// The camera sensor's full height in pixels.
+    #[arg(long, env = "SCANNERD_SENSOR_HEIGHT", default_value_t = 1944)]
+    sensor_height: u32,
 
     /// How long between preview frames.
     #[arg(long, default_value_t = 400)]
@@ -153,6 +164,8 @@ async fn main() -> Result<()> {
     let mut camera = RpiCamera {
         program: args.camera.clone(),
         roi: settings.effective_roi(args.roi.as_deref()),
+        sensor_width: args.sensor_width,
+        sensor_height: args.sensor_height,
         ..RpiCamera::default()
     };
     let hub = Arc::new(Hub::new(camera.preview_width, camera.preview_height));
@@ -235,12 +248,29 @@ async fn main() -> Result<()> {
                     }
                 }
                 Command::RetryNow => scanner.retry_all(&spool, &uploader, now).await,
-                Command::FullView => match camera.full_view() {
-                    Ok(frame) => hub.set_full_view(frame),
-                    Err(err) => {
-                        hub.event(now, false, format!("no picture of the whole view: {err:#}"))
+                Command::FullView => {
+                    // Found in a greyscale frame of the same view: there is no
+                    // JPEG decoder in this binary, and needs to be none.
+                    let suggestion = camera
+                        .full_view()
+                        .ok()
+                        .and_then(|luma| {
+                            find_page(
+                                &luma,
+                                camera.preview_width as usize,
+                                camera.preview_height as usize,
+                            )
+                        })
+                        .map(|area| area.to_roi());
+                    match camera.snapshot() {
+                        Ok(jpeg) => hub.set_full_view(jpeg, suggestion),
+                        Err(err) => hub.event(
+                            now,
+                            false,
+                            format!("could not take a picture of the whole view: {err:#}"),
+                        ),
                     }
-                },
+                }
                 Command::CheckPaperless => {
                     let (ok, text) = match uploader.check().await {
                         Ok(text) => (true, text),
