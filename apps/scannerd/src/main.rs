@@ -201,7 +201,7 @@ async fn main() -> Result<()> {
         for command in hub.take_commands() {
             match command {
                 Command::FinishLetter => {
-                    if !scanner.request_close() {
+                    if !scanner.request_close(now) {
                         hub.event(now, false, "pages are not being collected into letters");
                     }
                 }
@@ -319,7 +319,12 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
     let settle_frames = scanner.settle_frames();
     let has_baseline = scanner.has_baseline();
     let collecting = scanner.collecting_letters();
+    let finishing = scanner.finishing();
+    let (table_change, movement) = scanner.measure().unwrap_or((0.0, 0.0));
     hub.update(|status| {
+        status.finishing = finishing;
+        status.table_change = table_change;
+        status.movement = movement;
         status.state = state.to_string();
         status.frames_still = frames_still;
         status.settle_frames = settle_frames;

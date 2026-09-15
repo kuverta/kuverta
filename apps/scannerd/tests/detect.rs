@@ -213,3 +213,84 @@ fn a_small_change_is_not_a_page() {
     }
     assert_eq!(detector.state(), State::Waiting);
 }
+
+#[test]
+fn a_change_of_exposure_alone_is_not_a_change() {
+    // The camera exposes every frame afresh. The same table a shade lighter is
+    // the same table.
+    let lighter: Vec<u8> = desk().iter().map(|p| p + 40).collect();
+    assert_eq!(changed_fraction(&desk(), &lighter, 24), 0.0);
+
+    // And a page is still a page when the exposure moves with it.
+    let page_darker: Vec<u8> = desk_with_page(0.3)
+        .iter()
+        .map(|p| p.saturating_sub(30))
+        .collect();
+    assert!(changed_fraction(&desk(), &page_darker, 24) >= 0.18);
+}
+
+#[test]
+fn taking_the_page_away_arms_again_when_the_camera_comes_back_lighter() {
+    let mut detector = detector();
+    detector.observe(&desk());
+    let page = desk_with_page(0.4);
+    for _ in 0..4 {
+        detector.observe(&page);
+    }
+    assert_eq!(detector.state(), State::Spent);
+
+    let lighter: Vec<u8> = desk().iter().map(|p| p + 35).collect();
+    detector.observe(&lighter);
+    assert_eq!(detector.state(), State::Waiting);
+}
+
+#[test]
+fn a_table_that_never_looks_quite_as_it_did_arms_again_once_no_page_is_there() {
+    // Found on the Pi: after each photograph the table had to look almost
+    // exactly as learnt, it never did, and every page needed the table
+    // learning again by hand.
+    let mut detector = detector();
+    detector.observe(&desk());
+    let page = desk_with_page(0.4);
+    for _ in 0..4 {
+        detector.observe(&page);
+    }
+
+    // Something left behind across a tenth of the view: more than "the same
+    // table", less than a page.
+    let mut changed = desk();
+    for pixel in changed.iter_mut().rev().take(PIXELS / 10) {
+        *pixel = 20;
+    }
+    detector.observe(&changed);
+    detector.observe(&changed);
+    assert_eq!(
+        detector.state(),
+        State::Spent,
+        "not at the first sight of it"
+    );
+    detector.observe(&changed);
+    assert_eq!(detector.state(), State::Waiting);
+
+    // Judged against the table as it is now, a page on it is still a page.
+    let mut page_now = changed.clone();
+    for pixel in page_now.iter_mut().take(PIXELS * 4 / 10) {
+        *pixel = 235;
+    }
+    for _ in 0..3 {
+        detector.observe(&page_now);
+    }
+    assert_eq!(detector.observe(&page_now), Step::Capture);
+}
+
+#[test]
+fn the_last_measurements_are_kept_for_the_setup_page() {
+    let mut detector = detector();
+    assert_eq!(detector.last_measure(), None);
+
+    detector.observe(&desk());
+    detector.observe(&desk_with_page(0.4));
+
+    let (table, movement) = detector.last_measure().unwrap();
+    assert!(table >= 0.18 && movement >= 0.18, "{table} {movement}");
+}
