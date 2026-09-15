@@ -95,6 +95,9 @@ pub struct Detector {
     /// How many consecutive still frames before capturing.
     settle_frames: u8,
     baseline: Option<Vec<u8>>,
+    /// Counts baselines learnt, so whoever keeps one on disk can tell when to
+    /// write it again.
+    generation: u64,
     previous: Option<Vec<u8>>,
     state: State,
 }
@@ -105,6 +108,7 @@ impl Detector {
             thresholds,
             settle_frames: settle_frames.max(1),
             baseline: None,
+            generation: 0,
             previous: None,
             state: State::Waiting,
         }
@@ -114,20 +118,63 @@ impl Detector {
         self.state
     }
 
+    pub fn settle_frames(&self) -> u8 {
+        self.settle_frames
+    }
+
     /// Takes the current frame as the empty surface.
     ///
     /// Re-learnt whenever the surface is seen to be clear, so the daylight
     /// moving across a desk over an afternoon does not slowly read as a page.
     pub fn learn_baseline(&mut self, frame: Luma<'_>) {
         self.baseline = Some(frame.to_vec());
+        self.generation += 1;
+    }
+
+    /// Takes this frame as the empty surface *and* arms again, whatever state
+    /// the detector was in. What a person means by "the table is empty now":
+    /// it gets a detector out of `Spent` when the surface it was waiting to see
+    /// again was never really the empty one.
+    pub fn learn_empty(&mut self, frame: Luma<'_>) {
+        self.learn_baseline(frame);
+        self.previous = Some(frame.to_vec());
+        self.state = State::Waiting;
+    }
+
+    /// Forgets the empty surface, as when the crop changes and it no longer
+    /// shows the same part of the table.
+    pub fn forget_baseline(&mut self) {
+        self.baseline = None;
+        self.previous = None;
+        self.state = State::Waiting;
     }
 
     pub fn has_baseline(&self) -> bool {
         self.baseline.is_some()
     }
 
+    pub fn baseline(&self) -> Option<&[u8]> {
+        self.baseline.as_deref()
+    }
+
+    pub fn baseline_generation(&self) -> u64 {
+        self.generation
+    }
+
     /// Feeds one preview frame in and says what to do.
     pub fn observe(&mut self, frame: Luma<'_>) -> Step {
+        // A baseline of another size — one kept on disk from a different
+        // camera setting — compares as "nothing changed" forever, because
+        // `changed_fraction` answers 0 for frames of different sizes. That
+        // would be a detector that silently never sees a page.
+        if self
+            .baseline
+            .as_ref()
+            .is_some_and(|baseline| baseline.len() != frame.len())
+        {
+            self.baseline = None;
+        }
+
         let Some(baseline) = self.baseline.as_deref() else {
             self.learn_baseline(frame);
             self.previous = Some(frame.to_vec());
