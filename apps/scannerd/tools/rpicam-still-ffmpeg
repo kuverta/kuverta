@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
         --output | -o) output="$2"; shift 2 ;;
         --encoding | -e) encoding="$2"; shift 2 ;;
         --roi) roi="$2"; shift 2 ;;
-        --timeout | -t | --autofocus-mode) shift 2 ;;
+        --timeout | -t | --autofocus-mode | --quality | -q) shift 2 ;;
         --nopreview | -n | --immediate) shift ;;
         *) echo "$me: unsupported flag $1" >&2; exit 2 ;;
     esac
@@ -56,6 +56,12 @@ if [[ $encoding == yuv420 ]]; then
     vf=$(IFS=,; echo "${filters[*]}")
     exec ffmpeg -v error -nostdin "${input[@]}" -frames:v 1 -vf "$vf" \
         -pix_fmt gray -f rawvideo "$output"
+fi
+
+# A size on a capture is the setup page's snapshot, or a crop photographed at
+# its own share of the sensor.
+if [[ -n $width && -n $height ]]; then
+    filters+=("scale=$width:$height")
 fi
 
 # scannerd writes to `<name>.partial` and renames, so the format cannot come

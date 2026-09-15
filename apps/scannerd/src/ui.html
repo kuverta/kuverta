@@ -17,32 +17,34 @@
   main { max-width: 720px; margin: 0 auto; display: grid; gap: 14px; }
   h1 { font-size: 1.05rem; margin: 4px 0 0; color: var(--muted); font-weight: 600; }
   h2 { font-size: 1rem; margin: 0 0 6px; }
+  h3 { font-size: .95rem; margin: 16px 0 4px; }
   section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
   #todo { background: var(--todo); }
   #todo ol { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; }
-  #todo li { display: list-item; border: 0; padding: 0; }
   #todo li p { margin: 2px 0 6px; color: var(--muted); font-size: .92rem; }
   #state { display: flex; gap: 10px; align-items: center; font-size: 1.3rem; font-weight: 650; }
   #dot { width: 14px; height: 14px; border-radius: 50%; background: var(--muted); flex: none; }
   .hint { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
   .intro { margin: 0; }
   .bad { color: var(--bad); }
-  .view { position: relative; width: 100%; aspect-ratio: 4 / 3; margin-top: 10px; background: #000; border-radius: 8px; overflow: hidden; touch-action: none; }
-  .view img { display: block; width: 100%; height: 100%; object-fit: fill; }
-  #crop { position: absolute; display: none; pointer-events: none; border: 2px solid #ffd400; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .4); }
+  .view { position: relative; width: 100%; aspect-ratio: 4 / 3; margin-top: 10px; background: #000; border-radius: 8px; overflow: hidden; }
+  .view img { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+  .editor { touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
+  #crop { position: absolute; display: none; border: 2px solid #ffd400; box-shadow: 0 0 0 9999px rgba(0, 0, 0, .45); cursor: move; }
+  .handle { position: absolute; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: #ffd400; border: 2px solid #1d1d1b; }
+  .handle[data-corner="nw"] { left: 0; top: 0; cursor: nwse-resize; }
+  .handle[data-corner="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
+  .handle[data-corner="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
+  .handle[data-corner="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   button { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
   button:disabled { opacity: .45; cursor: default; }
   #pages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
   #pages img { width: 72px; height: 96px; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); cursor: pointer; }
   .thumb { display: grid; gap: 2px; justify-items: center; font-size: .85rem; color: var(--muted); }
   .thumb button { padding: 2px 10px; font-size: .85rem; }
-  button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
-  dialog { border: 0; border-radius: 12px; padding: 14px; width: min(92vw, 520px); background: var(--card); color: var(--ink); }
-  dialog::backdrop { background: rgba(0, 0, 0, .6); }
-  dialog img { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
-  dialog h2 { margin: 0 0 8px; }
   ul { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
   ul li { display: flex; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); }
   ul li:first-child { border-top: 0; }
@@ -51,6 +53,10 @@
   input { width: 100%; margin-top: 3px; padding: 9px 10px; font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--ink); }
   summary { cursor: pointer; font-weight: 600; }
   #measure { font-variant-numeric: tabular-nums; }
+  dialog { border: 0; border-radius: 12px; padding: 14px; width: min(92vw, 520px); background: var(--card); color: var(--ink); }
+  dialog::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog img { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
+  dialog h2 { margin: 0 0 8px; }
 </style>
 </head>
 <body>
@@ -68,7 +74,7 @@
   <section>
     <div id="state"><span id="dot"></span><span id="state-text">Connecting…</span></div>
     <p class="hint" id="state-hint"></p>
-    <div class="view"><img id="live" alt="What the camera sees"></div>
+    <div class="view" id="live-view"><img id="live" alt="What the camera sees"></div>
     <p class="hint" id="measure"></p>
   </section>
 
@@ -92,12 +98,26 @@
   <section>
     <details id="setup">
       <summary>Setup</summary>
-      <p class="hint">Clear the table and press “Show whole view”. Then drag across the spot where pages will lie: only that spot is watched and photographed, so people and movement elsewhere are ignored. The box keeps the camera's shape, so photographs are not stretched.</p>
-      <div class="row"><button id="full">Show whole view</button><button id="nocrop" type="button">No crop</button></div>
-      <div class="view" id="full-wrap"><img id="full-img" alt="The whole camera view"><div id="crop"></div></div>
+
+      <h3>Where letters go</h3>
+      <p class="hint">Put a page where letters will lie and press <b>Take a picture</b>. The scanner finds the page and puts a box around it. Drag inside the box to move it, drag a corner to resize it, or draw a new one — then save. Only the area in the box is watched and photographed.</p>
+      <div class="row"><button class="primary" id="picture">Take a picture</button></div>
+      <p class="hint" id="crop-status"></p>
+      <div class="view editor" id="editor" hidden>
+        <img id="full-image" alt="The whole camera view">
+        <div id="crop">
+          <span class="handle" data-corner="nw"></span><span class="handle" data-corner="ne"></span>
+          <span class="handle" data-corner="sw"></span><span class="handle" data-corner="se"></span>
+        </div>
+      </div>
+      <div class="row" id="crop-actions" hidden>
+        <button class="primary" id="save-crop" disabled>Save this area</button>
+        <button id="whole-picture" type="button">Use the whole picture</button>
+      </div>
+
+      <h3>Paperless</h3>
       <form id="settings">
-        <label>Crop — x, y, width, height as fractions<input id="roi" placeholder="none" autocomplete="off"></label>
-        <label>Paperless address<input id="url" placeholder="http://paperless.local:8000" inputmode="url" autocomplete="off"></label>
+        <label>Address<input id="url" placeholder="http://paperless.local:8000" inputmode="url" autocomplete="off"></label>
         <label>API token<input id="token" type="password" autocomplete="off"></label>
         <label>Tags, separated by commas<input id="tags" placeholder="Hauptstraße 12" autocomplete="off"></label>
         <div class="row">
@@ -131,12 +151,126 @@
     body: body === undefined ? undefined : JSON.stringify(body),
   }).then(async (response) => { if (!response.ok) throw new Error(await response.text()); });
 
+  const complain = (error) => alert(error.message);
   const clock = (at) => new Date(at * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const percent = (fraction) => `${Math.round(fraction * 100)}%`;
+  const clamp = (value, low = 0, high = 1) => Math.min(high, Math.max(low, value));
   const seen = { frame: -1, full: -1, todo: '' };
   let filled = false;
+  let last = null;
+  let pressedFinishAt = 0;
   const deleting = new Set();
   let viewing = null;
+
+  // -- the crop, as fractions of the whole view --------------------------------
+
+  const parseRoi = (roi) => {
+    const parts = (roi || '').split(',').map(Number);
+    return parts.length === 4 && parts.every(Number.isFinite) ? { x: parts[0], y: parts[1], w: parts[2], h: parts[3] } : null;
+  };
+  const roiOf = (area) => (area ? [area.x, area.y, area.w, area.h].map((v) => v.toFixed(3)).join(',') : '');
+  let area = null;          // what the box shows now
+  let waitingForPicture = false;
+
+  function drawArea() {
+    const box = $('crop');
+    if (!area) { box.style.display = 'none'; }
+    else Object.assign(box.style, { display: 'block', left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.w * 100}%`, height: `${area.h * 100}%` });
+    const saved = last ? last.settings.roi || '' : '';
+    const changed = roiOf(area) !== saved;
+    $('save-crop').disabled = !changed;
+    $('save-crop').textContent = area ? 'Save this area' : 'Save: use the whole picture';
+  }
+
+  const editor = $('editor');
+  let drag = null;
+  const pointer = (event) => {
+    const box = editor.getBoundingClientRect();
+    return [clamp((event.clientX - box.left) / box.width), clamp((event.clientY - box.top) / box.height)];
+  };
+  editor.addEventListener('pointerdown', (event) => {
+    const [x, y] = pointer(event);
+    const corner = event.target.dataset && event.target.dataset.corner;
+    if (area && corner) drag = { kind: 'corner', corner, start: { ...area } };
+    else if (area && event.target === $('crop')) drag = { kind: 'move', from: [x, y], start: { ...area } };
+    else { drag = { kind: 'draw', from: [x, y], before: area }; area = { x, y, w: 0, h: 0 }; }
+    editor.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  });
+  editor.addEventListener('pointermove', (event) => {
+    if (!drag) return;
+    const [x, y] = pointer(event);
+    const smallest = 0.05;
+    if (drag.kind === 'move') {
+      const s = drag.start;
+      area = { ...s, x: clamp(s.x + x - drag.from[0], 0, 1 - s.w), y: clamp(s.y + y - drag.from[1], 0, 1 - s.h) };
+    } else if (drag.kind === 'draw') {
+      const [fx, fy] = drag.from;
+      area = { x: Math.min(fx, x), y: Math.min(fy, y), w: Math.abs(x - fx), h: Math.abs(y - fy) };
+    } else {
+      const s = drag.start;
+      let [left, top, right, bottom] = [s.x, s.y, s.x + s.w, s.y + s.h];
+      if (drag.corner.includes('w')) left = Math.min(x, right - smallest);
+      if (drag.corner.includes('e')) right = Math.max(x, left + smallest);
+      if (drag.corner.includes('n')) top = Math.min(y, bottom - smallest);
+      if (drag.corner.includes('s')) bottom = Math.max(y, top + smallest);
+      area = { x: left, y: top, w: right - left, h: bottom - top };
+    }
+    drawArea();
+  });
+  const endDrag = () => {
+    // A tap, not a drag: keep the box there was rather than a speck.
+    if (drag && drag.kind === 'draw' && area && (area.w < 0.05 || area.h < 0.05)) area = drag.before;
+    drag = null;
+    drawArea();
+  };
+  editor.addEventListener('pointerup', endDrag);
+  editor.addEventListener('pointercancel', endDrag);
+
+  $('picture').onclick = () => {
+    waitingForPicture = true;
+    $('picture').disabled = true;
+    $('picture').textContent = 'Taking a picture…';
+    $('crop-status').textContent = 'The camera needs a few seconds.';
+    post('/api/full-view').catch((error) => {
+      waitingForPicture = false;
+      $('picture').disabled = false;
+      $('picture').textContent = 'Take a picture';
+      complain(error);
+    });
+  };
+  $('whole-picture').onclick = () => { area = null; drawArea(); };
+  $('save-crop').onclick = () => {
+    post('/api/settings', { roi: roiOf(area) })
+      .then(() => {
+        $('crop-status').textContent = area
+          ? 'Saved. Now take the page away and press “Learn empty table”.'
+          : 'Saved: the whole picture is watched. Take the page away and press “Learn empty table”.';
+        $('save-crop').disabled = true;
+      })
+      .catch(complain);
+  };
+
+  function showPicture(s) {
+    $('full-image').src = `/full-view.jpg?n=${s.full_view_at}`;
+    editor.hidden = false;
+    $('crop-actions').hidden = false;
+    if (waitingForPicture) {
+      waitingForPicture = false;
+      $('picture').disabled = false;
+      $('picture').textContent = 'Take another picture';
+      const found = parseRoi(s.suggested_crop);
+      area = found || parseRoi(s.settings.roi);
+      $('crop-status').textContent = found
+        ? 'Found the page and put a box around it. Adjust it if it is not right, then save.'
+        : 'No page found in the picture. Drag a box where letters will lie, then save.';
+    } else if (area === null) {
+      area = parseRoi(s.settings.roi);
+    }
+    drawArea();
+  }
+
+  // -- pages of the letter ------------------------------------------------------
 
   // A page is looked at before it is deleted: thumbnails are small, and the
   // wrong one is easy to tap.
@@ -148,8 +282,19 @@
     $('viewer-delete').textContent = `Delete page ${number}`;
     $('viewer').showModal();
   }
-  // A press shows at once; the status catches up within a turn or two.
-  let pressedFinishAt = 0;
+  $('viewer-keep').onclick = () => $('viewer').close();
+  $('viewer-delete').onclick = () => {
+    const name = viewing;
+    $('viewer').close();
+    deleting.add(name);
+    // Gone from the screen now, not after the next status arrives — on a Pi
+    // Zero that can be long enough to wonder whether the tap worked.
+    [...$('pages').children].find((card) => card.dataset.name === name)?.remove();
+    refresh();
+    post('/api/delete-page', { name }).catch((error) => { deleting.delete(name); complain(error); });
+  };
+
+  // -- status -------------------------------------------------------------------
 
   function openSetup() {
     $('setup').open = true;
@@ -168,11 +313,10 @@
     if (!s.has_baseline) return ['var(--warn)', 'Learn the empty table first', 'Clear the spot under the camera and press “Learn empty table”.'];
     if (s.state === 'settling') return ['var(--warn)', `Hold still… ${s.frames_still} of ${s.settle_frames}`,
       cropped ? 'Take your hand away. The photograph is taken once nothing moves.'
-              : 'Take your hand away. If this never finishes, something else in view keeps moving: choose the spot for letters in Setup.'];
+              : 'Take your hand away. If this never finishes, something else in view keeps moving: set where letters go in Setup.'];
     if (s.state === 'photographed') {
       // Still, and still well away from the empty table: either the page is
       // lying there, or the table no longer looks as it did when it was learnt.
-      // Only the person looking can tell which.
       const lingering = s.movement < 0.01 && s.table_change >= 0.18;
       return ['var(--ok)', 'Photographed — take the page away',
         lingering ? 'If the spot is already empty, the table looks different from when it was learnt: press “Learn empty table”.'
@@ -183,8 +327,8 @@
 
   function checklist(s) {
     const items = [];
-    if (!s.settings.roi) items.push(['Choose the spot for letters', 'In Setup, show the whole view and drag a box where pages will lie. Everything outside it is ignored.', 'Open setup', openSetup]);
-    if (!s.has_baseline) items.push(['Learn the empty table', 'With nothing in the spot, press the button.', 'Learn empty table', learn]);
+    if (!s.settings.roi) items.push(['Set where letters go', 'In Setup, put a page there and press “Take a picture”. Everything outside that area is ignored.', 'Open setup', openSetup]);
+    if (!s.has_baseline) items.push(['Learn the empty table', 'With nothing in that spot, press the button.', 'Learn empty table', learn]);
     if (!s.settings.token_set) items.push(['Connect Paperless', 'Enter its address and an API token in Setup.', 'Open setup', openSetup]);
     else if (s.check && !s.check.ok) items.push(['Paperless did not answer', s.check.text, 'Open setup', openSetup]);
 
@@ -222,6 +366,7 @@
       $('state-text').textContent = 'Lost contact with the scanner';
       return;
     }
+    last = s;
 
     checklist(s);
     const [colour, text, hint] = describe(s);
@@ -231,10 +376,14 @@
     $('measure').textContent = s.frame_at > 0
       ? `Changed from the empty table: ${percent(s.table_change)} · moving: ${percent(s.movement)} (a page shows as 18% or more; still means under 1%)`
       : '';
-    if (s.frame_at !== seen.frame && s.frame_at > 0) { seen.frame = s.frame_at; $('live').src = `/frame.bmp?n=${s.frame_at}`; }
-    if (s.full_view_at !== seen.full && s.full_view_at > 0) { seen.full = s.full_view_at; $('full-img').src = `/full-view.bmp?n=${s.full_view_at}`; }
 
-    // A page someone deleted goes at once, before the loop has got round to it.
+    // The live view keeps the crop's shape: a fraction of a 4:3 sensor.
+    const crop = parseRoi(s.settings.roi);
+    $('live-view').style.aspectRatio = crop ? `${crop.w * 4} / ${crop.h * 3}` : '4 / 3';
+    if (s.frame_at !== seen.frame && s.frame_at > 0) { seen.frame = s.frame_at; $('live').src = `/frame.bmp?n=${s.frame_at}`; }
+    if (s.full_view_at !== seen.full && s.full_view_at > 0) { seen.full = s.full_view_at; showPicture(s); }
+    else if (!drag) drawArea();
+
     for (const name of [...deleting]) if (!s.open_pages.includes(name)) deleting.delete(name);
     const pages = s.open_pages.filter((name) => !deleting.has(name));
     $('letter-hint').textContent = !s.collecting ? 'Each page is sent on its own.'
@@ -270,45 +419,10 @@
       filled = true;
       $('url').value = s.settings.url;
       $('tags').value = s.settings.tags.join(', ');
-      $('roi').value = s.settings.roi || '';
       $('token').placeholder = s.settings.token_set ? 'set — leave empty to keep it' : 'not set yet';
-      showCrop($('roi').value);
     }
   }
 
-  function showCrop(roi) {
-    const box = $('crop');
-    const parts = roi.split(',').map(Number);
-    if (parts.length !== 4 || parts.some(Number.isNaN)) { box.style.display = 'none'; return; }
-    const [x, y, w, h] = parts.map((part) => `${part * 100}%`);
-    Object.assign(box.style, { display: 'block', left: x, top: y, width: w, height: h });
-  }
-
-  // Dragging out a crop. Equal fractions of width and height keep the sensor's
-  // 4:3, so the photograph fills its full size without being stretched.
-  const wrap = $('full-wrap');
-  let start = null;
-  const fraction = (event) => {
-    const box = wrap.getBoundingClientRect();
-    const clamp = (value) => Math.min(1, Math.max(0, value));
-    return [clamp((event.clientX - box.left) / box.width), clamp((event.clientY - box.top) / box.height)];
-  };
-  wrap.addEventListener('pointerdown', (event) => { start = fraction(event); wrap.setPointerCapture(event.pointerId); });
-  wrap.addEventListener('pointermove', (event) => {
-    if (!start) return;
-    const [x, y] = fraction(event);
-    const size = Math.min(1, Math.max(0.05, Math.abs(x - start[0]), Math.abs(y - start[1])));
-    const left = Math.min(Math.max(0, x < start[0] ? start[0] - size : start[0]), 1 - size);
-    const top = Math.min(Math.max(0, y < start[1] ? start[1] - size : start[1]), 1 - size);
-    $('roi').value = [left, top, size, size].map((value) => value.toFixed(3)).join(',');
-    showCrop($('roi').value);
-  });
-  wrap.addEventListener('pointerup', () => { start = null; });
-
-  const complain = (error) => alert(error.message);
-  $('roi').addEventListener('input', (event) => showCrop(event.target.value));
-  $('nocrop').onclick = () => { $('roi').value = ''; showCrop(''); };
-  $('full').onclick = () => post('/api/full-view').catch(complain);
   $('finish').onclick = () => {
     pressedFinishAt = Date.now();
     $('finish').disabled = true;
@@ -316,23 +430,13 @@
     post('/api/finish').catch((error) => { pressedFinishAt = 0; complain(error); });
   };
   $('retry').onclick = () => post('/api/retry').catch(complain);
-  $('viewer-keep').onclick = () => $('viewer').close();
-  $('viewer-delete').onclick = () => {
-    const name = viewing;
-    $('viewer').close();
-    deleting.add(name);
-    // Gone from the screen now, not after the next status arrives — on a Pi
-    // Zero that can be long enough to wonder whether the tap worked.
-    [...$('pages').children].find((card) => card.dataset.name === name)?.remove();
-    refresh();
-    post('/api/delete-page', { name }).catch((error) => { deleting.delete(name); complain(error); });
-  };
   $('learn').onclick = learn;
   $('check-button').onclick = () => { $('check').textContent = 'Checking…'; post('/api/check').catch(complain); };
   $('settings').onsubmit = (event) => {
     event.preventDefault();
     const tags = $('tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
-    post('/api/settings', { url: $('url').value.trim(), token: $('token').value, tags, roi: $('roi').value.trim() })
+    // The crop is saved on its own, above: this form does not touch it.
+    post('/api/settings', { url: $('url').value.trim(), token: $('token').value, tags })
       .then(() => { $('token').value = ''; $('check').textContent = 'Saved. Checking the connection…'; return post('/api/check'); })
       .catch(complain);
   };

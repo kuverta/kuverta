@@ -78,8 +78,13 @@ headless Pi needs no screen, no desktop and no second program: open
   delete it if it was photographed by mistake (a hand, the empty table, a page
   taken twice); a letter already sent is Paperless's to change;
 - what was sent and what is waiting, with **Retry uploads now**;
-- **Learn empty table**, and setup: the whole uncropped view to drag a crop
-  on (kept to the camera's 4:3 so photographs are not stretched), the Paperless
+- **Learn empty table**, and setup. For the crop: put a page where letters will
+  lie and press **Take a picture** — scannerd photographs the whole view in
+  colour, finds the page (the largest bright area) and puts a box around it;
+  move the box, drag its corners, or draw a new one, then **Save this area**.
+  The crop may be any shape: the photograph is taken at the crop's own share
+  of the sensor (`--sensor-width`/`--sensor-height`, a Pi camera v1 by
+  default), so a page-shaped crop is not stretched to 4:3. Also the Paperless
   address, token and tags, and **Check connection**.
 
 Settings saved on the page go to `settings.toml` in the spool directory

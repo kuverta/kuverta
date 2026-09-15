@@ -68,7 +68,10 @@ impl Web {
                 "/" => typed("text/html; charset=utf-8", PAGE.as_bytes().to_vec()),
                 "/api/status" => json(&self.hub.status()),
                 "/frame.bmp" => self.bitmap(self.hub.frame()),
-                "/full-view.bmp" => self.bitmap(self.hub.full_view()),
+                "/full-view.jpg" => match self.hub.full_view() {
+                    Some(jpeg) => typed("image/jpeg", jpeg),
+                    None => not_found(),
+                },
                 _ => match path.strip_prefix("/page/") {
                     Some(name) => self.page(name),
                     None => not_found(),
