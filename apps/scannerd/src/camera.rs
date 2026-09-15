@@ -29,6 +29,12 @@ pub trait Camera {
     fn preview(&self) -> Result<Vec<u8>>;
     /// A full-resolution JPEG, written to `path`.
     fn capture(&self, path: &Path) -> Result<()>;
+    /// A small greyscale frame of the whole view, ignoring the crop — what the
+    /// setup page shows to choose the crop on. The same as a preview for a
+    /// camera with no crop.
+    fn full_view(&self) -> Result<Vec<u8>> {
+        self.preview()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -58,8 +64,8 @@ impl Default for RpiCamera {
     }
 }
 
-impl Camera for RpiCamera {
-    fn preview(&self) -> Result<Vec<u8>> {
+impl RpiCamera {
+    fn frame(&self, roi: Option<&str>) -> Result<Vec<u8>> {
         let mut command = Command::new(&self.program);
         command
             .arg("--nopreview")
@@ -69,11 +75,7 @@ impl Camera for RpiCamera {
             .args(["--timeout", &self.settle_ms.to_string()])
             .args(["--output", "-"]);
 
-        // The same crop as the photograph. Detection's thresholds are fractions
-        // of the frame, so without it they were fractions of the whole desk: a
-        // page filling a tight crop could change too little of the full view
-        // to count as present, and a hand beside the crop could count as one.
-        if let Some(roi) = &self.roi {
+        if let Some(roi) = roi {
             command.args(["--roi", roi]);
         }
 
@@ -103,6 +105,20 @@ impl Camera for RpiCamera {
         let mut frame = output.stdout;
         frame.truncate(luma);
         Ok(frame)
+    }
+}
+
+impl Camera for RpiCamera {
+    fn preview(&self) -> Result<Vec<u8>> {
+        // The same crop as the photograph. Detection's thresholds are fractions
+        // of the frame, so without it they were fractions of the whole desk: a
+        // page filling a tight crop could change too little of the full view
+        // to count as present, and a hand beside the crop could count as one.
+        self.frame(self.roi.as_deref())
+    }
+
+    fn full_view(&self) -> Result<Vec<u8>> {
+        self.frame(None)
     }
 
     fn capture(&self, path: &Path) -> Result<()> {

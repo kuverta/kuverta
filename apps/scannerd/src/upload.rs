@@ -66,6 +66,9 @@ impl Uploader {
 
     /// Sends one capture. Returns the task id Paperless answers with.
     pub async fn send(&self, filename: &str, jpeg: Vec<u8>) -> Result<String> {
+        if self.token.trim().is_empty() {
+            bail!("no Paperless token is set yet (the setup page or PAPERLESS_TOKEN); the capture is kept");
+        }
         // Before building anything: a tag that does not exist fails every
         // upload the same way, and the capture has to stay in the spool.
         let tag_ids = self.tag_ids().await?;
@@ -100,6 +103,30 @@ impl Uploader {
         // on a document whose OCR has not finished, and the only way to tell a
         // successful upload from a successful-looking one.
         Ok(text.trim().trim_matches('"').to_string())
+    }
+
+    /// Connects, checks the token, and looks the tags up afresh — for the
+    /// setup page, which wants what is wrong in words.
+    pub async fn check(&self) -> Result<String> {
+        if self.token.trim().is_empty() {
+            bail!("no Paperless token is set");
+        }
+        let response = self
+            .http
+            .get(format!("{}/api/tags/?page_size=1", self.base))
+            .header("Authorization", format!("Token {}", self.token))
+            .send()
+            .await
+            .with_context(|| format!("could not reach Paperless at {}", self.base))?;
+        successful(response).await?;
+
+        *self.tag_ids.lock().unwrap() = None;
+        let ids = self.tag_ids().await?;
+        Ok(match ids.len() {
+            0 => "connected; no tags are set".to_string(),
+            1 => "connected; the tag exists".to_string(),
+            n => format!("connected; all {n} tags exist"),
+        })
     }
 
     async fn tag_ids(&self) -> Result<Vec<u64>> {

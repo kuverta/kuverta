@@ -9,7 +9,10 @@
 pub mod button;
 pub mod camera;
 pub mod detect;
+pub mod hub;
 pub mod pdf;
 pub mod run;
+pub mod settings;
 pub mod spool;
 pub mod upload;
+pub mod web;
