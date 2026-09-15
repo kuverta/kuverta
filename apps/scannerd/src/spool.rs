@@ -18,7 +18,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 
 /// Extension for a capture still being written.
 ///
@@ -159,6 +159,23 @@ impl Spool {
         Ok(pages)
     }
 
+    /// Deletes a page of the letter being collected — one photographed by
+    /// mistake: a hand, the empty table, the same page twice.
+    ///
+    /// False when the page is not there any more: deleted already, or the
+    /// letter was closed and sent in between. An error only for a name that is
+    /// not a page's, or a file that cannot be removed.
+    pub fn delete_page(&self, name: &str) -> Result<bool> {
+        if !is_page_name(name) {
+            bail!("{name:?} is not a page");
+        }
+        match fs::remove_file(self.dir.join(OPEN).join(name)) {
+            Ok(()) => Ok(true),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(err) => Err(err).with_context(|| format!("could not delete {name}")),
+        }
+    }
+
     /// When the newest page of the open letter was taken, if there is one.
     pub fn last_page_at(&self) -> Result<Option<u64>> {
         Ok(self.open_pages()?.last().and_then(|page| stamp_of(page)))
@@ -283,6 +300,16 @@ fn unique_stem() -> String {
 /// The capture time a file's name starts with.
 fn stamp_of(path: &Path) -> Option<u64> {
     path.file_stem()?.to_str()?.split('-').next()?.parse().ok()
+}
+
+/// Whether `name` is the plain file name of a page: what the setup page may
+/// name, and nothing that could climb out of `open/`.
+pub fn is_page_name(name: &str) -> bool {
+    name.ends_with(".jpg")
+        && !name.starts_with('.')
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
 }
 
 fn now_secs() -> u64 {
