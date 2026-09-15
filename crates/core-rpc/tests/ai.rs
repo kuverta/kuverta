@@ -3,9 +3,12 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::thread;
 
-use core_rpc::ai::{is_loopback, try_model, LOCAL_PROVIDER};
+use core_rpc::ai::{
+    is_loopback, read_page, try_model, LOCAL_PROVIDER, READ_AGAIN_NOTE, STOPPED_NOTE,
+};
 use core_rpc::{AiProviderInput, Core, RpcError, Task};
 
 fn core(name: &str) -> (Core, PathBuf) {
@@ -26,8 +29,19 @@ fn provider(kind: &str, label: &str, base_url: &str) -> AiProviderInput {
 
 /// An Ollama whose every chat is answered with `reply`.
 fn ollama_saying(reply: &'static str) -> String {
+    ollama_reading((reply, "stop"), (reply, "stop")).0
+}
+
+/// An Ollama that answers a plain reading with `plain` and one penalising
+/// repetition with `guarded`, each as (text, why it stopped), and says which
+/// kind each request was: `true` for a penalised one.
+fn ollama_reading(
+    plain: (&'static str, &'static str),
+    guarded: (&'static str, &'static str),
+) -> (String, mpsc::Receiver<bool>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let base = format!("http://{}", listener.local_addr().unwrap());
+    let (tx, rx) = mpsc::channel();
     thread::spawn(move || {
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else { continue };
@@ -44,8 +58,16 @@ fn ollama_saying(reply: &'static str) -> String {
             }
             let mut body = vec![0u8; length];
             reader.read_exact(&mut body).ok();
-            let answer = serde_json::json!({ "message": { "role": "assistant", "content": reply } })
-                .to_string();
+            let request: serde_json::Value = serde_json::from_slice(&body).unwrap_or_default();
+            let penalised = request["options"].get("repeat_penalty").is_some();
+            let _ = tx.send(penalised);
+            let (reply, why) = if penalised { guarded } else { plain };
+            let answer = serde_json::json!({
+                "message": { "role": "assistant", "content": reply },
+                "done": true,
+                "done_reason": why,
+            })
+            .to_string();
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{answer}",
                 answer.len()
@@ -53,7 +75,66 @@ fn ollama_saying(reply: &'static str) -> String {
             stream.write_all(response.as_bytes()).ok();
         }
     });
-    base
+    (base, rx)
+}
+
+/// What came back for a tax office statement: the letterhead, then two
+/// column headings over and over.
+fn looping() -> &'static str {
+    let mut text = String::from("Finanzamt Beispielstadt\n");
+    for _ in 0..100 {
+        text.push_str("EUR\nCt\n");
+    }
+    Box::leak(text.into_boxed_str())
+}
+
+#[tokio::test]
+async fn a_page_read_cleanly_is_read_once() {
+    let (base, readings) = ollama_reading(("Rechnung 4711", "stop"), ("Rechnung 1234", "stop"));
+    let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
+
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    assert_eq!(text, "Rechnung 4711");
+    assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false]);
+}
+
+#[tokio::test]
+async fn a_page_the_model_looped_on_is_read_again_and_says_how() {
+    let second = "Finanzamt Beispielstadt\nSchuldbetrag | EUR | Ct\nSumme | 1.944 | 93";
+    let (base, readings) = ollama_reading((looping(), "length"), (second, "stop"));
+    let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
+
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    assert_eq!(text, format!("{second}\n{READ_AGAIN_NOTE}"));
+    assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false, true]);
+}
+
+#[tokio::test]
+async fn when_the_second_reading_loops_too_the_first_is_kept_with_its_loop_cut() {
+    let (base, readings) = ollama_reading((looping(), "length"), (looping(), "length"));
+    let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
+
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    assert_eq!(
+        text,
+        format!("Finanzamt Beispielstadt\nEUR\nCt\nEUR\nCt\n{}", core_ai::LOOP_MARK)
+    );
+    assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false, true]);
+}
+
+#[tokio::test]
+async fn a_page_cut_short_without_a_loop_says_it_stopped() {
+    let (base, _readings) = ollama_reading(
+        ("Sehr geehrte Damen und Herren,\nanbei erhalten Sie", "length"),
+        ("Sehr geehrte", "length"),
+    );
+    let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
+
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    assert_eq!(
+        text,
+        format!("Sehr geehrte Damen und Herren,\nanbei erhalten Sie\n{STOPPED_NOTE}")
+    );
 }
 
 #[test]
