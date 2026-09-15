@@ -1437,6 +1437,47 @@ three errors were digits in dates — "3. September" read as "1.", and "2026" as
 comes back as a confident, plausible wrong one. So the scan stays one tab away,
 and a date or amount that matters is checked against it.
 
+### A statement it looped on
+
+On a real tax office account statement the model read the letterhead and the
+bank details, then wrote the table's two column headings, "EUR" and "Ct", 116
+times until it stopped. Measured on that page, counts only:
+
+| Reading | prompt tokens | answer tokens | stopped because | most repeated line | seconds |
+|---|---|---|---|---|---|
+| as first shipped: Ollama's 4096 context | 3341 | 755 | out of room | 116× | 25 |
+| 16k context | 3341 | 4096 | out of room | 951× | 184 |
+| a prompt with rules for tables | 3375 | 1500\* | out of room | 302× | 84 |
+| temperature 0.3 | 3341 | 1500\* | out of room | 302× | 52 |
+| the image scaled to 1024 px | 1127 | 1500\* | out of room | 604× | 61 |
+| repeat penalty 1.2 over the last 128 tokens | 3341 | 864 | finished | 2× | 30 |
+
+\* capped at 1500 for the test.
+
+The context was too small — the page alone is 3,341 of Ollama's default 4,096
+tokens — but it was not the cause: given room, the model looped for longer. The
+repeat penalty is what stopped it, and it is not free. On the drawn pages, which
+read cleanly without it:
+
+| Page | similarity, without / with | numbers kept, without / with |
+|---|---|---|
+| plain letter, sharp | 100% / 78% | 100% / 89% |
+| plain letter, blur 1.2 | 100% / 100% | 100% / 89% |
+| plain letter, blur 2.0 | 100% / 78% | 100% / 89% |
+| plain letter, blur 2.8 | 99% / 86% | 83% / 78% |
+| table letter, sharp | 95% / 86% | 95% / 77% |
+| table letter, blur 2.0 | 95% / 83% | 95% / 73% |
+
+So a page is read in a 16k context, plainly first. A page that loops or runs out
+of room is read again with the penalty, and that reading is kept only if it
+finishes, marked as a second, looser reading so its names and numbers get checked
+against the scan. A loop that survives both readings is cut after two repeats and
+marked, and a page cut short without a loop says so. Answers are capped at 2,048
+tokens — the pages measured took 200 to 864 — so a loop costs well under a minute
+before the second reading rather than three. Hosted providers get the cutting and
+the marks but no second reading: their penalties are on another scale, and
+untried here.
+
 ### How
 
 - **The original, not Paperless's archive PDF.** The archive is re-rendered with an

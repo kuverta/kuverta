@@ -291,6 +291,49 @@ pub async fn list_models(provider: &core_ai::Provider) -> Result<Vec<core_ai::Mo
         .map_err(|err| ai_error(provider.base_url(), err))
 }
 
+/// After a page read a second time, because the first reading looped.
+pub const READ_AGAIN_NOTE: &str = "[the model looped on this page and read it a second time, \
+more loosely: check names and numbers against the scan]";
+
+/// After a page the model ran out of room on.
+pub const STOPPED_NOTE: &str = "[the model stopped before the end of this page]";
+
+/// One page's text, as a vision model reads it.
+///
+/// A plain reading first, because it is the most exact. If it loops or runs
+/// out of room, a second reading that penalises repetition — which gets
+/// through tables the plain one loops on, and gets numbers wrong more often —
+/// kept only if it finishes cleanly, and marked as what it is. Failing that,
+/// the first reading, with any loop cut out and marked.
+pub async fn read_page(provider: &core_ai::Provider, model: &str, jpeg: &[u8]) -> Result<String> {
+    let base = provider.base_url();
+    let first = provider
+        .transcribe(model, jpeg)
+        .await
+        .map_err(|err| ai_error(base, err))?;
+    let (text, looped) = core_ai::cut_repetition(first.content.trim());
+    if !looped && !first.truncated {
+        return Ok(text);
+    }
+
+    if let Some(again) = provider
+        .transcribe_guarded(model, jpeg)
+        .await
+        .map_err(|err| ai_error(base, err))?
+    {
+        let (again_text, again_looped) = core_ai::cut_repetition(again.content.trim());
+        if !again_looped && !again.truncated {
+            return Ok(format!("{again_text}\n{READ_AGAIN_NOTE}"));
+        }
+    }
+
+    Ok(if looped {
+        text
+    } else {
+        format!("{text}\n{STOPPED_NOTE}")
+    })
+}
+
 /// Tries a model at a job: a page with known words on it for reading, a word
 /// for sorting.
 pub async fn try_model(provider: &core_ai::Provider, task: Task, model: &str) -> Result<AiTrial> {
