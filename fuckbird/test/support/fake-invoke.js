@@ -275,6 +275,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
   };
 
   invoke._messages = messages;
+  // So a test can post a letter while the window is open.
+  invoke._documents = documents;
   return invoke;
 }
 
