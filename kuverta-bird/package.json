@@ -5,10 +5,10 @@
   "description": "A triage-first mail surface that runs as a Thunderbird extension or inside the kuverta client.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test test/*.test.js",
     "package": "rm -f kuverta-bird.xpi && zip -qr -FS kuverta-bird.xpi manifest.json core hosts/thunderbird -x '*/.*' && echo 'built kuverta-bird.xpi'",
     "corpus": "python3 ../docker/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons",
-    "e2e": "node --test e2e/"
+    "e2e": "node --test e2e/*.test.js"
   },
   "engines": {
     "node": ">=18"
