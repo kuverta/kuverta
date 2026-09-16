@@ -27,9 +27,9 @@ use scannerd::button::Button;
 use scannerd::camera::{Camera, RpiCamera};
 use scannerd::detect::State;
 use scannerd::hub::{Command, Event, Hub, Queued, SettingsView};
-use scannerd::locate::find_page;
+use scannerd::locate::{find_page, find_page_corners};
 use scannerd::run::{Letters, Scanner, Turn};
-use scannerd::settings::Settings;
+use scannerd::settings::{Settings, View};
 use scannerd::spool::Spool;
 use scannerd::upload::Uploader;
 use scannerd::web::{self, Web};
@@ -71,6 +71,19 @@ struct Args {
     /// the frames it watches as well as to the photograph.
     #[arg(long, env = "SCANNERD_ROI")]
     roi: Option<String>,
+
+    /// For a camera that looks at the table at an angle: the four corners of
+    /// a page lying where letters go, as `x,y` fractions of the whole view —
+    /// top left, top right, bottom right, bottom left. Every photograph is
+    /// straightened so they become a rectangle's, and the crop is the area
+    /// they span.
+    #[arg(long, env = "SCANNERD_CORNERS")]
+    corners: Option<String>,
+
+    /// Turn every photograph this many degrees clockwise — 90, 180 or 270 —
+    /// for a camera mounted so that letters do not read upright.
+    #[arg(long, env = "SCANNERD_ROTATE")]
+    rotate: Option<u16>,
 
     /// The capture program.
     #[arg(long, default_value = "rpicam-still")]
@@ -161,9 +174,11 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    let mut view = view_for(&args, &settings)?;
+    scanner.straighten_with(view.warp());
     let mut camera = RpiCamera {
         program: args.camera.clone(),
-        roi: settings.effective_roi(args.roi.as_deref()),
+        roi: view.roi.clone(),
         sensor_width: args.sensor_width,
         sensor_height: args.sensor_height,
         ..RpiCamera::default()
@@ -251,19 +266,21 @@ async fn main() -> Result<()> {
                 Command::FullView => {
                     // Found in a greyscale frame of the same view: there is no
                     // JPEG decoder in this binary, and needs to be none.
-                    let suggestion = camera
-                        .full_view()
-                        .ok()
-                        .and_then(|luma| {
-                            find_page(
-                                &luma,
-                                camera.preview_width as usize,
-                                camera.preview_height as usize,
-                            )
-                        })
+                    let (width, height) = (
+                        camera.preview_width as usize,
+                        camera.preview_height as usize,
+                    );
+                    let luma = camera.full_view().ok();
+                    let crop = luma
+                        .as_deref()
+                        .and_then(|luma| find_page(luma, width, height))
                         .map(|area| area.to_roi());
+                    let corners = luma
+                        .as_deref()
+                        .and_then(|luma| find_page_corners(luma, width, height))
+                        .map(|corners| corners.to_setting());
                     match camera.snapshot() {
-                        Ok(jpeg) => hub.set_full_view(jpeg, suggestion),
+                        Ok(jpeg) => hub.set_full_view(jpeg, crop, corners),
                         Err(err) => hub.event(
                             now,
                             false,
@@ -290,9 +307,18 @@ async fn main() -> Result<()> {
                         Ok(changed) => uploader = changed,
                         Err(err) => hub.event(now, false, format!("{err:#}")),
                     }
-                    let roi = settings.effective_roi(args.roi.as_deref());
-                    if roi != camera.roi {
-                        camera.roi = roi;
+                    let newer = match view_for(&args, &settings) {
+                        Ok(newer) => newer,
+                        Err(err) => {
+                            hub.event(now, false, format!("{err:#}"));
+                            view.clone()
+                        }
+                    };
+                    scanner.straighten_with(newer.warp());
+                    let moved = newer.roi != view.roi;
+                    view = newer;
+                    if moved {
+                        camera.roi = view.roi.clone();
                         // The camera now shows a different part of the table.
                         scanner.forget_baseline();
                         hub.event(
@@ -312,6 +338,8 @@ async fn main() -> Result<()> {
                 url: settings.url.clone().unwrap_or_else(|| args.url.clone()),
                 tags: settings.tags.clone().unwrap_or_else(|| args.tags.clone()),
                 roi: camera.roi.clone(),
+                corners: view.corners.as_ref().map(|corners| corners.to_setting()),
+                rotate: view.rotate,
                 token_set: settings.token.is_some()
                     || args.token.as_deref().is_some_and(|t| !t.is_empty()),
             };
@@ -320,6 +348,14 @@ async fn main() -> Result<()> {
             scanner.take_events();
         }
     }
+}
+
+/// What the camera looks at, for the settings in force: the page's, then the
+/// env file's.
+fn view_for(args: &Args, settings: &Settings) -> Result<View> {
+    settings
+        .effective_view(args.roi.as_deref(), args.corners.as_deref(), args.rotate)
+        .context("the crop, corners or turn are not usable")
 }
 
 /// The uploader for the settings in force: the page's, then the env file's.

@@ -10,6 +10,8 @@
 //! on. The threshold is chosen for each picture (Otsu's method) rather than
 //! fixed, because a dim room's paper is a bright room's table.
 
+use crate::straighten::Corners;
+
 /// An area of the view as fractions: left, top, width, height.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Area {
@@ -40,6 +42,49 @@ const MARGIN: f32 = 0.12;
 /// The largest bright area in a greyscale picture, with room around it —
 /// `None` when nothing in view looks like a page.
 pub fn find_page(luma: &[u8], width: usize, height: usize) -> Option<Area> {
+    let region = largest_page(luma, width, height)?;
+    let (region_width, region_height) = (
+        (region.max_x - region.min_x + 1) as f32,
+        (region.max_y - region.min_y + 1) as f32,
+    );
+    let (margin_x, margin_y) = (region_width * MARGIN, region_height * MARGIN);
+    let left = (region.min_x as f32 - margin_x).max(0.0);
+    let top = (region.min_y as f32 - margin_y).max(0.0);
+    let right = (region.max_x as f32 + 1.0 + margin_x).min(width as f32);
+    let bottom = (region.max_y as f32 + 1.0 + margin_y).min(height as f32);
+    Some(Area {
+        x: left / width as f32,
+        y: top / height as f32,
+        width: (right - left) / width as f32,
+        height: (bottom - top) / height as f32,
+    })
+}
+
+/// The four corners of the page, for a camera that looks at the table at an
+/// angle, with the same room around it as [`find_page`] leaves — measured on
+/// the table rather than in the picture, so the corners still mark a
+/// rectangle there. `None` when nothing in view looks like a page, or its
+/// corners cannot be told apart.
+///
+/// A corner is the page's point furthest in its diagonal direction: top left
+/// is where `x + y` is least, top right where `x - y` is greatest. That holds
+/// for a page lying roughly square to the camera, which is how setup asks for
+/// it to be put down.
+pub fn find_page_corners(luma: &[u8], width: usize, height: usize) -> Option<Corners> {
+    let region = largest_page(luma, width, height)?;
+    // Pixel centres, as fractions of the picture.
+    let at = |(x, y): (usize, usize)| {
+        (
+            (x as f64 + 0.5) / width as f64,
+            (y as f64 + 0.5) / height as f64,
+        )
+    };
+    let page = Corners::new(region.corners.map(|corner| at(corner.1))).ok()?;
+    Some(page.with_margin(MARGIN as f64))
+}
+
+/// The largest bright region, if it could be a page.
+fn largest_page(luma: &[u8], width: usize, height: usize) -> Option<Region> {
     let pixels = width.checked_mul(height)?;
     if pixels == 0 || luma.len() < pixels {
         return None;
@@ -91,27 +136,16 @@ pub fn find_page(luma: &[u8], width: usize, height: usize) -> Option<Area> {
     if (region.count as f32) < MIN_SHARE * pixels as f32 {
         return None;
     }
+    // Brightness across nearly the whole view is not a page on a table: it is
+    // a white table, or a picture washed out by the exposure.
     let (region_width, region_height) = (
         (region.max_x - region.min_x + 1) as f32,
         (region.max_y - region.min_y + 1) as f32,
     );
-    // Brightness across nearly the whole view is not a page on a table: it is
-    // a white table, or a picture washed out by the exposure.
     if region_width > 0.95 * width as f32 && region_height > 0.95 * height as f32 {
         return None;
     }
-
-    let (margin_x, margin_y) = (region_width * MARGIN, region_height * MARGIN);
-    let left = (region.min_x as f32 - margin_x).max(0.0);
-    let top = (region.min_y as f32 - margin_y).max(0.0);
-    let right = (region.max_x as f32 + 1.0 + margin_x).min(width as f32);
-    let bottom = (region.max_y as f32 + 1.0 + margin_y).min(height as f32);
-    Some(Area {
-        x: left / width as f32,
-        y: top / height as f32,
-        width: (right - left) / width as f32,
-        height: (bottom - top) / height as f32,
-    })
+    Some(region)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -121,6 +155,9 @@ struct Region {
     min_y: usize,
     max_x: usize,
     max_y: usize,
+    /// The furthest point in each diagonal direction, with how far it is:
+    /// top left, top right, bottom right, bottom left.
+    corners: [(i64, (usize, usize)); 4],
 }
 
 impl Region {
@@ -131,6 +168,7 @@ impl Region {
             min_y: y,
             max_x: x,
             max_y: y,
+            corners: [(i64::MIN, (x, y)); 4],
         }
     }
 
@@ -140,6 +178,13 @@ impl Region {
         self.min_y = self.min_y.min(y);
         self.max_x = self.max_x.max(x);
         self.max_y = self.max_y.max(y);
+        let (sx, sy) = (x as i64, y as i64);
+        let reach = [-sx - sy, sx - sy, sx + sy, sy - sx];
+        for (corner, reach) in self.corners.iter_mut().zip(reach) {
+            if reach > corner.0 {
+                *corner = (reach, (x, y));
+            }
+        }
     }
 }
 
