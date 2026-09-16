@@ -1,10 +1,13 @@
 COMPOSE := docker compose -f docker/docker-compose.yml
+# Everything run against the dev stack is the dev instance: its own store and
+# its own keychain entries, never the installed app's.
+DEV_ENV := KUVERTA_INSTANCE=dev KUVERTA_DATA_DIR=.devdata
 
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
         triage-ui triage test-js test-e2e \
-        fill-mailbox fill-dev scannerd-pi scannerd-to-pi clean
+        fill-mailbox fill-dev scannerd-pi scannerd-to-pi bundle release clean
 
 help: ## Show this help
 	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -102,25 +105,36 @@ triage: triage-ui ## Open the window on the scratch store, ready to triage
 app-real: ## Open it on the real data directory
 	./run.sh
 
+## -- releases ---------------------------------------------------------------
+
+# What the release workflow builds, for this Mac only. Needs the Tauri CLI:
+# cargo install tauri-cli --version "^2" --locked
+bundle: triage-ui ## Build kuverta.app and a .dmg for this Mac into target/release/bundle
+	cd apps/desktop && cargo tauri build --bundles app,dmg -- -j 2
+
+release: ## Set the version, commit and tag it (VERSION=0.2.0); pushing the tag builds it on GitHub
+	@test -n "$(VERSION)" || (echo "usage: make release VERSION=0.2.0" && false)
+	tools/release.sh "$(VERSION)"
+
 ## -- manual smoke test -----------------------------------------------------
 
 e2e: dev-up build ## Register the dev account in a scratch store, sync it, and send
 	@rm -rf .devdata
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta add-account \
+	@$(DEV_ENV) ./target/debug/kuverta add-account \
 	    --email dev@kuverta.test --label "Dev server" \
 	    --host 127.0.0.1 --port 10143 --security plaintext \
 	    --smtp-host 127.0.0.1 --smtp-port 1025 --smtp-security plaintext
-	@KUVERTA_DEV_PASSWORD=devpass KUVERTA_DATA_DIR=.devdata \
+	@KUVERTA_DEV_PASSWORD=devpass $(DEV_ENV) \
 	    ./target/debug/kuverta sync --password-env KUVERTA_DEV_PASSWORD
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta status
+	@$(DEV_ENV) ./target/debug/kuverta status
 	@echo
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta list
+	@$(DEV_ENV) ./target/debug/kuverta list
 	@echo
 	@# --no-save-to-sent on purpose: filing a copy would add a message to the
 	@# seeded mailbox, and the sync tests assert on its exact contents. The
 	@# Sent copy is covered by the dev_server integration test, on its own user.
 	@echo "Hallo Jane, hier ist kuverta." | \
-	  KUVERTA_DEV_PASSWORD=devpass KUVERTA_DATA_DIR=.devdata \
+	  KUVERTA_DEV_PASSWORD=devpass $(DEV_ENV) \
 	    ./target/debug/kuverta send --to "Jane Doe <jane@example.com>" \
 	    --subject "Gruesse aus kuverta" --no-save-to-sent \
 	    --password-env KUVERTA_DEV_PASSWORD
@@ -128,9 +142,9 @@ e2e: dev-up build ## Register the dev account in a scratch store, sync it, and s
 	@echo
 	@# Queued and then withdrawn, so the demo shows the undo window without
 	@# mutating the seeded mailbox the sync tests assert on.
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta archive 1
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta queue
-	@KUVERTA_DATA_DIR=.devdata ./target/debug/kuverta undo
+	@$(DEV_ENV) ./target/debug/kuverta archive 1
+	@$(DEV_ENV) ./target/debug/kuverta queue
+	@$(DEV_ENV) ./target/debug/kuverta undo
 
 
 fill-mailbox: ## Put ~250 varied messages in a test mailbox (HOST= USER= PASS=)
@@ -142,7 +156,7 @@ fill-mailbox: ## Put ~250 varied messages in a test mailbox (HOST= USER= PASS=)
 fill-dev: dev-up ## Put ~250 varied messages in the dev mailbox, then sync them
 	python3 docker/fill-mailbox.py 127.0.0.1:10143 dev@kuverta.test devpass \
 	    $(or $(COUNT),250) --plain
-	KUVERTA_DEV_PASSWORD=devpass KUVERTA_DATA_DIR=.devdata \
+	KUVERTA_DEV_PASSWORD=devpass $(DEV_ENV) \
 	    ./target/debug/kuverta sync --password-env KUVERTA_DEV_PASSWORD
 
 ## -- the scanner -----------------------------------------------------------

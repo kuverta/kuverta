@@ -2429,6 +2429,7 @@ name = "kuverta-desktop"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "core-accounts",
  "core-proto",
  "core-rpc",
  "core-store",

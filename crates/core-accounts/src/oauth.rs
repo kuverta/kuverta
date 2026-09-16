@@ -85,7 +85,7 @@ pub struct KeychainTokens;
 
 impl TokenStore for KeychainTokens {
     fn load(&self, user: &str) -> Result<Option<String>> {
-        let entry = keyring::Entry::new(KEYRING_SERVICE, user)?;
+        let entry = keyring::Entry::new(&crate::keyring_service(KEYRING_SERVICE), user)?;
         match entry.get_password() {
             Ok(token) => Ok(Some(token)),
             Err(keyring::Error::NoEntry) => Ok(None),
@@ -94,12 +94,15 @@ impl TokenStore for KeychainTokens {
     }
 
     fn save(&self, user: &str, refresh_token: &str) -> Result<()> {
-        keyring::Entry::new(KEYRING_SERVICE, user)?.set_password(refresh_token)?;
+        keyring::Entry::new(&crate::keyring_service(KEYRING_SERVICE), user)?
+            .set_password(refresh_token)?;
         Ok(())
     }
 
     fn clear(&self, user: &str) -> Result<()> {
-        match keyring::Entry::new(KEYRING_SERVICE, user)?.delete_credential() {
+        match keyring::Entry::new(&crate::keyring_service(KEYRING_SERVICE), user)?
+            .delete_credential()
+        {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(err) => Err(err.into()),
         }
