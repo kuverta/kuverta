@@ -634,14 +634,17 @@ async fn main() -> Result<()> {
             model,
             ollama,
             limit,
-        } => model_classify(
-            &data_dir,
-            &store,
-            email.as_deref(),
-            model.as_deref(),
-            ollama.as_deref(),
-            limit,
-        ).await,
+        } => {
+            model_classify(
+                &data_dir,
+                &store,
+                email.as_deref(),
+                model.as_deref(),
+                ollama.as_deref(),
+                limit,
+            )
+            .await
+        }
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
         Command::Eval {
             facts,

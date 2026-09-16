@@ -53,7 +53,10 @@ fn serve(
 
 #[tokio::test]
 async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
-    let (base, requests) = serve("Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211", "stop");
+    let (base, requests) = serve(
+        "Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211",
+        "stop",
+    );
     let jpeg = b"\xff\xd8a photographed page";
 
     let reply = Ollama::new(&base)
@@ -61,7 +64,10 @@ async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
         .transcribe("qwen2.5vl:3b", jpeg)
         .await
         .unwrap();
-    assert_eq!(reply.content, "Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211");
+    assert_eq!(
+        reply.content,
+        "Stadtwerke Musterstadt GmbH\nRechnung Nr. 2026-48211"
+    );
     assert!(!reply.truncated);
 
     let body = requests.recv().unwrap();
@@ -69,7 +75,10 @@ async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
     assert_eq!(body["stream"], false);
     assert_eq!(body["messages"][0]["content"], TRANSCRIBE);
     // Standard base64 of the bytes, as Ollama takes images.
-    assert_eq!(body["messages"][1]["images"][0], "/9hhIHBob3RvZ3JhcGhlZCBwYWdl");
+    assert_eq!(
+        body["messages"][1]["images"][0],
+        "/9hhIHBob3RvZ3JhcGhlZCBwYWdl"
+    );
     // Deterministic, and room for a whole page rather than the one word a
     // classification gets.
     assert_eq!(body["options"]["temperature"], 0);
@@ -84,7 +93,10 @@ async fn a_page_goes_to_the_model_as_an_image_and_its_text_comes_back() {
 async fn a_second_reading_penalises_repetition_and_the_first_does_not() {
     let (base, requests) = serve("text", "stop");
     let ollama = Ollama::new(&base).unwrap();
-    ollama.transcribe("qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    ollama
+        .transcribe("qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
     ollama
         .transcribe_guarded("qwen2.5vl:3b", b"\xff\xd8page")
         .await

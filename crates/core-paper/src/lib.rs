@@ -297,7 +297,12 @@ impl Paperless {
                 ("page".to_string(), page.to_string()),
                 ("page_size".to_string(), PAGE.to_string()),
             ];
-            params.extend(selector.params().into_iter().map(|(k, v)| (k.to_string(), v)));
+            params.extend(
+                selector
+                    .params()
+                    .into_iter()
+                    .map(|(k, v)| (k.to_string(), v)),
+            );
             let body = self.get("/api/documents/", &params).await?;
             let listing: Listing =
                 serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))?;
@@ -331,9 +336,7 @@ impl Paperless {
 
         let mut gathered = Vec::new();
         let total = loop {
-            let listing = self
-                .page(selector, page, page_size, query, order)
-                .await?;
+            let listing = self.page(selector, page, page_size, query, order).await?;
             let (count, got) = (listing.count, listing.results.len());
             gathered.extend(listing.results);
 
