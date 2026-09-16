@@ -811,17 +811,62 @@ fn open_external(url: String) -> Result<(), String> {
     }
 }
 
-fn default_data_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
-        return PathBuf::from(dir);
+/// Holds `kuverta.lock` in the data directory for as long as the window is
+/// open. The operating system releases it when the process ends, however it
+/// ends, so a crash never leaves the directory locked.
+fn lock_data_dir(data_dir: &std::path::Path) -> Result<std::fs::File, String> {
+    std::fs::create_dir_all(data_dir)
+        .map_err(|err| format!("cannot create {}: {err}", data_dir.display()))?;
+    let path = data_dir.join("kuverta.lock");
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(&path)
+        .map_err(|err| format!("cannot open {}: {err}", path.display()))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(std::fs::TryLockError::WouldBlock) => Err(format!(
+            "kuverta is already open on {} — switch to that window, or set KUVERTA_DATA_DIR",
+            data_dir.display()
+        )),
+        Err(std::fs::TryLockError::Error(err)) => {
+            Err(format!("cannot lock {}: {err}", path.display()))
+        }
     }
-    dirs_home()
-        .map(|home| home.join(".local/share/kuverta"))
-        .unwrap_or_else(|| PathBuf::from(".kuverta"))
 }
 
-fn dirs_home() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(PathBuf::from)
+// -- updates ------------------------------------------------------------------
+
+/// The running version and whether a newer one has been released. `None` when
+/// checking is switched off: for a dev instance, or with
+/// `KUVERTA_NO_UPDATE_CHECK` set.
+#[tauri::command]
+async fn check_for_update(manual: bool) -> Result<Option<core_rpc::update::UpdateInfo>, String> {
+    let off = std::env::var_os("KUVERTA_NO_UPDATE_CHECK").is_some()
+        || core_accounts::instance().is_some();
+    if off && !manual {
+        return Ok(None);
+    }
+    let current = env!("CARGO_PKG_VERSION");
+    let found = core_rpc::update::check(&core_rpc::update::repo(), current)
+        .await
+        .map_err(fail)?;
+    // No release yet reads, to a person who asked, as being up to date.
+    Ok(Some(found.unwrap_or_else(|| {
+        core_rpc::update::UpdateInfo {
+            current: current.to_string(),
+            latest: current.to_string(),
+            newer: false,
+            url: format!("https://github.com/{}/releases", core_rpc::update::repo()),
+            download_url: None,
+            notes: String::new(),
+        }
+    })))
+}
+
+fn default_data_dir() -> PathBuf {
+    core_accounts::default_data_dir()
 }
 
 fn main() {
@@ -833,6 +878,16 @@ fn main() {
         .init();
 
     let data_dir = default_data_dir();
+    // One window per data directory. Two — the installed app and one built
+    // from source, say — would each sync the same store and each believe its
+    // own list; the second is told where the first is instead.
+    let _lock = match lock_data_dir(&data_dir) {
+        Ok(lock) => lock,
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(1);
+        }
+    };
     let core = match Core::open(&data_dir) {
         Ok(core) => core,
         Err(err) => {
@@ -844,7 +899,18 @@ fn main() {
     };
     tracing::info!(dir = %data_dir.display(), "opened store");
 
+    let instance = core_accounts::instance();
     tauri::Builder::default()
+        .setup(move |app| {
+            // A dev window says so, so it is never mistaken for the real one.
+            if let Some(instance) = &instance {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_title(&format!("kuverta — {instance}"));
+                }
+            }
+            Ok(())
+        })
         .manage(App {
             core: Mutex::new(core),
             data_dir,
@@ -905,6 +971,7 @@ fn main() {
             import_accounts,
             lookup_account,
             open_external,
+            check_for_update,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

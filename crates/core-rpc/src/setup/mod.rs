@@ -533,11 +533,13 @@ pub fn installed_paperless(data_dir: &Path) -> Option<(String, PathBuf)> {
 /// requires under people before.
 const PAPERLESS_IMAGE: &str = "ghcr.io/paperless-ngx/paperless-ngx:3.1.3";
 
+/// Never 8000: that is where the dev stack's Paperless listens, and an
+/// installed Paperless on it would stop the dev stack from starting.
 fn free_port() -> u16 {
-    [8000u16, 8010, 8020, 8030, 8080, 8888]
+    [8010u16, 8020, 8030, 8040, 8888]
         .into_iter()
         .find(|&port| TcpListener::bind(("0.0.0.0", port)).is_ok())
-        .unwrap_or(8040)
+        .unwrap_or(8050)
 }
 
 fn time_zone() -> String {

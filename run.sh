@@ -3,7 +3,8 @@
 # Build and open the triage window.
 #
 #   ./run.sh              on your real mail, release build
-#   ./run.sh --dev        on the scratch store, against the Docker dev stack
+#   ./run.sh --dev        on the scratch store, against the Docker dev stack,
+#                         as the dev instance (its own keychain entries)
 #   ./run.sh --debug      a fast build, for iterating on the UI
 #   ./run.sh --data-dir ~/somewhere
 #
@@ -26,7 +27,7 @@ DATA_DIR=""
 DEV=0
 
 usage() {
-    sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+    sed -n '3,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
     exit "${1:-0}"
 }
 
@@ -43,9 +44,12 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ $DEV -eq 1 && -z $DATA_DIR ]]; then
+if [[ $DEV -eq 1 ]]; then
+    # The dev instance: its own keychain entries and a window titled as such,
+    # so it never touches the installed app's credentials.
+    export KUVERTA_INSTANCE=dev
     # The scratch store, which is gitignored and safe to delete.
-    DATA_DIR=".devdata"
+    [[ -z $DATA_DIR ]] && DATA_DIR=".devdata"
 fi
 
 if ! command -v cargo >/dev/null; then
@@ -76,7 +80,8 @@ if [[ -n $DATA_DIR ]]; then
     echo "opening on ${DATA_DIR}"
     exec env KUVERTA_DATA_DIR="$DATA_DIR" "$BIN"
 else
-    # No KUVERTA_DATA_DIR: the app falls back to ~/.local/share/kuverta.
-    echo "opening on the default data directory"
+    # No KUVERTA_DATA_DIR: the app falls back to ~/.local/share/kuverta, the
+    # same store an installed kuverta uses. Only one of them can be open.
+    echo "opening on the default data directory (the installed app's)"
     exec "$BIN"
 fi
