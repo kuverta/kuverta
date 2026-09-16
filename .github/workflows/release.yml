@@ -1,0 +1,85 @@
+name: Release
+
+# A tag like v0.2.0 builds the macOS app and puts it on a draft release, to be
+# read over and published by hand. `tools/release.sh` makes the tag.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # The tag and the version the app reports have to agree, or the update
+      # check would offer this release to itself forever.
+      - name: Check the tag matches the version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match version $version in Cargo.toml"
+            exit 1
+          fi
+
+      # One app for both kinds of Mac.
+      - name: Rust toolchain and targets
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: release-${{ runner.os }}-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tauri CLI
+        run: npm install --global @tauri-apps/cli@2
+
+      # The triage surface is copied in, not committed, so the window's
+      # "triage" link has something to open.
+      - name: Copy the triage surface into the app
+        run: kuverta-bird/tools/install-into.sh apps/desktop/ui
+
+      # Signing and notarisation happen only when the secrets are there.
+      # Without them the app is signed ad hoc, which Apple Silicon requires to
+      # run it at all, and macOS asks once before opening it (see
+      # docs/releasing.md).
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: tauri
+          args: --target universal-apple-darwin
+          tagName: ${{ github.ref_name }}
+          releaseName: kuverta ${{ github.ref_name }}
+          releaseBody: |
+            Download the `.dmg`, open it and drag kuverta into Applications.
+            See the readme's "Installing" section if macOS says it cannot check the app.
+          releaseDraft: true
+          prerelease: false

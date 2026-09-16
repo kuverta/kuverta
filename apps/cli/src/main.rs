@@ -1641,12 +1641,8 @@ fn is_loopback(host: &str) -> bool {
 }
 
 fn default_data_dir() -> PathBuf {
-    // Deliberately simple; a proper platform data dir arrives with the app
-    // shell, which has to agree with the Tauri bundle identifier anyway.
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".local/share/kuverta")
+    // Shared with the app, so both agree on where an instance's data lives.
+    core_accounts::default_data_dir()
 }
 
 // -- the local model ----------------------------------------------------------

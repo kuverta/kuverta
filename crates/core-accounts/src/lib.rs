@@ -93,6 +93,53 @@ pub trait AuthProvider: Send + Sync {
 
 const KEYRING_SERVICE: &str = "kuverta";
 
+/// Which kuverta this is, from `KUVERTA_INSTANCE`: `None` for the one people
+/// use, `Some("dev")` for the one run against the Docker dev stack.
+///
+/// An instance keeps its own keychain entries and, unless told otherwise, its
+/// own data directory, so a development build can never read or overwrite the
+/// credentials of the installed app — even for an address configured in both.
+pub fn instance() -> Option<String> {
+    instance_from(std::env::var("KUVERTA_INSTANCE").ok().as_deref())
+}
+
+/// `instance` for a given value, so it can be tested without the environment.
+pub fn instance_from(value: Option<&str>) -> Option<String> {
+    let value = value?.trim().to_ascii_lowercase();
+    let usable = !value.is_empty()
+        && value != "default"
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+    usable.then_some(value)
+}
+
+/// A keychain service name, kept apart for an instance: `kuverta` for the one
+/// people use, `kuverta-dev` for the dev instance.
+pub fn keyring_service(base: &str) -> String {
+    service_for(base, instance().as_deref())
+}
+
+pub fn service_for(base: &str, instance: Option<&str>) -> String {
+    match instance {
+        Some(instance) => format!("{base}-{instance}"),
+        None => base.to_string(),
+    }
+}
+
+/// Where an instance keeps its data unless `KUVERTA_DATA_DIR` says otherwise:
+/// `~/.local/share/kuverta`, or `~/.local/share/kuverta-dev` for the dev one.
+pub fn default_data_dir() -> std::path::PathBuf {
+    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
+        return std::path::PathBuf::from(dir);
+    }
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    home.join(".local/share")
+        .join(service_for("kuverta", instance().as_deref()))
+}
+
 /// App-specific password held in the OS keychain.
 ///
 /// Credentials never touch a config file. On macOS this is the login keychain,
@@ -105,7 +152,7 @@ pub struct KeychainPassword {
 impl KeychainPassword {
     pub fn new(account: impl Into<String>) -> Self {
         Self {
-            service: KEYRING_SERVICE.to_string(),
+            service: keyring_service(KEYRING_SERVICE),
             account: account.into(),
         }
     }
@@ -187,6 +234,22 @@ impl AuthProvider for EnvPassword {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_instance_keeps_its_own_keychain_service() {
+        assert_eq!(instance_from(None), None);
+        assert_eq!(instance_from(Some("")), None);
+        assert_eq!(instance_from(Some("default")), None);
+        assert_eq!(instance_from(Some(" Dev ")), Some("dev".to_string()));
+        assert_eq!(instance_from(Some("../evil")), None, "not a name");
+
+        assert_eq!(service_for("kuverta", None), "kuverta");
+        assert_eq!(service_for("kuverta", Some("dev")), "kuverta-dev");
+        assert_eq!(
+            service_for("kuverta-oauth", Some("dev")),
+            "kuverta-oauth-dev"
+        );
+    }
 
     #[tokio::test]
     async fn env_provider_reads_the_variable() {
