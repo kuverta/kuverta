@@ -532,18 +532,27 @@ impl Paperless {
         let correspondent_names: Vec<String> = correspondents.values().cloned().collect();
 
         // The failure this exists to catch: a selector that matches nothing
-        // looks exactly like an address that has had no post.
-        if mine.count == 0 && all.count > 0 {
+        // looks exactly like an address that has had no post. A name that does
+        // not exist in Paperless is said whether or not there are documents —
+        // an empty instance is exactly when one is set up, typos and all.
+        if mine.count == 0 {
+            let known = |names: &[String], name: &str| {
+                names
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(name.trim()))
+            };
             notes.push(match selector {
-                Selector::Everything => "this instance holds no documents".to_string(),
-                Selector::Tag(name) => format!(
-                    "no document carries the tag {name}; the tags that exist are: {}",
+                Selector::Everything => "this instance holds no documents yet".to_string(),
+                Selector::Tag(name) if !known(&tag_names, name) => format!(
+                    "no tag named {name} exists; the tags that exist are: {}",
                     list(&tag_names)
                 ),
-                Selector::Correspondent(name) => format!(
-                    "no document is from {name}; the correspondents that exist are: {}",
+                Selector::Tag(name) => format!("no document carries the tag {name} yet"),
+                Selector::Correspondent(name) if !known(&correspondent_names, name) => format!(
+                    "no correspondent named {name} exists; the correspondents that exist are: {}",
                     list(&correspondent_names)
                 ),
+                Selector::Correspondent(name) => format!("no document is from {name} yet"),
                 Selector::StoragePath(name) => {
                     format!("no document is filed under the storage path {name}")
                 }

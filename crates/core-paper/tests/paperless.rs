@@ -268,6 +268,29 @@ async fn a_selector_that_matches_nothing_says_so_instead_of_looking_empty() {
 }
 
 #[tokio::test]
+async fn a_tag_that_exists_but_matches_nothing_is_told_apart_from_a_typo() {
+    let (base, _requests) = serve();
+
+    // The canned server matches tag names exactly, so "HOME" finds nothing
+    // although a tag "home" exists — which Paperless itself would not do, but
+    // it is the case to word: a known tag with no documents yet.
+    let report = client(&base)
+        .check(&Selector::Tag("HOME".into()))
+        .await
+        .unwrap();
+
+    assert_eq!(report.documents_matching, 0);
+    assert!(
+        report
+            .notes
+            .iter()
+            .any(|note| note == "no document carries the tag HOME yet"),
+        "a tag that exists is not called a typo: {:?}",
+        report.notes
+    );
+}
+
+#[tokio::test]
 async fn a_url_without_a_scheme_is_refused_before_any_request() {
     assert!(Paperless::new("localhost:8000", "t").is_err());
     assert!(Paperless::new("http://localhost:8000/", "t").is_ok());
