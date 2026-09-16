@@ -112,6 +112,7 @@
         <button id="settings-add-paper">Add postal address</button>
         <button id="settings-models">Models</button>
         <button id="settings-add-provider">Add model provider</button>
+        <button id="settings-setup">Setup assistant</button>
         <button id="settings-close">Done</button>
       </div>
 
@@ -275,8 +276,128 @@
     </div>
   </div>
 
+  <!--
+    The setup assistant. Opens by itself the first time, when there is
+    nothing to show yet, and from settings after that. Each step can be
+    skipped: none of them is needed for the others.
+  -->
+  <div id="setup" class="sheet" hidden>
+    <div class="sheet-panel setup-panel">
+      <div class="sheet-head">
+        <strong>Set up kuverta</strong>
+        <button id="setup-later" type="button">Set up later</button>
+      </div>
+
+      <div class="setup-body">
+        <ol id="setup-steps">
+          <li data-step="welcome">Welcome</li>
+          <li data-step="models">Local models</li>
+          <li data-step="paper">Paper mail</li>
+          <li data-step="mail">Mail accounts</li>
+          <li data-step="done">Finish</li>
+        </ol>
+
+        <div class="setup-page">
+          <section data-page="welcome">
+            <h2>Welcome to kuverta</h2>
+            <p>kuverta puts your email and your paper post in one place and sorts both. A few things make that work, and this assistant checks each of them with you:</p>
+            <ul class="setup-list">
+              <li><b>Ollama</b> runs the models that read scanned letters and sort mail, on this computer — nothing is sent anywhere.</li>
+              <li><b>Paperless-ngx</b> keeps your scanned post, reads it and makes it searchable. kuverta shows it beside your mail.</li>
+              <li><b>Your mail accounts</b>, taken from Thunderbird or Apple Mail if you use them, or found from your address.</li>
+            </ul>
+            <p class="hint">Every step can be skipped and done later from settings.</p>
+          </section>
+
+          <section data-page="models" hidden>
+            <h2>Models on this computer</h2>
+            <p>Reading photographed letters and sorting mail use two small models, run by Ollama on this computer.</p>
+            <div class="setup-card" id="ollama-card"><p class="hint">Looking for Ollama…</p></div>
+            <p class="hint">Would you rather use a hosted service such as DeepSeek or OpenAI? Add it later under Settings → Add model provider; what a job sends then leaves this computer.</p>
+          </section>
+
+          <section data-page="paper" hidden>
+            <h2>Paper mail</h2>
+            <p>Scanned letters live in Paperless-ngx. kuverta reads them from there and never changes them.</p>
+            <div class="setup-card" id="paper-found"><p class="hint">Looking for Paperless…</p></div>
+
+            <div class="setup-choice" role="tablist">
+              <button type="button" data-paper="connect">Connect to my Paperless</button>
+              <button type="button" data-paper="install">Install Paperless here</button>
+              <button type="button" data-paper="skip">No paper mail for now</button>
+            </div>
+
+            <form id="paper-connect" class="setup-form" autocomplete="off" hidden>
+              <label>Paperless address<input name="base_url" placeholder="http://paperless.local:8000" spellcheck="false" required></label>
+              <div class="setup-row">
+                <label>User name<input name="username" spellcheck="false" autocomplete="off"></label>
+                <label>Password<input name="password" type="password" autocomplete="off"></label>
+              </div>
+              <details>
+                <summary>Use an API token instead</summary>
+                <label>API token <span class="hint">in Paperless under your name → My Profile</span><input name="token" type="password" spellcheck="false"></label>
+              </details>
+              <div class="setup-row">
+                <label>Name in the sidebar<input name="label" value="Post"></label>
+                <label>Which documents<select name="selector_kind">
+                  <option value="everything">all of them</option>
+                  <option value="tag">with a tag</option>
+                  <option value="correspondent">from a correspondent</option>
+                  <option value="storage_path">in a storage path</option>
+                </select></label>
+              </div>
+              <label data-selector-value hidden>Name, as it is in Paperless<input name="selector_value" spellcheck="false"></label>
+              <div class="setup-actions"><button type="submit" class="primary">Connect</button></div>
+              <p class="setup-result" id="paper-connect-result"></p>
+            </form>
+
+            <div id="paper-install" hidden>
+              <div class="setup-card" id="docker-card"><p class="hint">Looking for Docker…</p></div>
+              <form id="paper-install-form" class="setup-form" autocomplete="off" hidden>
+                <p class="hint">Paperless runs in Docker. kuverta writes its settings to <code>paperless/</code> in its data folder and starts it; the first start downloads about a gigabyte and takes a few minutes.</p>
+                <div class="setup-row">
+                  <label>Paperless user name<input name="username" value="admin" spellcheck="false" required></label>
+                  <label>Password <span class="hint">8 characters or more</span><input name="password" type="password" minlength="8" required></label>
+                </div>
+                <label class="setup-check"><input type="checkbox" name="on_network" checked> Reachable from other devices on this network — a scanner has to reach it to deliver post</label>
+                <label>Name in the sidebar<input name="label" value="Post"></label>
+                <div class="setup-actions"><button type="submit" class="primary">Install and start Paperless</button></div>
+                <pre id="paper-install-log" hidden></pre>
+                <p class="setup-result" id="paper-install-result"></p>
+              </form>
+            </div>
+          </section>
+
+          <section data-page="mail" hidden>
+            <h2>Mail accounts</h2>
+            <div id="import-sources" class="setup-card"><p class="hint">Looking for accounts in your other mail programs…</p></div>
+            <div id="import-accounts"></div>
+            <form id="lookup-form" class="setup-form setup-inline" autocomplete="off">
+              <label>Add another address<input name="email" type="email" placeholder="you@example.com" spellcheck="false" required></label>
+              <button type="submit">Find settings</button>
+            </form>
+            <p class="hint">Passwords are not taken from other programs — they keep them encrypted. Enter each once; kuverta keeps it in the system keychain.</p>
+          </section>
+
+          <section data-page="done" hidden>
+            <h2>Ready</h2>
+            <ul class="setup-summary" id="setup-summary"></ul>
+            <p class="hint" id="setup-sync-note"></p>
+          </section>
+        </div>
+      </div>
+
+      <div class="setup-foot">
+        <button type="button" id="setup-back">Back</button>
+        <span class="setup-foot-note" id="setup-foot-note"></span>
+        <button type="button" id="setup-next" class="primary">Start</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
+  <script src="setup.js"></script>
 </body>
 </html>

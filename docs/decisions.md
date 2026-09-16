@@ -1556,3 +1556,68 @@ connect an external provider such as DeepSeek.
   answer in the documented shapes, not against DeepSeek itself: there was no key
   to test with. Whether a given service's models accept images is what Try them is
   for.
+
+## 26. A setup assistant for the first run
+
+A new store opened on an empty list and a settings form, which is the least
+helpful thing a mail client can show someone who has not yet told it anything.
+The window now opens an assistant instead: local models, a Paperless for paper
+post, then mail accounts, each skippable.
+
+- **It checks and points; it installs only Paperless.** Ollama and Docker are
+  installed from their makers' pages or a command the assistant shows, because
+  installers that need administrator rights are not the window's to run.
+  Paperless is different: with Docker running, it is a compose file and
+  `docker compose up -d`, written into `<data dir>/paperless/` where it can be
+  found and removed. The image is pinned to the dev stack's version. The admin
+  password lives in an owner-only env file, because Paperless reads it only when
+  it first creates the user and a reinstall should create the same one.
+- **A Paperless password, not a token.** `/api/token/` exchanges a user name and
+  password for the user's token, so nobody is sent looking for one. The password
+  goes to the core and to Paperless, never back. The endpoint is throttled; a 429
+  is reported as "wait a minute", not as a wrong password.
+- **Finding Paperless** asks `/api/documents/` anonymously and takes a 401 with
+  `WWW-Authenticate: Token` as a Paperless — Django REST framework's token
+  scheme, which little else on port 8000 speaks.
+- **Programs are looked for where they are, not only on `PATH`.** An app started
+  from the Dock gets `/usr/bin:/bin:/usr/sbin:/sbin`, which has neither Homebrew
+  nor Docker; the Docker CLI also needs its credential helpers on the `PATH` it
+  runs with.
+- **Accounts are imported without passwords.** Thunderbird's `prefs.js` has every
+  server; its passwords are encrypted in `logins.json`, and Apple's are in the
+  keychain under Apple's own access rules. Each password is entered once and the
+  account is signed in to before the assistant moves on; one that fails stays on
+  the page with the server's answer.
+- **Apple Mail is the system's Internet Accounts**, `~/Library/Accounts/
+  Accounts4.sqlite`, which macOS shows only to a program with Full Disk Access.
+  The assistant says so and links to the setting. The database is read from a
+  copy, since the live one is in WAL mode and in use.
+- **Servers for any address** come from a built-in table of common providers
+  first, then the places Thunderbird looks: `autoconfig.<domain>`, the domain's
+  `.well-known` file, and Mozilla's ISPDB. Only encrypted servers are taken from
+  those files. Microsoft addresses are marked OAuth2, because Microsoft takes no
+  passwords over IMAP.
+- **First run means no marker and nothing in the store.** People who set kuverta
+  up before the assistant existed never see it open by itself.
+
+### Verified
+
+- Thunderbird import against a real profile with 19 IMAP accounts, and the
+  parser against a canned `prefs.js` and `profiles.ini`.
+- Server lookup through a provider's own autoconfig file and through ISPDB.
+- Ollama status against Ollama 0.34.1; the download stream's parsing against
+  Ollama's documented lines.
+- Paperless detection and sign-in against the dev stack's Paperless 3.1.3.
+- The assistant's pages in a browser, against a stand-in for the core.
+
+### Not verified
+
+- **Apple Mail against a real accounts database.** This machine does not give the
+  terminal Full Disk Access, so the reader is tested against a database built to
+  the documented layout. Only the address is relied on; a provider's account
+  gets its servers the way a typed-in address does.
+- **Installing Paperless end to end.** The compose file was written and
+  `docker compose up` ran, but the Docker VM on this machine failed with I/O
+  errors (its disk was full) before the web server started.
+- **Downloading a model through the window.** Both default models were already
+  present here.

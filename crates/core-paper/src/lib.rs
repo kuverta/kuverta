@@ -252,6 +252,104 @@ pub struct Download {
     pub bytes: Vec<u8>,
 }
 
+/// What answers at an address, as far as can be told without a token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Probe {
+    /// A Paperless, asking for credentials.
+    Paperless,
+    /// Something answers, and it is not a Paperless — or not one this can
+    /// recognise.
+    SomethingElse,
+    /// Nothing answers.
+    Nothing,
+}
+
+/// Whether a Paperless is at `base_url`, with a short timeout, for setup to
+/// look in the usual places.
+///
+/// Its document list refuses an anonymous request with
+/// `WWW-Authenticate: Token` — Django REST framework's token scheme, which
+/// few other servers on port 8000 will be using. An instance that lets
+/// anonymous requests through answers the list itself, and that counts too.
+pub async fn probe(base_url: &str) -> Probe {
+    let base = base_url.trim().trim_end_matches('/');
+    let Ok(http) = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    else {
+        return Probe::Nothing;
+    };
+    let response = match http
+        .get(format!("{base}/api/documents/"))
+        .header("Accept", "application/json")
+        .send()
+        .await
+    {
+        Ok(response) => response,
+        Err(_) => return Probe::Nothing,
+    };
+    let status = response.status();
+    let token_scheme = response
+        .headers()
+        .get(reqwest::header::WWW_AUTHENTICATE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.trim().eq_ignore_ascii_case("token"));
+    if status == reqwest::StatusCode::UNAUTHORIZED && token_scheme {
+        return Probe::Paperless;
+    }
+    if status.is_success() {
+        let listing = response.json::<serde_json::Value>().await.ok();
+        if listing.is_some_and(|body| body.get("results").is_some() && body.get("count").is_some())
+        {
+            return Probe::Paperless;
+        }
+    }
+    Probe::SomethingElse
+}
+
+/// Exchanges a Paperless user's name and password for their API token — the
+/// token the account page in Paperless shows, created if there is none yet.
+///
+/// So setup can ask for what a person knows rather than send them looking
+/// for a token.
+pub async fn obtain_token(base_url: &str, username: &str, password: &str) -> Result<String> {
+    #[derive(Deserialize)]
+    struct Token {
+        token: String,
+    }
+    let base = base_url.trim().trim_end_matches('/');
+    if !base.starts_with("http://") && !base.starts_with("https://") {
+        return Err(PaperError::Url(base_url.to_string()));
+    }
+    let response = reqwest::Client::new()
+        .post(format!("{base}/api/token/"))
+        .json(&serde_json::json!({ "username": username, "password": password }))
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|err| PaperError::Network(err.to_string()))?;
+    let status = response.status();
+    // Wrong credentials are a 400 here, with the reason in the body.
+    if status == reqwest::StatusCode::BAD_REQUEST
+        || status == reqwest::StatusCode::UNAUTHORIZED
+        || status == reqwest::StatusCode::FORBIDDEN
+    {
+        return Err(PaperError::Auth);
+    }
+    if !status.is_success() {
+        return Err(PaperError::Status {
+            status: status.as_u16(),
+            path: "/api/token/".to_string(),
+        });
+    }
+    let token: Token = response
+        .json()
+        .await
+        .map_err(|err| PaperError::Shape(err.to_string()))?;
+    Ok(token.token)
+}
+
 pub struct Paperless {
     base: String,
     token: String,

@@ -31,7 +31,9 @@ mod provider;
 mod transcript;
 
 pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
-pub use ollama::{AiError, ChatReply, Embedded, Ollama, TRANSCRIBE, TRANSCRIBE_CONTEXT};
+pub use ollama::{
+    AiError, ChatReply, Embedded, Ollama, PullProgress, TRANSCRIBE, TRANSCRIBE_CONTEXT,
+};
 pub use prompt::{ModelVerdict, PromptClassifier};
 pub use provider::{Chat, ModelInfo, OpenAiCompatible, Provider};
 pub use transcript::{cut_repetition, LOOP_MARK};

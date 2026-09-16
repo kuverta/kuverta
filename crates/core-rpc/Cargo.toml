@@ -21,5 +21,13 @@ core-smtp.workspace = true
 
 serde.workspace = true
 mail-parser.workspace = true
+# The setup assistant: waiting on servers it has started, reading Apple Mail's
+# account database, and a provider's published settings.
+tokio = { workspace = true, features = ["time"] }
+getrandom.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+plist = "1.10.1"
+roxmltree = "0.21.1"
 thiserror.workspace = true
 tracing.workspace = true

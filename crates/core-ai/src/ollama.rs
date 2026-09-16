@@ -72,6 +72,50 @@ fn transcribe_body(model: &str, jpeg: &[u8], guarded: bool) -> Value {
     })
 }
 
+/// How far a model download has got.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct PullProgress {
+    /// Ollama's own words: `pulling manifest`, `pulling <digest>`,
+    /// `verifying sha256 digest`, `success`.
+    pub status: String,
+    /// Bytes of the part being downloaded, when it says.
+    pub completed: Option<u64>,
+    pub total: Option<u64>,
+}
+
+/// One line of a download's stream: progress, nothing for a blank line, or
+/// the error Ollama reported mid-stream.
+fn pull_line(line: &[u8]) -> Result<Option<PullProgress>, AiError> {
+    #[derive(Deserialize)]
+    struct Line {
+        #[serde(default)]
+        status: Option<String>,
+        #[serde(default)]
+        completed: Option<u64>,
+        #[serde(default)]
+        total: Option<u64>,
+        #[serde(default)]
+        error: Option<String>,
+    }
+    let text = String::from_utf8_lossy(line);
+    let text = text.trim();
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let line: Line = serde_json::from_str(text).map_err(|err| AiError::Shape(err.to_string()))?;
+    if let Some(error) = line.error {
+        return Err(AiError::Status {
+            status: 200,
+            body: error,
+        });
+    }
+    Ok(Some(PullProgress {
+        status: line.status.unwrap_or_default(),
+        completed: line.completed,
+        total: line.total,
+    }))
+}
+
 pub struct Ollama {
     base: String,
     http: reqwest::Client,
@@ -213,6 +257,94 @@ impl Ollama {
         Ok(models)
     }
 
+    /// The server's version, asked with a short timeout: this is how setup
+    /// tells an Ollama that is running from one that is not, and a server that
+    /// is not there should not keep a window waiting three minutes to say so.
+    pub async fn version(&self) -> Result<String, AiError> {
+        #[derive(Deserialize)]
+        struct Version {
+            version: String,
+        }
+        let response = self
+            .http
+            .get(format!("{}/api/version", self.base))
+            .timeout(Duration::from_secs(3))
+            .send()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?;
+        if !status.is_success() {
+            return Err(AiError::Status {
+                status: status.as_u16(),
+                body: text.trim().to_string(),
+            });
+        }
+        let version: Version =
+            serde_json::from_str(&text).map_err(|err| AiError::Shape(err.to_string()))?;
+        Ok(version.version)
+    }
+
+    /// Downloads a model, telling `progress` how far it has got as Ollama
+    /// reports it.
+    ///
+    /// Ollama streams one JSON object a line. A model is gigabytes, so this
+    /// has no practical timeout: six hours, against the client's three
+    /// minutes, which a download would outrun on any ordinary connection.
+    pub async fn pull(
+        &self,
+        model: &str,
+        mut progress: impl FnMut(PullProgress),
+    ) -> Result<(), AiError> {
+        let mut response = self
+            .http
+            .post(format!("{}/api/pull", self.base))
+            .json(&json!({ "model": model, "stream": true }))
+            .timeout(Duration::from_secs(6 * 60 * 60))
+            .send()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::Status {
+                status: status.as_u16(),
+                body: body.trim().to_string(),
+            });
+        }
+
+        let mut pending = Vec::new();
+        let mut succeeded = false;
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|err| AiError::Network(err.to_string()))?
+        {
+            pending.extend_from_slice(&chunk);
+            while let Some(end) = pending.iter().position(|&byte| byte == b'\n') {
+                let line: Vec<u8> = pending.drain(..=end).collect();
+                let Some(update) = pull_line(&line)? else {
+                    continue;
+                };
+                succeeded |= update.status == "success";
+                progress(update);
+            }
+        }
+        if let Some(update) = pull_line(&pending)? {
+            succeeded |= update.status == "success";
+            progress(update);
+        }
+        if !succeeded {
+            return Err(AiError::Shape(format!(
+                "the download of {model} ended before Ollama said it had finished"
+            )));
+        }
+        Ok(())
+    }
+
     async fn exchange(&self, body: &Value) -> Result<ChatReply, AiError> {
         let started = Instant::now();
         let reply = self.post("/api/chat", body).await?;
@@ -283,5 +415,28 @@ impl Ollama {
             });
         }
         serde_json::from_str(&text).map_err(|err| AiError::Shape(err.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_download_line_is_progress_nothing_or_an_error() {
+        let update = pull_line(br#"{"status":"pulling 6a0746a1ec1a","digest":"sha256:6a07","total":2019377376,"completed":241970}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(update.status, "pulling 6a0746a1ec1a");
+        assert_eq!(update.completed, Some(241970));
+        assert_eq!(update.total, Some(2019377376));
+
+        assert_eq!(pull_line(b"  \n").unwrap(), None);
+
+        // Ollama reports a model it does not know inside a 200 stream.
+        assert!(matches!(
+            pull_line(br#"{"error":"pull model manifest: file does not exist"}"#),
+            Err(AiError::Status { body, .. }) if body.contains("does not exist")
+        ));
     }
 }

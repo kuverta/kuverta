@@ -691,7 +691,7 @@ fn snippet(body: &str) -> String {
     format!("{cut}…")
 }
 
-fn selector_from(kind: &str, value: Option<&str>) -> Result<Selector> {
+pub(crate) fn selector_from(kind: &str, value: Option<&str>) -> Result<Selector> {
     let named = |value: Option<&str>| -> Result<String> {
         value
             .map(str::to_string)
