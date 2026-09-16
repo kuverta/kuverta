@@ -17,7 +17,9 @@ fn image_object(number: usize, jpeg: &[u8]) -> Vec<u8> {
 }
 
 fn pdf(objects: &[Vec<u8>]) -> Vec<u8> {
-    let mut pdf = b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".to_vec();
+    let mut pdf =
+        b"%PDF-1.4\n%\xE2\xE3\xCF\xD3\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+            .to_vec();
     for object in objects {
         pdf.extend_from_slice(object);
     }
@@ -47,7 +49,8 @@ fn a_length_given_by_reference_is_not_followed() {
 
 #[test]
 fn what_is_not_a_jpeg_is_left_alone() {
-    let flate = b"3 0 obj\n<< /Filter /FlateDecode /Length 4 >>\nstream\nabcd\nendstream\nendobj\n".to_vec();
+    let flate = b"3 0 obj\n<< /Filter /FlateDecode /Length 4 >>\nstream\nabcd\nendstream\nendobj\n"
+        .to_vec();
     let not_really = image_object(4, b"GIF89a....");
     assert!(jpeg_pages(&pdf(&[flate, not_really])).is_empty());
 }

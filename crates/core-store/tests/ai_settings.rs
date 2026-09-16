@@ -1,6 +1,6 @@
 //! Where models run, and which model each job uses.
 
-use core_store::{NewAiProvider, StoredAiTask, Store};
+use core_store::{NewAiProvider, Store, StoredAiTask};
 
 fn fresh(name: &str) -> (Store, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("fuckmail-ai-{name}-{}", std::process::id()));
@@ -26,7 +26,10 @@ fn a_new_store_runs_models_on_the_local_ollama_until_told_otherwise() {
     assert_eq!(providers[0].kind, "ollama");
     assert_eq!(providers[0].base_url, "http://127.0.0.1:11434");
     assert_eq!(providers[0].key_name.len(), 32, "{}", providers[0].key_name);
-    assert!(store.ai_tasks().unwrap().is_empty(), "every job on its default");
+    assert!(
+        store.ai_tasks().unwrap().is_empty(),
+        "every job on its default"
+    );
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -67,7 +70,9 @@ fn a_job_has_one_model_and_can_go_back_to_its_default() {
     let hosted = store.add_ai_provider(&deepseek()).unwrap();
 
     store.set_ai_task("vision", 1, "qwen2.5vl:3b").unwrap();
-    store.set_ai_task("vision", hosted, "some-vl-model").unwrap();
+    store
+        .set_ai_task("vision", hosted, "some-vl-model")
+        .unwrap();
     assert_eq!(
         store.ai_tasks().unwrap(),
         vec![StoredAiTask {
@@ -87,7 +92,9 @@ fn a_job_has_one_model_and_can_go_back_to_its_default() {
 fn removing_a_provider_sends_its_jobs_back_to_their_defaults_and_leaves_the_rest() {
     let (store, dir) = fresh("delete");
     let hosted = store.add_ai_provider(&deepseek()).unwrap();
-    store.set_ai_task("vision", hosted, "some-vl-model").unwrap();
+    store
+        .set_ai_task("vision", hosted, "some-vl-model")
+        .unwrap();
     store.set_ai_task("chat", 1, "llama3.2:3b").unwrap();
 
     store.delete_ai_provider(hosted).unwrap();

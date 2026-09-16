@@ -89,8 +89,14 @@ async fn a_hosted_model_is_asked_with_the_key_and_answers_from_its_choices() {
     assert_eq!(request.path, "/v1/chat/completions");
     assert_eq!(request.authorization.as_deref(), Some("Bearer sk-test"));
     assert_eq!(request.body["model"], "deepseek-chat");
-    assert_eq!(request.body["messages"][0], json!({ "role": "system", "content": "system words" }));
-    assert_eq!(request.body["messages"][1], json!({ "role": "user", "content": "user words" }));
+    assert_eq!(
+        request.body["messages"][0],
+        json!({ "role": "system", "content": "system words" })
+    );
+    assert_eq!(
+        request.body["messages"][1],
+        json!({ "role": "user", "content": "user words" })
+    );
     assert_eq!(request.body["temperature"], 0);
 }
 
@@ -191,7 +197,10 @@ async fn hosted_models_are_listed_with_what_the_service_says_they_can_see() {
         ]
     );
     let request = seen.recv().unwrap();
-    assert_eq!((request.method.as_str(), request.path.as_str()), ("GET", "/models"));
+    assert_eq!(
+        (request.method.as_str(), request.path.as_str()),
+        ("GET", "/models")
+    );
     assert_eq!(request.authorization.as_deref(), Some("Bearer sk-test"));
 }
 
@@ -244,7 +253,10 @@ async fn ollama_lists_its_models_with_what_each_can_do() {
         .unwrap();
 
     let names: Vec<&str> = models.iter().map(|model| model.name.as_str()).collect();
-    assert_eq!(names, ["llama3.2:3b", "nomic-embed-text:latest", "qwen2.5vl:3b"]);
+    assert_eq!(
+        names,
+        ["llama3.2:3b", "nomic-embed-text:latest", "qwen2.5vl:3b"]
+    );
     assert_eq!(models[0].vision, None, "show failed: unknown, not no");
     assert!(!models[0].embedding);
     assert!(models[1].embedding);

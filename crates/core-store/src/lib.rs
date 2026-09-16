@@ -1196,7 +1196,13 @@ impl Store {
              ON CONFLICT (base_url, document_id)
              DO UPDATE SET model = excluded.model, text = excluded.text,
                            created_at = excluded.created_at",
-            params![base_url.trim_end_matches('/'), document_id, model, text, now()],
+            params![
+                base_url.trim_end_matches('/'),
+                document_id,
+                model,
+                text,
+                now()
+            ],
         )?;
         Ok(())
     }

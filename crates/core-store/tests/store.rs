@@ -1636,7 +1636,10 @@ fn every_address_gets_a_token_key_no_other_store_shares() {
     let (first, _) = store_with_account();
     let (second, _) = store_with_account();
     let a = first.paper_mailbox(paper_mailbox(&first)).unwrap().unwrap();
-    let b = second.paper_mailbox(paper_mailbox(&second)).unwrap().unwrap();
+    let b = second
+        .paper_mailbox(paper_mailbox(&second))
+        .unwrap()
+        .unwrap();
 
     assert_eq!(a.id, b.id, "the collision needs the same id in both stores");
     assert_ne!(a.token_key, b.token_key);
