@@ -52,6 +52,10 @@ pub struct SettingsView {
     pub url: String,
     pub tags: Vec<String>,
     pub roi: Option<String>,
+    /// The page's corners, when the camera is at an angle.
+    pub corners: Option<String>,
+    /// Degrees clockwise every photograph is turned.
+    pub rotate: u16,
     pub token_set: bool,
 }
 
@@ -78,6 +82,9 @@ pub struct Status {
     /// Where setup found a page in the last picture of the whole view, as a
     /// crop — `None` when it found none.
     pub suggested_crop: Option<String>,
+    /// The corners of the page found there, as the `corners` setting takes
+    /// them.
+    pub suggested_corners: Option<String>,
     /// Finishing was asked for and is waiting for things to be still.
     pub finishing: bool,
     /// The last frame's change from the empty table, and from the frame
@@ -102,6 +109,7 @@ impl Default for Status {
             frame_at: 0,
             full_view_at: 0,
             suggested_crop: None,
+            suggested_corners: None,
             finishing: false,
             table_change: 0.0,
             movement: 0.0,
@@ -171,10 +179,16 @@ impl Hub {
     }
 
     /// A colour JPEG of the whole view, and where a page was found in it.
-    pub fn set_full_view(&self, jpeg: Vec<u8>, suggested_crop: Option<String>) {
+    pub fn set_full_view(
+        &self,
+        jpeg: Vec<u8>,
+        suggested_crop: Option<String>,
+        suggested_corners: Option<String>,
+    ) {
         *self.full_view.lock().unwrap() = Some(jpeg);
         self.update(|status| {
             status.suggested_crop = suggested_crop;
+            status.suggested_corners = suggested_corners;
             status.full_view_at += 1;
         });
     }

@@ -15,6 +15,7 @@ use crate::camera::Camera;
 use crate::detect::{Detector, State, Step, Thresholds};
 use crate::hub::Event;
 use crate::spool::Spool;
+use crate::straighten::{straighten, Corners};
 use crate::upload::Uploader;
 
 /// What one turn did.
@@ -62,6 +63,9 @@ pub struct Scanner {
     /// Whether the baseline is known to be the empty table, rather than
     /// whatever the first frame happened to show.
     trusted_baseline: bool,
+    /// Where the page's corners are in a photograph, when the camera looks at
+    /// the table at an angle.
+    straighten: Option<Corners>,
     events: Vec<Event>,
 }
 
@@ -78,6 +82,7 @@ impl Scanner {
             baseline_file: None,
             saved_generation: 0,
             trusted_baseline: false,
+            straighten: None,
             events: Vec::new(),
         }
     }
@@ -110,6 +115,13 @@ impl Scanner {
         self.saved_generation = self.detector.baseline_generation();
         self.baseline_file = Some(path);
         self
+    }
+
+    /// Warps every photograph so that these corners, as fractions of it,
+    /// become its own, in order — which is also how a photograph is turned.
+    /// `None` keeps photographs as the camera takes them.
+    pub fn straighten_with(&mut self, corners: Option<Corners>) {
+        self.straighten = corners;
     }
 
     pub fn collecting_letters(&self) -> bool {
@@ -221,8 +233,11 @@ impl Scanner {
                 self.last_frame = Some(frame);
 
                 if step == Step::Capture {
-                    match capture(camera, spool, collecting) {
-                        Ok(path) => {
+                    match capture(camera, spool, collecting, self.straighten.as_ref()) {
+                        Ok((path, warning)) => {
+                            if let Some(warning) = warning {
+                                self.event(now, false, warning);
+                            }
                             let text = if collecting {
                                 let pages =
                                     spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
@@ -413,9 +428,15 @@ impl Scanner {
     }
 }
 
-/// Photographs the page and puts it in the spool — in the open letter when
-/// collecting, or straight in the queue.
-fn capture(camera: &dyn Camera, spool: &Spool, collecting: bool) -> Result<PathBuf> {
+/// Photographs the page, straightens it if the camera is at an angle, and
+/// puts it in the spool — in the open letter when collecting, or straight in
+/// the queue. Also says what went wrong short of losing the page.
+fn capture(
+    camera: &dyn Camera,
+    spool: &Spool,
+    collecting: bool,
+    corners: Option<&Corners>,
+) -> Result<(PathBuf, Option<String>)> {
     let (partial, ready) = if collecting {
         spool.reserve_page()?
     } else {
@@ -426,11 +447,37 @@ fn capture(camera: &dyn Camera, spool: &Spool, collecting: bool) -> Result<PathB
         .capture(&partial)
         .with_context(|| "could not photograph the page")?;
 
+    // A page that cannot be straightened is still kept as it was taken: a
+    // slanted letter is better than none.
+    let mut warning = None;
+    if let Some(corners) = corners {
+        let started = std::time::Instant::now();
+        match straighten_file(&partial, corners) {
+            Ok(()) => tracing::info!(ms = started.elapsed().as_millis() as u64, "straightened"),
+            Err(err) => {
+                tracing::warn!(%err, "could not straighten the page; keeping it as taken");
+                warning = Some(format!(
+                    "could not straighten the page, kept it as taken: {err:#}"
+                ));
+            }
+        }
+    }
+
     // Only now is it a capture. Until the rename it is a file that may be
     // half-written, and nothing reads it.
     spool.commit(&partial, &ready)?;
     tracing::info!(file = %ready.display(), "captured");
-    Ok(ready)
+    Ok((ready, warning))
+}
+
+/// Replaces a photograph with its straightened self — whole, by rename, so a
+/// crash leaves one or the other and never half of each.
+fn straighten_file(path: &std::path::Path, corners: &Corners) -> Result<()> {
+    let straight = straighten(&std::fs::read(path)?, corners)?;
+    let next = path.with_extension("straight");
+    std::fs::write(&next, straight)?;
+    std::fs::rename(&next, path)?;
+    Ok(())
 }
 
 /// Sends everything waiting — and due, unless `force` — oldest first.
