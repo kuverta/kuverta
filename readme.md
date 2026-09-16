@@ -107,7 +107,7 @@ feel like a mailbox — which is what triage needs in order to be worth looking
 at. For that:
 
 ```sh
-make fill-dev   # ~250 varied messages into the dev mailbox, then sync them
+make fill-dev   # ~250 varied messages in a second dev account, demo@kuverta.test
 ```
 
 Both languages, every category the classifier knows, HTML-only marketing,

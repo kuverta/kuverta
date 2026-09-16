@@ -152,12 +152,19 @@ fill-mailbox: ## Put ~250 varied messages in a test mailbox (HOST= USER= PASS=)
 	python3 docker/fill-mailbox.py "$(HOST)" "$(USER)" "$(PASS)" $(or $(COUNT),250)
 
 # Nine fixtures prove sync works and are nowhere near enough to feel like a
-# mailbox — which is what triage needs in order to be worth looking at.
-fill-dev: dev-up ## Put ~250 varied messages in the dev mailbox, then sync them
-	python3 docker/fill-mailbox.py 127.0.0.1:10143 dev@kuverta.test devpass \
+# mailbox — which is what triage needs in order to be worth looking at. The
+# mail goes to its own user, demo@, because the sync tests assert on the exact
+# contents of dev@'s seeded mailbox: filling that one made `make check` fail.
+fill-dev: dev-up build ## Put ~250 varied messages in a second dev account (demo@kuverta.test) and sync it
+	python3 docker/fill-mailbox.py 127.0.0.1:10143 demo@kuverta.test devpass \
 	    $(or $(COUNT),250) --plain
+	@$(DEV_ENV) ./target/debug/kuverta add-account \
+	    --email demo@kuverta.test --label "Dev demo" \
+	    --host 127.0.0.1 --port 10143 --security plaintext \
+	    --smtp-host 127.0.0.1 --smtp-port 1025 --smtp-security plaintext \
+	    2>/dev/null || true
 	KUVERTA_DEV_PASSWORD=devpass $(DEV_ENV) \
-	    ./target/debug/kuverta sync --password-env KUVERTA_DEV_PASSWORD
+	    ./target/debug/kuverta sync --email demo@kuverta.test --password-env KUVERTA_DEV_PASSWORD
 
 ## -- the scanner -----------------------------------------------------------
 

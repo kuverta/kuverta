@@ -104,6 +104,10 @@ services:
       PAPERLESS_SECRET_KEY: kuverta-dev-only-not-a-secret-7f3c9a1e5b2d4086
       PAPERLESS_ADMIN_USER: admin
       PAPERLESS_ADMIN_PASSWORD: admin
+      # Sign-ins are limited to 5 a minute by default, and the tests sign in
+      # once each — so running them twice in a row failed with "throttled".
+      # This instance is for tests only; a real one keeps the default.
+      PAPERLESS_TOKEN_THROTTLE_RATE: 600/min
       PAPERLESS_OCR_LANGUAGE: deu+eng
       PAPERLESS_OCR_LANGUAGES: deu eng
       # Set explicitly rather than left to the default, because `scannerd`
