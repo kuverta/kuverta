@@ -23,6 +23,7 @@ pub mod ai;
 pub mod paper;
 pub mod session;
 pub mod settings;
+pub mod setup;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};

@@ -1263,6 +1263,10 @@ const KEYS = {
 };
 
 document.addEventListener("keydown", async (event) => {
+  // The assistant is a form too, and Escape does not throw away what it has
+  // been told.
+  if (!el("setup").hidden) return;
+
   // The settings sheet is a form: every key belongs to whatever field has
   // focus, and none of them are triage shortcuts.
   if (!settings.sheet.hidden) {
@@ -1323,6 +1327,15 @@ content.addEventListener("click", (event) => {
 // -- start -----------------------------------------------------------------
 
 async function start() {
+  // The first run, with nothing to show yet, opens the assistant instead.
+  const status = await invoke("setup_status").catch(() => null);
+  if (status && status.first_run) {
+    buildPool();
+    statusBar.textContent = "setting up";
+    await openSetup();
+    return;
+  }
+
   const accounts = await invoke("accounts");
   // Post is an addition: a Paperless that is down or not set up must not keep
   // mail from opening.
@@ -1348,8 +1361,12 @@ async function start() {
   if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);
 }
 
-start().catch((err) => {
-  statusBar.textContent = `failed to start: ${err}`;
+// Once every script is in: the setup assistant lives in its own file, and a
+// first run opens it before anything else.
+document.addEventListener("DOMContentLoaded", () => {
+  start().catch((err) => {
+    statusBar.textContent = `failed to start: ${err}`;
+  });
 });
 
 // -- settings ---------------------------------------------------------------

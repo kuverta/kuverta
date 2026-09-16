@@ -59,7 +59,7 @@ pub struct AccountSettings {
 /// `id` is `None` for a new account. Everything else is the form's own state,
 /// so saving is one call rather than a sequence a half-filled form could stop
 /// in the middle of.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct AccountInput {
     pub id: Option<AccountId>,
     pub label: String,

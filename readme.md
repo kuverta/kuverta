@@ -104,6 +104,33 @@ make test       # both test suites: Rust, then the triage surface
 ./run.sh --help # what the window's options do
 ```
 
+## First run
+
+On a store with no accounts and no postal addresses, the window opens a setup
+assistant instead of an empty list (again any time from settings, **Setup
+assistant**). Every step can be skipped:
+
+- **Local models** — whether Ollama is installed and running, with a download
+  link or the install command if not, **Start Ollama** if it is installed but
+  stopped, and a download button with progress for each model a job needs.
+- **Paper mail** — looks for Paperless at `localhost:8000` and
+  `paperless.local:8000`, then either connects to one (a Paperless user name and
+  password are exchanged for that user's token; pasting a token works too) or
+  installs one with Docker: a compose file and an owner-only env file in
+  `<data dir>/paperless/`, `docker compose up -d`, and a wait until it answers.
+  Docker itself is the person's to install; the assistant says where.
+- **Mail accounts** — reads the IMAP accounts from Thunderbird's profiles and from
+  Apple Mail (the system's Internet Accounts, which macOS only shows to a program
+  with Full Disk Access; the assistant links to the setting). Any other address
+  gets its servers from a built-in list of common providers, the provider's own
+  autoconfig file, or Mozilla's directory, as Thunderbird does. Passwords are not
+  imported — the other programs keep theirs encrypted — so each is entered once,
+  stored in the keychain, and checked by signing in before the assistant moves on.
+  New accounts start syncing when it finishes.
+
+A marker file in the data directory stops it opening by itself again; a store
+that already had accounts before the assistant existed never sees it.
+
 ## Using it on a real account
 
 Either from the window — `./run.sh`, then `,` for settings, fill in the form
