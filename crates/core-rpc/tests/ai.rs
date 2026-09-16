@@ -12,7 +12,7 @@ use core_rpc::ai::{
 use core_rpc::{AiProviderInput, Core, RpcError, Task};
 
 fn core(name: &str) -> (Core, PathBuf) {
-    let dir = std::env::temp_dir().join(format!("fuckmail-rpc-ai-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kuverta-rpc-ai-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     (Core::open(dir.as_path()).unwrap(), dir)

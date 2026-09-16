@@ -19,7 +19,7 @@ pub enum AiError {
     #[error("{0} is not a usable model server URL")]
     Url(String),
 
-    #[error("{0} is not a kind of model provider fuckmail knows")]
+    #[error("{0} is not a kind of model provider kuverta knows")]
     Kind(String),
 }
 

@@ -1,4 +1,4 @@
-name: fuckmail-dev
+name: kuverta-dev
 
 # Local development stack. Nothing here is hardened; see docker/README.md.
 #
@@ -22,7 +22,7 @@ services:
       - "10143:31143"
     volumes:
       - maildata:/srv/vmail
-      - ./dovecot/dovecot-dev.conf:/etc/dovecot/conf.d/90-fuckmail-dev.conf:ro
+      - ./dovecot/dovecot-dev.conf:/etc/dovecot/conf.d/90-kuverta-dev.conf:ro
 
   # Loads the .eml fixtures over IMAP once Dovecot answers. Runs once, exits.
   # The image is distroless with no shell tools, so readiness is handled by the
@@ -34,7 +34,7 @@ services:
     environment:
       IMAP_HOST: dovecot
       IMAP_PORT: "31143"
-      IMAP_USER: dev@fuckmail.test
+      IMAP_USER: dev@kuverta.test
       IMAP_PASS: devpass
     volumes:
       - ./dovecot/seed:/seed:ro
@@ -52,7 +52,7 @@ services:
       - "10144:31143"
     volumes:
       - gmaildata:/srv/vmail
-      - ./dovecot/dovecot-gmail.conf:/etc/dovecot/conf.d/90-fuckmail-gmail.conf:ro
+      - ./dovecot/dovecot-gmail.conf:/etc/dovecot/conf.d/90-kuverta-gmail.conf:ro
 
   # SMTP sink for the send path: accepts submissions and exposes a REST API so
   # tests can assert on exactly what went over the wire.
@@ -101,7 +101,7 @@ services:
       PAPERLESS_URL: http://localhost:8000
       # Paperless refuses to start without one. This instance is bound to
       # localhost and holds only generated test post; never reuse the value.
-      PAPERLESS_SECRET_KEY: fuckmail-dev-only-not-a-secret-7f3c9a1e5b2d4086
+      PAPERLESS_SECRET_KEY: kuverta-dev-only-not-a-secret-7f3c9a1e5b2d4086
       PAPERLESS_ADMIN_USER: admin
       PAPERLESS_ADMIN_PASSWORD: admin
       PAPERLESS_OCR_LANGUAGE: deu+eng

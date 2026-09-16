@@ -1,5 +1,5 @@
 [package]
-name = "fuckmail-mcp"
+name = "kuverta-mcp"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,11 +7,11 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-name = "fuckmail_mcp"
+name = "kuverta_mcp"
 path = "src/lib.rs"
 
 [[bin]]
-name = "fuckmail-mcp"
+name = "kuverta-mcp"
 path = "src/main.rs"
 
 [dependencies]

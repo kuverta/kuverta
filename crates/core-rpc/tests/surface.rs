@@ -13,7 +13,7 @@ struct TempDir(std::path::PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("fuckmail-rpc-{}-{name}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("kuverta-rpc-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -29,17 +29,17 @@ impl Drop for TempDir {
 /// An account with INBOX and Archive, and `count` messages in INBOX.
 fn core_with(name: &str, count: usize) -> (Core, AccountId, FolderId, FolderId, TempDir) {
     let dir = TempDir::new(name);
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     let blobs = Blobs::new(dir.0.join("blobs"));
 
     let account = store
         .add_account(&NewAccount {
             label: "Dev".into(),
-            email: "dev@fuckmail.test".into(),
+            email: "dev@kuverta.test".into(),
             imap_host: "127.0.0.1".into(),
             imap_port: 993,
             imap_security: ImapSecurity::Tls,
-            username: "dev@fuckmail.test".into(),
+            username: "dev@kuverta.test".into(),
             auth_method: "app_password".into(),
             ..Default::default()
         })

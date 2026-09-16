@@ -1,9 +1,9 @@
 Return-Path: <buchhaltung@lieferant.example.de>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Message-ID: <RE-2026-0912@lieferant.example.de>
 Date: Thu, 03 Sep 2026 08:20:11 +0200
 From: Buchhaltung <buchhaltung@lieferant.example.de>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: =?UTF-8?Q?Rechnung_RE-2026-0912?=
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="b2_mixed_0912"

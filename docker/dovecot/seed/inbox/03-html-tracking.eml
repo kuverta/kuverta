@@ -1,9 +1,9 @@
 Return-Path: <deals@shop.example.com>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Message-ID: <campaign-99213-a@shop.example.com>
 Date: Tue, 01 Sep 2026 09:15:00 +0000
 From: "Shop Deals" <deals@shop.example.com>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: 20% off everything this week only
 List-Id: Shop Deals <deals.shop.example.com>
 MIME-Version: 1.0
@@ -20,7 +20,7 @@ Content-Type: text/html; charset=utf-8
 <html><body>
 <h1>20% off everything</h1>
 <p><a href="https://shop.example.com/sale">Shop now</a></p>
-<img src="https://track.shop.example.com/open?id=99213&u=dev%40fuckmail.test" width="1" height="1" alt="">
+<img src="https://track.shop.example.com/open?id=99213&u=dev%40kuverta.test" width="1" height="1" alt="">
 <script>window.location='https://evil.example.com'</script>
 </body></html>
 

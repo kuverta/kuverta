@@ -14,7 +14,7 @@ struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn new(name: &str) -> Self {
         let path =
-            std::env::temp_dir().join(format!("fuckmail-settings-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("kuverta-settings-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -30,7 +30,7 @@ impl Drop for TempDir {
 fn core(name: &str) -> (Core, TempDir) {
     let dir = TempDir::new(name);
     let core = Core::new(
-        Store::open(dir.0.join("fuckmail.db")).unwrap(),
+        Store::open(dir.0.join("kuverta.db")).unwrap(),
         Blobs::new(dir.0.join("blobs")),
     );
     (core, dir)
@@ -266,5 +266,5 @@ fn a_data_directory_that_does_not_exist_yet_is_created() {
 
     let core = Core::open(&nested).expect("a first run should not need a directory prepared");
     assert!(core.accounts().unwrap().is_empty());
-    assert!(nested.join("fuckmail.db").exists());
+    assert!(nested.join("kuverta.db").exists());
 }

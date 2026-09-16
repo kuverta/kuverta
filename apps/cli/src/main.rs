@@ -1,4 +1,4 @@
-//! Development driver for the fuckmail core.
+//! Development driver for the kuverta core.
 //!
 //! Not the product — the product is the triage UI. This exists so the sync
 //! path can be exercised end to end before any UI exists, and so the store can
@@ -22,12 +22,12 @@ use core_store::{Blobs, Store};
 
 #[derive(Parser)]
 #[command(
-    name = "fuckmail",
+    name = "kuverta",
     about = "Read-only mail triage core (development CLI)"
 )]
 struct Cli {
     /// Where the database and message blobs live.
-    #[arg(long, env = "FUCKMAIL_DATA_DIR", global = true)]
+    #[arg(long, env = "KUVERTA_DATA_DIR", global = true)]
     data_dir: Option<PathBuf>,
 
     #[command(subcommand)]
@@ -227,7 +227,7 @@ enum Command {
     /// Score the rules, a prompted model and embeddings against labelled mail.
     ///
     /// Every method is scored on the same held-out half. Generate the input with
-    /// `python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl`.
+    /// `python3 docker/fill-mailbox.py --dump 250 | node kuverta-bird/tools/dump-facts.js > labelled.jsonl`.
     Eval {
         /// Facts with a `label`, one JSON object per line.
         facts: PathBuf,
@@ -565,7 +565,7 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&data_dir)
         .with_context(|| format!("creating data dir {}", data_dir.display()))?;
 
-    let store = Store::open(data_dir.join("fuckmail.db"))
+    let store = Store::open(data_dir.join("kuverta.db"))
         .with_context(|| format!("opening store in {}", data_dir.display()))?;
     let blobs = Blobs::new(data_dir.join("blobs"));
 
@@ -710,10 +710,10 @@ fn add_account(store: &Store, args: AddAccount) -> Result<()> {
     println!("added account {} (id {id})", args.email);
     match args.auth {
         Auth::AppPassword => println!(
-            "store a password with: fuckmail set-password --email {}",
+            "store a password with: kuverta set-password --email {}",
             args.email
         ),
-        Auth::Oauth2 => println!("authorise it with: fuckmail login --email {}", args.email),
+        Auth::Oauth2 => println!("authorise it with: kuverta login --email {}", args.email),
     }
     Ok(())
 }
@@ -732,7 +732,7 @@ async fn check(
         None => {
             let mut accounts = store.accounts()?;
             match accounts.len() {
-                0 => bail!("no accounts registered; start with `fuckmail add-account`"),
+                0 => bail!("no accounts registered; start with `kuverta add-account`"),
                 1 => accounts.remove(0),
                 _ => bail!("several accounts registered; say which with --email"),
             }
@@ -875,7 +875,7 @@ async fn check(
             }
         );
         println!(
-            "    `fuckmail exclude '\\All' --email {}` syncs it once instead — at the cost \
+            "    `kuverta exclude '\\All' --email {}` syncs it once instead — at the cost \
              that archived mail, which lives only there, drops out of the local store.",
             account.email
         );
@@ -953,7 +953,7 @@ fn set_exclusion(store: &Store, email: Option<&str>, pattern: &str, exclude: boo
             println!("{pattern} was already excluded");
         }
     } else if store.include_folder(account, pattern)? {
-        println!("{pattern} will be synced again from the next `fuckmail sync`");
+        println!("{pattern} will be synced again from the next `kuverta sync`");
     } else {
         println!("{pattern} was not excluded");
     }
@@ -1004,7 +1004,7 @@ async fn create_folder(
         ),
         (None, _) => println!(),
     }
-    println!("  run `fuckmail sync` to pick it up");
+    println!("  run `kuverta sync` to pick it up");
     Ok(())
 }
 
@@ -1025,7 +1025,7 @@ fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
                 .map(str::to_string)
                 .context(
                     "this account has no Archive folder. Create one with \
-                     `fuckmail create-folder Archive --use '\\Archive'`, or file this \
+                     `kuverta create-folder Archive --use '\\Archive'`, or file this \
                      message somewhere that exists with `move --to <folder>`",
                 )?,
         },
@@ -1074,9 +1074,9 @@ fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
         folder.name
     );
     if args.undo_window > 0 {
-        println!("  `fuckmail undo` cancels it; `fuckmail sync` sends it (op {op})");
+        println!("  `kuverta undo` cancels it; `kuverta sync` sends it (op {op})");
     } else {
-        println!("  sends at the next `fuckmail sync` (op {op})");
+        println!("  sends at the next `kuverta sync` (op {op})");
     }
     Ok(())
 }
@@ -1123,7 +1123,7 @@ fn show_queue(store: &Store, email: Option<&str>) -> Result<()> {
             println!("        last attempt: {error}");
         }
     }
-    println!("{} queued; `fuckmail sync` sends them", pending.len());
+    println!("{} queued; `kuverta sync` sends them", pending.len());
     Ok(())
 }
 
@@ -1181,7 +1181,7 @@ fn resolve_message(
         if let Some(message) = store.message_by_id(account, id)? {
             return Ok(message);
         }
-        bail!("no message {id} in this account; `fuckmail list` shows the numbers");
+        bail!("no message {id} in this account; `kuverta list` shows the numbers");
     }
 
     store
@@ -1204,7 +1204,7 @@ async fn send(store: &Store, data_dir: &std::path::Path, args: SendArgs) -> Resu
         None => {
             let mut accounts = store.accounts()?;
             match accounts.len() {
-                0 => bail!("no accounts registered; start with `fuckmail add-account`"),
+                0 => bail!("no accounts registered; start with `kuverta add-account`"),
                 1 => accounts.remove(0),
                 _ => bail!("several accounts registered; say which with --email"),
             }
@@ -1421,7 +1421,7 @@ async fn sync(
         None => store.accounts()?.into_iter().map(|a| a.email).collect(),
     };
     if emails.is_empty() {
-        bail!("no accounts registered; start with `fuckmail add-account`");
+        bail!("no accounts registered; start with `kuverta add-account`");
     }
 
     for email in emails {
@@ -1440,7 +1440,7 @@ fn report_sync(s: &core_rpc::SyncSummary) {
             s.email,
             s.changes_sent,
             option(s.changes_obsolete, "no longer applied"),
-            option(s.changes_refused, "refused (see `fuckmail queue`)"),
+            option(s.changes_refused, "refused (see `kuverta queue`)"),
             option(s.changes_retryable, "will be retried"),
         );
     }
@@ -1646,7 +1646,7 @@ fn default_data_dir() -> PathBuf {
     std::env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
-        .join(".local/share/fuckmail")
+        .join(".local/share/kuverta")
 }
 
 // -- the local model ----------------------------------------------------------
@@ -1706,9 +1706,7 @@ async fn model_classify(
         println!("stopped after three failures in a row: {reason}");
     }
     let disagreements = store.disagreements(account)?.len();
-    println!(
-        "{disagreements} disagreement(s) with the rules — `fuckmail disagreements` lists them"
-    );
+    println!("{disagreements} disagreement(s) with the rules — `kuverta disagreements` lists them");
     Ok(())
 }
 
@@ -1717,7 +1715,7 @@ fn list_disagreements(store: &Store, email: Option<&str>) -> Result<()> {
     let rows = store.disagreements(account)?;
     if rows.is_empty() {
         println!(
-            "no disagreements: either they agree, or the model has not run (`fuckmail classify`)"
+            "no disagreements: either they agree, or the model has not run (`kuverta classify`)"
         );
         return Ok(());
     }
@@ -1765,7 +1763,7 @@ async fn evaluate_models(
     if rows.len() < 4 {
         bail!(
             "{} holds {} labelled message(s); generate some with\n  \
-             python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/dump-facts.js > labelled.jsonl",
+             python3 docker/fill-mailbox.py --dump 250 | node kuverta-bird/tools/dump-facts.js > labelled.jsonl",
             path.display(),
             rows.len()
         );

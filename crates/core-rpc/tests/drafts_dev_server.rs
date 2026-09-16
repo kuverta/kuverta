@@ -5,7 +5,7 @@
 //! calls Drafts, flagged so other clients show it as one, and that the next sync
 //! reads back the message that was built rather than something like it.
 //!
-//! Skips when the servers are down; `FUCKMAIL_REQUIRE_DEV_SERVER=1` makes that a
+//! Skips when the servers are down; `KUVERTA_REQUIRE_DEV_SERVER=1` makes that a
 //! failure, as in `core-proto/tests/dev_server.rs`.
 
 use core_rpc::{DraftInput, Session};
@@ -15,7 +15,7 @@ use core_store::Store;
 const HOST: &str = "127.0.0.1";
 const DEV_PORT: u16 = 10143;
 const GMAIL_PORT: u16 = 10144;
-const PASSWORD_VAR: &str = "FUCKMAIL_DEV_PASSWORD";
+const PASSWORD_VAR: &str = "KUVERTA_DEV_PASSWORD";
 
 fn available(port: u16) -> bool {
     let reachable = std::net::TcpStream::connect_timeout(
@@ -24,7 +24,7 @@ fn available(port: u16) -> bool {
     )
     .is_ok();
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev IMAP server on {HOST}:{port} is required but not reachable");
         }
         eprintln!("skipping: dev IMAP server on {port} not running (`make dev-up`)");
@@ -37,7 +37,7 @@ struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn new(name: &str) -> Self {
         let path =
-            std::env::temp_dir().join(format!("fuckmail-drafts-dev-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("kuverta-drafts-dev-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -57,14 +57,14 @@ fn unique_user(tag: &str) -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    format!("draft-{tag}-{nanos}@fuckmail.test")
+    format!("draft-{tag}-{nanos}@kuverta.test")
 }
 
 fn session_with_account(dir: &TempDir, user: &str, port: u16) -> Session {
     // SAFETY: the dev password baked into docker-compose.yml, not a real
     // credential; every test sets the same value.
     unsafe { std::env::set_var(PASSWORD_VAR, "devpass") };
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     store
         .add_account(&NewAccount {
             label: user.into(),
@@ -114,7 +114,7 @@ async fn saves_and_reads_back(tag: &str, port: u16, expected_folder: &str) {
     // Read it back the way the app will, rather than trusting the OK.
     session.sync_account(&user).await.expect("sync");
 
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     let account = store.account_by_email(&user).unwrap().unwrap().id;
     let message_id = message_id_of(&saved.preview.rfc822);
     let stored = store

@@ -19,7 +19,7 @@ use core_accounts::{AuthError, AuthProvider, Credential};
 
 fn config(server: &MockServer) -> LoopbackConfig {
     LoopbackConfig {
-        user: "dev@fuckmail.test".into(),
+        user: "dev@kuverta.test".into(),
         client_id: "test-client".into(),
         client_secret: Some("not-really-secret".into()),
         auth_url: format!("{}/auth", server.base()),
@@ -178,7 +178,7 @@ async fn a_completed_login_stores_a_refresh_token_and_proves_possession_of_the_v
     match client.credential().await.unwrap() {
         Credential::OAuthBearer { access_token, user } => {
             assert_eq!(access_token, "access-1");
-            assert_eq!(user, "dev@fuckmail.test");
+            assert_eq!(user, "dev@kuverta.test");
         }
         other => panic!("expected a bearer token, got {other:?}"),
     }

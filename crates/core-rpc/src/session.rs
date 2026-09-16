@@ -204,7 +204,7 @@ impl Session {
     fn open(&self) -> Result<(Store, Blobs)> {
         std::fs::create_dir_all(&self.data_dir)?;
         Ok((
-            Store::open(self.data_dir.join("fuckmail.db"))?,
+            Store::open(self.data_dir.join("kuverta.db"))?,
             Blobs::new(self.data_dir.join("blobs")),
         ))
     }
@@ -495,7 +495,7 @@ impl Session {
         let smtp = account.smtp.clone().ok_or_else(|| {
             RpcError::Rejected(format!(
                 "account {} has no SMTP endpoint; configure one with \
-                 `fuckmail set-smtp --email {} --smtp-host <host> --smtp-port 587 \
+                 `kuverta set-smtp --email {} --smtp-host <host> --smtp-port 587 \
                  --smtp-security starttls`",
                 account.email, account.email
             ))

@@ -3,7 +3,7 @@
 //! A canned instance on a loopback socket, because the real one is a Redis and
 //! a Django and a first-run index build, and none of that makes these
 //! assertions any truer. What it cannot check is whether Paperless really
-//! answers in these shapes — that is what `fuckmail paper check` against the
+//! answers in these shapes — that is what `kuverta paper check` against the
 //! dev stack is for.
 
 use std::io::{BufRead, BufReader, Write};

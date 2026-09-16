@@ -4,7 +4,7 @@
 //!
 //! When the server is not reachable these tests skip rather than fail, so
 //! `cargo test` stays useful without Docker. CI sets
-//! `FUCKMAIL_REQUIRE_DEV_SERVER=1`, which turns a missing server into a
+//! `KUVERTA_REQUIRE_DEV_SERVER=1`, which turns a missing server into a
 //! failure — otherwise a broken compose file would look like a green build.
 
 use core_accounts::EnvPassword;
@@ -14,7 +14,7 @@ use core_store::{Blobs, Store};
 
 const HOST: &str = "127.0.0.1";
 const PORT: u16 = 10143;
-const USER: &str = "dev@fuckmail.test";
+const USER: &str = "dev@kuverta.test";
 
 /// Returns false (and explains) when the dev server is not up.
 fn dev_server_available() -> bool {
@@ -25,7 +25,7 @@ fn dev_server_available() -> bool {
     .is_ok();
 
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev IMAP server on {HOST}:{PORT} is required but not reachable");
         }
         eprintln!("skipping: dev IMAP server not running (`make dev-up`)");
@@ -45,8 +45,8 @@ fn config() -> ImapConfig {
 fn auth() -> EnvPassword {
     // SAFETY: set before any thread reads it; the value is the dev password
     // baked into docker-compose.yml, not a real credential.
-    unsafe { std::env::set_var("FUCKMAIL_DEV_PASSWORD", "devpass") };
-    EnvPassword::new("FUCKMAIL_DEV_PASSWORD")
+    unsafe { std::env::set_var("KUVERTA_DEV_PASSWORD", "devpass") };
+    EnvPassword::new("KUVERTA_DEV_PASSWORD")
 }
 
 fn fixture_store() -> (Store, i64, Blobs, tempdir::TempDir) {
@@ -362,7 +362,7 @@ async fn an_unchanged_folder_is_skipped_entirely() {
     if !dev_server_available() {
         return;
     }
-    let user = "skip-test@fuckmail.test";
+    let user = "skip-test@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     mutate::reset_inbox(&mut writer).await;
@@ -392,7 +392,7 @@ async fn a_flag_set_on_the_server_reaches_the_store() {
     if !dev_server_available() {
         return;
     }
-    let user = "flag-test@fuckmail.test";
+    let user = "flag-test@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     mutate::reset_inbox(&mut writer).await;
@@ -432,7 +432,7 @@ async fn a_message_expunged_on_the_server_is_removed_locally() {
     if !dev_server_available() {
         return;
     }
-    let user = "expunge-test@fuckmail.test";
+    let user = "expunge-test@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     mutate::reset_inbox(&mut writer).await;
@@ -470,7 +470,7 @@ async fn a_sent_message_is_appended_to_the_sent_folder() {
     if !dev_server_available() {
         return;
     }
-    let user = "append-test@fuckmail.test";
+    let user = "append-test@kuverta.test";
     let (store, account, blobs, _dir, mut client) = isolated(user).await;
 
     let folders = client.folders().await.unwrap();
@@ -482,7 +482,7 @@ async fn a_sent_message_is_appended_to_the_sent_folder() {
     // mailbox down, so a fixed id would either accumulate rows or collapse
     // into one deduplicated message and make the assertions meaningless.
     let message_id = format!(
-        "appended-{}@fuckmail.test",
+        "appended-{}@kuverta.test",
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -596,7 +596,7 @@ async fn a_queued_move_reaches_the_server_and_the_next_sync_sees_it() {
     if !dev_server_available() {
         return;
     }
-    let user = "move-op@fuckmail.test";
+    let user = "move-op@kuverta.test";
     let message_id = "moveable-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "archive me").await;
@@ -642,7 +642,7 @@ async fn a_queued_flag_change_reaches_the_server() {
     if !dev_server_available() {
         return;
     }
-    let user = "flag-op@fuckmail.test";
+    let user = "flag-op@kuverta.test";
     let message_id = "flaggable-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "mark me read").await;
@@ -685,13 +685,13 @@ async fn a_queued_flag_change_reaches_the_server() {
 
 #[tokio::test]
 async fn an_operation_is_refused_when_the_uid_no_longer_holds_the_expected_message() {
-    // The check the whole executor exists for. If this regresses, fuckmail
+    // The check the whole executor exists for. If this regresses, kuverta
     // archives whatever happens to sit at a stale UID — the exact failure the
     // read-only design used to make impossible.
     if !dev_server_available() {
         return;
     }
-    let user = "conflict-op@fuckmail.test";
+    let user = "conflict-op@kuverta.test";
     let message_id = "conflicted-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "do not touch me").await;
@@ -740,7 +740,7 @@ async fn an_operation_on_a_message_someone_else_removed_is_obsolete_not_an_error
     if !dev_server_available() {
         return;
     }
-    let user = "obsolete-op@fuckmail.test";
+    let user = "obsolete-op@kuverta.test";
     let message_id = "vanishing-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "gone by the time we get there").await;
@@ -777,7 +777,7 @@ async fn a_renumbered_folder_fails_its_operations_rather_than_acting_on_stale_ui
     if !dev_server_available() {
         return;
     }
-    let user = "uidvalidity-op@fuckmail.test";
+    let user = "uidvalidity-op@kuverta.test";
     let message_id = "renumbered-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "renumber me").await;
@@ -827,7 +827,7 @@ async fn an_operation_cancelled_before_the_flush_never_reaches_the_server() {
     if !dev_server_available() {
         return;
     }
-    let user = "undo-op@fuckmail.test";
+    let user = "undo-op@kuverta.test";
     let message_id = "undone-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "changed my mind").await;
@@ -870,7 +870,7 @@ async fn operations_on_one_message_are_applied_in_the_order_they_were_made() {
     if !dev_server_available() {
         return;
     }
-    let user = "ordered-op@fuckmail.test";
+    let user = "ordered-op@kuverta.test";
     let message_id = "ordered-1@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "flag then move").await;
@@ -933,7 +933,7 @@ async fn a_message_without_a_message_id_can_still_be_filed() {
     if !dev_server_available() {
         return;
     }
-    let user = "no-msgid-op@fuckmail.test";
+    let user = "no-msgid-op@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     for folder in ["INBOX", "Archive", "Trash"] {
@@ -993,7 +993,7 @@ async fn expecting_no_message_id_and_finding_one_is_a_conflict() {
     if !dev_server_available() {
         return;
     }
-    let user = "msgid-mismatch-op@fuckmail.test";
+    let user = "msgid-mismatch-op@kuverta.test";
     let message_id = "has-an-id@example.com";
     let mut writer = seeded_inbox(user, message_id, "this one has an id").await;
 
@@ -1033,7 +1033,7 @@ async fn a_sparse_uid_range_fetches_exactly_the_messages_that_remain() {
     if !dev_server_available() {
         return;
     }
-    let user = "sparse-fetch@fuckmail.test";
+    let user = "sparse-fetch@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     mutate::reset_inbox(&mut writer).await;
@@ -1079,7 +1079,7 @@ async fn asking_for_uids_past_the_end_of_a_folder_returns_nothing() {
     if !dev_server_available() {
         return;
     }
-    let user = "star-quirk@fuckmail.test";
+    let user = "star-quirk@kuverta.test";
 
     let mut writer = mutate::login(user).await;
     mutate::reset_inbox(&mut writer).await;
@@ -1144,7 +1144,7 @@ async fn a_created_folder_becomes_resolvable_as_the_archive() {
     if !dev_server_available() {
         return;
     }
-    let user = "create-folder@fuckmail.test";
+    let user = "create-folder@kuverta.test";
     let name = "Archive";
 
     let mut writer = mutate::login(user).await;
@@ -1182,7 +1182,7 @@ async fn a_folder_name_cannot_smuggle_in_another_command() {
     if !dev_server_available() {
         return;
     }
-    let user = "folder-injection@fuckmail.test";
+    let user = "folder-injection@kuverta.test";
     let (_store, _account, _blobs, _dir, mut client) = isolated(user).await;
 
     for bad in [
@@ -1204,7 +1204,7 @@ async fn a_folder_name_cannot_smuggle_in_another_command() {
 
 #[tokio::test]
 async fn a_message_moved_between_folders_keeps_its_identity_and_its_history() {
-    // A message moving folder is routine: fuckmail's own archive does it, and
+    // A message moving folder is routine: kuverta's own archive does it, and
     // so does every other client touching the same mailbox. What must not
     // happen is the local row being destroyed and rebuilt on the way, because
     // everything hanging off it goes too — the classifier verdict, and the
@@ -1213,7 +1213,7 @@ async fn a_message_moved_between_folders_keeps_its_identity_and_its_history() {
     if !dev_server_available() {
         return;
     }
-    let user = "move-identity@fuckmail.test";
+    let user = "move-identity@kuverta.test";
     let message_id = "keeps-identity@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "moved by another client").await;
@@ -1283,7 +1283,7 @@ async fn identity_survives_a_move_against_the_folder_order_too() {
     if !dev_server_available() {
         return;
     }
-    let user = "move-identity-reverse@fuckmail.test";
+    let user = "move-identity-reverse@kuverta.test";
     let message_id = "keeps-identity-reverse@example.com";
 
     let mut writer = seeded_inbox(user, message_id, "moved the other way").await;
