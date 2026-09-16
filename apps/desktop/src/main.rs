@@ -579,6 +579,238 @@ fn special_folders(app: State<'_, App>, account: i64) -> Result<core_rpc::Specia
         .map_err(fail)
 }
 
+// -- the setup assistant -------------------------------------------------------
+//
+// First run, and "Set up again" in settings: the local model server, a
+// Paperless, and mail accounts other programs already know. What goes over
+// the network or runs a program holds no store lock, as everywhere else.
+
+#[tauri::command]
+fn setup_status(app: State<'_, App>) -> Result<core_rpc::setup::SetupStatus, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .setup_status(&app.data_dir)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn finish_setup(app: State<'_, App>) -> Result<(), String> {
+    core_rpc::setup::finish(&app.data_dir).map_err(fail)
+}
+
+fn ollama_probe(app: &State<'_, App>) -> Result<core_rpc::setup::OllamaProbe, String> {
+    app.core.lock().unwrap().ollama_setup().map_err(fail)
+}
+
+#[tauri::command]
+async fn ollama_status(app: State<'_, App>) -> Result<core_rpc::setup::OllamaStatus, String> {
+    let probe = ollama_probe(&app)?;
+    Ok(probe.status().await)
+}
+
+#[tauri::command]
+async fn start_ollama(app: State<'_, App>) -> Result<(), String> {
+    let probe = ollama_probe(&app)?;
+    probe.start().await.map_err(fail)
+}
+
+/// Downloads a model into the Ollama on this computer, reporting progress on
+/// `on_progress` as Ollama gives it.
+#[tauri::command]
+async fn pull_model(
+    app: State<'_, App>,
+    model: String,
+    on_progress: tauri::ipc::Channel<core_rpc::setup::PullProgress>,
+) -> Result<(), String> {
+    let probe = ollama_probe(&app)?;
+    probe
+        .pull(&model, |update| {
+            let _ = on_progress.send(update);
+        })
+        .await
+        .map_err(fail)
+}
+
+/// Runs `docker info`, which takes a moment and blocks, on a thread of its own.
+#[tauri::command]
+async fn docker_status() -> Result<core_rpc::setup::DockerStatus, String> {
+    tauri::async_runtime::spawn_blocking(core_rpc::setup::docker_status)
+        .await
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn start_docker() -> Result<(), String> {
+    core_rpc::setup::start_docker().map_err(fail)
+}
+
+#[tauri::command]
+async fn find_paperless(
+    app: State<'_, App>,
+) -> Result<Vec<core_rpc::setup::PaperlessFound>, String> {
+    let configured: Vec<String> = app
+        .core
+        .lock()
+        .unwrap()
+        .paper_mailboxes()
+        .map_err(fail)?
+        .into_iter()
+        .map(|mailbox| mailbox.base_url)
+        .collect();
+    Ok(core_rpc::setup::find_paperless(&configured, &app.data_dir).await)
+}
+
+/// Saves a postal address once its token works, and returns its id.
+fn save_postbox(
+    app: &State<'_, App>,
+    input: &core_rpc::PaperMailboxInput,
+    token: &str,
+) -> Result<i64, String> {
+    let core = app.core.lock().unwrap();
+    let id = core.save_paper_mailbox(input).map_err(fail)?;
+    core.set_paper_token(id, token).map_err(fail)?;
+    Ok(id)
+}
+
+/// Connects to a Paperless that already exists: with a user name and
+/// password, which are exchanged for the user's token, or with the token.
+#[tauri::command]
+async fn connect_paperless(
+    app: State<'_, App>,
+    input: core_rpc::PaperMailboxInput,
+    username: Option<String>,
+    password: Option<String>,
+    token: Option<String>,
+) -> Result<core_rpc::PaperReport, String> {
+    let token = match (username.filter(|u| !u.trim().is_empty()), password, token) {
+        (Some(username), Some(password), _) => {
+            core_rpc::setup::sign_in_paperless(&input.base_url, username.trim(), &password)
+                .await
+                .map_err(fail)?
+        }
+        (_, _, Some(token)) if !token.trim().is_empty() => token.trim().to_string(),
+        _ => {
+            return Err("sign in with a Paperless user name and password, or paste a token".into())
+        }
+    };
+    let report = core_rpc::setup::check_paperless(
+        &input.base_url,
+        &token,
+        &input.selector_kind,
+        input.selector_value.as_deref(),
+    )
+    .await
+    .map_err(fail)?;
+    save_postbox(&app, &input, &token)?;
+    Ok(report)
+}
+
+/// Installs Paperless with Docker, starts it, signs in and adds it as a
+/// postal address. Docker's output arrives on `on_output` line by line.
+#[tauri::command]
+async fn install_paperless(
+    app: State<'_, App>,
+    install: core_rpc::setup::PaperlessInstall,
+    label: String,
+    on_output: tauri::ipc::Channel<String>,
+) -> Result<i64, String> {
+    let (base_url, dir) =
+        core_rpc::setup::write_paperless(&app.data_dir, &install).map_err(fail)?;
+    let _ = on_output.send(format!("Paperless goes in {}", dir.display()));
+
+    let output = on_output.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::setup::compose_up(&dir, |line| {
+            let _ = output.send(line);
+        })
+    })
+    .await
+    .map_err(fail)?
+    .map_err(fail)?;
+
+    let token = core_rpc::setup::wait_and_sign_in(
+        &base_url,
+        install.username.trim(),
+        &install.password,
+        |line| {
+            let _ = on_output.send(line);
+        },
+    )
+    .await
+    .map_err(fail)?;
+    let input = core_rpc::PaperMailboxInput {
+        id: None,
+        label: if label.trim().is_empty() {
+            "Post".to_string()
+        } else {
+            label.trim().to_string()
+        },
+        base_url,
+        selector_kind: "everything".to_string(),
+        selector_value: None,
+    };
+    let id = save_postbox(&app, &input, &token)?;
+    let _ = on_output.send("Paperless is running and connected.".to_string());
+    Ok(id)
+}
+
+fn known_addresses(app: &State<'_, App>) -> Result<Vec<String>, String> {
+    Ok(app
+        .core
+        .lock()
+        .unwrap()
+        .accounts()
+        .map_err(fail)?
+        .into_iter()
+        .map(|account| account.email)
+        .collect())
+}
+
+#[tauri::command]
+async fn import_accounts(app: State<'_, App>) -> Result<core_rpc::setup::ImportScan, String> {
+    let existing = known_addresses(&app)?;
+    Ok(core_rpc::setup::scan_imports(&existing).await)
+}
+
+#[tauri::command]
+async fn lookup_account(
+    app: State<'_, App>,
+    email: String,
+) -> Result<core_rpc::setup::FoundAccount, String> {
+    let existing = known_addresses(&app)?;
+    core_rpc::setup::lookup(&email, &existing)
+        .await
+        .map_err(fail)
+}
+
+/// Opens a web page, or the System Settings pane the assistant points at, in
+/// the program that shows it. Nothing else: the window has no business
+/// starting arbitrary programs.
+#[tauri::command]
+fn open_external(url: String) -> Result<(), String> {
+    let allowed = url.starts_with("https://")
+        || url.starts_with("http://")
+        || url.starts_with("x-apple.systempreferences:");
+    if !allowed || url.chars().any(char::is_whitespace) {
+        return Err(format!("{url} is not something to open"));
+    }
+    let status = if cfg!(target_os = "macos") {
+        std::process::Command::new("open").arg(&url).status()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("rundll32")
+            .args(["url.dll,FileProtocolHandler", &url])
+            .status()
+    } else {
+        std::process::Command::new("xdg-open").arg(&url).status()
+    };
+    match status {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("could not open {url} ({status})")),
+        Err(err) => Err(format!("could not open {url}: {err}")),
+    }
+}
+
 fn default_data_dir() -> PathBuf {
     if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
         return PathBuf::from(dir);
@@ -660,6 +892,19 @@ fn main() {
             set_ai_task,
             ai_models,
             ai_try,
+            setup_status,
+            finish_setup,
+            ollama_status,
+            start_ollama,
+            pull_model,
+            docker_status,
+            start_docker,
+            find_paperless,
+            connect_paperless,
+            install_paperless,
+            import_accounts,
+            lookup_account,
+            open_external,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

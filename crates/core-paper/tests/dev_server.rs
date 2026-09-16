@@ -180,3 +180,44 @@ async fn a_wrong_token_is_an_auth_error_not_an_empty_mailbox() {
         .unwrap_err();
     assert!(matches!(err, PaperError::Auth), "got {err:?}");
 }
+
+#[tokio::test]
+async fn setup_recognises_paperless_and_signs_in_with_a_password() {
+    if !available() {
+        return;
+    }
+    assert_eq!(core_paper::probe(BASE).await, core_paper::Probe::Paperless);
+    assert_eq!(
+        core_paper::probe(&format!("{BASE}/")).await,
+        core_paper::Probe::Paperless
+    );
+
+    // Two sign-ins and no more: Paperless throttles this endpoint, and every
+    // other test here signs in too. Throttled is not a failure of the client.
+    let token = match core_paper::obtain_token(BASE, "admin", "admin").await {
+        Err(PaperError::Status { status: 429, .. }) => {
+            eprintln!("skipping: Paperless is throttling sign-ins");
+            return;
+        }
+        other => other.unwrap(),
+    };
+    let client = Paperless::new(BASE, &token).unwrap();
+    assert!(client.check(&Selector::Everything).await.is_ok());
+
+    match core_paper::obtain_token(BASE, "admin", "wrong").await {
+        Err(PaperError::Auth) => {}
+        Err(PaperError::Status { status: 429, .. }) => {
+            eprintln!("skipping the wrong password: Paperless is throttling sign-ins")
+        }
+        other => panic!("a wrong password was not refused: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn setup_finds_nothing_where_nothing_listens() {
+    // A port nothing is bound to, on this machine.
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    drop(listener);
+    assert_eq!(core_paper::probe(&base).await, core_paper::Probe::Nothing);
+}

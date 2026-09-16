@@ -705,3 +705,190 @@ footer {
 }
 
 #settings-report[hidden] { display: none !important; }
+
+/* -- the setup assistant ------------------------------------------------- */
+
+.setup-panel { grid-template-rows: auto 1fr auto; }
+
+.setup-body {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#setup-steps {
+  margin: 0;
+  padding: 14px 10px;
+  list-style: none;
+  border-right: 1px solid var(--line);
+  background: var(--sidebar-bg);
+  counter-reset: step;
+}
+
+#setup-steps li {
+  counter-increment: step;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+#setup-steps li::before {
+  content: counter(step) ". ";
+}
+
+#setup-steps li.current { background: var(--selected); color: var(--fg); font-weight: 600; }
+#setup-steps li.done::after { content: " ✓"; color: var(--accent); }
+
+.setup-page {
+  padding: 18px 24px 24px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.setup-page section[hidden],
+.setup-page [hidden] { display: none !important; }
+
+.setup-page h2 { margin: 0 0 8px; font-size: 18px; }
+.setup-page p { margin: 6px 0; }
+.setup-list { padding-left: 18px; }
+.setup-list li { margin: 6px 0; }
+
+.setup-card {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar-bg);
+}
+
+.setup-card:empty { display: none; }
+
+.check-line { display: flex; gap: 8px; align-items: baseline; margin: 3px 0; }
+.check-line .mark { width: 1.2em; flex: none; text-align: center; font-weight: 700; }
+.check-line.ok .mark { color: #2e9e5b; }
+.check-line.bad .mark { color: var(--error); }
+.check-line.wait .mark { color: var(--muted); }
+.check-line .grow { flex: 1; }
+
+.setup-page button,
+.setup-foot button {
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.setup-page button:disabled,
+.setup-foot button:disabled { opacity: 0.5; cursor: default; }
+
+.setup-page button.primary,
+.setup-foot button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+.setup-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+
+.setup-command {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+
+.setup-command code {
+  flex: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font: 12px ui-monospace, Menlo, monospace;
+  user-select: all;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.setup-choice { display: flex; gap: 8px; margin: 14px 0 6px; }
+.setup-choice button.active { background: var(--selected); font-weight: 600; }
+
+.setup-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.setup-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.setup-form label.setup-check { flex-direction: row; align-items: center; color: var(--fg); font-size: 12.5px; }
+.setup-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.setup-row3 { display: grid; grid-template-columns: 2fr 1fr 1.2fr; gap: 8px; }
+.setup-inline { flex-direction: row; align-items: flex-end; }
+.setup-inline label { flex: 1; }
+
+.setup-page input,
+.setup-page select {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 inherit;
+}
+
+.setup-page details summary { cursor: pointer; color: var(--muted); font-size: 12px; }
+.setup-result:empty { display: none; }
+.setup-result.bad { color: var(--error); }
+.setup-result.ok { color: #2e9e5b; }
+
+progress { width: 140px; height: 8px; }
+
+#paper-install-log {
+  margin: 8px 0 0;
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--sidebar-bg);
+  border: 1px solid var(--line);
+  font: 11.5px/1.45 ui-monospace, Menlo, monospace;
+  white-space: pre-wrap;
+}
+
+/* One found account: a checkbox, where it came from, its password. */
+.import-account {
+  margin: 8px 0;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.import-account.added { opacity: 0.6; }
+.import-head { display: flex; gap: 10px; align-items: baseline; }
+.import-head input[type="checkbox"] { margin: 0; }
+.import-head .who { flex: 1; font-weight: 600; }
+.import-head .from { color: var(--muted); font-size: 11.5px; }
+.import-account .servers { color: var(--muted); font-size: 11.5px; margin: 2px 0 6px 24px; }
+.import-account .fields { margin-left: 24px; }
+.import-account .notes { margin: 4px 0 0 24px; color: var(--muted); font-size: 11.5px; }
+.import-account .status:empty { display: none; }
+.import-account .status { margin: 6px 0 0 24px; font-size: 12px; }
+.import-account .status.bad { color: var(--error); }
+.import-account .status.ok { color: #2e9e5b; }
+
+.setup-summary { padding-left: 0; list-style: none; }
+
+.setup-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--sidebar-bg);
+}
+
+.setup-foot-note { flex: 1; color: var(--muted); font-size: 11.5px; }
