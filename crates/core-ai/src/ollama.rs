@@ -186,7 +186,8 @@ impl Ollama {
                 body: text.trim().to_string(),
             });
         }
-        let tags: Tags = serde_json::from_str(&text).map_err(|err| AiError::Shape(err.to_string()))?;
+        let tags: Tags =
+            serde_json::from_str(&text).map_err(|err| AiError::Shape(err.to_string()))?;
 
         let mut models = Vec::with_capacity(tags.models.len());
         for tag in tags.models {

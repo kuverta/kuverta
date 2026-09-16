@@ -50,7 +50,10 @@ async fn post_is_listed_by_the_letters_date_unless_scan_time_is_asked_for() {
     let (base, requests) = serve(EMPTY);
     let client = Paperless::new(&base, "token").unwrap();
 
-    client.documents(&Selector::Everything, 0, 10, None).await.unwrap();
+    client
+        .documents(&Selector::Everything, 0, 10, None)
+        .await
+        .unwrap();
     assert!(documents_request(&requests).contains("ordering=-created"));
 
     client
@@ -62,7 +65,8 @@ async fn post_is_listed_by_the_letters_date_unless_scan_time_is_asked_for() {
 
 #[tokio::test]
 async fn a_mailboxs_ids_are_asked_for_alone_and_within_its_selector() {
-    let (base, requests) = serve(r#"{"count":3,"next":null,"results":[{"id":6},{"id":5},{"id":4}]}"#);
+    let (base, requests) =
+        serve(r#"{"count":3,"next":null,"results":[{"id":6},{"id":5},{"id":4}]}"#);
     let client = Paperless::new(&base, "token").unwrap();
 
     let ids = client
@@ -73,12 +77,18 @@ async fn a_mailboxs_ids_are_asked_for_alone_and_within_its_selector() {
     assert_eq!(ids, vec![6, 5, 4]);
     let request = documents_request(&requests);
     assert!(request.contains("fields=id"), "{request}");
-    assert!(request.contains("tags__name__iexact=Vogelh%C3%BCttendeich%2028"), "{request}");
+    assert!(
+        request.contains("tags__name__iexact=Vogelh%C3%BCttendeich%2028"),
+        "{request}"
+    );
 }
 
 #[test]
 fn the_order_travels_as_a_word() {
     assert_eq!(serde_json::to_string(&Order::Added).unwrap(), "\"added\"");
-    assert_eq!(serde_json::from_str::<Order>("\"created\"").unwrap(), Order::Created);
+    assert_eq!(
+        serde_json::from_str::<Order>("\"created\"").unwrap(),
+        Order::Created
+    );
     assert_eq!(Order::default(), Order::Created);
 }

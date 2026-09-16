@@ -93,7 +93,9 @@ async fn a_page_read_cleanly_is_read_once() {
     let (base, readings) = ollama_reading(("Rechnung 4711", "stop"), ("Rechnung 1234", "stop"));
     let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
 
-    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
     assert_eq!(text, "Rechnung 4711");
     assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false]);
 }
@@ -104,7 +106,9 @@ async fn a_page_the_model_looped_on_is_read_again_and_says_how() {
     let (base, readings) = ollama_reading((looping(), "length"), (second, "stop"));
     let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
 
-    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
     assert_eq!(text, format!("{second}\n{READ_AGAIN_NOTE}"));
     assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false, true]);
 }
@@ -114,10 +118,15 @@ async fn when_the_second_reading_loops_too_the_first_is_kept_with_its_loop_cut()
     let (base, readings) = ollama_reading((looping(), "length"), (looping(), "length"));
     let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
 
-    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
     assert_eq!(
         text,
-        format!("Finanzamt Beispielstadt\nEUR\nCt\nEUR\nCt\n{}", core_ai::LOOP_MARK)
+        format!(
+            "Finanzamt Beispielstadt\nEUR\nCt\nEUR\nCt\n{}",
+            core_ai::LOOP_MARK
+        )
     );
     assert_eq!(readings.try_iter().collect::<Vec<_>>(), [false, true]);
 }
@@ -125,12 +134,17 @@ async fn when_the_second_reading_loops_too_the_first_is_kept_with_its_loop_cut()
 #[tokio::test]
 async fn a_page_cut_short_without_a_loop_says_it_stopped() {
     let (base, _readings) = ollama_reading(
-        ("Sehr geehrte Damen und Herren,\nanbei erhalten Sie", "length"),
+        (
+            "Sehr geehrte Damen und Herren,\nanbei erhalten Sie",
+            "length",
+        ),
         ("Sehr geehrte", "length"),
     );
     let provider = core_ai::Provider::connect("ollama", &base, None).unwrap();
 
-    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page").await.unwrap();
+    let text = read_page(&provider, "qwen2.5vl:3b", b"\xff\xd8page")
+        .await
+        .unwrap();
     assert_eq!(
         text,
         format!("Sehr geehrte Damen und Herren,\nanbei erhalten Sie\n{STOPPED_NOTE}")
@@ -150,7 +164,9 @@ fn every_job_runs_on_this_computer_until_someone_chooses_otherwise() {
 
     let tasks = core.ai_tasks().unwrap();
     assert_eq!(tasks.len(), 2);
-    assert!(tasks.iter().all(|task| task.provider_id == LOCAL_PROVIDER && !task.chosen));
+    assert!(tasks
+        .iter()
+        .all(|task| task.provider_id == LOCAL_PROVIDER && !task.chosen));
     let chat = tasks.iter().find(|task| task.task == Task::Chat).unwrap();
     assert_eq!(chat.model, "llama3.2:3b");
 
@@ -191,16 +207,23 @@ fn a_job_goes_to_a_hosted_service_only_when_chosen_and_back_when_it_is_removed()
 
     assert!(core.set_ai_task(Task::Chat, 999, "deepseek-chat").is_err());
     assert!(core.set_ai_task(Task::Chat, deepseek, "  ").is_err());
-    core.set_ai_task(Task::Chat, deepseek, "deepseek-chat").unwrap();
+    core.set_ai_task(Task::Chat, deepseek, "deepseek-chat")
+        .unwrap();
     let chat = core
         .ai_tasks()
         .unwrap()
         .into_iter()
         .find(|task| task.task == Task::Chat)
         .unwrap();
-    assert_eq!((chat.provider_id, chat.model.as_str(), chat.chosen), (deepseek, "deepseek-chat", true));
+    assert_eq!(
+        (chat.provider_id, chat.model.as_str(), chat.chosen),
+        (deepseek, "deepseek-chat", true)
+    );
 
-    assert!(core.delete_ai_provider(LOCAL_PROVIDER).is_err(), "the local Ollama stays");
+    assert!(
+        core.delete_ai_provider(LOCAL_PROVIDER).is_err(),
+        "the local Ollama stays"
+    );
     core.delete_ai_provider(deepseek).unwrap();
     let chat = core
         .ai_tasks()
@@ -217,15 +240,23 @@ fn a_job_goes_to_a_hosted_service_only_when_chosen_and_back_when_it_is_removed()
 fn a_job_is_given_the_chosen_model_on_its_provider() {
     let (core, dir) = core("choice");
     let upstairs = core
-        .save_ai_provider(&provider("ollama", "Ollama upstairs", "http://192.168.8.10:11434"))
+        .save_ai_provider(&provider(
+            "ollama",
+            "Ollama upstairs",
+            "http://192.168.8.10:11434",
+        ))
         .unwrap();
-    core.set_ai_task(Task::Vision, upstairs, "qwen2.5vl:7b").unwrap();
+    core.set_ai_task(Task::Vision, upstairs, "qwen2.5vl:7b")
+        .unwrap();
 
     let choice = core.ai_for(Task::Vision).unwrap();
     assert_eq!(choice.model, "qwen2.5vl:7b");
     assert_eq!(choice.provider_label, "Ollama upstairs");
     assert_eq!(choice.provider.base_url(), "http://192.168.8.10:11434");
-    assert!(!choice.local, "another machine on the network is not this computer");
+    assert!(
+        !choice.local,
+        "another machine on the network is not this computer"
+    );
 
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -252,13 +283,19 @@ fn only_an_address_that_is_this_computer_counts_as_local() {
 
 #[tokio::test]
 async fn trying_a_vision_model_checks_it_read_the_sample_page() {
-    let reads = core_ai::Provider::connect("ollama", &ollama_saying("Rechnung 4711"), None).unwrap();
-    let trial = try_model(&reads, Task::Vision, "qwen2.5vl:3b").await.unwrap();
+    let reads =
+        core_ai::Provider::connect("ollama", &ollama_saying("Rechnung 4711"), None).unwrap();
+    let trial = try_model(&reads, Task::Vision, "qwen2.5vl:3b")
+        .await
+        .unwrap();
     assert!(trial.passed, "{}", trial.verdict);
     assert_eq!(trial.reply, "Rechnung 4711");
 
-    let guesses = core_ai::Provider::connect("ollama", &ollama_saying("Rechnung 1234"), None).unwrap();
-    let trial = try_model(&guesses, Task::Vision, "llama3.2:3b").await.unwrap();
+    let guesses =
+        core_ai::Provider::connect("ollama", &ollama_saying("Rechnung 1234"), None).unwrap();
+    let trial = try_model(&guesses, Task::Vision, "llama3.2:3b")
+        .await
+        .unwrap();
     assert!(!trial.passed);
     assert!(trial.verdict.contains("4711"), "{}", trial.verdict);
 }
@@ -266,9 +303,17 @@ async fn trying_a_vision_model_checks_it_read_the_sample_page() {
 #[tokio::test]
 async fn a_server_that_is_not_there_is_reported_as_such() {
     // Bound and dropped: nothing listens there any more.
-    let port = TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
-    let gone = core_ai::Provider::connect("ollama", &format!("http://127.0.0.1:{port}"), None).unwrap();
-    let err = try_model(&gone, Task::Chat, "llama3.2:3b").await.err().unwrap();
+    let port = TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let gone =
+        core_ai::Provider::connect("ollama", &format!("http://127.0.0.1:{port}"), None).unwrap();
+    let err = try_model(&gone, Task::Chat, "llama3.2:3b")
+        .await
+        .err()
+        .unwrap();
     assert!(matches!(err, RpcError::Network(_)), "{err}");
     assert!(err.to_string().contains("is Ollama running?"), "{err}");
 }
