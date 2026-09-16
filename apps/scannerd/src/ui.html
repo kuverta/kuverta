@@ -36,6 +36,14 @@
   .handle[data-corner="ne"] { left: 100%; top: 0; cursor: nesw-resize; }
   .handle[data-corner="sw"] { left: 0; top: 100%; cursor: nesw-resize; }
   .handle[data-corner="se"] { left: 100%; top: 100%; cursor: nwse-resize; }
+  .overlay { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .overlay .shade { fill: rgba(0, 0, 0, .45); fill-rule: evenodd; }
+  .overlay .edge { fill: none; stroke: #ffd400; stroke-width: 2; vector-effect: non-scaling-stroke; }
+  .overlay .grid { fill: none; stroke: rgba(255, 212, 0, .55); stroke-width: 1; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+  .corner { position: absolute; cursor: grab; }
+  .turn { position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; transform: translate(-50%, -50%); }
+  label.check { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 1rem; margin-top: 12px; }
+  label.check input { width: auto; margin: 0; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
   button { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
@@ -74,7 +82,9 @@
   <section>
     <div id="state"><span id="dot"></span><span id="state-text">Connecting…</span></div>
     <p class="hint" id="state-hint"></p>
-    <div class="view" id="live-view"><img id="live" alt="What the camera sees"></div>
+    <div class="view" id="live-view"><div class="turn" id="live-turn"><img id="live" alt="What the camera sees">
+      <svg class="overlay" id="live-quad" viewBox="0 0 1 1" preserveAspectRatio="none" hidden><path class="edge"></path></svg>
+    </div></div>
     <p class="hint" id="measure"></p>
   </section>
 
@@ -102,6 +112,8 @@
       <h3>Where letters go</h3>
       <p class="hint">Put a page where letters will lie and press <b>Take a picture</b>. The scanner finds the page and puts a box around it. Drag inside the box to move it, drag a corner to resize it, or draw a new one — then save. Only the area in the box is watched and photographed.</p>
       <div class="row"><button class="primary" id="picture">Take a picture</button></div>
+      <label class="check"><input type="checkbox" id="angled"> The camera looks at the table at an angle</label>
+      <p class="hint" id="angled-hint" hidden>The page looks like a trapezium rather than a rectangle. Drag each yellow corner onto a corner of the page — the dashed lines should run along its edges. Every photograph is then straightened so that page comes out square, with a little room around it. Drag anywhere else in the picture to move all four.</p>
       <p class="hint" id="crop-status"></p>
       <div class="view editor" id="editor" hidden>
         <img id="full-image" alt="The whole camera view">
@@ -109,11 +121,24 @@
           <span class="handle" data-corner="nw"></span><span class="handle" data-corner="ne"></span>
           <span class="handle" data-corner="sw"></span><span class="handle" data-corner="se"></span>
         </div>
+        <svg class="overlay" id="quad" viewBox="0 0 1 1" preserveAspectRatio="none" hidden>
+          <path class="shade"></path><path class="grid"></path><path class="edge"></path>
+        </svg>
+        <span class="handle corner" data-index="0" hidden></span><span class="handle corner" data-index="1" hidden></span>
+        <span class="handle corner" data-index="2" hidden></span><span class="handle corner" data-index="3" hidden></span>
       </div>
       <div class="row" id="crop-actions" hidden>
         <button class="primary" id="save-crop" disabled>Save this area</button>
         <button id="whole-picture" type="button">Use the whole picture</button>
       </div>
+
+      <h3>Which way up</h3>
+      <p class="hint">Turn the photographs until a page reads upright in the live view at the top. Pages photographed from now on are turned the same way; the picture above for setting the area stays as the camera sees it.</p>
+      <div class="row">
+        <button type="button" id="turn-left">↺ Turn left</button>
+        <button type="button" id="turn-right">Turn right ↻</button>
+      </div>
+      <p class="hint" id="turn-state"></p>
 
       <h3>Paperless</h3>
       <form id="settings">
@@ -172,14 +197,88 @@
   let area = null;          // what the box shows now
   let waitingForPicture = false;
 
+  // -- the corners, for a camera at an angle: top left, then clockwise ---------
+
+  const parseCorners = (text) => {
+    const n = (text || '').split(',').map(Number);
+    return n.length === 8 && n.every(Number.isFinite) ? [0, 1, 2, 3].map((i) => [n[2 * i], n[2 * i + 1]]) : null;
+  };
+  const cornersOf = (quad) => (quad ? quad.map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).join(',') : '');
+  const boxCorners = (a) => [[a.x, a.y], [a.x + a.w, a.y], [a.x + a.w, a.y + a.h], [a.x, a.y + a.h]];
+  const boundsOf = (quad) => {
+    const xs = quad.map((p) => p[0]), ys = quad.map((p) => p[1]);
+    const x = Math.min(...xs), y = Math.min(...ys);
+    return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y };
+  };
+  // Clockwise on screen at every corner, as the server insists.
+  const inOrder = (quad) => quad.every((a, i) => {
+    const b = quad[(i + 1) % 4], c = quad[(i + 2) % 4];
+    return (b[0] - a[0]) * (c[1] - b[1]) - (b[1] - a[1]) * (c[0] - b[0]) > 0;
+  });
+  // The unit square onto the four corners (Heckbert), for the grid lines that
+  // show where the page's edges and middle will be once straightened.
+  function squareTo(q) {
+    const [[x0, y0], [x1, y1], [x2, y2], [x3, y3]] = q;
+    const dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+    const dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+    const den = dx1 * dy2 - dx2 * dy1;
+    const g = den ? (dx3 * dy2 - dx2 * dy3) / den : 0, h = den ? (dx1 * dy3 - dx3 * dy1) / den : 0;
+    const a = x1 - x0 + g * x1, b = x3 - x0 + h * x3, d = y1 - y0 + g * y1, e = y3 - y0 + h * y3;
+    return (u, v) => { const w = g * u + h * v + 1; return [(a * u + b * v + x0) / w, (d * u + e * v + y0) / w]; };
+  }
+  const polygon = (quad) => `M${quad.map((p) => p.join(' ')).join('L')}Z`;
+
+  let angled = false;       // whether the corners are being edited, not the box
+  let quad = null;          // what the corners show now
+
+  function setAngled(on) {
+    angled = on;
+    $('angled').checked = on;
+    $('angled-hint').hidden = !on;
+    if (on && !quad) {
+      const found = last && parseCorners(last.suggested_corners);
+      quad = found || (area ? boxCorners(area) : [[0.2, 0.2], [0.8, 0.2], [0.8, 0.8], [0.2, 0.8]]);
+    }
+    if (!on && quad && inOrder(quad)) area = boundsOf(quad);
+    drawArea();
+  }
+  $('angled').onchange = () => setAngled($('angled').checked);
+
+  function drawQuad(svg, points, withShade) {
+    svg.hidden = !points;
+    if (!points) return;
+    svg.querySelector('.edge').setAttribute('d', polygon(points));
+    if (!withShade) return;
+    svg.querySelector('.shade').setAttribute('d', `M0 0H1V1H0Z${polygon(points)}`);
+    let grid = '';
+    if (inOrder(points)) {
+      const map = squareTo(points);
+      for (const t of [0.25, 0.5, 0.75]) {
+        grid += `M${map(t, 0).join(' ')}L${map(t, 1).join(' ')}M${map(0, t).join(' ')}L${map(1, t).join(' ')}`;
+      }
+    }
+    svg.querySelector('.grid').setAttribute('d', grid);
+  }
+
   function drawArea() {
     const box = $('crop');
-    if (!area) { box.style.display = 'none'; }
+    if (angled || !area) { box.style.display = 'none'; }
     else Object.assign(box.style, { display: 'block', left: `${area.x * 100}%`, top: `${area.y * 100}%`, width: `${area.w * 100}%`, height: `${area.h * 100}%` });
-    const saved = last ? last.settings.roi || '' : '';
-    const changed = roiOf(area) !== saved;
-    $('save-crop').disabled = !changed;
-    $('save-crop').textContent = area ? 'Save this area' : 'Save: use the whole picture';
+
+    drawQuad($('quad'), angled ? quad : null, true);
+    document.querySelectorAll('.corner').forEach((handle) => {
+      const point = angled && quad && quad[handle.dataset.index];
+      handle.hidden = !point;
+      if (point) Object.assign(handle.style, { left: `${point[0] * 100}%`, top: `${point[1] * 100}%` });
+    });
+
+    const savedRoi = last ? last.settings.roi || '' : '';
+    const savedCorners = last ? last.settings.corners || '' : '';
+    const good = !angled || (quad && inOrder(quad));
+    const changed = angled ? cornersOf(quad) !== savedCorners : roiOf(area) !== savedRoi || savedCorners !== '';
+    $('save-crop').disabled = !changed || !good;
+    $('save-crop').textContent = angled ? (good ? 'Save these corners' : 'Corners out of order')
+      : area ? 'Save this area' : 'Save: use the whole picture';
   }
 
   const editor = $('editor');
@@ -190,6 +289,13 @@
   };
   editor.addEventListener('pointerdown', (event) => {
     const [x, y] = pointer(event);
+    if (angled) {
+      const index = event.target.dataset && event.target.dataset.index;
+      if (index !== undefined) drag = { kind: 'point', index: Number(index) };
+      else if (quad) drag = { kind: 'shift', from: [x, y], start: quad.map((p) => [...p]) };
+      if (drag) { editor.setPointerCapture(event.pointerId); event.preventDefault(); }
+      return;
+    }
     const corner = event.target.dataset && event.target.dataset.corner;
     if (area && corner) drag = { kind: 'corner', corner, start: { ...area } };
     else if (area && event.target === $('crop')) drag = { kind: 'move', from: [x, y], start: { ...area } };
@@ -201,7 +307,13 @@
     if (!drag) return;
     const [x, y] = pointer(event);
     const smallest = 0.05;
-    if (drag.kind === 'move') {
+    if (drag.kind === 'point') {
+      quad = quad.map((p, i) => (i === drag.index ? [x, y] : p));
+    } else if (drag.kind === 'shift') {
+      const b = boundsOf(drag.start);
+      const dx = clamp(x - drag.from[0], -b.x, 1 - b.x - b.w), dy = clamp(y - drag.from[1], -b.y, 1 - b.y - b.h);
+      quad = drag.start.map(([px, py]) => [px + dx, py + dy]);
+    } else if (drag.kind === 'move') {
       const s = drag.start;
       area = { ...s, x: clamp(s.x + x - drag.from[0], 0, 1 - s.w), y: clamp(s.y + y - drag.from[1], 0, 1 - s.h) };
     } else if (drag.kind === 'draw') {
@@ -239,11 +351,16 @@
       complain(error);
     });
   };
-  $('whole-picture').onclick = () => { area = null; drawArea(); };
+  $('whole-picture').onclick = () => { area = null; quad = null; setAngled(false); };
   $('save-crop').onclick = () => {
-    post('/api/settings', { roi: roiOf(area) })
+    // The crop and the corners are saved together: with corners, the crop is
+    // the area they span; without, the corners are cleared.
+    const body = angled ? { roi: roiOf(boundsOf(quad)), corners: cornersOf(quad) } : { roi: roiOf(area), corners: '' };
+    post('/api/settings', body)
       .then(() => {
-        $('crop-status').textContent = area
+        $('crop-status').textContent = angled
+          ? 'Saved. Photographs are straightened from now on. Take the page away and press “Learn empty table”.'
+          : area
           ? 'Saved. Now take the page away and press “Learn empty table”.'
           : 'Saved: the whole picture is watched. Take the page away and press “Learn empty table”.';
         $('save-crop').disabled = true;
@@ -260,14 +377,50 @@
       $('picture').disabled = false;
       $('picture').textContent = 'Take another picture';
       const found = parseRoi(s.suggested_crop);
+      const corners = parseCorners(s.suggested_corners);
       area = found || parseRoi(s.settings.roi);
-      $('crop-status').textContent = found
-        ? 'Found the page and put a box around it. Adjust it if it is not right, then save.'
+      quad = corners || parseCorners(s.settings.corners) || quad;
+      $('crop-status').textContent = angled
+        ? (corners ? 'Found the page and marked its corners, with room around them. Check the dashed lines follow the page, then save.'
+          : 'No page found in the picture. Drag the corners onto a page’s corners, then save.')
+        : found ? 'Found the page and put a box around it. Adjust it if it is not right, then save.'
         : 'No page found in the picture. Drag a box where letters will lie, then save.';
-    } else if (area === null) {
+    } else if (area === null && quad === null) {
       area = parseRoi(s.settings.roi);
+      quad = parseCorners(s.settings.corners);
+      if (quad) setAngled(true);
     }
     drawArea();
+  }
+
+  // -- which way up ---------------------------------------------------------------
+
+  let turning = null;       // a turn saved but not yet in the status
+  const turnOf = (s) => (turning !== null ? turning : (s && s.settings.rotate) || 0);
+  const turn = (by) => {
+    const next = (turnOf(last) + by + 360) % 360;
+    turning = next;
+    if (last) showTurn(last);
+    post('/api/settings', { rotate: next }).catch((error) => { turning = null; complain(error); });
+  };
+  $('turn-left').onclick = () => turn(-90);
+  $('turn-right').onclick = () => turn(90);
+
+  // The live view turned as photographs will be: for a quarter turn the box
+  // takes the other shape, and the picture inside it is laid on its side.
+  function showTurn(s) {
+    if (turning !== null && s.settings.rotate === turning) turning = null;
+    const degrees = turnOf(s);
+    const crop = parseRoi(s.settings.roi);
+    const aspect = crop ? (crop.w * 4) / (crop.h * 3) : 4 / 3;
+    const sideways = degrees % 180 !== 0;
+    $('live-view').style.aspectRatio = sideways ? `${1} / ${aspect}` : `${aspect} / 1`;
+    Object.assign($('live-turn').style, {
+      width: sideways ? `${aspect * 100}%` : '100%',
+      height: sideways ? `${100 / aspect}%` : '100%',
+      transform: `translate(-50%, -50%) rotate(${degrees}deg)`,
+    });
+    $('turn-state').textContent = degrees ? `Photographs are turned ${degrees}° clockwise.` : 'Photographs are kept as the camera takes them.';
   }
 
   // -- pages of the letter ------------------------------------------------------
@@ -377,9 +530,14 @@
       ? `Changed from the empty table: ${percent(s.table_change)} · moving: ${percent(s.movement)} (a page shows as 18% or more; still means under 1%)`
       : '';
 
-    // The live view keeps the crop's shape: a fraction of a 4:3 sensor.
+    // The live view keeps the crop's shape — a fraction of a 4:3 sensor — and
+    // the turn.
     const crop = parseRoi(s.settings.roi);
-    $('live-view').style.aspectRatio = crop ? `${crop.w * 4} / ${crop.h * 3}` : '4 / 3';
+    showTurn(s);
+    // Where the page's corners fall in the cropped view, when it is straightened.
+    const liveCorners = parseCorners(s.settings.corners);
+    drawQuad($('live-quad'), crop && liveCorners
+      ? liveCorners.map(([x, y]) => [(x - crop.x) / crop.w, (y - crop.y) / crop.h]) : null, false);
     if (s.frame_at !== seen.frame && s.frame_at > 0) { seen.frame = s.frame_at; $('live').src = `/frame.bmp?n=${s.frame_at}`; }
     if (s.full_view_at !== seen.full && s.full_view_at > 0) { seen.full = s.full_view_at; showPicture(s); }
     else if (!drag) drawArea();
@@ -417,6 +575,7 @@
 
     if (!filled) {
       filled = true;
+      if (s.settings.corners) { quad = parseCorners(s.settings.corners); setAngled(true); }
       $('url').value = s.settings.url;
       $('tags').value = s.settings.tags.join(', ');
       $('token').placeholder = s.settings.token_set ? 'set — leave empty to keep it' : 'not set yet';

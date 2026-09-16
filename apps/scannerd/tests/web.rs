@@ -174,6 +174,12 @@ async fn settings_are_checked_before_the_loop_sees_them() {
         400
     );
     assert_eq!(send("not json").await.unwrap().status(), 400);
+    assert_eq!(send(r#"{"rotate":45}"#).await.unwrap().status(), 400);
+    let crossed = send(r#"{"corners":"0.3,0.15,0.9,0.85,0.7,0.15,0.1,0.85"}"#)
+        .await
+        .unwrap();
+    assert_eq!(crossed.status(), 400);
+    assert!(crossed.text().await.unwrap().contains("crossing"));
     assert!(hub.take_commands().is_empty());
 
     let good = send(r#"{"url":"http://paperless.local:8000","roi":"0.1,0.1,0.5,0.5","tags":["Hauptstraße 12"]}"#)
@@ -183,6 +189,7 @@ async fn settings_are_checked_before_the_loop_sees_them() {
     match hub.take_commands().as_slice() {
         [Command::Settings(settings)] => {
             assert_eq!(settings.roi.as_deref(), Some("0.1,0.1,0.5,0.5"));
+            assert_eq!(settings.corners, None);
             assert_eq!(
                 settings.tags.as_deref(),
                 Some(&["Hauptstraße 12".to_string()][..])

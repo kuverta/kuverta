@@ -230,3 +230,93 @@ async fn a_broken_camera_does_not_keep_photographed_post_from_being_sent() {
     assert_eq!(accepted.load(SeqCst), 1);
     assert!(spool.pending().unwrap().is_empty());
 }
+
+/// A camera whose photographs are real JPEGs, `width`×`height`.
+struct Photographer {
+    frames: Script,
+    width: u32,
+    height: u32,
+}
+
+impl Camera for Photographer {
+    fn preview(&self) -> Result<Vec<u8>> {
+        self.frames.preview()
+    }
+
+    fn capture(&self, path: &Path) -> Result<()> {
+        let picture =
+            image::RgbImage::from_pixel(self.width, self.height, image::Rgb([200, 200, 200]));
+        picture.save_with_format(path, image::ImageFormat::Jpeg)?;
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn a_page_is_straightened_before_it_is_kept() {
+    let dir = TempDir::new("straighten");
+    let spool = Spool::open(&dir.0).unwrap();
+    let (base, _accepted) = paperless(0);
+    let uploader = uploader(&base);
+    let camera = Photographer {
+        frames: Script::new([desk(), page(), page(), page(), page()]),
+        width: 400,
+        height: 300,
+    };
+    let mut scanner = scanner().collecting(scannerd::run::Letters {
+        button: scannerd::button::Button::channel().1,
+        idle: Duration::from_secs(300),
+    });
+    let corners = "0.25,0,0.75,0,1,1,0,1";
+    scanner.straighten_with(Some(scannerd::straighten::Corners::parse(corners).unwrap()));
+
+    let start = now();
+    let mut last = Turn::Watching;
+    for second in 0..5 {
+        last = scanner
+            .turn(&camera, &spool, &uploader, start + second)
+            .await;
+    }
+
+    let Turn::Captured(path) = last else {
+        panic!("no capture: {last:?}");
+    };
+    let (width, height) = image::image_dimensions(&path).unwrap();
+    // Top 200 and bottom 400 wide; sides hypot(100, 300) long.
+    assert_eq!((width, height), (300, 100f64.hypot(300.0).round() as u32));
+    assert!(
+        std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .all(|entry| entry.unwrap().path().extension().unwrap() == "jpg"),
+        "nothing half-done is left beside it"
+    );
+}
+
+#[tokio::test]
+async fn a_page_that_cannot_be_straightened_is_kept_as_taken() {
+    let dir = TempDir::new("straighten-fails");
+    let spool = Spool::open(&dir.0).unwrap();
+    let (base, accepted) = paperless(0);
+    let uploader = uploader(&base);
+    // Its photographs are not really JPEGs.
+    let camera = Script::new([desk(), page(), page(), page(), page()]);
+    let mut scanner = scanner();
+    scanner.straighten_with(Some(
+        scannerd::straighten::Corners::parse("0.25,0,0.75,0,1,1,0,1").unwrap(),
+    ));
+
+    let start = now();
+    for second in 0..5 {
+        scanner
+            .turn(&camera, &spool, &uploader, start + second)
+            .await;
+    }
+
+    assert_eq!(accepted.load(SeqCst), 1, "sent anyway");
+    let events = scanner.take_events();
+    assert!(
+        events
+            .iter()
+            .any(|event| !event.ok && event.text.contains("straighten")),
+        "{events:?}"
+    );
+}

@@ -99,3 +99,31 @@ fn an_area_is_written_as_the_crop_setting_takes_it() {
     assert_eq!(area.to_roi(), "0.250,0.100,0.500,0.800");
     assert!(scannerd::settings::valid_roi(&area.to_roi()).is_ok());
 }
+
+#[test]
+fn the_corners_of_a_page_seen_at_an_angle_are_found_with_room_around_them() {
+    // A trapezium: the far edge from (120,40) to (200,40), the near one from
+    // (80,200) to (240,200).
+    let mut frame = table();
+    for y in 40..=200 {
+        let t = (y - 40) as f32 / 160.0;
+        let (left, right) = (120.0 - 40.0 * t, 200.0 + 40.0 * t);
+        for x in left.round() as usize..=right.round() as usize {
+            frame[y * W + x] = 225;
+        }
+    }
+
+    let corners = scannerd::locate::find_page_corners(&frame, W, H).expect("corners");
+    let expected = [(120.0, 40.0), (200.0, 40.0), (240.0, 200.0), (80.0, 200.0)];
+    let outwards = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
+    for ((&(x, y), (ex, ey)), (ox, oy)) in corners.0.iter().zip(expected).zip(outwards) {
+        let (dx, dy) = (x * W as f64 - ex, y * H as f64 - ey);
+        // Moved outwards, by the margin: some pixels, not a lot — more at the
+        // near edge than the far one, as on the table.
+        assert!(dx * ox > 2.0 && dx * ox < 40.0, "{corners:?}");
+        assert!(dy * oy > 2.0 && dy * oy < 45.0, "{corners:?}");
+    }
+    assert!(scannerd::straighten::Corners::parse(&corners.to_setting()).is_ok());
+
+    assert_eq!(scannerd::locate::find_page_corners(&table(), W, H), None);
+}

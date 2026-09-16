@@ -61,7 +61,7 @@ async fn the_picture_of_the_whole_view_is_served_with_where_the_page_was_found()
     assert_eq!(client.get(&url).send().await.unwrap().status(), 404);
 
     let jpeg = b"\xff\xd8a picture of a table".to_vec();
-    hub.set_full_view(jpeg.clone(), Some("0.200,0.100,0.500,0.700".into()));
+    hub.set_full_view(jpeg.clone(), Some("0.200,0.100,0.500,0.700".into()), None);
 
     let reply = client.get(&url).send().await.unwrap();
     assert_eq!(reply.headers()["content-type"], "image/jpeg");

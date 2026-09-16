@@ -15,5 +15,6 @@ pub mod pdf;
 pub mod run;
 pub mod settings;
 pub mod spool;
+pub mod straighten;
 pub mod upload;
 pub mod web;

@@ -86,6 +86,22 @@ headless Pi needs no screen, no desktop and no second program: open
   of the sensor (`--sensor-width`/`--sensor-height`, a Pi camera v1 by
   default), so a page-shaped crop is not stretched to 4:3. Also the Paperless
   address, token and tags, and **Check connection**.
+- **The camera looks at the table at an angle**, for a camera that cannot be
+  mounted straight above the table, where a page shows as a trapezium. Instead
+  of a box there are four corners to drag onto the corners of a page lying
+  where letters go — **Take a picture** finds them, with room around the page
+  — and dashed lines show where the page's edges and middle will fall. Every
+  photograph is then warped so those corners become a rectangle's, before it
+  joins the letter; the crop is the area the corners span. On a Pi Zero W this
+  adds about five seconds a page (a 5-megapixel photograph: decoding, warping
+  and encoding take a third each), and a page that cannot be straightened is
+  kept as it was taken. `SCANNERD_CORNERS` sets the same from the env file.
+- **Which way up**: **Turn left** and **Turn right** turn every photograph a
+  quarter turn, for a camera mounted so that letters do not read upright. The
+  live view turns with it; the picture for setting the area stays as the
+  camera sees it. Turning goes through the same warp as straightening, so it
+  costs the same five seconds a page on a Pi Zero W, with or without corners.
+  `SCANNERD_ROTATE` (0, 90, 180 or 270, clockwise) sets it from the env file.
 
 Settings saved on the page go to `settings.toml` in the spool directory
 (owner-only, it holds the token) and win over the env file. The learnt empty

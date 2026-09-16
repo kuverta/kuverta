@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::straighten::Corners;
+
 const FILE: &str = "settings.toml";
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -25,6 +27,15 @@ pub struct Settings {
     /// set, where the env file's crop applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub roi: Option<String>,
+    /// The four corners of a page on the table, `x,y` each, top left first
+    /// and clockwise — for a camera at an angle. Empty for none. When set,
+    /// the crop is the area they span, whatever `roi` says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub corners: Option<String>,
+    /// Degrees clockwise to turn every photograph: 0, 90, 180 or 270 — for a
+    /// camera mounted so that letters do not read upright.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rotate: Option<u16>,
 }
 
 impl Settings {
@@ -91,6 +102,12 @@ impl Settings {
         if let Some(roi) = newer.roi {
             self.roi = Some(roi.trim().to_string());
         }
+        if let Some(corners) = newer.corners {
+            self.corners = Some(corners.trim().to_string());
+        }
+        if let Some(rotate) = newer.rotate {
+            self.rotate = Some(rotate);
+        }
     }
 
     /// Whether what came from the page can be used at all.
@@ -104,6 +121,12 @@ impl Settings {
         if let Some(roi) = self.roi.as_deref().filter(|roi| !roi.trim().is_empty()) {
             valid_roi(roi)?;
         }
+        if let Some(corners) = self.corners.as_deref().filter(|c| !c.trim().is_empty()) {
+            Corners::parse(corners)?;
+        }
+        if let Some(rotate) = self.rotate {
+            valid_rotation(rotate)?;
+        }
         Ok(())
     }
 
@@ -116,6 +139,81 @@ impl Settings {
             None => started_with.map(str::to_string),
         }
     }
+}
+
+/// The crop and the corners in force.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct View {
+    /// `x,y,w,h`: what the camera crops to.
+    pub roi: Option<String>,
+    /// The page's corners as fractions of the whole view, when the camera is
+    /// at an angle.
+    pub corners: Option<Corners>,
+    /// Degrees clockwise every photograph is turned.
+    pub rotate: u16,
+}
+
+impl View {
+    /// The corners as fractions of the cropped photograph.
+    pub fn corners_in_crop(&self) -> Option<Corners> {
+        self.corners.as_ref()?.within(self.roi.as_deref()?)
+    }
+
+    /// What straightening is given: the corners in the photograph, started as
+    /// far round as the turn says — or `None` when a photograph is to be kept
+    /// as the camera took it.
+    pub fn warp(&self) -> Option<Corners> {
+        let quarters = self.rotate / 90;
+        match self.corners_in_crop() {
+            Some(corners) => Some(corners.turned(quarters)),
+            None if !quarters.is_multiple_of(4) => Some(Corners::WHOLE.turned(quarters)),
+            None => None,
+        }
+    }
+}
+
+impl Settings {
+    /// What the camera looks at: the page's choice if it made one — a crop
+    /// or corners, which it always saves together — or else what scannerd was
+    /// started with. Corners decide the crop when there are any.
+    /// The turn is separate: the page's if it chose one, else the start's.
+    pub fn effective_view(
+        &self,
+        started_roi: Option<&str>,
+        started_corners: Option<&str>,
+        started_rotate: Option<u16>,
+    ) -> Result<View> {
+        let rotate = self.rotate.or(started_rotate).unwrap_or(0);
+        valid_rotation(rotate)?;
+        let corners = if self.roi.is_some() || self.corners.is_some() {
+            self.corners.as_deref()
+        } else {
+            started_corners
+        };
+        match corners.map(str::trim).filter(|c| !c.is_empty()) {
+            Some(corners) => {
+                let corners = Corners::parse(corners)?;
+                Ok(View {
+                    roi: Some(corners.crop()),
+                    corners: Some(corners),
+                    rotate,
+                })
+            }
+            None => Ok(View {
+                roi: self.effective_roi(started_roi),
+                corners: None,
+                rotate,
+            }),
+        }
+    }
+}
+
+/// A quarter turn, a half or three quarters, or none.
+pub fn valid_rotation(degrees: u16) -> Result<()> {
+    if !matches!(degrees, 0 | 90 | 180 | 270) {
+        bail!("a photograph turns by 0, 90, 180 or 270 degrees, not {degrees}");
+    }
+    Ok(())
 }
 
 /// `x,y,w,h`, each a fraction of the sensor, with the crop inside it.

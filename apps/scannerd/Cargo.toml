@@ -27,6 +27,12 @@ reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+# Straightening a page photographed at an angle: the only thing that decodes a
+# photograph. JPEG alone, and no rayon — the Zero W has one core. The encoder is
+# jpeg-encoder's rather than image's: on the Zero W, image's took 5.2 seconds
+# for a 5-megapixel page.
+image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
+jpeg-encoder = "0.7.1"
 # The setup page. hyper is already built for reqwest; these add its server half.
 http-body-util = "0.1.5"
 hyper = { version = "1.11.1", features = ["server", "http1"] }
