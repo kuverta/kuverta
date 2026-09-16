@@ -16,7 +16,7 @@ import time
 
 HOST = os.environ.get("IMAP_HOST", "dovecot")
 PORT = int(os.environ.get("IMAP_PORT", "31143"))
-USER = os.environ.get("IMAP_USER", "dev@fuckmail.test")
+USER = os.environ.get("IMAP_USER", "dev@kuverta.test")
 PASSWORD = os.environ.get("IMAP_PASS", "devpass")
 SEED_ROOT = pathlib.Path(os.environ.get("SEED_ROOT", "/seed"))
 

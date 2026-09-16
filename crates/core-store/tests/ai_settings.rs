@@ -3,7 +3,7 @@
 use core_store::{NewAiProvider, Store, StoredAiTask};
 
 fn fresh(name: &str) -> (Store, std::path::PathBuf) {
-    let dir = std::env::temp_dir().join(format!("fuckmail-ai-{name}-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kuverta-ai-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     (Store::open(dir.join("test.db")).unwrap(), dir)

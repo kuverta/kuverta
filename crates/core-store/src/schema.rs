@@ -186,7 +186,7 @@ CREATE INDEX operation_by_message ON operation (message_id, state);
     //
     // Stored per account rather than per folder because it has to be settable
     // *before* the first sync — which is exactly when it matters, and before
-    // any folder row exists to hang a flag on. `fuckmail check` prints the
+    // any folder row exists to hang a flag on. `kuverta check` prints the
     // names without syncing anything.
     r#"
 CREATE TABLE folder_exclusion (
@@ -262,7 +262,7 @@ ALTER TABLE paper_mailbox ADD COLUMN token_key TEXT;
 UPDATE paper_mailbox SET token_key = lower(hex(randomblob(16))) WHERE token_key IS NULL;
 CREATE UNIQUE INDEX paper_mailbox_token_key ON paper_mailbox (token_key);
 "#,
-    // v10 — what fuckmail knows about post that Paperless does not keep:
+    // v10 — what kuverta knows about post that Paperless does not keep:
     // whether a letter has been read here, and a vision model's transcript of
     // a scan whose OCR text is no use. Keyed by instance and document rather
     // than by postal address, because two addresses on one instance can show

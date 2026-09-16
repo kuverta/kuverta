@@ -31,10 +31,10 @@ pub enum AuthError {
     #[error("http: {0}")]
     Http(#[from] reqwest::Error),
 
-    #[error("no stored login for {0}; run `fuckmail login --email {0}`")]
+    #[error("no stored login for {0}; run `kuverta login --email {0}`")]
     NotLoggedIn(String),
 
-    #[error("the stored login for {user} is no longer valid ({reason}); run `fuckmail login --email {user}`")]
+    #[error("the stored login for {user} is no longer valid ({reason}); run `kuverta login --email {user}`")]
     LoginExpired { user: String, reason: String },
 
     #[error("{provider} rejected the request: {error}{}", .description.as_deref().map(|d| format!(" — {d}")).unwrap_or_default())]
@@ -91,7 +91,7 @@ pub trait AuthProvider: Send + Sync {
     fn method(&self) -> &'static str;
 }
 
-const KEYRING_SERVICE: &str = "fuckmail";
+const KEYRING_SERVICE: &str = "kuverta";
 
 /// App-specific password held in the OS keychain.
 ///
@@ -191,8 +191,8 @@ mod tests {
     #[tokio::test]
     async fn env_provider_reads_the_variable() {
         // SAFETY: single-threaded test, no other thread reads the environment.
-        unsafe { std::env::set_var("FUCKMAIL_TEST_PW", "devpass") };
-        let provider = EnvPassword::new("FUCKMAIL_TEST_PW");
+        unsafe { std::env::set_var("KUVERTA_TEST_PW", "devpass") };
+        let provider = EnvPassword::new("KUVERTA_TEST_PW");
         assert_eq!(
             provider.credential().await.unwrap(),
             Credential::Password("devpass".into())
@@ -201,7 +201,7 @@ mod tests {
 
     #[tokio::test]
     async fn env_provider_reports_a_missing_variable() {
-        let provider = EnvPassword::new("FUCKMAIL_TEST_DEFINITELY_UNSET");
+        let provider = EnvPassword::new("KUVERTA_TEST_DEFINITELY_UNSET");
         assert!(matches!(
             provider.credential().await,
             Err(AuthError::MissingEnv(_))
@@ -215,11 +215,11 @@ mod tests {
         assert!(!format!("{password:?}").contains("hunter2"));
 
         let bearer = Credential::OAuthBearer {
-            user: "dev@fuckmail.test".into(),
+            user: "dev@kuverta.test".into(),
             access_token: "ya29.secret".into(),
         };
         let rendered = format!("{bearer:?}");
         assert!(!rendered.contains("ya29.secret"));
-        assert!(rendered.contains("dev@fuckmail.test"));
+        assert!(rendered.contains("dev@kuverta.test"));
     }
 }

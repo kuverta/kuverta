@@ -1,9 +1,9 @@
 Return-Path: <service@stadtwerke.example.de>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Message-ID: <sw-abschlag-202609@stadtwerke.example.de>
 Date: Fri, 04 Sep 2026 07:05:00 +0200
 From: =?UTF-8?Q?Stadtwerke_M=C3=BCnchen?= <service@stadtwerke.example.de>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: =?UTF-8?Q?Ihre_Abschlagszahlung_f=C3=BCr_M=C3=A4rz_wurde_ge=C3=A4ndert?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=iso-8859-1

@@ -1,11 +1,11 @@
 Return-Path: <tom@partner.example.com>
-Delivered-To: dev@fuckmail.test
+Delivered-To: dev@kuverta.test
 Message-ID: <thread-2026-0721-3@partner.example.com>
 In-Reply-To: <thread-2026-0721-1@partner.example.com>
 References: <thread-2026-0721-1@partner.example.com> <thread-2026-0721-2@partner.example.com>
 Date: Tue, 21 Jul 2026 16:04:55 +0100
 From: Tom Fisher <tom@partner.example.com>
-To: dev@fuckmail.test
+To: dev@kuverta.test
 Subject: Re: Q3 roadmap
 MIME-Version: 1.0
 Content-Type: text/plain; charset=utf-8

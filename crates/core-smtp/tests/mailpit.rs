@@ -1,7 +1,7 @@
 //! Submission against the Mailpit sink from `docker/`.
 //!
 //! Start it with `make dev-up`. As with the Dovecot tests, a missing server
-//! skips rather than fails, and `FUCKMAIL_REQUIRE_DEV_SERVER=1` turns that
+//! skips rather than fails, and `KUVERTA_REQUIRE_DEV_SERVER=1` turns that
 //! skip back into a failure so CI cannot go green on a broken compose file.
 //!
 //! Mailpit is the assertion point precisely because it records the SMTP
@@ -26,7 +26,7 @@ fn sink_available() -> bool {
     .is_ok();
 
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev SMTP sink on {HOST}:{SMTP_PORT} is required but not reachable");
         }
         eprintln!("skipping: dev SMTP sink not running (`make dev-up`)");
@@ -45,8 +45,8 @@ fn config() -> SmtpConfig {
 fn auth() -> EnvPassword {
     // SAFETY: set before any thread reads it; Mailpit accepts anything, so
     // this is not a credential.
-    unsafe { std::env::set_var("FUCKMAIL_SINK_PASSWORD", "devpass") };
-    EnvPassword::new("FUCKMAIL_SINK_PASSWORD")
+    unsafe { std::env::set_var("KUVERTA_SINK_PASSWORD", "devpass") };
+    EnvPassword::new("KUVERTA_SINK_PASSWORD")
 }
 
 /// Finds the submitted message by its Message-ID.
@@ -91,19 +91,19 @@ async fn a_submitted_message_arrives_with_its_headers_and_body() {
     }
     let http = reqwest::Client::new();
 
-    let built = Draft::new(Mailbox::named("Erika", "dev@fuckmail.test"))
+    let built = Draft::new(Mailbox::named("Erika", "dev@kuverta.test"))
         .to(Mailbox::named("Jane Doe", "jane@example.com"))
         .subject("Rechnung für September — Übersicht")
         .body("Hallo Jane,\n\nanbei die Übersicht.\n\nGrüße\nErika")
         .build()
         .expect("build");
 
-    submit(&config(), "dev@fuckmail.test", &auth(), &built)
+    submit(&config(), "dev@kuverta.test", &auth(), &built)
         .await
         .expect("submit");
 
     let message = message_with_id(&http, &built.message_id).await;
-    assert_eq!(message["From"]["Address"], "dev@fuckmail.test");
+    assert_eq!(message["From"]["Address"], "dev@kuverta.test");
     assert_eq!(message["To"][0]["Address"], "jane@example.com");
     // Non-ASCII must survive the encoding round trip rather than arriving as
     // mojibake or as a raw 8-bit header.
@@ -121,7 +121,7 @@ async fn a_blind_recipient_reaches_the_envelope_but_not_the_message() {
     }
     let http = reqwest::Client::new();
 
-    let built = Draft::new(Mailbox::new("dev@fuckmail.test"))
+    let built = Draft::new(Mailbox::new("dev@kuverta.test"))
         .to(Mailbox::new("jane@example.com"))
         .cc(Mailbox::new("bob@example.com"))
         .bcc(Mailbox::new("secret@example.com"))
@@ -132,7 +132,7 @@ async fn a_blind_recipient_reaches_the_envelope_but_not_the_message() {
 
     assert_eq!(built.recipients.len(), 3);
 
-    submit(&config(), "dev@fuckmail.test", &auth(), &built)
+    submit(&config(), "dev@kuverta.test", &auth(), &built)
         .await
         .expect("submit");
 
@@ -192,21 +192,21 @@ async fn a_reply_threads_onto_the_message_it_answers() {
         references: vec!["root-0@example.com".into()],
         subject: Some("AW: Rechnung".into()),
         from: Some(Mailbox::named("Jane Doe", "jane@example.com")),
-        to: vec![Mailbox::new("dev@fuckmail.test")],
+        to: vec![Mailbox::new("dev@kuverta.test")],
         date_utc: Some(1_757_000_000),
         body: Some("Kannst du das prüfen?".into()),
         ..Default::default()
     };
 
     let built = core_smtp::Draft::reply(
-        Mailbox::named("Erika", "dev@fuckmail.test"),
+        Mailbox::named("Erika", "dev@kuverta.test"),
         &source,
         core_smtp::ReplyMode::Sender,
     )
     .build()
     .expect("build");
 
-    submit(&config(), "dev@fuckmail.test", &auth(), &built)
+    submit(&config(), "dev@kuverta.test", &auth(), &built)
         .await
         .expect("submit");
 

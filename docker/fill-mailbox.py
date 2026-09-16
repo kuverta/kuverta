@@ -1,6 +1,6 @@
 """Fill a test mailbox with enough varied mail to exercise the list.
 
-    fill-mailbox.py 127.0.0.1:10143 dev@fuckmail.test devpass 250 --plain
+    fill-mailbox.py 127.0.0.1:10143 dev@kuverta.test devpass 250 --plain
     fill-mailbox.py --dump 250 > corpus.jsonl
 
 
@@ -105,7 +105,7 @@ MARKETING = [
 
 NOTIFICATIONS = [
     ("GitHub", "notifications@github.example.com",
-     "[fuckmail] CI failed on main",
+     "[kuverta] CI failed on main",
      "The build failed at step 'cargo clippy'.\n\n  error: unused variable `x`\n\nView the run online."),
     ("Legacy Cron", "root@server.example.de",
      "nightly backup completed",

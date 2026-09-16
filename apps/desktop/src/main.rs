@@ -580,12 +580,12 @@ fn special_folders(app: State<'_, App>, account: i64) -> Result<core_rpc::Specia
 }
 
 fn default_data_dir() -> PathBuf {
-    if let Some(dir) = std::env::var_os("FUCKMAIL_DATA_DIR") {
+    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
         return PathBuf::from(dir);
     }
     dirs_home()
-        .map(|home| home.join(".local/share/fuckmail"))
-        .unwrap_or_else(|| PathBuf::from(".fuckmail"))
+        .map(|home| home.join(".local/share/kuverta"))
+        .unwrap_or_else(|| PathBuf::from(".kuverta"))
 }
 
 fn dirs_home() -> Option<PathBuf> {
@@ -606,7 +606,7 @@ fn main() {
         Err(err) => {
             // A window showing an empty list would be a worse way to say this.
             eprintln!("cannot open the store in {}: {err}", data_dir.display());
-            eprintln!("set FUCKMAIL_DATA_DIR, or run `fuckmail sync` first");
+            eprintln!("set KUVERTA_DATA_DIR, or run `kuverta sync` first");
             std::process::exit(1);
         }
     };

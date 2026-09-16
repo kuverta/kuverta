@@ -11,7 +11,7 @@ struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn new(name: &str) -> Self {
         let path =
-            std::env::temp_dir().join(format!("fuckmail-drafts-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("kuverta-drafts-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -77,7 +77,7 @@ fn blank_address_fields_are_empty_fields_not_malformed_addresses() {
     // Found against the dev server: a blank Cc was parsed as the address ""
     // and the whole draft refused, while a blank Bcc was already accepted.
     let dir = TempDir::new("blank-fields");
-    let store = core_store::Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = core_store::Store::open(dir.0.join("kuverta.db")).unwrap();
     store
         .add_account(&core_store::model::NewAccount {
             label: "me@example.com".into(),

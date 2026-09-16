@@ -19,7 +19,7 @@ fn dev_server_available() -> bool {
     .is_ok();
 
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev IMAP server on {HOST}:{PORT} is required but not reachable");
         }
         eprintln!("skipping: dev IMAP server not running (`make dev-up`)");
@@ -32,7 +32,7 @@ struct TempDir(std::path::PathBuf);
 impl TempDir {
     fn new(name: &str) -> Self {
         let path =
-            std::env::temp_dir().join(format!("fuckmail-session-{}-{name}", std::process::id()));
+            std::env::temp_dir().join(format!("kuverta-session-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
@@ -49,10 +49,10 @@ impl Drop for TempDir {
 fn registered(name: &str, user: &str) -> TempDir {
     // SAFETY: set before any thread reads it; this is the dev password from
     // docker-compose.yml, not a credential.
-    unsafe { std::env::set_var("FUCKMAIL_SESSION_PASSWORD", "devpass") };
+    unsafe { std::env::set_var("KUVERTA_SESSION_PASSWORD", "devpass") };
 
     let dir = TempDir::new(name);
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     store
         .add_account(&NewAccount {
             label: user.into(),
@@ -69,12 +69,12 @@ fn registered(name: &str, user: &str) -> TempDir {
 }
 
 fn session(dir: &TempDir) -> Session {
-    Session::new(&dir.0).with_password_env(Some("FUCKMAIL_SESSION_PASSWORD".into()))
+    Session::new(&dir.0).with_password_env(Some("KUVERTA_SESSION_PASSWORD".into()))
 }
 
 fn core(dir: &TempDir) -> Core {
     Core::new(
-        Store::open(dir.0.join("fuckmail.db")).unwrap(),
+        Store::open(dir.0.join("kuverta.db")).unwrap(),
         Blobs::new(dir.0.join("blobs")),
     )
 }
@@ -84,7 +84,7 @@ async fn a_sync_fills_the_store_and_the_second_one_finds_nothing_to_do() {
     if !dev_server_available() {
         return;
     }
-    let user = "dev@fuckmail.test";
+    let user = "dev@kuverta.test";
     let dir = registered("basic", user);
     let session = session(&dir);
 
@@ -109,7 +109,7 @@ async fn a_queued_change_goes_out_and_the_same_pass_shows_the_result() {
     if !dev_server_available() {
         return;
     }
-    let user = "session-order@fuckmail.test";
+    let user = "session-order@kuverta.test";
     let dir = registered("order", user);
     let session = session(&dir);
 
@@ -147,7 +147,7 @@ async fn an_unknown_account_is_named_in_the_error() {
     if !dev_server_available() {
         return;
     }
-    let dir = registered("unknown", "dev@fuckmail.test");
+    let dir = registered("unknown", "dev@kuverta.test");
     let err = session(&dir)
         .sync_account("nobody@example.com")
         .await
@@ -163,7 +163,7 @@ async fn a_window_reading_while_a_sync_writes_is_not_blocked() {
     if !dev_server_available() {
         return;
     }
-    let user = "session-concurrent@fuckmail.test";
+    let user = "session-concurrent@kuverta.test";
     let dir = registered("concurrent", user);
     let session = session(&dir);
     let core = core(&dir);
@@ -196,7 +196,7 @@ fn sink_available() -> bool {
     )
     .is_ok();
     if !reachable {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev SMTP sink on {HOST}:{SINK_PORT} is required but not reachable");
         }
         eprintln!("skipping: dev SMTP sink not running (`make dev-up`)");
@@ -207,7 +207,7 @@ fn sink_available() -> bool {
 /// As `registered`, but able to send.
 fn registered_sender(name: &str, user: &str) -> TempDir {
     let dir = registered(name, user);
-    let store = Store::open(dir.0.join("fuckmail.db")).unwrap();
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
     let account = store.account_by_email(user).unwrap().unwrap();
     store
         .set_smtp(
@@ -227,7 +227,7 @@ async fn a_preview_shows_the_envelope_without_sending_anything() {
     if !dev_server_available() {
         return;
     }
-    let user = "dev@fuckmail.test";
+    let user = "dev@kuverta.test";
     let dir = registered_sender("preview", user);
 
     let preview = session(&dir)
@@ -263,7 +263,7 @@ async fn a_reply_built_from_a_stored_message_threads_and_quotes() {
     if !dev_server_available() {
         return;
     }
-    let user = "dev@fuckmail.test";
+    let user = "dev@kuverta.test";
     let dir = registered_sender("reply", user);
     let session = session(&dir);
     session.sync_account(user).await.unwrap();
@@ -303,7 +303,7 @@ async fn sending_files_a_copy_and_says_where() {
     if !dev_server_available() || !sink_available() {
         return;
     }
-    let user = "session-send@fuckmail.test";
+    let user = "session-send@kuverta.test";
     let dir = registered_sender("send", user);
     let session = session(&dir);
 
@@ -344,10 +344,10 @@ async fn an_account_with_no_submission_endpoint_says_so_before_composing() {
         return;
     }
     // `registered`, not `registered_sender`: no SMTP configured.
-    let dir = registered("nosmtp", "dev@fuckmail.test");
+    let dir = registered("nosmtp", "dev@kuverta.test");
     let err = session(&dir)
         .send(
-            "dev@fuckmail.test",
+            "dev@kuverta.test",
             &core_rpc::DraftInput {
                 to: vec!["jane@example.com".into()],
                 ..Default::default()
@@ -368,7 +368,7 @@ async fn a_send_can_decline_to_file_a_copy() {
     if !dev_server_available() || !sink_available() {
         return;
     }
-    let user = "session-nofile@fuckmail.test";
+    let user = "session-nofile@kuverta.test";
     let dir = registered_sender("nofile", user);
     let session = session(&dir);
 

@@ -22,13 +22,13 @@ pub const LOCAL_PROVIDER: i64 = 1;
 const TRY_PAGE: &[u8] = include_bytes!("../assets/try-page.jpg");
 const TRY_PAGE_SAYS: &str = "4711";
 
-/// A job fuckmail gives a model.
+/// A job kuverta gives a model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Task {
     /// Reading the text off a photographed letter. Needs a model that can see.
     Vision,
-    /// Sorting mail into categories, as `fuckmail classify` does.
+    /// Sorting mail into categories, as `kuverta classify` does.
     Chat,
 }
 
@@ -44,11 +44,11 @@ impl Task {
 
     /// The model a job uses on this computer until another is chosen.
     ///
-    /// `FUCKMAIL_VISION_MODEL` still names the vision default, as it did before
+    /// `KUVERTA_VISION_MODEL` still names the vision default, as it did before
     /// there was a page for it.
     pub fn default_model(self) -> String {
         match self {
-            Task::Vision => std::env::var("FUCKMAIL_VISION_MODEL")
+            Task::Vision => std::env::var("KUVERTA_VISION_MODEL")
                 .ok()
                 .filter(|model| !model.trim().is_empty())
                 .unwrap_or_else(|| "qwen2.5vl:3b".to_string()),

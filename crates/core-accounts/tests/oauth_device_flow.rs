@@ -18,7 +18,7 @@ use common::MockServer;
 impl MockServer {
     fn config(&self) -> OAuth2Config {
         OAuth2Config {
-            user: "dev@fuckmail.test".into(),
+            user: "dev@kuverta.test".into(),
             client_id: "test-client".into(),
             device_code_url: format!("{}/devicecode", self.base()),
             token_url: format!("{}/token", self.base()),
@@ -92,7 +92,7 @@ async fn device_login_polls_until_the_user_authorises() {
     assert_eq!(
         credential,
         Credential::OAuthBearer {
-            user: "dev@fuckmail.test".into(),
+            user: "dev@kuverta.test".into(),
             access_token: "access-1".into(),
         }
     );
@@ -178,12 +178,12 @@ async fn a_rejected_refresh_token_is_discarded_with_an_actionable_error() {
 
     let error = device.credential().await.unwrap_err();
     match &error {
-        AuthError::LoginExpired { user, .. } => assert_eq!(user, "dev@fuckmail.test"),
+        AuthError::LoginExpired { user, .. } => assert_eq!(user, "dev@kuverta.test"),
         other => panic!("expected LoginExpired, got {other:?}"),
     }
     // The message has to say what to do about it, not just that it failed.
     assert!(
-        error.to_string().contains("fuckmail login"),
+        error.to_string().contains("kuverta login"),
         "unhelpful error: {error}"
     );
 
@@ -276,7 +276,7 @@ async fn a_rotated_refresh_token_replaces_the_stored_one() {
     .await;
 
     let tokens = MemoryTokens::default();
-    tokens.save("dev@fuckmail.test", "placeholder").unwrap();
+    tokens.save("dev@kuverta.test", "placeholder").unwrap();
     let device = OAuth2Device::with_store(server.config(), Box::new(tokens));
 
     device.device_login(|_| {}).await.unwrap();
@@ -284,9 +284,9 @@ async fn a_rotated_refresh_token_replaces_the_stored_one() {
 
     // Reload through a fresh provider to prove it was persisted, not cached.
     let reloaded = MemoryTokens::default();
-    reloaded.save("dev@fuckmail.test", "refresh-2").unwrap();
+    reloaded.save("dev@kuverta.test", "refresh-2").unwrap();
     assert_eq!(
-        reloaded.load("dev@fuckmail.test").unwrap().as_deref(),
+        reloaded.load("dev@kuverta.test").unwrap().as_deref(),
         Some("refresh-2")
     );
 }

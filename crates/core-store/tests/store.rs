@@ -8,11 +8,11 @@ fn store_with_account() -> (Store, AccountId) {
     let id = store
         .add_account(&NewAccount {
             label: "Dev".into(),
-            email: "dev@fuckmail.test".into(),
+            email: "dev@kuverta.test".into(),
             imap_host: "127.0.0.1".into(),
             imap_port: 10143,
             imap_security: ImapSecurity::Plaintext,
-            username: "dev@fuckmail.test".into(),
+            username: "dev@kuverta.test".into(),
             auth_method: "app_password".into(),
             ..Default::default()
         })
@@ -86,11 +86,11 @@ fn the_same_message_on_two_accounts_stays_separate() {
     let second_account = store
         .add_account(&NewAccount {
             label: "Work".into(),
-            email: "work@fuckmail.test".into(),
+            email: "work@kuverta.test".into(),
             imap_host: "127.0.0.1".into(),
             imap_port: 10143,
             imap_security: ImapSecurity::Plaintext,
-            username: "work@fuckmail.test".into(),
+            username: "work@kuverta.test".into(),
             auth_method: "app_password".into(),
             ..Default::default()
         })
@@ -350,7 +350,7 @@ fn rules_and_model_verdicts_coexist_and_disagreements_are_queryable() {
 
 #[test]
 fn reopening_a_database_is_a_no_op_migration() {
-    let dir = std::env::temp_dir().join(format!("fuckmail-store-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kuverta-store-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("test.db");
 
@@ -359,11 +359,11 @@ fn reopening_a_database_is_a_no_op_migration() {
         store
             .add_account(&NewAccount {
                 label: "Dev".into(),
-                email: "dev@fuckmail.test".into(),
+                email: "dev@kuverta.test".into(),
                 imap_host: "127.0.0.1".into(),
                 imap_port: 10143,
                 imap_security: ImapSecurity::Plaintext,
-                username: "dev@fuckmail.test".into(),
+                username: "dev@kuverta.test".into(),
                 auth_method: "app_password".into(),
                 ..Default::default()
             })
@@ -605,7 +605,7 @@ fn an_account_registered_before_send_existed_can_gain_an_endpoint() {
     // has nowhere to submit to. It must not need re-creating to send.
     let (store, account_id) = store_with_account();
     assert!(store
-        .account_by_email("dev@fuckmail.test")
+        .account_by_email("dev@kuverta.test")
         .unwrap()
         .unwrap()
         .smtp
@@ -622,16 +622,13 @@ fn an_account_registered_before_send_existed_can_gain_an_endpoint() {
         )
         .unwrap();
 
-    let account = store
-        .account_by_email("dev@fuckmail.test")
-        .unwrap()
-        .unwrap();
+    let account = store.account_by_email("dev@kuverta.test").unwrap().unwrap();
     assert_eq!(account.smtp.as_ref().map(|s| s.port), Some(1025));
 
     // And can lose it again, which is how sending gets turned off.
     store.set_smtp(account_id, None).unwrap();
     assert!(store
-        .account_by_email("dev@fuckmail.test")
+        .account_by_email("dev@kuverta.test")
         .unwrap()
         .unwrap()
         .smtp
@@ -1295,20 +1292,14 @@ fn the_window_can_be_narrowed_to_one_folder_and_combined_with_the_rest() {
 fn an_account_can_be_edited_without_restating_what_did_not_change() {
     // How a settings form works: load, change one field, write back.
     let (store, account) = store_with_account();
-    let before = store
-        .account_by_email("dev@fuckmail.test")
-        .unwrap()
-        .unwrap();
+    let before = store.account_by_email("dev@kuverta.test").unwrap().unwrap();
 
     let mut edit = NewAccount::from(&before);
     edit.imap_port = 993;
     edit.imap_security = ImapSecurity::Tls;
     store.update_account(account, &edit).unwrap();
 
-    let after = store
-        .account_by_email("dev@fuckmail.test")
-        .unwrap()
-        .unwrap();
+    let after = store.account_by_email("dev@kuverta.test").unwrap().unwrap();
     assert_eq!(after.imap_port, 993);
     assert_eq!(after.imap_security, ImapSecurity::Tls);
     // Untouched fields survive.
@@ -1675,7 +1666,7 @@ fn a_token_key_survives_every_change_to_its_address() {
 
 #[test]
 fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
-    let dir = std::env::temp_dir().join(format!("fuckmail-store-v9-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("kuverta-store-v9-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("test.db");

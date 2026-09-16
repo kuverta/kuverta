@@ -187,7 +187,7 @@ pub struct ModelPass {
 
 /// The facts the rules classifier reads, as the shell's classifier takes them.
 ///
-/// camelCase because the other end is `fuckbird/core/facts.js`, which runs the
+/// camelCase because the other end is `kuverta-bird/core/facts.js`, which runs the
 /// same rules — ported line for line and verified against `core-rules` — to
 /// explain a verdict in the reading pane. The explanation is the half of the
 /// rules layer that makes a wrong answer arguable rather than annoying, and it
@@ -238,17 +238,17 @@ pub struct SpecialFolders {
 
 /// Where the store lives unless told otherwise.
 ///
-/// `FUCKMAIL_DATA_DIR`, else `~/.local/share/fuckmail`. In one place because
+/// `KUVERTA_DATA_DIR`, else `~/.local/share/kuverta`. In one place because
 /// the window and the agent surface must open the same store — an assistant
 /// reading a different mailbox from the one on screen would be worse than no
 /// assistant.
 pub fn default_data_dir() -> std::path::PathBuf {
-    if let Some(dir) = std::env::var_os("FUCKMAIL_DATA_DIR") {
+    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
         return std::path::PathBuf::from(dir);
     }
     std::env::var_os("HOME")
-        .map(|home| std::path::PathBuf::from(home).join(".local/share/fuckmail"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".fuckmail"))
+        .map(|home| std::path::PathBuf::from(home).join(".local/share/kuverta"))
+        .unwrap_or_else(|| std::path::PathBuf::from(".kuverta"))
 }
 
 /// A change that has been asked for but not yet sent.
@@ -282,7 +282,7 @@ impl Core {
         // worst possible moment to say so — there is nowhere to say it.
         std::fs::create_dir_all(dir)?;
         Ok(Self {
-            store: Store::open(dir.join("fuckmail.db"))?,
+            store: Store::open(dir.join("kuverta.db"))?,
             blobs: Blobs::new(dir.join("blobs")),
         })
     }

@@ -26,7 +26,7 @@ curl -X POST http://localhost:8000/api/token/ \
   -d username=admin -d password=admin
 ```
 
-Then `PAPERLESS_TOKEN=... fuckmail paper --check`. Drop PDFs or images into
+Then `PAPERLESS_TOKEN=... kuverta paper --check`. Drop PDFs or images into
 `docker/paperless/consume/` and Paperless will OCR and file them, or send them the
 way the Pi does, without a camera: put JPEGs named `<unix-seconds>-<n>.jpg` in a
 directory and run `scannerd --drain-only --spool <dir> --tag "<address>"`.
@@ -38,7 +38,7 @@ in the keychain as the app, which a token added with `security` is not.
 
 ## Dovecot — test IMAP server
 
-`127.0.0.1:10143`, user `dev@fuckmail.test`, password `devpass`, no TLS.
+`127.0.0.1:10143`, user `dev@kuverta.test`, password `devpass`, no TLS.
 
 Nine `.eml` fixtures load on first start. They are not filler; each one exercises
 something specific:
@@ -78,7 +78,7 @@ Seeding is idempotent — a mailbox that already holds messages is left alone. U
 
 **On Apple Silicon the container has no GPU access** — no Metal passthrough — so
 it is much slower than a native install. Use the container for CI and parity, and
-run Ollama natively for real development. `make ai-model` pulls a chat model and `nomic-embed-text`, the embedding model `fuckmail eval` compares prompting against.
+run Ollama natively for real development. `make ai-model` pulls a chat model and `nomic-embed-text`, the embedding model `kuverta eval` compares prompting against.
 
 ## Paperless-ngx
 
@@ -90,5 +90,5 @@ The image is pinned (3.1.3) and the compose file sets a dev-only
 without one. Bump the pin on purpose.
 
 The paper half of the product: `scannerd` on the Pi uploads captured pages over
-the API, Paperless does OCR and archival, and fuckmail reads each address's
+the API, Paperless does OCR and archival, and kuverta reads each address's
 documents into the same triage surface as email (`docs/decisions.md` §17, §22).

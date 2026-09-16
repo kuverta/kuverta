@@ -1,4 +1,4 @@
-# fuckmail-mcp
+# kuverta-mcp
 
 The mailbox — mail and scanned post — as an MCP server on stdio, so an
 assistant can read, search, file and archive it.
@@ -10,14 +10,14 @@ Most of this file is what "more" turned out to mean.
 ## Running it
 
 ```sh
-cargo build --release -p fuckmail-mcp
+cargo build --release -p kuverta-mcp
 
-fuckmail-mcp                   # read-only: list, search, read
-fuckmail-mcp --allow-writes    # also file, archive, trash, mark read, undo
+kuverta-mcp                   # read-only: list, search, read
+kuverta-mcp --allow-writes    # also file, archive, trash, mark read, undo
 ```
 
-It opens the same store the window does (`FUCKMAIL_DATA_DIR`, else
-`~/.local/share/fuckmail`). An assistant reading a different mailbox from the
+It opens the same store the window does (`KUVERTA_DATA_DIR`, else
+`~/.local/share/kuverta`). An assistant reading a different mailbox from the
 one on screen would be worse than no assistant.
 
 In a client's MCP configuration:
@@ -25,8 +25,8 @@ In a client's MCP configuration:
 ```json
 {
   "mcpServers": {
-    "fuckmail": {
-      "command": "/path/to/fuckmail-mcp",
+    "kuverta": {
+      "command": "/path/to/kuverta-mcp",
       "args": ["--allow-writes"]
     }
   }

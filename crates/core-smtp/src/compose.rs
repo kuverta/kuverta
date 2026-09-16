@@ -628,7 +628,7 @@ mod tests {
     use super::*;
 
     fn me() -> Mailbox {
-        Mailbox::named("Erika", "erika@fuckmail.test")
+        Mailbox::named("Erika", "erika@kuverta.test")
     }
 
     fn thread() -> ReplySource {
@@ -756,7 +756,7 @@ mod tests {
         assert_eq!(to, vec!["jane@example.com", "bob@example.com"]);
         assert_eq!(all.cc.len(), 1);
         assert_eq!(all.cc[0].address, "carol@example.com");
-        assert!(!to.contains(&"erika@fuckmail.test"));
+        assert!(!to.contains(&"erika@kuverta.test"));
     }
 
     #[test]
@@ -865,7 +865,7 @@ mod tests {
         let first = build();
         let second = build();
 
-        assert!(first.message_id.ends_with("@fuckmail.test"));
+        assert!(first.message_id.ends_with("@kuverta.test"));
         assert_ne!(first.message_id, second.message_id);
         // The local hostname must not leak into outgoing mail.
         let rendered = String::from_utf8(first.rfc822.clone()).unwrap();
@@ -893,7 +893,7 @@ mod tests {
             "References: <root-0@example.com> <mid-1@example.com>\r\n",
             "From: \"Doe, Jane\" <jane@example.com>\r\n",
             "Reply-To: Liste <list@example.com>\r\n",
-            "To: Erika <erika@fuckmail.test>, bob@example.com\r\n",
+            "To: Erika <erika@kuverta.test>, bob@example.com\r\n",
             "Cc: carol@example.com\r\n",
             "Subject: =?utf-8?q?Rechnung_f=C3=BCr_M=C3=A4rz?=\r\n",
             "Date: Tue, 9 Sep 2026 14:03:22 +0200\r\n",

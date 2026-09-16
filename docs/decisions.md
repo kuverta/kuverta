@@ -40,7 +40,7 @@ So both were run over the same 250 messages and diffed:
 
 ```
 python3 docker/fill-mailbox.py --dump 250 > corpus.jsonl
-node fuckbird/tools/dump-facts.js < corpus.jsonl > facts.jsonl
+node kuverta-bird/tools/dump-facts.js < corpus.jsonl > facts.jsonl
 # and the same facts through core-rules
 diff rust.tsv js.tsv
 ```
@@ -49,7 +49,7 @@ Identical on all 250 — the same category *and* the same confidence to six
 decimal places. The facts are built once, in JS, and fed to both, so this
 measures the classifier and not the header parsing.
 
-Worth re-running after any change to `fuckbird/core/signals.js`. The harness for the Rust
+Worth re-running after any change to `kuverta-bird/core/signals.js`. The harness for the Rust
 half is throwaway (a few lines depending on `core-rules` by path); it is not
 kept in this repository because keeping it would mean keeping a Rust toolchain
 in the loop for a JS add-on.
@@ -78,13 +78,13 @@ Nothing is broken. The number in the brief is just not a baseline, and should
 not be cited as one. The reproducible command is:
 
 ```
-python3 docker/fill-mailbox.py --dump 250 | node fuckbird/tools/classify-corpus.js --reasons
+python3 docker/fill-mailbox.py --dump 250 | node kuverta-bird/tools/classify-corpus.js --reasons
 ```
 
 ### Resolved: the corpus was real, and it is still on disk
 
 **Later the same day.** The mailbox behind the brief's figures turned up in
-`fuckmail`'s scratch store, as a second account with exactly 251 messages.
+`kuverta`'s scratch store, as a second account with exactly 251 messages.
 Running the store's own query over it gives, exactly:
 
 ```
@@ -151,7 +151,7 @@ does.
 
 **2026-09-11.** Not in the brief, and it changes the brief's shape.
 
-The brief assumes a line of succession: `fuckmail` is the thing that exists,
+The brief assumes a line of succession: `kuverta` is the thing that exists,
 Thunderbird is the thing to move to, and §7.6 asks what to do with the old repo
 — "archive it as a reference, keep it as the native-messaging backend, or keep
 running it alongside".
@@ -165,13 +165,13 @@ So the layout is:
 core/     the classifier, the triage model, the key map, the surface
           — no Thunderbird, no Tauri, no DOM in the model
 hosts/thunderbird/   an adapter over the MailExtension API
-hosts/fuckmail/      an adapter over the client's Tauri commands
+hosts/kuverta/      an adapter over the client's Tauri commands
 ```
 
-`fuckbird/core/host.js` is the seam. Message ids are opaque, folders are opaque, and
+`kuverta-bird/core/host.js` is the seam. Message ids are opaque, folders are opaque, and
 anything one host can do that the other cannot is **declared** in a
 `capabilities` object rather than sniffed for. A core that starts asking "am I
-in Thunderbird?" has stopped being a core, and `fuckbird/test/wiring.test.js` fails if
+in Thunderbird?" has stopped being a core, and `kuverta-bird/test/wiring.test.js` fails if
 it ever does — it greps for `messenger.`, `__TAURI__` and `browser.` in
 `core/`, and for imports reaching from one host into the other.
 
@@ -181,13 +181,13 @@ fork inherits a surface that already works.
 
 **What it costs.** A contract to keep, and the discipline not to reach through
 it. Both are cheaper than two implementations of the same list, which is what
-existed before this: `fuckmail`'s `apps/desktop/ui/app.js` is 1,136 lines and
+existed before this: `kuverta`'s `apps/desktop/ui/app.js` is 1,136 lines and
 most of it is the list, the cursor and the key map written once already.
 
 ### The contract is a test, not a document
 
-`fuckbird/test/support/conformance.js` is the host contract as a suite. Three adapters
-run it: Thunderbird against a fake `messenger`, `fuckmail` against a fake
+`kuverta-bird/test/support/conformance.js` is the host contract as a suite. Three adapters
+run it: Thunderbird against a fake `messenger`, `kuverta` against a fake
 `invoke`, and an in-memory reference that exists to prove the contract is
 satisfiable at all — a contract no host can pass is a bug in the contract, and
 without a reference there is nothing to notice that with.
@@ -204,7 +204,7 @@ again by its `Message-ID` in order to undo — and refuses, out loud, when the
 message has none, because §3.6 says that is legal and moving the wrong message
 back is worse than refusing.
 
-**A capability read too early reads as false.** `fuckmail`'s host has to ask
+**A capability read too early reads as false.** `kuverta`'s host has to ask
 which folders are Archive and Trash before it can say whether it can archive.
 The suite read `capabilities` synchronously, got `false`, and silently skipped
 its archive and trash tests — passing, green, testing nothing. The suite now
@@ -215,7 +215,7 @@ reason rather than a pass, so a capability regression cannot hide as an `ok`.
 
 `capabilities.undo` is `'queued' | 'compensating' | false`, never `true`.
 
-`fuckmail` queues a change before sending it, so undo **cancels** something
+`kuverta` queues a change before sending it, so undo **cancels** something
 that never happened — brief §3.5, "a change stays cancellable for as long as it
 is queued". Thunderbird's write paths do not queue, so by the time undo is
 offered the move has happened, another client may have seen it, and undo is a
@@ -225,13 +225,13 @@ one look like the stronger.
 
 ---
 
-## 5. `fuckmail` cannot file by category, and the surface says so
+## 5. `kuverta` cannot file by category, and the surface says so
 
 **2026-09-11.** A gap found by building the adapter.
 
 `core-rpc` registers twenty commands. None of them sets a category: the
 classifier runs during sync and nothing exposes a correction. So the
-`fuckmail` host declares `setCategory: false`, the surface hides the category
+`kuverta` host declares `setCategory: false`, the surface hides the category
 keys there, and three conformance tests report as skipped rather than passing.
 
 This is the capability object earning its keep on the first day it exists. The
@@ -240,7 +240,7 @@ outcome available: the key is shown, the user presses it, and nothing happens
 with no way to tell why. The contract has a test for exactly that
 ("a capability it does not have is refused, not quietly ignored").
 
-[`fuckbird/hosts/fuckmail/readme.md`](../fuckbird/hosts/fuckmail/readme.md) has the command that closes it. Once it exists, one
+[`kuverta-bird/hosts/kuverta/readme.md`](../kuverta-bird/hosts/kuverta/readme.md) has the command that closes it. Once it exists, one
 boolean changes here and the keys appear.
 
 ---
@@ -314,7 +314,7 @@ Worth recording, because they were guesses and are no longer:
 
 ### The table is now a test
 
-`fuckbird/test/permissions.test.js` holds the API-to-permission table and checks three
+`kuverta-bird/test/permissions.test.js` holds the API-to-permission table and checks three
 things: that the manifest grants everything the code needs, that it grants
 nothing it does not — a mail client asking for more than it uses is asking to
 be trusted for no reason — and that every `messenger.*` call the code makes has
@@ -327,11 +327,11 @@ corrected.
 
 ---
 
-## 7. Stage 3 was already built in `fuckmail`, and unreachable
+## 7. Stage 3 was already built in `kuverta`, and unreachable
 
 **2026-09-11.** Supersedes §5.
 
-§5 recorded that `fuckmail` could not file a message by category and declared
+§5 recorded that `kuverta` could not file a message by category and declared
 `setCategory: false`. That was right about the symptom and wrong about the
 cause, which turned out to be more interesting.
 
@@ -346,7 +346,7 @@ what happens next time" — was satisfied by the code and unreachable by a user.
 
 This is what building the second host was for. Nothing about writing the
 Thunderbird adapter would have found it; it took writing an adapter for
-`fuckmail` against a contract that asks a host what it can do, and having to
+`kuverta` against a contract that asks a host what it can do, and having to
 answer "not that".
 
 ### What the exposure cost
@@ -422,8 +422,8 @@ out where you are from the rows.
 - **The surface says which mailbox it is.** `mountTriage` takes a `title` the
   host supplies, because the core has no idea which account it is looking at
   and the person reading it very much does.
-- **An account picker**, in the `fuckmail` mount rather than in `core/` —
-  which account is a `fuckmail` idea, not a mail idea. The store held two
+- **An account picker**, in the `kuverta` mount rather than in `core/` —
+  which account is a `kuverta` idea, not a mail idea. The store held two
   accounts and the surface silently opened the first, which was the
   eight-message test one.
 
@@ -470,7 +470,7 @@ in this order:
    is a label and the list is sorted by it rather than by where mail happens to
    live.
 2. **What the six mean**, each in a line. `CATEGORY_MEANINGS` now sits beside
-   the doc comments in `fuckbird/core/category.js`: the comments explain the taxonomy to
+   the doc comments in `kuverta-bird/core/category.js`: the comments explain the taxonomy to
    whoever reads the source, and these explain it in the window, which is where
    it is actually asked.
 3. **That correcting it teaches it** — that `1`–`6` remembers the sender or the
@@ -500,7 +500,7 @@ the filed category and the rules disagree the surface can say so: *"You filed
 this as Transactional. On the headers alone the rules would have said
 Marketing."* That sentence is only available because the two were kept apart.
 
-Where a host cannot supply facts — `fuckmail`'s `message` command returns a
+Where a host cannot supply facts — `kuverta`'s `message` command returns a
 body and no headers — it shows the category and what that category means, and
 stops. A weaker answer to the same question beats inventing reasons.
 
@@ -510,7 +510,7 @@ stops. A weaker answer to the same question beats inventing reasons.
 
 **2026-09-11.** Reverses the split that §4 was written inside.
 
-`fuckbird` was a separate repository for about a day. Looking at the two side by
+`kuverta-bird` was a separate repository for about a day. Looking at the two side by
 side, the reaction was the obvious one: why are there two of these?
 
 There was no good answer. §4 had already concluded that neither the Rust client
@@ -526,7 +526,7 @@ had no reason to be there. And the fix in §7 — exposing corrections — touch
 the Rust store, the Rust RPC, the Tauri command *and* the JavaScript adapter,
 which is one change described in two commit messages in two histories.
 
-So `fuckbird` is now a directory, merged with `git subtree` rather than copied,
+So `kuverta-bird` is now a directory, merged with `git subtree` rather than copied,
 so its seven commits and their reasoning are still in the log and interleaved
 with the Rust ones in the order things actually happened.
 
@@ -552,8 +552,8 @@ which is the same line the Thunderbird side walks by putting the manifest where
 
 ### What this does not change
 
-The contract. `fuckbird/core/` still may not name a host, and
-`fuckbird/test/wiring.test.js` still fails if it does. Sharing a repository with
+The contract. `kuverta-bird/core/` still may not name a host, and
+`kuverta-bird/test/wiring.test.js` still fails if it does. Sharing a repository with
 one of the two hosts is exactly the circumstance in which that rule stops being
 obvious and starts being load-bearing: the Rust client is now a directory away,
 and reaching into it would work.
@@ -612,7 +612,7 @@ There is a PDF, and a scanned invoice is no less an invoice than an emailed one.
 ### The client is in Rust, not in the shared surface
 
 The triage surface is JavaScript and reaches its host through a port, so a
-Paperless client in `fuckbird/core/` would have been the obvious symmetry. Two
+Paperless client in `kuverta-bird/core/` would have been the obvious symmetry. Two
 things say otherwise. The desktop app's CSP is `default-src 'self'`, so its
 webview cannot reach `localhost:8000` at all — the request has to go through
 Rust regardless. And `core-rpc` is already the place "both front ends talk to",
@@ -623,7 +623,7 @@ asking about post should ask the same layer a window does.
 
 Post does not yet appear in the triage window beside mail, which is the brief's
 actual promise. What exists is the client, the classification, and a CLI that
-reads an address the way `fuckmail list` reads a mailbox — verifiable against
+reads an address the way `kuverta list` reads a mailbox — verifiable against
 the dev stack today. The shapes already match, which is what makes the merged
 list a display problem rather than a modelling one.
 
@@ -830,12 +830,12 @@ its latency for nothing. Brief §3.3 turns that into four rules. What each becam
 
 1. **Log both verdicts.** A model's verdict is recorded as `source = 'model'`,
    keyed by the model's name, beside the rules' verdict for the same message.
-   `fuckmail disagreements` lists where they differ. Model verdicts are never
+   `kuverta disagreements` lists where they differ. Model verdicts are never
    shown — `CURRENT_CATEGORY_JOIN` has excluded them since §7 — so a model that
    is wrong for a month moves nobody's mail.
 2. **Spike embeddings against prompting before committing.** Both exist:
    `PromptClassifier` asks a chat model for one word, `Neighbours` embeds a
-   message and takes the nearest of the user's own filings. `fuckmail eval`
+   message and takes the nearest of the user's own filings. `kuverta eval`
    scores both, and the rules, on the same held-out messages.
 3. **4–8B instruct is ample.** The model on this machine is an 8B Llama; the
    results below are its.
@@ -934,7 +934,7 @@ during one.
 
 Not what the list shows. Model verdicts stay recorded and compared, exactly as
 before; nothing in this entry moves a message. That decision wants real mail
-behind it — `fuckmail disagreements` on a real mailbox, and the user's own
+behind it — `kuverta disagreements` on a real mailbox, and the user's own
 corrections scored against both — rather than a generated corpus that both
 methods find easy.
 
@@ -976,7 +976,7 @@ chosen.
 filing its neighbours contradict is a sender filed two ways, and a unanimous vote
 among distant filings is a stranger who happens to resemble one kind of mail.
 
-`fuckmail eval` keeps the model's answer and the nearest filings for every scored
+`kuverta eval` keeps the model's answer and the nearest filings for every scored
 message, so the combination can be tried at every threshold without asking the
 model again:
 
@@ -1045,7 +1045,7 @@ which moved the conformance rule about rows refusing what they declared from
 "a row that allows nothing" to "a row that does not allow archiving", since the
 first no longer described any row there was.
 
-> **Since (2026-09-14):** §9's gap is closed. `fuckmail`'s message detail now
+> **Since (2026-09-14):** §9's gap is closed. `kuverta`'s message detail now
 > carries the classifier's facts, re-parsed from the stored message, so the
 > reading pane explains mail there the way it does in Thunderbird — and a
 > letter's detail carries them too, so post is explained the same way. A message
@@ -1153,7 +1153,7 @@ touches had none. It had already produced two bugs found by hand: keys that
 explained nothing, and a teardown that would have made every keystroke act twice
 after switching accounts.
 
-`fuckbird/test/view.test.js` mounts the real surface into jsdom over the
+`kuverta-bird/test/view.test.js` mounts the real surface into jsdom over the
 in-memory host and drives it through the keyboard and clicks: the legend and the
 scope bar say what they should, `j`/`k` move the cursor, archiving keeps the
 cursor where it was, typing into the search box never fires a shortcut, digits
@@ -1179,7 +1179,7 @@ jsdom has no layout and no CSS cascade. These tests can say an element is
 `hidden`; they cannot say it is off screen. The bug found earlier in the settings
 sheet — `display: flex` beating the hidden attribute, which would have put both
 forms on screen at once — is outside what they check. That wants a real engine:
-Playwright against `hosts/fuckmail/ui/triage.html` with a stand-in bridge would
+Playwright against `hosts/kuverta/ui/triage.html` with a stand-in bridge would
 catch it, at the cost of a browser download.
 
 ### The dependency
@@ -1201,7 +1201,7 @@ loads the real pages into Chromium over HTTP, with the same fake Tauri bridge th
 adapter's unit tests use — loaded into the page by URL, so the two cannot disagree
 about what a command returns.
 
-`e2e/triage.test.js` covers the shared surface as `fuckmail` mounts it: the
+`e2e/triage.test.js` covers the shared surface as `kuverta` mounts it: the
 first-launch panel actually on screen and gone after a reload, the legend inside
 the window rather than below it, hidden things off screen and not merely marked,
 the cursor staying in view through a 120-message list, archiving keeping the
@@ -1243,7 +1243,7 @@ and need the download; `make test-e2e` runs them.
 Everything in §17 and §18 had been tested against fakes: a canned Paperless on a
 loopback socket, and drafting only up to the point a connection is made. With the
 Docker stack up, both now have tests against the real thing, which skip when it is
-down and fail under `FUCKMAIL_REQUIRE_DEV_SERVER=1`:
+down and fail under `KUVERTA_REQUIRE_DEV_SERVER=1`:
 
 - `core-rpc/tests/drafts_dev_server.rs` saves a draft through `Session`, syncs,
   and reads it back from the store — on the plain Dovecot (`Drafts`) and on the
@@ -1254,7 +1254,7 @@ down and fail under `FUCKMAIL_REQUIRE_DEV_SERVER=1`:
   every existing tag against the documents that carry it — rather than contents.
 
 The rest was checked by hand, on the stack, and is listed so it can be repeated:
-`scannerd --drain-only` with two generated letters; `fuckmail paper` with
+`scannerd --drain-only` with two generated letters; `kuverta paper` with
 `--check`, `--tag` and `--query`; and a postal address registered in `.devdata`,
 read through `core-rpc` exactly as the desktop commands read it — token filed, check,
 listing, opening a letter, filing it.
@@ -1497,11 +1497,11 @@ untried here.
   laptop is both slowly. Once the model fails (Ollama not running, model missing),
   automatic reading stops for the session and the reason is shown, rather than
   every new letter failing the same way.
-- `qwen2.5vl:3b` by default, `FUCKMAIL_VISION_MODEL` to change it.
+- `qwen2.5vl:3b` by default, `KUVERTA_VISION_MODEL` to change it.
 
 ### Unread, categories and the two dates
 
-- **Read state is fuckmail's.** Paperless has no notion of it, and writing a tag
+- **Read state is kuverta's.** Paperless has no notion of it, and writing a tag
   per letter back into Paperless would change the archive from a reader that
   promises not to. `paper_read`, keyed like the transcripts; `u` toggles, opening
   reads, the postbox shows an unread count.
@@ -1524,10 +1524,10 @@ connect an external provider such as DeepSeek.
 - **Providers and jobs.** A provider is somewhere models run: the Ollama on this
   computer (in every store from schema v11; its address can change, it cannot be
   removed), another Ollama, or a hosted service with an OpenAI-compatible API. A
-  job is something fuckmail asks a model to do: reading scans, and sorting mail
-  (`fuckmail classify`). Each job has one provider and model. A job with none
+  job is something kuverta asks a model to do: reading scans, and sorting mail
+  (`kuverta classify`). Each job has one provider and model. A job with none
   chosen runs where it did before: the local Ollama, with `qwen2.5vl:3b` (or
-  `FUCKMAIL_VISION_MODEL`, which §24 named and is now only the default) and
+  `KUVERTA_VISION_MODEL`, which §24 named and is now only the default) and
   `llama3.2:3b`.
 - **One client for hosted services.** DeepSeek, OpenAI, OpenRouter and most others
   take the same `/chat/completions` request and list `/models`; the page's presets
@@ -1545,7 +1545,7 @@ connect an external provider such as DeepSeek.
   service. When a job's provider is not this computer (decided by the address
   being a loopback one, so an Ollama elsewhere on the network counts as elsewhere),
   the note under the job says what goes there: scans of letters, or senders,
-  subjects and the start of each message. `fuckmail classify` prints the same
+  subjects and the start of each message. `kuverta classify` prints the same
   before it starts.
 - `classify --ollama` (or `OLLAMA_URL` in the environment) still asks that Ollama
   directly, past the settings; `--model` overrides the chosen model.

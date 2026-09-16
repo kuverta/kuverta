@@ -1,0 +1,53 @@
+{
+  "manifest_version": 2,
+  "name": "kuverta-bird",
+  "version": "0.1.0",
+  "description": "Files mail into six categories, and says why.",
+  "author": "niczem",
+
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "kuverta-bird@kuverta.github.io",
+      "strict_min_version": "128.0"
+    }
+  },
+
+  "permissions": [
+    "accountsRead",
+    "messagesRead",
+    "messagesUpdate",
+    "messagesMove",
+    "messagesTags",
+    "messagesTagsList",
+    "compose",
+    "menus",
+    "notifications",
+    "storage",
+    "tabs"
+  ],
+
+  "background": {
+    "page": "hosts/thunderbird/background.html"
+  },
+
+  "browser_action": {
+    "default_title": "kuverta-bird triage",
+    "default_icon": "hosts/thunderbird/icon.svg"
+  },
+
+  "message_display_action": {
+    "default_title": "Why this category?",
+    "default_popup": "hosts/thunderbird/ui/why.html",
+    "default_icon": "hosts/thunderbird/icon.svg"
+  },
+
+  "options_ui": {
+    "page": "hosts/thunderbird/ui/options.html",
+    "open_in_tab": true
+  },
+
+  "icons": {
+    "48": "hosts/thunderbird/icon.svg",
+    "96": "hosts/thunderbird/icon.svg"
+  }
+}

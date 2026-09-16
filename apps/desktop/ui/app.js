@@ -331,7 +331,7 @@ async function refreshSidebar() {
 /// The categories, with counts, as filters — for mail or for post.
 function renderCategories(counts) {
   sidebar.categories.textContent = "";
-  // Unread-only filters mail in the store. Post's read state is fuckmail's own
+  // Unread-only filters mail in the store. Post's read state is kuverta's own
   // and no filter Paperless can apply, so a postbox shows its unread count on
   // the postbox instead.
   if (!state.postbox) {
@@ -466,7 +466,7 @@ function countPostboxes() {
   }
 }
 
-/// Post's read state is fuckmail's own: opening a letter reads it, u toggles.
+/// Post's read state is kuverta's own: opening a letter reads it, u toggles.
 async function markPostRead(row, read) {
   const box = state.postbox;
   if (!box) return;
@@ -569,7 +569,7 @@ function showTranscriptNote(detail, row) {
 /// asks — the open postbox every so often, every postbox's count less often —
 /// and a scanned letter appears on its own, the way mail does after a sync.
 /// A test page may shorten the wait.
-const POST_POLL_MS = window.__fuckmailPostPollMs ?? 20000;
+const POST_POLL_MS = window.__kuvertaPostPollMs ?? 20000;
 const COUNT_EVERY = 3; // polls between count refreshes: a minute at the default
 let postPolls = 0;
 
@@ -1652,7 +1652,7 @@ el("settings-verify").onclick = async () => {
   }
 };
 
-/// The report as text. Deliberately the same shape as `fuckmail check`, so
+/// The report as text. Deliberately the same shape as `kuverta check`, so
 /// the two do not have to be learned separately.
 function describeReport(r) {
   const lines = [];

@@ -56,7 +56,7 @@ fi
 # -j 2 is not a preference. A full-parallelism build of this workspace gets
 # OOM-killed on this machine, and a killed build looks like a mystery rather
 # than like running out of memory.
-BUILD=(cargo build -j 2 -p fuckmail-desktop)
+BUILD=(cargo build -j 2 -p kuverta-desktop)
 [[ $PROFILE == release ]] && BUILD+=(--release)
 
 echo "building (${PROFILE})…"
@@ -71,12 +71,12 @@ if [[ $DEV -eq 1 ]]; then
     fi
 fi
 
-BIN="./target/${PROFILE}/fuckmail-desktop"
+BIN="./target/${PROFILE}/kuverta-desktop"
 if [[ -n $DATA_DIR ]]; then
     echo "opening on ${DATA_DIR}"
-    exec env FUCKMAIL_DATA_DIR="$DATA_DIR" "$BIN"
+    exec env KUVERTA_DATA_DIR="$DATA_DIR" "$BIN"
 else
-    # No FUCKMAIL_DATA_DIR: the app falls back to ~/.local/share/fuckmail.
+    # No KUVERTA_DATA_DIR: the app falls back to ~/.local/share/kuverta.
     echo "opening on the default data directory"
     exec "$BIN"
 fi

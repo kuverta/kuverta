@@ -60,7 +60,7 @@ mod tests {
 
     #[test]
     fn round_trips_and_is_stable_for_one_key() {
-        let dir = std::env::temp_dir().join(format!("fuckmail-blobs-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("kuverta-blobs-{}", std::process::id()));
         let blobs = Blobs::new(&dir);
 
         let first = blobs.put(1, "mid:abc@example.com", b"raw message").unwrap();

@@ -72,7 +72,7 @@ async fn a_refused_token_is_an_auth_error_not_a_broken_file() {
 }
 
 /// Against the Paperless in `docker/`, when it is up: a scanned letter really
-/// downloads as a PDF. Skips otherwise; `FUCKMAIL_REQUIRE_DEV_SERVER=1` makes
+/// downloads as a PDF. Skips otherwise; `KUVERTA_REQUIRE_DEV_SERVER=1` makes
 /// that a failure, as in `dev_server.rs`.
 #[tokio::test]
 async fn a_document_downloads_from_the_dev_paperless_as_a_pdf() {
@@ -82,7 +82,7 @@ async fn a_document_downloads_from_the_dev_paperless_as_a_pdf() {
     )
     .is_ok();
     if !up {
-        if std::env::var_os("FUCKMAIL_REQUIRE_DEV_SERVER").is_some() {
+        if std::env::var_os("KUVERTA_REQUIRE_DEV_SERVER").is_some() {
             panic!("dev Paperless on localhost:8000 is required but not reachable");
         }
         eprintln!("skipping: dev Paperless not running (`make dev-up`)");

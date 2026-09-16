@@ -1,0 +1,20 @@
+{
+  "name": "kuverta-bird",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A triage-first mail surface that runs as a Thunderbird extension or inside the kuverta client.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "package": "rm -f kuverta-bird.xpi && zip -qr -FS kuverta-bird.xpi manifest.json core hosts/thunderbird -x '*/.*' && echo 'built kuverta-bird.xpi'",
+    "corpus": "python3 ../docker/fill-mailbox.py --dump 250 | node tools/classify-corpus.js --reasons",
+    "e2e": "node --test e2e/"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "devDependencies": {
+    "jsdom": "24.1.3",
+    "playwright": "1.63.0"
+  }
+}

@@ -1,4 +1,4 @@
-//! What fuckmail keeps about post that Paperless does not: read or not, and
+//! What kuverta keeps about post that Paperless does not: read or not, and
 //! a transcript of a scan whose OCR is no use.
 
 use std::path::PathBuf;
@@ -9,17 +9,15 @@ struct TempDir(PathBuf);
 
 impl TempDir {
     fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "fuckmail-paper-state-{}-{name}",
-            std::process::id()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("kuverta-paper-state-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir_all(&path).unwrap();
         Self(path)
     }
 
     fn store(&self) -> Store {
-        Store::open(self.0.join("fuckmail.db")).unwrap()
+        Store::open(self.0.join("kuverta.db")).unwrap()
     }
 }
 
