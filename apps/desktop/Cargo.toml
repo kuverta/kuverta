@@ -12,10 +12,11 @@ path = "src/main.rs"
 
 [dependencies]
 core-store.workspace = true
+core-accounts.workspace = true
 core-rpc.workspace = true
 core-proto.workspace = true
 
-tauri = "2.11.5"
+tauri = { version = "2.11.5", features = [] }
 tokio = { workspace = true, features = ["rt"] }
 serde.workspace = true
 serde_json.workspace = true
@@ -24,4 +25,4 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 [build-dependencies]
-tauri-build = "2.6.3"
+tauri-build = { version = "2.6.3", features = [] }

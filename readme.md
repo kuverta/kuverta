@@ -61,6 +61,24 @@ in its header.
 Not yet: the local model, IDLE, QRESYNC, attachments in compose, HTML
 rendering, and the Paperless half.
 
+## Installing
+
+On a Mac (Apple Silicon or Intel, macOS 11 or later):
+
+1. Download the `.dmg` from the
+   [latest release](https://github.com/kuverta/kuverta/releases/latest).
+2. Open it and drag **kuverta** into **Applications**.
+3. Open kuverta. If macOS says it "cannot be verified" (releases are not
+   notarised yet), open **System Settings → Privacy & Security** and press
+   **Open Anyway** next to kuverta — once. Or, in a terminal:
+   `xattr -dr com.apple.quarantine /Applications/kuverta.app`.
+
+The setup assistant opens on the first run. kuverta says in its header when a
+newer release is out; updating is downloading it and replacing the app.
+
+Releases are made as described in [docs/releasing.md](docs/releasing.md), which
+also explains how a development build and an installed kuverta stay apart.
+
 ## Quick start
 
 One command, if the scratch store already has mail in it:
