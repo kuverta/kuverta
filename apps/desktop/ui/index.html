@@ -9,6 +9,9 @@
   <header>
     <strong>kuverta</strong>
     <span id="status">starting…</span>
+    <!-- How far a sync has got. Hidden until one is running: a first sync
+         downloads a whole mailbox and takes long enough to need watching. -->
+    <progress id="sync-progress" max="1" value="0" hidden></progress>
     <!-- A newer release, when there is one. Shown until it is installed or
          put aside; put aside, it stays quiet until the next release. -->
     <span id="update-banner" hidden>

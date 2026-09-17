@@ -39,6 +39,26 @@ pub struct SyncReport {
     pub folders_excluded: usize,
 }
 
+/// Where a sync has got to, for something that wants to show it.
+///
+/// The counts are per folder: how many messages this folder is fetching and
+/// how many of them are in. A caller wanting one number for the account gets
+/// it from `folders_done` plus the fraction of the folder in hand.
+#[derive(Debug, Clone, Default)]
+pub struct SyncProgress {
+    /// The folder being fetched.
+    pub folder: String,
+    /// Folders finished before this one.
+    pub folders_done: usize,
+    /// Folders this sync will visit at all.
+    pub folders_total: usize,
+    /// Messages fetched from this folder so far.
+    pub messages_done: usize,
+    /// Messages this folder has to fetch. Zero until the sizes are in, and
+    /// zero for a folder with nothing new.
+    pub messages_total: usize,
+}
+
 /// The parts of a sync that do not change between folders.
 struct Context<'a> {
     store: &'a Store,
@@ -71,6 +91,21 @@ pub async fn sync_account(
     blobs: &Blobs,
     account_id: AccountId,
 ) -> Result<SyncReport, ProtoError> {
+    sync_account_reporting(client, store, blobs, account_id, &mut |_| {}).await
+}
+
+/// Syncs every selectable folder, calling `progress` as it goes.
+///
+/// A first sync of a real mailbox takes long enough that something has to be
+/// able to show how far along it is. `progress` is called once per folder
+/// before anything is fetched, and again after each batch of messages.
+pub async fn sync_account_reporting(
+    client: &mut ImapClient,
+    store: &Store,
+    blobs: &Blobs,
+    account_id: AccountId,
+    progress: &mut dyn FnMut(SyncProgress),
+) -> Result<SyncReport, ProtoError> {
     let mut report = SyncReport::default();
     // The learned history is loaded once per sync. It changes only when the
     // user files something, which cannot happen mid-sync.
@@ -83,6 +118,10 @@ pub async fn sync_account(
 
     let exclusions = store.folder_exclusions(account_id)?;
 
+    // Which folders this sync will visit is settled before the first one is
+    // fetched: a progress bar needs a denominator, and the skipped ones are
+    // cheap to recognise here.
+    let mut wanted = Vec::new();
     for remote in client.folders().await? {
         if !remote.selectable {
             tracing::debug!(folder = %remote.name, "skipping \\Noselect folder");
@@ -94,7 +133,19 @@ pub async fn sync_account(
             report.folders_excluded += 1;
             continue;
         }
-        sync_folder(client, &ctx, &remote, &mut report).await?;
+        wanted.push(remote);
+    }
+
+    let folders_total = wanted.len();
+    for (folders_done, remote) in wanted.iter().enumerate() {
+        let mut at = SyncProgress {
+            folder: remote.name.clone(),
+            folders_done,
+            folders_total,
+            ..SyncProgress::default()
+        };
+        progress(at.clone());
+        sync_folder(client, &ctx, remote, &mut report, &mut at, progress).await?;
     }
 
     // Only now, with every folder seen. A message that moved was out of its
@@ -112,6 +163,8 @@ async fn sync_folder(
     ctx: &Context<'_>,
     remote: &RemoteFolder,
     report: &mut SyncReport,
+    at: &mut SyncProgress,
+    progress: &mut dyn FnMut(SyncProgress),
 ) -> Result<(), ProtoError> {
     let store = ctx.store;
     let folder_id =
@@ -155,7 +208,7 @@ async fn sync_folder(
         }
     }
 
-    fetch_new(client, ctx, folder_id, &state, report).await?;
+    fetch_new(client, ctx, folder_id, &state, report, at, progress).await?;
 
     // Flag and expunge reconciliation only make sense against something already
     // cached; on a first pass the fetch above has just recorded current state.
@@ -182,6 +235,8 @@ async fn fetch_new(
     // folder, and a second EXAMINE is a needless round trip.
     state: &crate::client::FolderState,
     report: &mut SyncReport,
+    at: &mut SyncProgress,
+    progress: &mut dyn FnMut(SyncProgress),
 ) -> Result<(), ProtoError> {
     let store = ctx.store;
     let after = store.max_uid(folder_id)?;
@@ -201,10 +256,16 @@ async fn fetch_new(
     // memory profile: without it the first sync of a real mailbox holds every
     // message at once. See `plan_batches`.
     let sizes = client.uid_sizes(start).await?;
+    at.messages_total = sizes.len();
+    progress(at.clone());
     for batch in crate::client::plan_batches(&sizes) {
         for message in client.fetch_uids(&batch).await? {
             store_message(ctx, folder_id, message, report)?;
+            at.messages_done += 1;
         }
+        // Once per batch, not per message: a batch is up to 200 messages or
+        // 16 MB, which is often enough to watch and rare enough to be free.
+        progress(at.clone());
     }
 
     Ok(())

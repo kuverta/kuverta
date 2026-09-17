@@ -846,6 +846,7 @@ footer {
 .setup-result.ok { color: #2e9e5b; }
 
 progress { width: 140px; height: 8px; }
+header #sync-progress { width: 90px; flex: none; }
 
 #paper-install-log {
   margin: 8px 0 0;

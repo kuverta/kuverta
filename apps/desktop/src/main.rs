@@ -454,7 +454,13 @@ fn queue(app: State<'_, App>, account: i64) -> Result<Vec<QueuedChange>, String>
 /// thread it never leaves satisfies that without making the store something it
 /// is not.
 #[tauri::command]
-async fn sync(app: State<'_, App>, email: String) -> Result<core_rpc::SyncSummary, String> {
+async fn sync(
+    app: State<'_, App>,
+    email: String,
+    // Where the sync has got to, folder by folder. A first sync downloads a
+    // whole mailbox, and the window has to be able to show that it is moving.
+    on_progress: tauri::ipc::Channel<core_rpc::SyncProgress>,
+) -> Result<core_rpc::SyncSummary, String> {
     let data_dir = app.data_dir.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
@@ -464,7 +470,9 @@ async fn sync(app: State<'_, App>, email: String) -> Result<core_rpc::SyncSummar
             .map_err(fail)?;
         runtime.block_on(async {
             core_rpc::Session::new(data_dir)
-                .sync_account(&email)
+                .sync_account_reporting(&email, |at| {
+                    let _ = on_progress.send(at);
+                })
                 .await
                 .map_err(fail)
         })
