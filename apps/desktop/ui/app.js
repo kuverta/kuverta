@@ -70,6 +70,7 @@ const viewport = el("viewport");
 const spacer = el("spacer");
 const content = el("content");
 const statusBar = el("status");
+const syncProgress = el("sync-progress");
 const reading = el("reading");
 const emptyPane = el("empty");
 const searchBox = el("search");
@@ -1328,9 +1329,17 @@ async function sync() {
   if (state.syncing) return;
   state.syncing = true;
   statusBar.textContent = `${state.email} — syncing…`;
+  showSyncProgress(null);
 
   try {
-    const s = await invoke("sync", { email: state.email });
+    // The percentage counts folders done plus the share of the one in hand,
+    // which is as close to honest as it gets before the sizes are in.
+    const channel = new window.__TAURI__.core.Channel();
+    channel.onmessage = (at) => {
+      if (!state.syncing) return;
+      showSyncProgress(at);
+    };
+    const s = await invoke("sync", { email: state.email, onProgress: channel });
     const parts = [];
     if (s.changes_sent) parts.push(`${s.changes_sent} change(s) sent`);
     if (s.changes_refused) parts.push(`${s.changes_refused} refused`);
@@ -1342,8 +1351,27 @@ async function sync() {
     say(String(err), true);
   } finally {
     state.syncing = false;
+    syncProgress.hidden = true;
     statusBar.textContent = state.email;
   }
+}
+
+/// Shows where the sync is, or hides the bar when passed nothing.
+///
+/// The folder is named rather than counted: "Archive" says more about a sync
+/// sitting still than "folder 7 of 19" does.
+function showSyncProgress(at) {
+  if (!at || at.fraction === null || at.fraction === undefined) {
+    syncProgress.hidden = true;
+    return;
+  }
+  syncProgress.value = at.fraction;
+  syncProgress.hidden = false;
+  const percent = Math.round(at.fraction * 100);
+  const within = at.messages_total
+    ? ` — ${at.messages_done} of ${at.messages_total}`
+    : "";
+  statusBar.textContent = `${state.email} — syncing ${percent}%: ${at.folder}${within}`;
 }
 
 // -- search ----------------------------------------------------------------

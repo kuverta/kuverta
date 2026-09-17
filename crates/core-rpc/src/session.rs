@@ -45,6 +45,49 @@ impl From<core_accounts::AuthError> for RpcError {
     }
 }
 
+/// How far one account's sync has got, on its way to a [`SyncSummary`].
+///
+/// `fraction` is the whole account in one number, for a progress bar: folders
+/// already done, plus how much of the current one is in hand.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SyncProgress {
+    pub email: String,
+    /// The folder being fetched.
+    pub folder: String,
+    pub folders_done: usize,
+    pub folders_total: usize,
+    pub messages_done: usize,
+    /// Messages this folder is fetching; zero until the sizes are in.
+    pub messages_total: usize,
+    /// Between 0 and 1, or null before the first folder is known.
+    pub fraction: Option<f64>,
+}
+
+impl SyncProgress {
+    fn new(email: &str, at: core_proto::SyncProgress) -> Self {
+        // A folder counts as a whole step, and the one in hand counts for the
+        // share of its messages that are in. Without its sizes yet it counts
+        // for nothing, which is the honest answer.
+        let fraction = (at.folders_total > 0).then(|| {
+            let within = if at.messages_total > 0 {
+                at.messages_done as f64 / at.messages_total as f64
+            } else {
+                0.0
+            };
+            ((at.folders_done as f64 + within) / at.folders_total as f64).clamp(0.0, 1.0)
+        });
+        Self {
+            email: email.to_string(),
+            folder: at.folder,
+            folders_done: at.folders_done,
+            folders_total: at.folders_total,
+            messages_done: at.messages_done,
+            messages_total: at.messages_total,
+            fraction,
+        }
+    }
+}
+
 /// What one account's sync did.
 ///
 /// Flattened from the two reports underneath — the changes that went out and
@@ -215,6 +258,18 @@ impl Session {
     /// the changes visible, by observing the server rather than by guessing
     /// what the server did. One command, one coherent result.
     pub async fn sync_account(&self, email: &str) -> Result<SyncSummary> {
+        self.sync_account_reporting(email, |_| {}).await
+    }
+
+    /// The same sync, calling `progress` as folders and messages come in.
+    ///
+    /// A first sync downloads a whole mailbox, which is long enough that the
+    /// caller has to be able to show where it is up to.
+    pub async fn sync_account_reporting(
+        &self,
+        email: &str,
+        mut progress: impl FnMut(SyncProgress),
+    ) -> Result<SyncSummary> {
         let (store, blobs) = self.open()?;
         let account = store
             .account_by_email(email)?
@@ -232,7 +287,14 @@ impl Session {
 
         let flushed =
             core_proto::flush_operations(&mut client, &store, account.id, now_utc()).await?;
-        let report = core_proto::sync_account(&mut client, &store, &blobs, account.id).await?;
+        let report = core_proto::sync_account_reporting(
+            &mut client,
+            &store,
+            &blobs,
+            account.id,
+            &mut |at| progress(SyncProgress::new(&account.email, at)),
+        )
+        .await?;
         client.logout().await.ok();
 
         Ok(SyncSummary {
@@ -752,4 +814,45 @@ fn now_utc() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn at(folders_done: usize, folders_total: usize, done: usize, total: usize) -> SyncProgress {
+        SyncProgress::new(
+            "someone@example.test",
+            core_proto::SyncProgress {
+                folder: "INBOX".into(),
+                folders_done,
+                folders_total,
+                messages_done: done,
+                messages_total: total,
+            },
+        )
+    }
+
+    #[test]
+    fn the_fraction_counts_folders_done_plus_the_one_in_hand() {
+        assert_eq!(at(0, 4, 0, 0).fraction, Some(0.0));
+        assert_eq!(at(2, 4, 0, 0).fraction, Some(0.5), "two of four folders");
+        assert_eq!(
+            at(2, 4, 50, 100).fraction,
+            Some(0.625),
+            "and half the third"
+        );
+        assert_eq!(at(4, 4, 0, 0).fraction, Some(1.0));
+    }
+
+    #[test]
+    fn a_folder_with_no_sizes_yet_counts_for_nothing() {
+        // Guessing would only make the bar go backwards once they arrive.
+        assert_eq!(at(1, 2, 0, 0).fraction, Some(0.5));
+    }
+
+    #[test]
+    fn there_is_no_fraction_before_the_folders_are_known() {
+        assert_eq!(at(0, 0, 0, 0).fraction, None);
+    }
 }
