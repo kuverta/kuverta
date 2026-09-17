@@ -24,7 +24,8 @@ pub struct UpdateInfo {
     pub newer: bool,
     /// The release page.
     pub url: String,
-    /// The macOS disk image, when the release has one.
+    /// The installer for this system, when the release has one: the disk
+    /// image on macOS, the setup program on Windows, the AppImage on Linux.
     pub download_url: Option<String>,
     pub notes: String,
 }
@@ -105,16 +106,32 @@ pub fn is_newer(current: &str, latest: &str) -> bool {
     }
 }
 
+/// The kinds of installer this system can use, best first.
+fn installers(os: &str) -> &'static [&'static str] {
+    match os {
+        "macos" => &[".dmg"],
+        "windows" => &["-setup.exe", ".msi"],
+        // The AppImage runs on any distribution; a .deb only on some.
+        _ => &[".AppImage", ".deb", ".rpm"],
+    }
+}
+
 fn read(current: &str, release: Release) -> Option<UpdateInfo> {
+    read_for(std::env::consts::OS, current, release)
+}
+
+fn read_for(os: &str, current: &str, release: Release) -> Option<UpdateInfo> {
     if release.draft || release.prerelease {
         return None;
     }
     parse_version(&release.tag_name)?;
-    let download_url = release
-        .assets
-        .iter()
-        .find(|asset| asset.name.ends_with(".dmg"))
-        .map(|asset| asset.browser_download_url.clone());
+    let download_url = installers(os).iter().find_map(|kind| {
+        release
+            .assets
+            .iter()
+            .find(|asset| asset.name.ends_with(kind))
+            .map(|asset| asset.browser_download_url.clone())
+    });
     Some(UpdateInfo {
         current: current.to_string(),
         newer: is_newer(current, &release.tag_name),
@@ -197,7 +214,11 @@ mod tests {
             "prerelease": false,
             "assets": [
                 { "name": "kuverta_0.2.0_universal.app.tar.gz", "browser_download_url": "https://example/app.tar.gz" },
-                { "name": "kuverta_0.2.0_universal.dmg", "browser_download_url": "https://example/kuverta.dmg" }
+                { "name": "kuverta_0.2.0_universal.dmg", "browser_download_url": "https://example/kuverta.dmg" },
+                { "name": "kuverta_0.2.0_amd64.deb", "browser_download_url": "https://example/kuverta.deb" },
+                { "name": "kuverta_0.2.0_amd64.AppImage", "browser_download_url": "https://example/kuverta.AppImage" },
+                { "name": "kuverta_0.2.0_x64_en-US.msi", "browser_download_url": "https://example/kuverta.msi" },
+                { "name": "kuverta_0.2.0_x64-setup.exe", "browser_download_url": "https://example/kuverta-setup.exe" }
             ]
         }))
         .unwrap()
@@ -205,13 +226,31 @@ mod tests {
 
     #[test]
     fn a_release_says_where_its_disk_image_is() {
-        let info = read("0.1.0", release("v0.2.0")).unwrap();
+        let info = read_for("macos", "0.1.0", release("v0.2.0")).unwrap();
         assert!(info.newer);
         assert_eq!(info.latest, "0.2.0");
         assert_eq!(
             info.download_url.as_deref(),
             Some("https://example/kuverta.dmg")
         );
+        let windows = read_for("windows", "0.1.0", release("v0.2.0")).unwrap();
+        assert_eq!(
+            windows.download_url.as_deref(),
+            Some("https://example/kuverta-setup.exe")
+        );
+        let linux = read_for("linux", "0.1.0", release("v0.2.0")).unwrap();
+        assert_eq!(
+            linux.download_url.as_deref(),
+            Some("https://example/kuverta.AppImage")
+        );
+
+        // A release without this system's installer still says it exists,
+        // with the release page to go to.
+        let mut mac_only = release("v0.2.0");
+        mac_only.assets.retain(|asset| asset.name.ends_with(".dmg"));
+        let linux = read_for("linux", "0.1.0", mac_only).unwrap();
+        assert!(linux.newer);
+        assert_eq!(linux.download_url, None);
         assert!(info.url.ends_with("/v0.2.0"));
 
         let same = read("0.2.0", release("v0.2.0")).unwrap();
