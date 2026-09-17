@@ -147,10 +147,13 @@ assistant**). Every step can be skipped:
   Apple Mail (the system's Internet Accounts, which macOS only shows to a program
   with Full Disk Access; the assistant links to the setting). Any other address
   gets its servers from a built-in list of common providers, the provider's own
-  autoconfig file, or Mozilla's directory, as Thunderbird does. Passwords are not
-  imported — the other programs keep theirs encrypted — so each is entered once,
-  stored in the keychain, and checked by signing in before the assistant moves on.
-  New accounts start syncing when it finishes.
+  autoconfig file, or Mozilla's directory, as Thunderbird does. Thunderbird's
+  saved passwords come with its accounts: they are encrypted with a key kept in
+  the same profile, so kuverta reads them as Thunderbird does and puts them
+  straight into the keychain — with a primary password set, it asks for that one
+  password instead. Apple Mail's stay where they are, in the login keychain, and
+  are typed once. Every account is signed in to before the assistant moves on,
+  and new ones start syncing when it finishes.
 
 A marker file in the data directory stops it opening by itself again; a store
 that already had accounts before the assistant existed never sees it.
