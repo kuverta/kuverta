@@ -18,6 +18,9 @@ const setup = {
   added: [],
   // Accounts found or looked up, by address, as the mail page shows them.
   found: [],
+  // Thunderbird's primary password, when it has one. Kept only while the
+  // assistant is open, and only so the core can read the saved passwords.
+  primaryPassword: "",
 };
 
 async function openSetup() {
@@ -409,7 +412,7 @@ async function scanAccounts() {
   sources.replaceChildren(node("p", { className: "hint", textContent: "Looking for accounts in your other mail programs…" }));
   let scan;
   try {
-    scan = await invoke("import_accounts");
+    scan = await invoke("import_accounts", { primaryPassword: setup.primaryPassword || null });
   } catch (err) {
     sources.replaceChildren(checkLine("bad", String(err)));
     return;
@@ -426,6 +429,19 @@ async function scanAccounts() {
     return line;
   });
   if (!scan.sources.length) lines.push(checkLine("wait", "No other mail programs found."));
+
+  // Thunderbird's saved passwords are behind its primary password: with it,
+  // nothing has to be typed here at all.
+  if (scan.passwords_locked) {
+    const field = node("input", { type: "password", autocomplete: "off", placeholder: "Thunderbird's primary password" });
+    const unlock = button("Use it", async () => {
+      setup.primaryPassword = field.value;
+      await scanAccounts();
+      renderFound();
+    }, { primary: true });
+    lines.push(node("div", { className: "setup-actions" }, field, unlock));
+    lines.push(node("p", { className: "hint", textContent: "Thunderbird keeps its saved passwords behind a primary password. Enter it and kuverta can take them over; otherwise enter each password below." }));
+  }
   sources.replaceChildren(...lines);
 
   // Ticked from the start only when there are a few to add as they are; a
@@ -517,9 +533,22 @@ function accountCard(entry) {
 
   const fields = node("div", { className: "fields setup-form" });
   fields.hidden = !entry.checked || account.already_added;
+  // Holds the password field, hidden while the found password is used.
+  let typed;
 
-  const password = field(input.auth_method === "oauth2" ? "Password (only if you switch to a password below)" : "Password", "password", "", { type: "password", autocomplete: "off" });
-  fields.append(password);
+  if (account.password_known) {
+    // Nothing to type: the password comes from the program it was found in,
+    // and goes straight into the keychain.
+    const use = node("input", { type: "checkbox", checked: true, name: "use_found_password" });
+    use.onchange = () => {
+      typed.hidden = use.checked;
+    };
+    fields.append(node("label", { className: "setup-check" }, use, `Use the password saved in ${account.source}`));
+  }
+  typed = node("div", {});
+  typed.hidden = account.password_known;
+  typed.append(field(input.auth_method === "oauth2" ? "Password (only if you switch to a password below)" : "Password", "password", "", { type: "password", autocomplete: "off" }));
+  fields.append(typed);
   if (account.password_help) {
     fields.append(node("p", { className: "hint" },
       account.password_help.text, " ",
@@ -609,6 +638,7 @@ async function addChosenAccounts() {
 
   for (const entry of entries) {
     const input = cardInput(entry);
+    const useFound = entry.card.querySelector("[name=use_found_password]")?.checked ?? false;
     const password = entry.card.querySelector("[name=password]").value;
     const status = entry.card.querySelector(".status");
     const show = (text, ok) => {
@@ -618,7 +648,7 @@ async function addChosenAccounts() {
       status.textContent = text;
     };
 
-    if (input.auth_method === "app_password" && !password) {
+    if (input.auth_method === "app_password" && !password && !useFound) {
       show("Enter the password first.", false);
       allOk = false;
       continue;
@@ -630,14 +660,24 @@ async function addChosenAccounts() {
       const settingsNow = await invoke("account_settings");
       const existing = settingsNow.find((a) => a.email.toLowerCase() === input.email.toLowerCase());
       input.id = existing ? existing.id : null;
-      await invoke("save_account", { input });
-      saved = true;
-      if (input.auth_method === "oauth2") {
-        show(`Added. Sign in once in a terminal: kuverta login --email ${input.email}`, true);
-        setup.added.push(input.email);
-        continue;
+      if (useFound && input.auth_method !== "oauth2") {
+        // Saved and given its password in one call: the password never
+        // crosses into this window.
+        await invoke("save_account_with_found_password", {
+          input,
+          primaryPassword: setup.primaryPassword || null,
+        });
+        saved = true;
+      } else {
+        await invoke("save_account", { input });
+        saved = true;
+        if (input.auth_method === "oauth2") {
+          show(`Added. Sign in once in a terminal: kuverta login --email ${input.email}`, true);
+          setup.added.push(input.email);
+          continue;
+        }
+        await invoke("set_password", { email: input.email, password });
       }
-      await invoke("set_password", { email: input.email, password });
       const report = await invoke("verify_account", { email: input.email });
       if (!report.imap_ok) {
         show(`Could not sign in: ${report.imap_error}`, false);
