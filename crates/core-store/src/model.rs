@@ -400,6 +400,9 @@ pub struct ListFilter {
     pub unread_only: bool,
     /// Restrict to messages with a copy in this folder.
     pub folder: Option<FolderId>,
+    /// Oldest first instead of newest first — for reading a folder forwards,
+    /// or reaching the start of a long one without scrolling to the end.
+    pub oldest_first: bool,
 }
 
 /// Names a client might have given the folder behind each RFC 6154 attribute.

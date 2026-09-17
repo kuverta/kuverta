@@ -240,6 +240,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
                 folder: args.get("folder").and_then(Value::as_i64),
+                oldest_first: false,
             };
             let (offset, limit) = (offset(args), limit(args));
             let page = core.messages(account, offset, limit, &filter)?;
@@ -267,7 +268,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
 
         Tool::CategoryCounts => {
             let counts: Map<String, Value> = core
-                .category_counts(int(args, "account")?)?
+                .category_counts(int(args, "account")?, None)?
                 .into_iter()
                 .map(|(category, count)| (category, json!(count)))
                 .collect();
