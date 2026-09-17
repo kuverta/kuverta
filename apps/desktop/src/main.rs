@@ -50,20 +50,32 @@ fn accounts(app: State<'_, App>) -> Result<Vec<AccountView>, String> {
     app.core.lock().unwrap().accounts().map_err(fail)
 }
 
+/// How the list is narrowed and ordered, as the window sends it: one value,
+/// because they are asked and answered together.
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ListQuery {
+    category: Option<String>,
+    #[serde(default)]
+    unread_only: bool,
+    folder: Option<i64>,
+    #[serde(default)]
+    oldest_first: bool,
+}
+
 #[tauri::command]
 fn messages(
     app: State<'_, App>,
     account: i64,
     offset: usize,
     limit: usize,
-    category: Option<String>,
-    unread_only: bool,
-    folder: Option<i64>,
+    filter: ListQuery,
 ) -> Result<MessagePage, String> {
     let filter = ListFilter {
-        category,
-        unread_only,
-        folder,
+        category: filter.category,
+        unread_only: filter.unread_only,
+        folder: filter.folder,
+        oldest_first: filter.oldest_first,
     };
     app.core
         .lock()
@@ -97,11 +109,15 @@ fn folders(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::FolderView
 }
 
 #[tauri::command]
-fn category_counts(app: State<'_, App>, account: i64) -> Result<Vec<(String, usize)>, String> {
+fn category_counts(
+    app: State<'_, App>,
+    account: i64,
+    folder: Option<i64>,
+) -> Result<Vec<(String, usize)>, String> {
     app.core
         .lock()
         .unwrap()
-        .category_counts(account)
+        .category_counts(account, folder)
         .map_err(fail)
 }
 

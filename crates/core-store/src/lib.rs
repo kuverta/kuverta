@@ -808,8 +808,9 @@ impl Store {
                     m.has_attachments, m.snippet, c.category, c.confidence,
                     {UNREAD_PREDICATE}
              {from}
-             ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC
-             LIMIT ? OFFSET ?"
+             ORDER BY COALESCE(m.date_utc, 0) {order}, m.id {order}
+             LIMIT ? OFFSET ?",
+            order = if filter.oldest_first { "ASC" } else { "DESC" }
         ))?;
 
         args.push(Box::new(limit as i64));
@@ -871,16 +872,32 @@ impl Store {
     /// has several rows, and joining them all counted it under every category
     /// it had ever been given — which `DISTINCT` hid within a category but not
     /// across them.
-    pub fn category_counts(&self, account_id: AccountId) -> Result<Vec<(String, usize)>> {
+    /// In `folder`, when one is given: a category means something different
+    /// in the Inbox than in Sent, and the sidebar counts what the list would
+    /// show.
+    pub fn category_counts(
+        &self,
+        account_id: AccountId,
+        folder: Option<FolderId>,
+    ) -> Result<Vec<(String, usize)>> {
+        let in_folder = match folder {
+            Some(_) => {
+                "AND EXISTS (SELECT 1 FROM message_location fl
+                             WHERE fl.message_id = m.id AND fl.folder_id = ?2)"
+            }
+            None => "",
+        };
         let mut stmt = self.conn.prepare(&format!(
             "SELECT c.category, COUNT(m.id)
              FROM message m
              {CURRENT_CATEGORY_JOIN}
-             WHERE m.account_id = ?1 AND c.category IS NOT NULL
+             WHERE m.account_id = ?1 AND c.category IS NOT NULL {in_folder}
              GROUP BY c.category
              ORDER BY 2 DESC, 1"
         ))?;
-        let rows = stmt.query_map(params![account_id], |row| {
+        let mut args: Vec<i64> = vec![account_id];
+        args.extend(folder);
+        let rows = stmt.query_map(rusqlite::params_from_iter(args), |row| {
             Ok((row.get(0)?, row.get::<_, i64>(1)? as usize))
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

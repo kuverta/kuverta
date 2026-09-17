@@ -105,6 +105,11 @@ const state = {
   // Page offsets already requested, so a slow fetch is not asked for twice.
   requested: new Set(),
   selected: -1,
+  // Rows picked out beside the cursor, by index, for acting on several at
+  // once. Empty means "just the one under the cursor".
+  selection: new Set(),
+  // Where a shift-range starts.
+  anchor: -1,
   searching: false,
   pool: [],
   firstRendered: -1,
@@ -126,6 +131,25 @@ function setPostOrder(value) {
     localStorage.setItem("postOrder", value);
   } catch {
     // A preference: without storage it lasts until the window closes.
+  }
+}
+
+/// Which way mail is sorted by date. Newest first is what a mailbox is for;
+/// oldest first is for working through a folder from the start.
+let mailOrder = (() => {
+  try {
+    return localStorage.getItem("mailOrder") === "oldest" ? "oldest" : "newest";
+  } catch {
+    return "newest";
+  }
+})();
+
+function setMailOrder(value) {
+  mailOrder = value;
+  try {
+    localStorage.setItem("mailOrder", value);
+  } catch {
+    // As above: it lasts until the window closes.
   }
 }
 
@@ -151,9 +175,12 @@ async function loadPage(offset) {
           account: state.account,
           offset,
           limit: PAGE,
-          category: state.filter.category,
-          unreadOnly: state.filter.unreadOnly,
-          folder: state.filter.folder,
+          filter: {
+            category: state.filter.category,
+            unreadOnly: state.filter.unreadOnly,
+            folder: state.filter.folder,
+            oldestFirst: mailOrder === "oldest",
+          },
         });
 
     // The total can move under us while a sync is running, so it is taken
@@ -325,11 +352,25 @@ async function refreshSidebar() {
     );
   }
 
-  renderCategories(await invoke("category_counts", { account: state.account }));
+  renderCategories(
+    await invoke("category_counts", {
+      account: state.account,
+      folder: state.filter.folder,
+    }),
+  );
+}
+
+/// What the categories are counted over, so a count that changed with the
+/// folder is not read as mail going missing.
+function categoriesHeading() {
+  if (state.postbox) return "Categories";
+  const folder = state.folders.find((f) => f.id === state.filter.folder);
+  return folder ? `Categories in ${folder.label}` : "Categories";
 }
 
 /// The categories, with counts, as filters — for mail or for post.
 function renderCategories(counts) {
+  sidebar.categoriesHeading.textContent = categoriesHeading();
   sidebar.categories.textContent = "";
   // Unread-only filters mail in the store. Post's read state is kuverta's own
   // and no filter Paperless can apply, so a postbox shows its unread count on
@@ -379,6 +420,18 @@ function renderScope() {
   if (state.filter.category) parts.push(state.filter.category);
   if (state.filter.unreadOnly) parts.push("unread");
 
+  const picked = state.selection.size;
+  if (picked > 1) {
+    const many = document.createElement("span");
+    many.textContent = `${picked} picked`;
+    many.className = "picked-count";
+    scopeBar.append(many);
+    const drop = document.createElement("button");
+    drop.textContent = "unpick";
+    drop.onclick = clearSelection;
+    scopeBar.append(drop);
+  }
+
   const label = document.createElement("span");
   const letters = `letter${state.total === 1 ? "" : "s"}`;
   label.textContent = parts.length
@@ -397,6 +450,28 @@ function renderScope() {
       await reload();
     };
     scopeBar.append(clear);
+  }
+
+  // Mail is sorted by date; which end it starts at is the choice.
+  if (!state.postbox) {
+    const toggle = document.createElement("span");
+    toggle.className = "order";
+    for (const [value, text, title] of [
+      ["newest", "newest", "Newest mail at the top"],
+      ["oldest", "oldest", "Oldest mail at the top"],
+    ]) {
+      const button = document.createElement("button");
+      button.textContent = text;
+      button.title = title;
+      if (mailOrder === value) button.className = "active";
+      button.onclick = async () => {
+        if (mailOrder === value) return;
+        setMailOrder(value);
+        await reload();
+      };
+      toggle.append(button);
+    }
+    scopeBar.append(toggle);
   }
 
   // Post has two dates worth sorting by: when the letter was written, and when
@@ -741,6 +816,7 @@ function render(force = false) {
     }
     node.row.hidden = false;
     node.row.classList.toggle("selected", index === state.selected);
+    node.row.classList.toggle("picked", state.selection.has(index));
 
     if (!row) {
       // The page is still in flight. A placeholder keeps the row height
@@ -940,18 +1016,66 @@ for (const tab of el("reading-tabs").querySelectorAll("[data-view]")) {
   tab.onclick = () => setReadingView(tab.dataset.view);
 }
 
-function select(index) {
-  if (state.total === 0) return;
-  state.selected = Math.max(0, Math.min(index, state.total - 1));
+/// Which rows an action applies to: the picked ones, or the one under the
+/// cursor when nothing is picked.
+function actingOn() {
+  const picked = [...state.selection].filter((index) => index < state.total).sort((a, b) => a - b);
+  return picked.length ? picked : state.selected >= 0 ? [state.selected] : [];
+}
 
-  // Keep the selection in view, which is what makes j/k usable at all.
+function clearSelection() {
+  if (!state.selection.size) return;
+  state.selection.clear();
+  state.anchor = -1;
+  render(true);
+}
+
+/// Everything from the anchor to `index`, which is what shift means in every
+/// list: the block between where you started and where you are now.
+function selectRange(index) {
+  if (state.total === 0) return;
+  index = Math.max(0, Math.min(index, state.total - 1));
+  if (state.anchor < 0) state.anchor = state.selected >= 0 ? state.selected : index;
+  const [from, to] = state.anchor <= index ? [state.anchor, index] : [index, state.anchor];
+  state.selection = new Set();
+  for (let at = from; at <= to; at++) state.selection.add(at);
+  state.selected = index;
+  keepInView();
+  render(true);
+  renderScope();
+}
+
+/// Adds or removes one row, for picking out several that are not together.
+function toggleSelected(index) {
+  if (state.total === 0) return;
+  if (state.selection.has(index)) state.selection.delete(index);
+  else state.selection.add(index);
+  state.selected = index;
+  state.anchor = index;
+  keepInView();
+  render(true);
+  renderScope();
+}
+
+function keepInView() {
   const top = state.selected * ROW_HEIGHT;
   const bottom = top + ROW_HEIGHT;
   if (top < viewport.scrollTop) viewport.scrollTop = top;
   else if (bottom > viewport.scrollTop + viewport.clientHeight) {
     viewport.scrollTop = bottom - viewport.clientHeight;
   }
+}
+
+function select(index) {
+  if (state.total === 0) return;
+  state.selection.clear();
+  state.anchor = -1;
+  state.selected = Math.max(0, Math.min(index, state.total - 1));
+
+  // Keep the selection in view, which is what makes j/k usable at all.
+  keepInView();
   render(true);
+  renderScope();
   if (!reading.hidden) openSelected();
 }
 
@@ -975,16 +1099,33 @@ function say(message, isError = false) {
 /// window — so this is the list agreeing with what was asked for rather than
 /// with the store. The next sync reconciles, and `undo` puts the row back.
 async function act(command, args, describe) {
-  const row = state.rows.get(state.selected);
-  if (!row) return;
+  const indexes = actingOn();
+  const rows = indexes.map((index) => state.rows.get(index)).filter(Boolean);
+  if (!rows.length) return;
 
-  try {
-    await invoke(command, { account: state.account, id: row.id, ...args });
-    say(`${describe} — z to undo`);
-    await reload({ keepPosition: true });
-  } catch (err) {
-    say(String(err), true);
+  let done = 0;
+  let failed = null;
+  // One at a time: each is its own queued change with its own undo, and a
+  // server that refuses the third should not lose the first two.
+  for (const row of rows) {
+    try {
+      await invoke(command, { account: state.account, id: row.id, ...args });
+      done += 1;
+    } catch (err) {
+      failed = err;
+      break;
+    }
   }
+  state.selection.clear();
+  state.anchor = -1;
+
+  if (done) {
+    const many = done > 1 ? ` ${done} messages` : "";
+    say(failed ? `${describe}${many}, then: ${failed}` : `${describe}${many} — z to undo`, Boolean(failed));
+  } else if (failed) {
+    say(String(failed), true);
+  }
+  await reload({ keepPosition: true });
 }
 
 async function archive() {
@@ -1244,11 +1385,16 @@ const KEYS = {
   ArrowDown: () => select(state.selected + 1),
   k: () => select(state.selected - 1),
   ArrowUp: () => select(state.selected - 1),
+  // Shift with the same keys picks a block, as it does in a file list.
+  J: () => selectRange(state.selected + 1),
+  K: () => selectRange(state.selected - 1),
+  x: () => toggleSelected(state.selected),
   Enter: openSelected,
   o: openSelected,
   e: mailOnly(archive),
   "#": mailOnly(trash),
   Delete: mailOnly(trash),
+  Backspace: mailOnly(trash),
   u: toggleRead,
   z: mailOnly(undo),
   r: sync,
@@ -1298,8 +1444,17 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
   if (event.key === "Escape") {
+    clearSelection();
     reading.hidden = true;
     emptyPane.hidden = false;
+    return;
+  }
+
+  // Shift with an arrow key reports the same key, so the block is taken here
+  // rather than from the table.
+  if (event.shiftKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    event.preventDefault();
+    selectRange(state.selected + (event.key === "ArrowDown" ? 1 : -1));
     return;
   }
 
@@ -1318,8 +1473,17 @@ window.addEventListener("resize", () => {
 
 content.addEventListener("click", (event) => {
   const index = state.pool.findIndex((node) => node.row === event.target.closest(".row"));
-  if (index >= 0) {
-    select(state.firstRendered + index);
+  if (index < 0) return;
+  const at = state.firstRendered + index;
+  // Shift takes the block between here and where the last one was picked;
+  // cmd or ctrl adds one on its own. Either way the message is not opened —
+  // picking several and reading one are different intentions.
+  if (event.shiftKey) {
+    selectRange(at);
+  } else if (event.metaKey || event.ctrlKey) {
+    toggleSelected(at);
+  } else {
+    select(at);
     openSelected();
   }
 });

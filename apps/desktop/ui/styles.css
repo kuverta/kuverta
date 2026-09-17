@@ -921,3 +921,9 @@ progress { width: 140px; height: 8px; }
 }
 
 #update-banner #update-download { background: var(--accent-fg); color: var(--accent); }
+
+/* A row picked out for acting on several at once. The cursor's own row keeps
+   the accent fill; these sit behind it. */
+.row.picked { background: var(--selected); }
+.row.picked.selected { background: var(--accent); }
+#scope .picked-count { font-weight: 600; }

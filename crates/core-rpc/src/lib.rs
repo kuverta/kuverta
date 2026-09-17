@@ -468,8 +468,12 @@ impl Core {
     }
 
     /// How many messages fall in each rules category, for the filter bar.
-    pub fn category_counts(&self, account: AccountId) -> Result<Vec<(String, usize)>> {
-        Ok(self.store.category_counts(account)?)
+    pub fn category_counts(
+        &self,
+        account: AccountId,
+        folder: Option<i64>,
+    ) -> Result<Vec<(String, usize)>> {
+        Ok(self.store.category_counts(account, folder)?)
     }
 
     // -- changes -----------------------------------------------------------
