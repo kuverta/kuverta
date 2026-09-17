@@ -165,3 +165,7 @@ jobs:
           tauriScript: tauri
           args: ${{ matrix.args }}
           releaseId: ${{ needs.release.outputs.id }}
+          # GitHub answered one upload with a 500 while three systems uploaded
+          # to the same release. An upload that lands twice is fine: the action
+          # deletes an asset of the same name before replacing it.
+          retryAttempts: 3
