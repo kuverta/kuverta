@@ -1148,6 +1148,8 @@ mod tests {
         finish(&dir).unwrap();
         let status = core.setup_status(&dir).unwrap();
         assert!(!status.first_run && status.finished);
+        // Closed first: Windows does not delete a database that is open.
+        drop(core);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
