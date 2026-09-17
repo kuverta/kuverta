@@ -293,16 +293,18 @@ mod tests {
             data_dir_from(None, false, None, None, os("/home/erika"), None),
             PathBuf::from("/home/erika/.local/share/kuverta")
         );
+        // Absolute on every system; "/data" is not absolute on Windows.
+        let xdg = std::env::temp_dir().join("xdg-data");
         assert_eq!(
             data_dir_from(
                 None,
                 false,
                 None,
-                os("/data"),
+                Some(xdg.clone().into_os_string()),
                 os("/home/erika"),
                 Some("dev")
             ),
-            PathBuf::from("/data/kuverta-dev")
+            xdg.join("kuverta-dev")
         );
         assert_eq!(
             data_dir_from(None, false, None, os("relative"), os("/home/erika"), None),
