@@ -767,10 +767,41 @@ fn known_addresses(app: &State<'_, App>) -> Result<Vec<String>, String> {
         .collect())
 }
 
+/// What other mail programs on this computer know. `primary_password` is
+/// Thunderbird's, when it has one; empty otherwise.
 #[tauri::command]
-async fn import_accounts(app: State<'_, App>) -> Result<core_rpc::setup::ImportScan, String> {
+async fn import_accounts(
+    app: State<'_, App>,
+    primary_password: Option<String>,
+) -> Result<core_rpc::setup::ImportScan, String> {
     let existing = known_addresses(&app)?;
-    Ok(core_rpc::setup::scan_imports(&existing).await)
+    Ok(
+        core_rpc::setup::scan_imports(&existing, primary_password.as_deref().unwrap_or_default())
+            .await,
+    )
+}
+
+/// Saves an imported account with the password the program it came from has,
+/// so nothing has to be typed again. The password goes from that program to
+/// the keychain without passing through the window.
+#[tauri::command]
+fn save_account_with_found_password(
+    app: State<'_, App>,
+    input: core_rpc::AccountInput,
+    primary_password: Option<String>,
+) -> Result<i64, String> {
+    let password =
+        core_rpc::setup::stored_password(&input, primary_password.as_deref().unwrap_or_default())
+            .ok_or_else(|| {
+            format!(
+                "no saved password was found for {} — enter it here",
+                input.email
+            )
+        })?;
+    let core = app.core.lock().unwrap();
+    let id = core.save_account(&input).map_err(fail)?;
+    core.set_password(&input.email, &password).map_err(fail)?;
+    Ok(id)
 }
 
 #[tauri::command]
@@ -969,6 +1000,7 @@ fn main() {
             connect_paperless,
             install_paperless,
             import_accounts,
+            save_account_with_found_password,
             lookup_account,
             open_external,
             check_for_update,
