@@ -11,6 +11,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
+# cargo is not on PATH in a non-login shell, which is what make starts.
+export PATH="$HOME/.cargo/bin:$PATH"
+
 VERSION="${1:-}"
 if [[ ! $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
     echo "usage: tools/release.sh <version>, e.g. 0.2.0" >&2
@@ -42,7 +45,12 @@ VERSION="$VERSION" perl -0pi -e 's/^version = "[^"]*"/version = "$ENV{VERSION}"/
 cargo update --workspace --offline >/dev/null 2>&1 || cargo update --workspace >/dev/null
 
 git add Cargo.toml Cargo.lock
-git commit -m "Release $VERSION"
+# The first release can be of the version already in Cargo.toml.
+if git diff --cached --quiet; then
+    echo "Cargo.toml already says $VERSION; tagging the current commit"
+else
+    git commit -m "Release $VERSION"
+fi
 git tag -a "$TAG" -m "kuverta $VERSION"
 
 echo
