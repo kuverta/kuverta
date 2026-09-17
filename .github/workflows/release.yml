@@ -61,17 +61,35 @@ jobs:
       # Signing and notarisation happen only when the secrets are there.
       # Without them the app is signed ad hoc, which Apple Silicon requires to
       # run it at all, and macOS asks once before opening it (see
-      # docs/releasing.md).
-      - name: Build and upload
-        uses: tauri-apps/tauri-action@v0
+      # docs/releasing.md). A secret that is not set arrives as an empty
+      # string, and Tauri takes an empty APPLE_CERTIFICATE for a certificate
+      # and fails to import it — so only the ones that are set are passed on.
+      - name: Apple signing, if configured
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY \
+                      APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            value="${!name}"
+            if [ -n "$value" ]; then
+              {
+                echo "$name<<KUVERTA_EOF"
+                echo "$value"
+                echo "KUVERTA_EOF"
+              } >> "$GITHUB_ENV"
+              echo "$name is set"
+            fi
+          done
+
+      - name: Build and upload
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: apps/desktop
           tauriScript: tauri
