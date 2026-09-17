@@ -29,14 +29,22 @@ plate     = [[-17, back], [-34, 34]];
 // Camera board: 25 x 24, about 1 mm thick, lens looking down through the window.
 // The window runs out to the way in as a channel, so the lens barrel and whatever
 // else stands out of the board's underside slide along it instead of hitting the floor.
-cam_board = [26.5, 24.8];   // generous, so it goes in easily; it slides in along +Y
-board_t   = 2.2;            // board, plus room for what is soldered on it
-window    = [16, 18];       // what the camera looks through, and the channel's width
-lead_in   = 1.5;            // funnel at the mouth of the slot
+// Everything here is well past what the board needs: the board lies on the floor
+// of the slot under its own weight, so slack costs nothing but makes it go in.
+cam_board = [28.5, 24.8];   // generous, so it goes in easily; it slides in along +Y
+board_t   = 6;              // board, plus room for what is soldered on either side
+window    = [24, 18];       // what the camera looks through, and the channel's width
+lead_in   = 2.5;            // funnel at the mouth of the slot
 tray_z    = -12;            // underside of the tray
 floor_t   = 2;
 lip       = 3;              // how far the lips reach in over the board's edges
-bump      = 0.8;            // stops the board sliding back out of the taller slot
+bump      = 1.5;            // stops the board sliding back out
+
+// The slot is wider than the room between the bar's side and the back of this
+// part, so the tray sits over a little, keeping a wall on the back side. It
+// takes the lens 1.5 mm off the bar's centre line, which against a field of
+// view of 340 mm is nothing.
+cam_x     = -(cam_board[0] / 2 + 1.5 - back);
 
 web_y     = 20;
 bar_screws = [-13, 13];
@@ -52,23 +60,26 @@ module posts() for (x = [-1, 1], y = [-1, 1])
 
 module web() translate([inner / 2, -web_y, tray_z]) cube([wall, 2 * web_y, top_z + wall - tray_z]);
 
-module tray() translate([-cam_board[0] / 2 - lip, -cam_board[1] / 2 - lip, tray_z])
-    cube([cam_board[0] / 2 + lip + back, cam_board[1] + 2 * lip, floor_t + board_t + wall / 2]);
+module tray() translate([cam_x - cam_board[0] / 2 - lip, -cam_board[1] / 2 - lip, tray_z])
+    cube([cam_board[0] / 2 + lip + back - cam_x, cam_board[1] + 2 * lip,
+          floor_t + board_t + wall / 2]);
 
 difference() {
     union() { plate(); posts(); web(); tray(); }
 
     // the bar itself, and the slot the camera board slides into
     translate([-far, -far, 0]) cube([far + inner / 2, 2 * far, top_z]);
-    translate([-cam_board[0] / 2, -cam_board[1] / 2, slot_z]) cube([cam_board[0], far, board_t]);
+    translate([cam_x - cam_board[0] / 2, -cam_board[1] / 2, slot_z])
+        cube([cam_board[0], far, board_t]);
     hull() for (d = [0, lead_in])
-        translate([-cam_board[0] / 2 - d, cam_board[1] / 2 + lip - d, slot_z - d])
+        translate([cam_x - cam_board[0] / 2 - d, cam_board[1] / 2 + lip - d, slot_z - d])
             cube([cam_board[0] + 2 * d, 0.01, board_t + 2 * d]);
     // over the board: open, apart from a lip along each side
-    translate([-cam_board[0] / 2 + lip, -cam_board[1] / 2 + lip, slot_z + board_t])
+    translate([cam_x - cam_board[0] / 2 + lip, -cam_board[1] / 2 + lip, slot_z + board_t])
         cube([cam_board[0] - 2 * lip, far, wall]);
     // what the camera looks through
-    translate([-window[0] / 2, -window[1] / 2, tray_z - 1]) cube([window[0], far, floor_t + 2]);
+    translate([cam_x - window[0] / 2, -window[1] / 2, tray_z - 1])
+        cube([window[0], far, floor_t + 2]);
 
     for (y = bar_screws) translate([inner / 2 - 1, y, profile / 2]) rotate([0, 90, 0]) cylinder(d = screw_d, h = wall + 2);
     for (x = [-1, 1], y = [-1, 1])
@@ -78,5 +89,5 @@ difference() {
 
 // A bump under each edge of the board, near the way in, to keep it from sliding out.
 for (x = [-1, 1])
-    translate([x * (cam_board[0] / 2 - 2), cam_board[1] / 2 - 2, slot_z])
+    translate([cam_x + x * (cam_board[0] / 2 - 2), cam_board[1] / 2 - 2, slot_z])
         cylinder(d = 2, h = bump, $fn = 16);
