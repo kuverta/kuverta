@@ -1583,11 +1583,23 @@ post, then mail accounts, each skippable.
   from the Dock gets `/usr/bin:/bin:/usr/sbin:/sbin`, which has neither Homebrew
   nor Docker; the Docker CLI also needs its credential helpers on the `PATH` it
   runs with.
-- **Accounts are imported without passwords.** Thunderbird's `prefs.js` has every
-  server; its passwords are encrypted in `logins.json`, and Apple's are in the
-  keychain under Apple's own access rules. Each password is entered once and the
-  account is signed in to before the assistant moves on; one that fails stays on
-  the page with the server's answer.
+- **Thunderbird's passwords are imported with its accounts.** Its `prefs.js` has
+  every server, and `logins.json` the passwords — encrypted with a key in
+  `key4.db` beside it, protected by an empty password unless a primary password
+  is set. That is NSS's scheme, and the profile is the secret: anything that can
+  read the folder can read the passwords, which is what Thunderbird itself does
+  at startup. So kuverta reads them the same way (PBKDF2-SHA256 and AES-256-CBC
+  for the key, 3DES or AES for each login) rather than asking for nineteen
+  passwords again. With a primary password, the assistant asks for that one and
+  passes it down; it is never stored. A password found this way goes from the
+  profile into the keychain inside one call — `save_account_with_found_password`
+  — so it never crosses into the window, which is the rule the settings form
+  follows too.
+  Apple Mail's passwords are **not** imported: they are in the login keychain
+  under Mail's own access rules, and reading one raises a system prompt per
+  account. Those are typed once, as before.
+  Every account is signed in to before the assistant moves on; one that fails
+  stays on the page with the server's answer.
 - **Apple Mail is the system's Internet Accounts**, `~/Library/Accounts/
   Accounts4.sqlite`, which macOS shows only to a program with Full Disk Access.
   The assistant says so and links to the setting. The database is read from a
@@ -1604,6 +1616,9 @@ post, then mail accounts, each skippable.
 
 - Thunderbird import against a real profile with 19 IMAP accounts, and the
   parser against a canned `prefs.js` and `profiles.ini`.
+- Reading that profile's 46 saved passwords, which needed both keys such a
+  profile keeps: 24 bytes for the logins written when 3DES was used, 32 for the
+  AES ones. The round trip is tested against a login this code encrypts itself.
 - Server lookup through a provider's own autoconfig file and through ISPDB.
 - Ollama status against Ollama 0.34.1; the download stream's parsing against
   Ollama's documented lines.
