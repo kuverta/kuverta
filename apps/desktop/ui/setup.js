@@ -737,13 +737,36 @@ async function showSummary() {
 
 /// One account after another: each sync writes to the store, and two at once
 /// would only wait on each other.
+///
+/// The note under the summary becomes a progress bar while this runs. A first
+/// sync downloads the whole mailbox, so this is the longest wait in the
+/// assistant, and the one most worth showing.
 async function syncInTurn(emails) {
+  const note = el("setup-sync-note");
+  const bar = node("progress", { max: 1, value: 0 });
+  const label = node("span", { textContent: "" });
+  note.replaceChildren(label, bar);
+
+  let done = 0;
   for (const email of emails) {
+    const which = emails.length > 1 ? ` (${done + 1} of ${emails.length})` : "";
+    label.textContent = `Downloading mail for ${email}${which} — starting…`;
+    const channel = new window.__TAURI__.core.Channel();
+    channel.onmessage = (at) => {
+      if (at.fraction === null || at.fraction === undefined) return;
+      bar.value = at.fraction;
+      const within = at.messages_total ? `, ${at.messages_done} of ${at.messages_total}` : "";
+      label.textContent =
+        `Downloading mail for ${email}${which} — ${Math.round(at.fraction * 100)}%: ${at.folder}${within} `;
+    };
     try {
-      const summary = await invoke("sync", { email });
+      const summary = await invoke("sync", { email, onProgress: channel });
       say(`${email}: ${summary?.inserted ?? 0} messages downloaded`);
     } catch (err) {
       say(`${email}: ${err}`, true);
     }
+    done += 1;
   }
+
+  note.textContent = `Mail for ${done} account${done === 1 ? "" : "s"} is downloaded.`;
 }
