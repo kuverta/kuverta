@@ -63,15 +63,21 @@ rendering, and the Paperless half.
 
 ## Installing
 
-On a Mac (Apple Silicon or Intel, macOS 11 or later):
+Everything is on the [latest release](https://github.com/kuverta/kuverta/releases/latest).
 
-1. Download the `.dmg` from the
-   [latest release](https://github.com/kuverta/kuverta/releases/latest).
-2. Open it and drag **kuverta** into **Applications**.
-3. Open kuverta. If macOS says it "cannot be verified" (releases are not
-   notarised yet), open **System Settings → Privacy & Security** and press
-   **Open Anyway** next to kuverta — once. Or, in a terminal:
-   `xattr -dr com.apple.quarantine /Applications/kuverta.app`.
+**macOS** (Apple Silicon or Intel, macOS 11 or later): download the `.dmg`, open
+it and drag **kuverta** into **Applications**. If macOS says it "cannot be
+verified" (releases are not notarised yet), open **System Settings → Privacy &
+Security** and press **Open Anyway** next to kuverta — once. Or, in a terminal:
+`xattr -dr com.apple.quarantine /Applications/kuverta.app`.
+
+**Linux** (x86-64): the `.AppImage` runs on most distributions —
+`chmod +x kuverta_*.AppImage` and start it. Or install the `.deb`
+(`sudo apt install ./kuverta_*.deb`) or the `.rpm`. The keychain is the Secret
+Service, so GNOME Keyring or KWallet has to be running.
+
+**Windows** (x86-64, 10 or later, not tested yet): run the `-setup.exe`. SmartScreen
+warns about unsigned programs: *More info → Run anyway*.
 
 The setup assistant opens on the first run. kuverta says in its header when a
 newer release is out; updating is downloading it and replacing the app.

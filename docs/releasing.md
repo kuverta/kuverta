@@ -1,8 +1,20 @@
 # Releasing kuverta
 
 A release is a tag. Pushing `vX.Y.Z` runs `.github/workflows/release.yml`, which
-builds a universal macOS app (Apple Silicon and Intel) and attaches the `.dmg` to
-a **draft** release. Nothing is public until the draft is published.
+makes a **draft** release and builds into it:
+
+| System | Built on | Installers |
+| --- | --- | --- |
+| macOS 11+ (Apple Silicon and Intel) | macos-14 | `.dmg`, and the `.app` as `.tar.gz` |
+| Linux (x86-64) | ubuntu-22.04 | `.AppImage`, `.deb`, `.rpm` |
+| Windows 10+ (x86-64) | windows-latest | `-setup.exe`, `.msi` |
+
+Nothing is public until the draft is published. The three builds are separate: if
+one fails, the others still upload, and building the same tag again fills the
+same draft.
+
+Windows is compiled on every push (the `windows` job in CI) but has not been
+used by anyone yet; the draft's text says so.
 
 ## Once, before the first release
 
@@ -57,6 +69,13 @@ To try the bundle locally first: `make bundle` (needs
 `cargo install tauri-cli --version "^2" --locked`), which leaves `kuverta.app` and
 a `.dmg` for this Mac in `target/release/bundle/`.
 
+## What each system still lacks
+
+- **Windows and Linux are unsigned.** Windows SmartScreen warns about an
+  unsigned program (*More info → Run anyway*); signing needs a code-signing
+  certificate. Linux packages are not signed either.
+- **Linux on ARM** is not built.
+
 ## What a release does not include yet
 
 - **The `kuverta` command-line tool.** OAuth2 sign-in (`kuverta login`) still
@@ -64,7 +83,6 @@ a `.dmg` for this Mac in `target/release/bundle/`.
 - **Automatic updates.** The app says a release exists and links to the
   download; installing is dragging the new app over the old one. Tauri's updater
   would need an update signing key and a manifest per release.
-- **Linux and Windows builds.** The code builds there; the workflow does not yet.
 
 ## Dev and installed side by side
 
@@ -73,7 +91,7 @@ not:
 
 | | Installed app / `./run.sh` | Dev (`./run.sh --dev`, `make e2e`, …) |
 | --- | --- | --- |
-| Data | `~/.local/share/kuverta` | `.devdata` in the repository |
+| Data | `~/.local/share/kuverta` (Windows: `%APPDATA%\kuverta`) | `.devdata` in the repository |
 | Keychain service | `kuverta`, `kuverta-oauth` | `kuverta-dev`, `kuverta-oauth-dev` |
 | Window title | kuverta | kuverta — dev |
 | Update check | twice a day | off (Settings → Check for updates still asks) |

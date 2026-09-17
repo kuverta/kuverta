@@ -240,17 +240,13 @@ pub struct SpecialFolders {
 
 /// Where the store lives unless told otherwise.
 ///
-/// `KUVERTA_DATA_DIR`, else `~/.local/share/kuverta`. In one place because
-/// the window and the agent surface must open the same store — an assistant
+/// `KUVERTA_DATA_DIR`, else the instance's directory — see
+/// [`core_accounts::default_data_dir`]. The same answer everywhere because the
+/// window and the agent surface must open the same store — an assistant
 /// reading a different mailbox from the one on screen would be worse than no
 /// assistant.
 pub fn default_data_dir() -> std::path::PathBuf {
-    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
-        return std::path::PathBuf::from(dir);
-    }
-    std::env::var_os("HOME")
-        .map(|home| std::path::PathBuf::from(home).join(".local/share/kuverta"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".kuverta"))
+    core_accounts::default_data_dir()
 }
 
 /// A change that has been asked for but not yet sent.
