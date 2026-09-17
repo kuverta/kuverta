@@ -14,6 +14,7 @@
 
 pub mod apple_mail;
 pub mod autoconfig;
+pub mod passwords;
 pub mod thunderbird;
 
 use std::io::{BufRead, BufReader};
@@ -837,6 +838,9 @@ pub struct FoundAccount {
     /// Whether the servers are known. An Apple Mail account whose provider
     /// nobody could name has only its address.
     pub complete: bool,
+    /// Whether the program it came from has the password too, so that nobody
+    /// has to type it again. The password itself stays in the core.
+    pub password_known: bool,
     pub password_help: Option<PasswordHelp>,
     pub notes: Vec<String>,
 }
@@ -856,6 +860,9 @@ pub struct ImportSource {
 pub struct ImportScan {
     pub accounts: Vec<FoundAccount>,
     pub sources: Vec<ImportSource>,
+    /// Thunderbird has saved passwords but keeps them behind its primary
+    /// password, which the assistant asks for and passes back.
+    pub passwords_locked: bool,
 }
 
 fn help_for(input: &AccountInput) -> Option<PasswordHelp> {
@@ -880,6 +887,7 @@ fn found(source: &str, input: AccountInput, existing: &[String]) -> FoundAccount
             .any(|email| email.eq_ignore_ascii_case(&input.email)),
         password_help: help_for(&input),
         complete: !input.imap_host.is_empty(),
+        password_known: false,
         source: source.to_string(),
         full_name: None,
         input,
@@ -887,11 +895,68 @@ fn found(source: &str, input: AccountInput, existing: &[String]) -> FoundAccount
     }
 }
 
+/// A Thunderbird login that matches an account, by its IMAP server and user
+/// name — what Thunderbird itself signs in with.
+fn login_for<'a>(
+    logins: &'a [passwords::Login],
+    input: &AccountInput,
+) -> Option<&'a passwords::Login> {
+    let host = input.imap_host.trim().to_ascii_lowercase();
+    if host.is_empty() {
+        return None;
+    }
+    let wanted = format!("imap://{host}");
+    let user = input
+        .username
+        .clone()
+        .unwrap_or_else(|| input.email.clone())
+        .to_ascii_lowercase();
+    let local = input
+        .email
+        .split('@')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    logins.iter().find(|login| {
+        login.origin.eq_ignore_ascii_case(&wanted) && {
+            let name = login.username.to_ascii_lowercase();
+            name == user || name == local || name == input.email.to_ascii_lowercase()
+        }
+    })
+}
+
+/// The passwords Thunderbird has saved, across its profiles, and whether any
+/// profile keeps them behind a primary password.
+fn thunderbird_logins(primary_password: &str) -> (Vec<passwords::Login>, bool) {
+    let mut found = Vec::new();
+    let mut locked = false;
+    for root in thunderbird::roots() {
+        for profile in thunderbird::profiles(&root).unwrap_or_default() {
+            match passwords::read(&profile, primary_password) {
+                Ok(logins) => found.extend(logins),
+                Err(passwords::PasswordError::NeedsPrimaryPassword)
+                | Err(passwords::PasswordError::WrongPrimaryPassword) => locked = true,
+                Err(passwords::PasswordError::None) => {}
+                Err(err) => tracing::warn!(%err, "could not read Thunderbird's passwords"),
+            }
+        }
+    }
+    (found, locked)
+}
+
+/// The password another program has for an account, for the keychain. Never
+/// returned to a window.
+pub fn stored_password(input: &AccountInput, primary_password: &str) -> Option<String> {
+    let (logins, _) = thunderbird_logins(primary_password);
+    login_for(&logins, input).map(|login| login.password.clone())
+}
+
 /// Every mail account Thunderbird and Apple Mail know on this computer.
 /// `existing` are the addresses kuverta already has.
-pub async fn scan_imports(existing: &[String]) -> ImportScan {
+pub async fn scan_imports(existing: &[String], primary_password: &str) -> ImportScan {
     let mut accounts: Vec<FoundAccount> = Vec::new();
     let mut sources = Vec::new();
+    let (logins, passwords_locked) = thunderbird_logins(primary_password);
     let add = |account: FoundAccount, accounts: &mut Vec<FoundAccount>| {
         let seen = accounts
             .iter()
@@ -921,6 +986,7 @@ pub async fn scan_imports(existing: &[String]) -> ImportScan {
             });
             for account in list {
                 let mut entry = found("Thunderbird", account.input, existing);
+                entry.password_known = login_for(&logins, &entry.input).is_some();
                 entry.full_name = account.full_name;
                 if account.was_cleartext {
                     entry.notes.push(
@@ -981,7 +1047,11 @@ pub async fn scan_imports(existing: &[String]) -> ImportScan {
         }
     }
 
-    ImportScan { accounts, sources }
+    ImportScan {
+        accounts,
+        sources,
+        passwords_locked,
+    }
 }
 
 async fn apple_account(account: apple_mail::AppleAccount, existing: &[String]) -> FoundAccount {
@@ -1151,6 +1221,56 @@ mod tests {
         // Closed first: Windows does not delete a database that is open.
         drop(core);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_saved_login_is_matched_to_its_account_by_server_and_user() {
+        let login = |origin: &str, user: &str| passwords::Login {
+            origin: origin.to_string(),
+            username: user.to_string(),
+            password: "secret".to_string(),
+        };
+        let logins = vec![
+            login("imap://mail.example.de", "erika"),
+            login("smtp://mail.example.de", "erika"),
+            login("imap://imap.gmail.com", "erika.m@gmail.com"),
+        ];
+        let account = |email: &str, host: &str, user: Option<&str>| AccountInput {
+            email: email.into(),
+            imap_host: host.into(),
+            username: user.map(str::to_string),
+            ..AccountInput::default()
+        };
+
+        // The user name Thunderbird signs in with, the address, or its local
+        // part — all three are seen in the wild.
+        assert!(login_for(
+            &logins,
+            &account("erika@example.de", "mail.example.de", Some("erika"))
+        )
+        .is_some());
+        assert!(login_for(
+            &logins,
+            &account("erika@example.de", "mail.example.de", None)
+        )
+        .is_some());
+        assert!(login_for(
+            &logins,
+            &account("erika.m@gmail.com", "imap.gmail.com", None)
+        )
+        .is_some());
+        // The incoming server only: a login for the outgoing one is not it.
+        assert!(login_for(
+            &logins,
+            &account("erika@example.de", "smtp.example.de", None)
+        )
+        .is_none());
+        assert!(login_for(
+            &logins,
+            &account("someone@example.de", "mail.example.de", None)
+        )
+        .is_none());
+        assert!(login_for(&logins, &account("erika@example.de", "", None)).is_none());
     }
 
     #[test]
