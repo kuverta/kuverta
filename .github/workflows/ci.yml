@@ -85,3 +85,29 @@ jobs:
       - name: Dump server logs on failure
         if: failure()
         run: docker compose -f docker/docker-compose.yml logs
+
+  # The app is released for Windows too, and nothing else here builds there.
+  # Compiling is the check: the dev servers are Linux containers.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        shell: bash
+        run: rustup toolchain install
+
+      # The TLS library's assembly needs NASM to build for Windows.
+      - uses: ilammy/setup-nasm@v1
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: windows-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-cargo-
+
+      - name: Build and test the app's crates
+        run: cargo test -p core-accounts -p core-rpc --lib && cargo build -p kuverta-desktop -p kuverta-cli

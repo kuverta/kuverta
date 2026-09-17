@@ -128,16 +128,49 @@ pub fn service_for(base: &str, instance: Option<&str>) -> String {
 }
 
 /// Where an instance keeps its data unless `KUVERTA_DATA_DIR` says otherwise:
-/// `~/.local/share/kuverta`, or `~/.local/share/kuverta-dev` for the dev one.
+/// `~/.local/share/kuverta` on macOS and Linux (or under `XDG_DATA_HOME`),
+/// `%APPDATA%\kuverta` on Windows — and `kuverta-dev` for the dev instance.
 pub fn default_data_dir() -> std::path::PathBuf {
-    if let Some(dir) = std::env::var_os("KUVERTA_DATA_DIR") {
-        return std::path::PathBuf::from(dir);
+    let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
+    data_dir_from(
+        var("KUVERTA_DATA_DIR"),
+        cfg!(windows),
+        var("APPDATA"),
+        var("XDG_DATA_HOME"),
+        var("HOME").or_else(|| var("USERPROFILE")),
+        instance().as_deref(),
+    )
+}
+
+/// `default_data_dir` for given values, so it can be tested on any system.
+pub fn data_dir_from(
+    explicit: Option<std::ffi::OsString>,
+    windows: bool,
+    appdata: Option<std::ffi::OsString>,
+    xdg_data_home: Option<std::ffi::OsString>,
+    home: Option<std::ffi::OsString>,
+    instance: Option<&str>,
+) -> std::path::PathBuf {
+    use std::path::PathBuf;
+    if let Some(dir) = explicit {
+        return PathBuf::from(dir);
     }
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-    home.join(".local/share")
-        .join(service_for("kuverta", instance().as_deref()))
+    let name = service_for("kuverta", instance);
+    let root = if windows {
+        appdata.map(PathBuf::from).or_else(|| {
+            home.clone()
+                .map(|home| PathBuf::from(home).join("AppData/Roaming"))
+        })
+    } else {
+        xdg_data_home
+            .map(PathBuf::from)
+            .filter(|dir| dir.is_absolute())
+            .or_else(|| home.map(|home| PathBuf::from(home).join(".local/share")))
+    };
+    // With no home at all there is nowhere better than here, and saying so in
+    // the name beats a store that appears in whatever directory this ran from.
+    root.map(|root| root.join(&name))
+        .unwrap_or_else(|| PathBuf::from(format!(".{name}")))
 }
 
 /// App-specific password held in the OS keychain.
@@ -248,6 +281,52 @@ mod tests {
         assert_eq!(
             service_for("kuverta-oauth", Some("dev")),
             "kuverta-oauth-dev"
+        );
+    }
+
+    #[test]
+    fn each_system_keeps_its_data_where_it_should() {
+        use std::path::PathBuf;
+        let os = |s: &str| Some(std::ffi::OsString::from(s));
+
+        assert_eq!(
+            data_dir_from(None, false, None, None, os("/home/erika"), None),
+            PathBuf::from("/home/erika/.local/share/kuverta")
+        );
+        assert_eq!(
+            data_dir_from(
+                None,
+                false,
+                None,
+                os("/data"),
+                os("/home/erika"),
+                Some("dev")
+            ),
+            PathBuf::from("/data/kuverta-dev")
+        );
+        assert_eq!(
+            data_dir_from(None, false, None, os("relative"), os("/home/erika"), None),
+            PathBuf::from("/home/erika/.local/share/kuverta"),
+            "the XDG spec ignores a relative XDG_DATA_HOME"
+        );
+        assert_eq!(
+            data_dir_from(
+                None,
+                true,
+                os(r"C:\Users\erika\AppData\Roaming"),
+                None,
+                None,
+                None
+            ),
+            PathBuf::from(r"C:\Users\erika\AppData\Roaming").join("kuverta")
+        );
+        assert_eq!(
+            data_dir_from(os("/elsewhere"), true, os("C:/x"), None, None, Some("dev")),
+            PathBuf::from("/elsewhere")
+        );
+        assert_eq!(
+            data_dir_from(None, false, None, None, None, None),
+            PathBuf::from(".kuverta")
         );
     }
 
