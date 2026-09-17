@@ -27,13 +27,16 @@ post_hole = 2.2;
 plate     = [[-17, back], [-34, 34]];
 
 // Camera board: 25 x 24, about 1 mm thick, lens looking down through the window.
-cam_board = [25.6, 24.8];   // with clearance; it slides in along +Y
-board_t   = 1.4;
-window    = [16, 18];
+// The window runs out to the way in as a channel, so the lens barrel and whatever
+// else stands out of the board's underside slide along it instead of hitting the floor.
+cam_board = [26.5, 24.8];   // generous, so it goes in easily; it slides in along +Y
+board_t   = 2.2;            // board, plus room for what is soldered on it
+window    = [16, 18];       // what the camera looks through, and the channel's width
+lead_in   = 1.5;            // funnel at the mouth of the slot
 tray_z    = -12;            // underside of the tray
 floor_t   = 2;
 lip       = 3;              // how far the lips reach in over the board's edges
-bump      = 0.3;            // stops the board sliding back out
+bump      = 0.8;            // stops the board sliding back out of the taller slot
 
 web_y     = 20;
 bar_screws = [-13, 13];
@@ -58,11 +61,14 @@ difference() {
     // the bar itself, and the slot the camera board slides into
     translate([-far, -far, 0]) cube([far + inner / 2, 2 * far, top_z]);
     translate([-cam_board[0] / 2, -cam_board[1] / 2, slot_z]) cube([cam_board[0], far, board_t]);
+    hull() for (d = [0, lead_in])
+        translate([-cam_board[0] / 2 - d, cam_board[1] / 2 + lip - d, slot_z - d])
+            cube([cam_board[0] + 2 * d, 0.01, board_t + 2 * d]);
     // over the board: open, apart from a lip along each side
     translate([-cam_board[0] / 2 + lip, -cam_board[1] / 2 + lip, slot_z + board_t])
         cube([cam_board[0] - 2 * lip, far, wall]);
     // what the camera looks through
-    translate([-window[0] / 2, -window[1] / 2, tray_z - 1]) cube([window[0], window[1], floor_t + 2]);
+    translate([-window[0] / 2, -window[1] / 2, tray_z - 1]) cube([window[0], far, floor_t + 2]);
 
     for (y = bar_screws) translate([inner / 2 - 1, y, profile / 2]) rotate([0, 90, 0]) cylinder(d = screw_d, h = wall + 2);
     for (x = [-1, 1], y = [-1, 1])
