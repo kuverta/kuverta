@@ -1875,3 +1875,88 @@ fn categories_are_counted_in_the_folder_they_are_asked_about() {
         vec![("transactional".to_string(), 1)]
     );
 }
+
+#[test]
+fn a_message_moved_but_not_yet_synced_leaves_the_list_it_was_moved_out_of() {
+    // What someone sees: press delete, read "moved to Trash", and watch the
+    // message sit there until the next sync. A move waits in the undo window
+    // before it is sent, and the list showed the store rather than the ask.
+    let (store, account, message, inbox) = store_with_message();
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+    let all = ListFilter::default();
+    let in_folder = |folder| ListFilter {
+        folder: Some(folder),
+        ..Default::default()
+    };
+    let total = |filter: &ListFilter| store.message_window(account, 0, 10, filter).unwrap().total;
+
+    assert_eq!(total(&all), 1);
+    assert_eq!(total(&in_folder(inbox)), 1);
+    assert_eq!(total(&in_folder(archive)), 0);
+
+    let operation = store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+
+    // Gone from the Inbox and from every list, and already in the folder it
+    // is on its way to.
+    assert_eq!(total(&in_folder(inbox)), 0);
+    assert_eq!(total(&all), 0);
+    assert_eq!(total(&in_folder(archive)), 1);
+
+    // Undone, it is back where it was.
+    assert!(store.cancel_operation(operation).unwrap());
+    assert_eq!(total(&in_folder(inbox)), 1);
+    assert_eq!(total(&all), 1);
+    assert_eq!(total(&in_folder(archive)), 0);
+}
+
+#[test]
+fn a_queued_flag_change_leaves_the_message_where_it_is() {
+    // Only moves take a message out of a list; marking it read does not.
+    let (store, account, message, inbox) = store_with_message();
+    store
+        .enqueue_operation(&NewOperation {
+            kind: OperationKind::Flag {
+                flag: "\\Seen".into(),
+                set: true,
+            },
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+
+    assert_eq!(
+        store
+            .message_window(account, 0, 10, &ListFilter::default())
+            .unwrap()
+            .total,
+        1
+    );
+}
+
+#[test]
+fn a_folder_badge_counts_a_queued_move_where_it_is_going() {
+    // Otherwise the sidebar still counted the message in the Inbox it had
+    // just been moved out of, and the badge disagreed with the list.
+    let (store, account, message, inbox) = store_with_message();
+    // Created so there is somewhere for the move to land.
+    store.upsert_folder(account, "Archive", None).unwrap();
+    let count = |name: &str| {
+        let folders = store.folder_summaries(account).unwrap();
+        let folder = folders.into_iter().find(|f| f.name == name).unwrap();
+        (folder.total, folder.unread)
+    };
+
+    assert_eq!(count("INBOX"), (1, 1));
+    assert_eq!(count("Archive"), (0, 0));
+
+    let operation = store
+        .enqueue_operation(&queued_move(account, message, inbox))
+        .unwrap();
+    assert_eq!(count("INBOX"), (0, 0));
+    assert_eq!(count("Archive"), (1, 1));
+
+    assert!(store.cancel_operation(operation).unwrap());
+    assert_eq!(count("INBOX"), (1, 1));
+    assert_eq!(count("Archive"), (0, 0));
+}

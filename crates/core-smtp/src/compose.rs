@@ -666,7 +666,15 @@ mod tests {
 
         let rendered = String::from_utf8(built.rfc822.clone()).unwrap();
         assert!(!rendered.contains("secret@example.com"));
-        assert!(!rendered.to_lowercase().contains("bcc"));
+        // A header line, not the word anywhere: a Message-Id is hex, and
+        // "bcc" turns up in hex often enough to fail this test by chance.
+        assert!(
+            !header_block(&built)
+                .lines()
+                .any(|line| line.to_lowercase().starts_with("bcc:")),
+            "{}",
+            header_block(&built)
+        );
 
         assert!(built.recipients.contains(&"secret@example.com".to_string()));
         assert!(built.recipients.contains(&"jane@example.com".to_string()));

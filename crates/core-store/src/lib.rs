@@ -776,19 +776,45 @@ impl Store {
             clauses.push("c.category = ?".into());
             args.push(Box::new(category.clone()));
         }
+
+        // The folder this list is of, by name, for the queue below: a queued
+        // move names its destination rather than pointing at a row.
+        let listing = match filter.folder {
+            Some(folder) => self.folder(folder)?.map(|folder| folder.name),
+            None => None,
+        };
+
         if let Some(folder_id) = filter.folder {
             // A message is "in" a folder if any of its copies is. On Gmail a
-            // message is routinely in several at once.
+            // message is routinely in several at once. A message on its way
+            // here — moved but not yet synced — counts too.
             clauses.push(
-                "EXISTS (SELECT 1 FROM message_location fl
-                         WHERE fl.message_id = m.id AND fl.folder_id = ?)"
+                "(EXISTS (SELECT 1 FROM message_location fl
+                          WHERE fl.message_id = m.id AND fl.folder_id = ?)
+                  OR EXISTS (SELECT 1 FROM operation o
+                             WHERE o.message_id = m.id AND o.state = 'pending'
+                               AND o.kind = 'move' AND o.target_folder = ?))"
                     .into(),
             );
             args.push(Box::new(folder_id));
+            args.push(Box::new(listing.clone()));
         }
+
         if filter.unread_only {
             clauses.push(UNREAD_PREDICATE.into());
         }
+
+        // And gone from wherever it was moved out of. A move waits in the undo
+        // window before it is sent, and until this the message sat in the list
+        // it had just been moved out of: "moved to Trash", and there it still
+        // was. Undo cancels the operation and it comes back.
+        clauses.push(
+            "NOT EXISTS (SELECT 1 FROM operation o
+                         WHERE o.message_id = m.id AND o.state = 'pending'
+                           AND o.kind = 'move' AND o.target_folder IS NOT ?)"
+                .into(),
+        );
+        args.push(Box::new(listing.clone()));
 
         let from = format!(
             "FROM message m
@@ -839,9 +865,22 @@ impl Store {
     /// otherwise would be adding up to more than the mailbox holds.
     pub fn folder_summaries(&self, account_id: AccountId) -> Result<Vec<FolderSummary>> {
         let mut stmt = self.conn.prepare(&format!(
+            // A message with a queued move counts where it is going, not
+            // where it still sits, so the badge agrees with the list.
+            // Messages here, less those with a queued move elsewhere, plus
+            // those on their way here — a subquery, because a message coming
+            // here has no copy in this folder to join on yet. The badge then
+            // agrees with the list under it.
             "SELECT f.id, f.name, f.special_use,
-                    COUNT(DISTINCT l.message_id),
-                    COUNT(DISTINCT CASE WHEN {UNREAD_PREDICATE} THEN m.id END)
+                    COUNT(DISTINCT CASE WHEN {STAYS_HERE} THEN l.message_id END)
+                    + {COMING_HERE},
+                    COUNT(DISTINCT CASE WHEN {STAYS_HERE} AND {UNREAD_PREDICATE}
+                                        THEN m.id END)
+                    + (SELECT COUNT(DISTINCT o.message_id) FROM operation o
+                       JOIN message m ON m.id = o.message_id
+                       WHERE o.account_id = f.account_id AND o.state = 'pending'
+                         AND o.kind = 'move' AND o.target_folder = f.name
+                         AND {UNREAD_PREDICATE})
              FROM folder f
              LEFT JOIN message_location l ON l.folder_id = f.id
              LEFT JOIN message m ON m.id = l.message_id
@@ -1567,6 +1606,16 @@ const CURRENT_CATEGORY_JOIN: &str = "\
                    c2.id DESC
           LIMIT 1
       )";
+
+/// A message whose queued move is not to this folder has left it already.
+const STAYS_HERE: &str = "NOT EXISTS (SELECT 1 FROM operation o
+                                      WHERE o.message_id = m.id AND o.state = 'pending'
+                                        AND o.kind = 'move' AND o.target_folder IS NOT f.name)";
+
+/// How many messages are on their way to this folder.
+const COMING_HERE: &str = "(SELECT COUNT(DISTINCT o.message_id) FROM operation o
+                            WHERE o.account_id = f.account_id AND o.state = 'pending'
+                              AND o.kind = 'move' AND o.target_folder = f.name)";
 
 const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
                                             WHERE ul.message_id = m.id
