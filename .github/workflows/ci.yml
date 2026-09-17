@@ -59,6 +59,22 @@ jobs:
           docker compose -f docker/docker-compose.yml logs
           exit 1
 
+      # Paperless sets up its database on first start, which takes longer
+      # than a cached build: the tests that sign in to it failed when they
+      # got there first.
+      - name: Wait for Paperless
+        run: |
+          for _ in $(seq 1 90); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/documents/ || true)
+            if [ "$code" = "401" ]; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Paperless did not start in time"
+          docker compose -f docker/docker-compose.yml logs paperless
+          exit 1
+
       # Required, not optional: without this a broken compose file would let the
       # integration tests silently skip and the build would still look green.
       - name: Test
