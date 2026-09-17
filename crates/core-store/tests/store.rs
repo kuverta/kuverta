@@ -1485,7 +1485,7 @@ fn a_reclassified_message_is_counted_under_one_category_only() {
     let id = classified(&store, account, "newsletter");
     user_says(&store, id, "marketing");
 
-    let counts = store.category_counts(account).unwrap();
+    let counts = store.category_counts(account, None).unwrap();
     let total: usize = counts.iter().map(|(_, n)| n).sum();
 
     assert_eq!(total, 1, "one message should be counted once: {counts:?}");
@@ -1778,4 +1778,100 @@ fn removing_an_address_removes_its_corrections() {
     store.delete_paper_mailbox(home).unwrap();
 
     assert!(store.paper_learned().unwrap().is_empty());
+}
+
+#[test]
+fn a_window_can_be_read_from_the_oldest_end() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    for n in 0..3i64 {
+        store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("o-{n}@example.com")),
+                    subject: Some(format!("message {n}")),
+                    date_utc: Some(1_700_000_000 + n),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: inbox,
+                    uid: n as u32 + 1,
+                    flags: String::new(),
+                }),
+            )
+            .unwrap();
+    }
+    let subjects = |oldest_first| {
+        store
+            .message_window(
+                account,
+                0,
+                10,
+                &ListFilter {
+                    oldest_first,
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+            .messages
+            .into_iter()
+            .map(|listed| listed.summary.subject.unwrap_or_default())
+            .collect::<Vec<_>>()
+    };
+
+    assert_eq!(subjects(false), ["message 2", "message 1", "message 0"]);
+    assert_eq!(subjects(true), ["message 0", "message 1", "message 2"]);
+}
+
+#[test]
+fn categories_are_counted_in_the_folder_they_are_asked_about() {
+    // A category means something different in the Inbox than in Sent, and the
+    // sidebar counts what the list would show.
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let sent = store.upsert_folder(account, "Sent", None).unwrap();
+
+    for (n, folder) in [(0, inbox), (1, inbox), (2, sent)] {
+        let (id, _) = store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("c-{n}@example.com")),
+                    subject: Some(format!("message {n}")),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: folder,
+                    uid: n as u32 + 1,
+                    flags: String::new(),
+                }),
+            )
+            .unwrap();
+        store
+            .record_verdict(
+                id,
+                &Verdict {
+                    category: "transactional".into(),
+                    confidence: Some(0.9),
+                    source: ClassifierSource::Rules,
+                    model: None,
+                    latency_ms: Some(0),
+                },
+            )
+            .unwrap();
+    }
+
+    assert_eq!(
+        store.category_counts(account, None).unwrap(),
+        vec![("transactional".to_string(), 3)]
+    );
+    assert_eq!(
+        store.category_counts(account, Some(inbox)).unwrap(),
+        vec![("transactional".to_string(), 2)]
+    );
+    assert_eq!(
+        store.category_counts(account, Some(sent)).unwrap(),
+        vec![("transactional".to_string(), 1)]
+    );
 }
