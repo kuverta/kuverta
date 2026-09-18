@@ -448,6 +448,12 @@ CREATE TABLE task_proposal (
 );
 CREATE INDEX task_proposal_pending ON task_proposal (account_id, state);
 "#,
+    // v16 — which rules decided. A rules verdict made by older rules — or
+    // from headers kuverta had not stored yet — is decided again when the
+    // rules change; this says which verdicts are behind.
+    r#"
+ALTER TABLE classification ADD COLUMN rules_version INTEGER NOT NULL DEFAULT 1;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

@@ -265,6 +265,16 @@ enum Command {
         #[arg(long, default_value_t = 2)]
         min: i64,
     },
+    /// File mail again with today's rules: what older rules filed, or what
+    /// was filed before kuverta kept every header it now reads. Corrections
+    /// and model verdicts are left alone.
+    Reclassify {
+        #[arg(long)]
+        email: Option<String>,
+        /// Only say what would change.
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// A message's attachments: listed, or one saved with --save.
     Attachments {
         /// The message, by its id in the store (`kuverta list` shows them).
@@ -744,6 +754,43 @@ async fn main() -> Result<()> {
             }
             if runs.is_empty() {
                 println!("no tasks on this account");
+            }
+            Ok(())
+        }
+        Command::Reclassify { email, dry_run } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let address = store
+                .accounts()?
+                .into_iter()
+                .find(|a| a.id == account)
+                .map(|a| a.email)
+                .context("the account has gone")?;
+            let session = core_rpc::Session::new(&data_dir);
+            while session.backfill_headers(&address, 2_000)? > 0 {}
+            let mut total = core_rpc::Reclassified::default();
+            let mut moves: std::collections::BTreeMap<(String, String), usize> = Default::default();
+            loop {
+                let step = session.reclassify(&address, 2_000, !dry_run)?;
+                total.examined += step.examined;
+                total.changed += step.changed;
+                for (from, to, n) in step.moves {
+                    *moves.entry((from, to)).or_default() += n;
+                }
+                if dry_run || step.remaining == 0 {
+                    break;
+                }
+                eprintln!("  {} done, {} to go", total.examined, step.remaining);
+            }
+            let mut moves: Vec<_> = moves.into_iter().collect();
+            moves.sort_by(|a, b| b.1.cmp(&a.1));
+            println!(
+                "{} message(s) looked at, {} {}",
+                total.examined,
+                total.changed,
+                if dry_run { "would change" } else { "changed" }
+            );
+            for ((from, to), n) in moves {
+                println!("  {n:>6}  {from:<14} → {to}");
             }
             Ok(())
         }

@@ -57,6 +57,7 @@ registration, `--auth oauth2 --client-id …`, then `login`.
 | `list [-n 20]` | the most recent messages, numbered |
 | `search <query>` | full-text search: each word as the start of a word, in any order, spellings like *eSIM*/*e-SIM* both ways; `'"exact phrase"'` for a phrase |
 | `attachments --id <id> [--save <n>] [--out <dir>]` | a message's attachments, or save one (never overwriting) |
+| `reclassify [--dry-run]` | file mail again with the current rules, from each message's stored copy; `--dry-run` says what would move where. Corrections and model verdicts are left alone. |
 | `triage [--category …]` | each message's category as the rules filed it; optionally only one category |
 | `status` | what is in the store |
 

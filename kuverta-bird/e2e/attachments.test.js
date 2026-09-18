@@ -176,6 +176,15 @@ test('the assistant shows the mail it found as a card, attachments and all', asy
     'login.html',
   ]);
 
+  // The answer's Markdown is shown as such, and what it quotes stays text.
+  const answer = page.locator('#chat-log .chat-msg.assistant').last();
+  assert.equal(await answer.locator('strong').first().innerText(), 'Found:');
+  assert.equal(await answer.locator('ol > li').count(), 2);
+  assert.equal(await answer.locator('em').innerText(), 'attached');
+  assert.equal(await answer.locator('img').count(), 0);
+  assert.match(await answer.locator('ol > li').first().innerText(), /<img src=x onerror=/);
+  assert.equal(await page.evaluate(() => window.pwned), undefined);
+
   // Straight to the QR code, from the chat.
   await card.locator('.attachment-chip', { hasText: 'eSIM QR.png' }).click();
   await page.waitForFunction(() => document.getElementById('attachment-image')?.naturalWidth === 1);

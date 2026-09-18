@@ -284,3 +284,31 @@ fn a_provider_is_ollama_or_openai_compatible_and_nothing_else() {
         Err(AiError::Url(_))
     ));
 }
+
+#[tokio::test]
+async fn an_assistant_answer_cut_off_by_the_length_limit_says_so() {
+    let (base, seen) = serve(|_, _, _| {
+        (
+            200,
+            json!({ "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": "4. Nalina Hussein, Kreis Pinneberg — asks you to" },
+                "finish_reason": "length",
+            }] }),
+        )
+    });
+    let reply = OpenAiCompatible::new(&base, Some("sk-test".into()))
+        .unwrap()
+        .converse(
+            "deepseek-chat",
+            &[core_ai::Turn::User {
+                content: "Summarise my unread mail from people.".into(),
+            }],
+            &[],
+        )
+        .await
+        .unwrap();
+    assert!(reply.truncated);
+    // Room for a long summary before it comes to that.
+    assert!(seen.recv().unwrap().body["max_tokens"].as_u64().unwrap() >= 8_000);
+}
