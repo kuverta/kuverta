@@ -89,6 +89,131 @@ const AUTOMATED_LOCAL_PARTS = [
   'cron',
   'jenkins',
   'ci',
+  'cpanel',
+  'nextcloud',
+  'wordpress',
+  'jira',
+  'confluence',
+];
+
+/**
+ * The same, written as one word inside a longer address:
+ * `cloudplatform-noreply`, `nichtantworten.jamobil`, `keine-antwort`.
+ */
+const AUTOMATED_WORDS = [
+  'noreply',
+  'donotreply',
+  'nichtantworten',
+  'keineantwort',
+  'noanswer',
+  'mailerdaemon',
+];
+
+/**
+ * Local parts of an address that belong to a role or a department: nobody
+ * in particular writes from `info@` or `kundenbetreuung@`.
+ */
+const ROLE_LOCAL_PARTS = [
+  'info',
+  'service',
+  'services',
+  'kundenservice',
+  'kundenbetreuung',
+  'kunden',
+  'kontakt',
+  'contact',
+  'hello',
+  'hallo',
+  'team',
+  'support',
+  'help',
+  'hilfe',
+  'news',
+  'newsletter',
+  'mailing',
+  'marketing',
+  'sales',
+  'vertrieb',
+  'shop',
+  'store',
+  'order',
+  'orders',
+  'bestellung',
+  'bestellungen',
+  'rechnung',
+  'rechnungen',
+  'invoice',
+  'invoices',
+  'billing',
+  'buchhaltung',
+  'account',
+  'accounts',
+  'konto',
+  'security',
+  'sicherheit',
+  'update',
+  'updates',
+  'office',
+  'online',
+  'webmaster',
+  'admin',
+  'feedback',
+  'community',
+  'events',
+  'presse',
+  'press',
+  'jobs',
+  'karriere',
+  'careers',
+  'booking',
+  'bookings',
+  'reservierung',
+  'reservations',
+  'tickets',
+  'customer',
+  'customerservice',
+  'care',
+  'mitglieder',
+  'members',
+  'verwaltung',
+  'zentrale',
+  'empfang',
+  'abo',
+  'aboservice',
+  'leserservice',
+];
+
+/**
+ * First labels of a sending domain that exist to send bulk mail:
+ * `news.traderepublic.com`, `email.feverup.com`, `send.barneysfarm.com`.
+ * Not `mail.` or `nachrichten.`: platforms relay what people write through
+ * those (a buyer on Kleinanzeigen, a landlord on ImmoScout).
+ */
+const BULK_SUBDOMAINS = [
+  'news',
+  'newsletter',
+  'newsletters',
+  'email',
+  'e',
+  'em',
+  'send',
+  'mailing',
+  'mailings',
+  'mailer',
+  'marketing',
+  'promo',
+  'promotions',
+  'angebote',
+  'campaign',
+  'campaigns',
+  'mkt',
+  'crm',
+  'info',
+  'loyalty',
+  'offers',
+  'deals',
+  'mc',
+  'sg',
 ];
 
 /** Display names that are a department, not a person. */
@@ -137,8 +262,12 @@ export function evaluate(facts) {
   // Whether this arrived as bulk mail at all. Personal heuristics are
   // suppressed when it did: newsletters are routinely sent from a real
   // person's name to one recipient, and would otherwise read as personal.
+  const bulkDomain = facts.fromAddr != null ? bulkSubdomain(facts.fromAddr) : null;
   const bulk =
-    facts.listId != null || precedenceIsBulk || facts.listUnsubscribe != null;
+    facts.listId != null ||
+    precedenceIsBulk ||
+    facts.listUnsubscribe != null ||
+    bulkDomain != null;
 
   // -- bulk shape ---------------------------------------------------------
 
@@ -174,6 +303,17 @@ export function evaluate(facts) {
     reasons.push({ rule: 'header.list_unsubscribe', detail, category, weight });
   }
 
+  if (bulkDomain != null && facts.listId == null && facts.listUnsubscribe == null) {
+    // Weaker than a List-Unsubscribe: the name of a domain is a habit, not a
+    // header that exists for the purpose.
+    reasons.push({
+      rule: 'sender.bulk_domain',
+      detail: `sent from ${bulkDomain}, a domain for bulk mail`,
+      category: Category.Marketing,
+      weight: 1.5,
+    });
+  }
+
   // -- automation ---------------------------------------------------------
 
   if (facts.autoSubmitted != null) {
@@ -189,11 +329,7 @@ export function evaluate(facts) {
 
   if (facts.fromAddr != null) {
     const local = facts.fromAddr.split('@')[0].toLowerCase();
-    if (
-      AUTOMATED_LOCAL_PARTS.some(
-        (needle) => local === needle || local.startsWith(`${needle}-`),
-      )
-    ) {
+    if (isAutomatedAddress(local)) {
       reasons.push({
         rule: 'sender.automated',
         detail: `sent from the unattended address ${local}@…`,
@@ -211,7 +347,9 @@ export function evaluate(facts) {
       rule: 'subject.transactional',
       detail: `subject mentions “${transactionalSubject}”`,
       category: Category.Transactional,
-      weight: 3.0,
+      // Above a List-Id and its List-Unsubscribe together: a bill sent
+      // through a utility's mailing system is still the bill.
+      weight: 4.0,
     });
 
     // A document attached to something that reads like a bill is usually
@@ -278,7 +416,11 @@ export function evaluate(facts) {
       });
     }
 
-    if (facts.fromName != null) {
+    const organisation =
+      (facts.fromAddr != null &&
+        (isRoleAddress(facts.fromAddr) || isCompanyAddress(facts.fromAddr))) ||
+      (facts.fromName != null && namesTheDomain(facts.fromName, facts.fromAddr));
+    if (facts.fromName != null && !organisation) {
       if (looksLikeAPerson(facts.fromName, facts.fromAddr)) {
         reasons.push({
           rule: 'sender.person',
@@ -289,7 +431,7 @@ export function evaluate(facts) {
       }
     }
 
-    if (facts.recipientCount === 1) {
+    if (facts.recipientCount === 1 && !organisation) {
       reasons.push({
         rule: 'recipients.single',
         detail: 'addressed only to you',
@@ -300,6 +442,66 @@ export function evaluate(facts) {
   }
 
   return reasons;
+}
+
+/** The bulk-sending domain a sender writes from, if any. */
+function bulkSubdomain(addr) {
+  const at = addr.lastIndexOf('@');
+  if (at < 0) return null;
+  const domain = addr.slice(at + 1).trim().toLowerCase();
+  const labels = domain.split('.');
+  // `news.example.com`, not `example.com`: the label must be a subdomain.
+  return labels.length >= 3 && BULK_SUBDOMAINS.includes(labels[0]) ? domain : null;
+}
+
+/** The words of an address's local part, without trailing numbers. */
+function segments(local) {
+  return local
+    .split(/[.\-_+]/)
+    .map((segment) => segment.replace(/\d+$/, ''))
+    .filter((segment) => segment !== '');
+}
+
+/** An address that is a role, not a person: `info@`, `service-center@`. */
+function isRoleAddress(addr) {
+  const local = addr.split('@')[0].toLowerCase();
+  return segments(local).some((segment) => ROLE_LOCAL_PARTS.includes(segment));
+}
+
+/** uber@uber.com: an address that is the company's own name. */
+function isCompanyAddress(addr) {
+  const at = addr.lastIndexOf('@');
+  if (at < 0) return false;
+  const local = addr.slice(0, at).toLowerCase();
+  const labels = addr.slice(at + 1).toLowerCase().split('.');
+  return labels.slice(0, -1).includes(local);
+}
+
+/** An address kept by a machine: `noreply@`, `calendar-notification@`. */
+function isAutomatedAddress(local) {
+  const compact = local.replace(/[^a-z0-9]/g, '');
+  return (
+    segments(local).some((segment) => AUTOMATED_LOCAL_PARTS.includes(segment)) ||
+    AUTOMATED_WORDS.some((word) => compact.includes(word))
+  );
+}
+
+/**
+ * A display name that is the sending domain's name is the organisation
+ * speaking — unless the address is the person's own (Anna Weber at
+ * anna@weber.de), or the name says a platform relayed it.
+ */
+function namesTheDomain(name, addr) {
+  if (addr == null) return false;
+  const at = addr.lastIndexOf('@');
+  if (at < 0) return false;
+  const lowered = name.toLowerCase();
+  if ([' über ', ' via ', '(via '].some((relay) => lowered.includes(relay))) return false;
+  const labels = addr.slice(at + 1).toLowerCase().split('.');
+  const body = labels.slice(0, -1).join('').replace(/-/g, '');
+  const local = addr.slice(0, at).toLowerCase();
+  const tokens = lowered.split(/[^\p{L}\p{N}]+/u).filter((t) => [...t].length >= 4);
+  return tokens.some((t) => body.includes(t)) && !tokens.some((t) => local.includes(t));
 }
 
 function firstMatch(haystack, needles) {

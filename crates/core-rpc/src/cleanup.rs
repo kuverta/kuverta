@@ -792,6 +792,77 @@ impl Session {
         Ok(store.messages_missing_headers(account.id, batch)?.len())
     }
 
+    /// Decides again, with today's rules, what the rules filed under older
+    /// ones — up to `batch` messages — and returns what changed and how many
+    /// are still behind. Each message is read from its stored copy, so every
+    /// header counts, including ones kuverta did not keep when it first filed
+    /// it. Corrections and model verdicts are untouched: they outrank the
+    /// rules, as they always did.
+    ///
+    /// With `write` false nothing is recorded, and every message behind is
+    /// looked at in one call: a preview of what the new rules would do.
+    ///
+    /// Its own connection, like a sync.
+    pub fn reclassify(&self, email: &str, batch: usize, write: bool) -> Result<Reclassified> {
+        let (store, blobs) = self.open_store()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+        let classifier = core_rules::Classifier::new(
+            core_proto::sync::load_history(&store, account.id)
+                .map_err(|e| RpcError::Rejected(e.to_string()))?,
+        );
+        let version = core_rules::RULES_VERSION;
+        let mut report = Reclassified::default();
+        let mut moves: std::collections::BTreeMap<(String, String), usize> = Default::default();
+        let mut after = 0;
+        loop {
+            let page = store.messages_behind_rules(account.id, version, after, 500)?;
+            let Some(&(last, _)) = page.last() else { break };
+            after = last;
+            for (id, path) in &page {
+                if write && report.examined >= batch {
+                    report.remaining = store
+                        .messages_behind_rules(account.id, version, 0, 10_000)?
+                        .len();
+                    report.moves = sorted_moves(moves);
+                    return Ok(report);
+                }
+                report.examined += 1;
+                let parsed = path
+                    .as_deref()
+                    .and_then(|path| blobs.get(path).ok())
+                    .and_then(|raw| core_proto::parse::parse_message(&raw, None));
+                let before = store.rules_category(*id)?;
+                let Some(parsed) = parsed else {
+                    // No stored copy to read: the old verdict stands, marked
+                    // current so it is not tried again.
+                    if write {
+                        if let Some(category) = &before {
+                            store.record_rules_verdict(*id, category, 0.0, version)?;
+                        }
+                    }
+                    continue;
+                };
+                let verdict = classifier.classify(&parsed.facts.as_message_facts());
+                let now = verdict.category.as_str();
+                if write {
+                    store.record_rules_verdict(*id, now, verdict.confidence, version)?;
+                }
+                let before = before.unwrap_or_else(|| "none".into());
+                if before != now {
+                    report.changed += 1;
+                    *moves.entry((before, now.to_string())).or_default() += 1;
+                }
+            }
+            if !write && page.len() < 500 {
+                break;
+            }
+        }
+        report.moves = sorted_moves(moves);
+        Ok(report)
+    }
+
     /// Unsubscribes from each sender named by `keys`, the way each allows.
     ///
     /// One-click and mail unsubscribes happen here. A sender that offers only
@@ -1142,4 +1213,23 @@ mod tests {
         assert_eq!(registrable("mail.news.example.co.uk"), "example.co.uk");
         assert_eq!(registrable("mail.example.de"), "example.de");
     }
+}
+
+/// What deciding again with today's rules changed.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Reclassified {
+    pub examined: usize,
+    pub changed: usize,
+    /// From which category to which, and how many: the biggest first.
+    pub moves: Vec<(String, String, usize)>,
+    /// Still behind after this call; zero when done.
+    pub remaining: usize,
+}
+
+fn sorted_moves(
+    moves: std::collections::BTreeMap<(String, String), usize>,
+) -> Vec<(String, String, usize)> {
+    let mut moves: Vec<_> = moves.into_iter().map(|((a, b), n)| (a, b, n)).collect();
+    moves.sort_by(|a, b| b.2.cmp(&a.2));
+    moves
 }

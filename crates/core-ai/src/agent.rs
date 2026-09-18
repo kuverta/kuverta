@@ -65,10 +65,13 @@ pub struct AssistantReply {
     pub content: String,
     pub calls: Vec<ToolCall>,
     pub latency_ms: i64,
+    /// The answer hit the length limit and stops mid-sentence.
+    pub truncated: bool,
 }
 
-/// How long an answer may be. Room for a few paragraphs, or a handful of calls.
-const MAX_TOKENS: u32 = 1_500;
+/// How long one answer may be: a summary of a busy inbox runs to pages. A
+/// longer one is continued rather than cut (see `truncated`).
+const MAX_TOKENS: u32 = 8_000;
 
 impl Provider {
     /// One exchange: the conversation so far and the tools, in; an answer or
@@ -163,6 +166,7 @@ impl Ollama {
                 .to_string(),
             calls,
             latency_ms: started.elapsed().as_millis() as i64,
+            truncated: reply.get("done_reason").and_then(Value::as_str) == Some("length"),
         })
     }
 }
@@ -249,6 +253,10 @@ impl OpenAiCompatible {
                 .to_string(),
             calls,
             latency_ms: started.elapsed().as_millis() as i64,
+            truncated: reply
+                .pointer("/choices/0/finish_reason")
+                .and_then(Value::as_str)
+                == Some("length"),
         })
     }
 }

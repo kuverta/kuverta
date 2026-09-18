@@ -68,7 +68,10 @@ struct Context<'a> {
 }
 
 /// Builds the learned overrides from the corrections the user has made.
-fn load_history(store: &Store, account_id: AccountId) -> Result<core_rules::Learned, ProtoError> {
+pub fn load_history(
+    store: &Store,
+    account_id: AccountId,
+) -> Result<core_rules::Learned, ProtoError> {
     let mut learned = core_rules::Learned::new();
     for row in store.learned_categories(account_id)? {
         let Some(category) = core_rules::Category::parse(&row.category) else {
@@ -321,15 +324,12 @@ fn store_message(
 fn record_rules_verdict(ctx: &Context<'_>, message_id: MessageId, parsed: &Parsed) {
     let classification = ctx.classifier.classify(&parsed.facts.as_message_facts());
 
-    let verdict = core_store::model::Verdict {
-        category: classification.category.as_str().to_string(),
-        confidence: Some(classification.confidence),
-        source: core_store::model::ClassifierSource::Rules,
-        model: None,
-        latency_ms: Some(0),
-    };
-
-    if let Err(err) = ctx.store.record_verdict(message_id, &verdict) {
+    if let Err(err) = ctx.store.record_rules_verdict(
+        message_id,
+        classification.category.as_str(),
+        classification.confidence,
+        core_rules::RULES_VERSION,
+    ) {
         tracing::warn!(message_id, %err, "failed to record rules verdict");
     }
 }

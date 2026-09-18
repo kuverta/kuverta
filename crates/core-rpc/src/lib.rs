@@ -41,7 +41,7 @@ pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Tas
 pub use assistant::{AssistantEvent, AssistantTurn};
 pub use attachments::{Attachment, AttachmentView};
 pub use cleanup::{
-    CleanupCounts, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
+    CleanupCounts, Reclassified, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
     UnsubscribeResult, UnsubscribeSenderView,
 };
 pub use conversations::{Bubble, ConversationPage, ConversationView, Thread};

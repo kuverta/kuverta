@@ -552,6 +552,27 @@ async fn sync(
                     break;
                 }
             }
+            // Mail the rules filed before they last changed, filed again —
+            // once, after an update; nothing is behind on the syncs after.
+            loop {
+                match session.reclassify(&email, 2_000, true) {
+                    Ok(step) => {
+                        if step.changed > 0 {
+                            tracing::info!(
+                                changed = step.changed,
+                                "filed mail again with the current rules"
+                            );
+                        }
+                        if step.remaining == 0 {
+                            break;
+                        }
+                    }
+                    Err(err) => {
+                        tracing::warn!(%err, "could not file mail again with the current rules");
+                        break;
+                    }
+                }
+            }
             Ok(summary)
         })
     })

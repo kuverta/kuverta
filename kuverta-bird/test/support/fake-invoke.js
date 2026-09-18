@@ -245,7 +245,10 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
         });
       }
       for (const event of events) onEvent?.onmessage?.(event);
-      const reply = hit ? `I found “${hit.subject}” from ${hit.from}.` : 'I found nothing.';
+      // Markdown, as models answer, and a quote from the mail that must stay text.
+      const reply = hit
+        ? `**Found:** “${hit.subject}” from ${hit.from}.\n\n1. It says: <img src=x onerror="window.pwned=1">\n2. The QR code is *attached*.`
+        : 'I found nothing.';
       return {
         turns: [...turns, { role: 'user', content: message }, { role: 'assistant', content: reply, calls: [] }],
         reply,

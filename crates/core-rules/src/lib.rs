@@ -136,6 +136,13 @@ fn normalize(value: &str) -> String {
     value.trim().to_ascii_lowercase()
 }
 
+/// Which rules these are. Raised whenever a change to the signals would file
+/// mail differently, so that verdicts from older rules are decided again.
+///
+/// 2: role addresses, senders named after their domain, and bulk-sending
+/// subdomains are organisations, not people.
+pub const RULES_VERSION: i64 = 2;
+
 /// Score below which the classifier declines to guess.
 ///
 /// A confident wrong answer costs more than an honest "unknown": the first

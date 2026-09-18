@@ -183,3 +183,106 @@ fn every_verdict_can_explain_itself() {
     assert!(!result.reasons.is_empty());
     assert!(result.reasons.iter().all(|r| r.category == result.category));
 }
+
+// -- people or organisations (rules version 2) ------------------------------
+
+#[test]
+fn an_organisation_named_after_its_domain_is_not_a_person() {
+    let facts = MessageFacts {
+        from_addr: Some("k.meier@sparkasse-musterstadt.example"),
+        from_name: Some("Sparkasse Musterstadt"),
+        subject: Some("Neue Nachricht im Postfach"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    // The bank's name is its domain's: the bank speaking, not Frau Meier.
+    assert_ne!(classify(&facts).0, Category::Personal);
+}
+
+#[test]
+fn a_role_address_is_not_a_person() {
+    let facts = MessageFacts {
+        from_addr: Some("kundenbetreuung@telefon.example"),
+        from_name: Some("Erika Mustermann"),
+        subject: Some("Ihr Anliegen"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    // Signed with a name, sent from a department.
+    assert_ne!(classify(&facts).0, Category::Personal);
+}
+
+#[test]
+fn an_address_that_is_the_company_is_not_a_person() {
+    let facts = MessageFacts {
+        from_addr: Some("uber@uber.example"),
+        from_name: Some("Uber Receipts"),
+        subject: Some("Your Tuesday trip"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    assert_ne!(classify(&facts).0, Category::Personal);
+}
+
+#[test]
+fn a_bulk_sending_subdomain_is_marketing() {
+    let facts = MessageFacts {
+        from_addr: Some("email@news.broker.example"),
+        from_name: Some("Broker Team"),
+        subject: Some("Was diese Woche wichtig war"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    assert_eq!(classify(&facts).0, Category::Marketing);
+}
+
+#[test]
+fn a_person_relayed_by_a_platform_is_personal() {
+    let facts = MessageFacts {
+        from_addr: Some("x7-4f2a@mail.kleinanzeigen.example"),
+        from_name: Some("Anna über Kleinanzeigen"),
+        subject: Some("Ist das Fahrrad noch zu haben?"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    // Named after the platform's domain, but relayed: a person wrote it.
+    assert_eq!(classify(&facts).0, Category::Personal);
+}
+
+#[test]
+fn a_person_at_their_own_domain_is_personal() {
+    let facts = MessageFacts {
+        from_addr: Some("anna@weber.example"),
+        from_name: Some("Anna Weber"),
+        subject: Some("Fotos vom Wochenende"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    assert_eq!(classify(&facts).0, Category::Personal);
+}
+
+#[test]
+fn an_unattended_address_inside_a_longer_one_is_a_notification() {
+    let facts = MessageFacts {
+        from_addr: Some("nicht.antworten@kundenservice.telefon.example"),
+        from_name: Some("Telefon Kundenservice"),
+        subject: Some("Ihr Tarif"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    assert_eq!(classify(&facts).0, Category::Notification);
+}
+
+#[test]
+fn a_bill_sent_through_a_mailing_system_is_still_the_bill() {
+    let facts = MessageFacts {
+        from_addr: Some("rechnung@strom.example"),
+        from_name: Some("Strom GmbH"),
+        subject: Some("Ihre Rechnung für August"),
+        list_id: Some("kunden.strom.example"),
+        list_unsubscribe: Some("<https://strom.example/u>"),
+        recipient_count: 1,
+        ..Default::default()
+    };
+    assert_eq!(classify(&facts).0, Category::Transactional);
+}

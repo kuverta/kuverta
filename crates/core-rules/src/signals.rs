@@ -84,6 +84,23 @@ const AUTOMATED_LOCAL_PARTS: &[&str] = &[
     "cron",
     "jenkins",
     "ci",
+    // Software that mails on its own.
+    "cpanel",
+    "nextcloud",
+    "wordpress",
+    "jira",
+    "confluence",
+];
+
+/// The same, written as one word inside a longer address:
+/// `cloudplatform-noreply`, `nichtantworten.jamobil`, `keine-antwort`.
+const AUTOMATED_WORDS: &[&str] = &[
+    "noreply",
+    "donotreply",
+    "nichtantworten",
+    "keineantwort",
+    "noanswer",
+    "mailerdaemon",
 ];
 
 /// Display names that are a department, not a person.
@@ -109,6 +126,109 @@ const ROLE_WORDS: &[&str] = &[
     "store",
 ];
 
+/// Local parts of an address that belong to a role or a department: nobody
+/// in particular writes from `info@` or `kundenbetreuung@`.
+const ROLE_LOCAL_PARTS: &[&str] = &[
+    "info",
+    "service",
+    "services",
+    "kundenservice",
+    "kundenbetreuung",
+    "kunden",
+    "kontakt",
+    "contact",
+    "hello",
+    "hallo",
+    "team",
+    "support",
+    "help",
+    "hilfe",
+    "news",
+    "newsletter",
+    "mailing",
+    "marketing",
+    "sales",
+    "vertrieb",
+    "shop",
+    "store",
+    "order",
+    "orders",
+    "bestellung",
+    "bestellungen",
+    "rechnung",
+    "rechnungen",
+    "invoice",
+    "invoices",
+    "billing",
+    "buchhaltung",
+    "account",
+    "accounts",
+    "konto",
+    "security",
+    "sicherheit",
+    "update",
+    "updates",
+    "office",
+    "online",
+    "webmaster",
+    "admin",
+    "feedback",
+    "community",
+    "events",
+    "presse",
+    "press",
+    "jobs",
+    "karriere",
+    "careers",
+    "booking",
+    "bookings",
+    "reservierung",
+    "reservations",
+    "tickets",
+    "customer",
+    "customerservice",
+    "care",
+    "mitglieder",
+    "members",
+    "verwaltung",
+    "zentrale",
+    "empfang",
+    "abo",
+    "aboservice",
+    "leserservice",
+];
+
+/// First labels of a sending domain that exist to send bulk mail:
+/// `news.traderepublic.com`, `email.feverup.com`, `send.barneysfarm.com`.
+/// Not `mail.` or `nachrichten.`: platforms relay what people write through
+/// those (a buyer on Kleinanzeigen, a landlord on ImmoScout).
+const BULK_SUBDOMAINS: &[&str] = &[
+    "news",
+    "newsletter",
+    "newsletters",
+    "email",
+    "e",
+    "em",
+    "send",
+    "mailing",
+    "mailings",
+    "mailer",
+    "marketing",
+    "promo",
+    "promotions",
+    "angebote",
+    "campaign",
+    "campaigns",
+    "mkt",
+    "crm",
+    "info",
+    "loyalty",
+    "offers",
+    "deals",
+    "mc",
+    "sg",
+];
+
 /// Reply prefixes, including the German "AW:" and the Scandinavian "SV:".
 const REPLY_PREFIXES: &[&str] = &["re:", "aw:", "antw:", "sv:", "fwd:", "wg:"];
 
@@ -128,7 +248,11 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
     // Whether this arrived as bulk mail at all. Personal heuristics are
     // suppressed when it did: newsletters are routinely sent from a real
     // person's name to one recipient, and would otherwise read as personal.
-    let bulk = facts.list_id.is_some() || precedence_is_bulk || facts.list_unsubscribe.is_some();
+    let bulk_domain = facts.from_addr.and_then(bulk_subdomain);
+    let bulk = facts.list_id.is_some()
+        || precedence_is_bulk
+        || facts.list_unsubscribe.is_some()
+        || bulk_domain.is_some();
 
     // -- bulk shape ---------------------------------------------------------
 
@@ -170,6 +294,19 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
         });
     }
 
+    if let Some(domain) = bulk_domain {
+        // Weaker than a List-Unsubscribe: the name of a domain is a habit,
+        // not a header that exists for the purpose.
+        if facts.list_id.is_none() && facts.list_unsubscribe.is_none() {
+            reasons.push(Reason {
+                rule: "sender.bulk_domain".into(),
+                detail: format!("sent from {domain}, a domain for bulk mail"),
+                category: Category::Marketing,
+                weight: 1.5,
+            });
+        }
+    }
+
     // -- automation ---------------------------------------------------------
 
     if let Some(auto) = facts.auto_submitted {
@@ -185,10 +322,7 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
 
     if let Some(local) = facts.from_addr.and_then(|addr| addr.split('@').next()) {
         let local = local.to_ascii_lowercase();
-        if AUTOMATED_LOCAL_PARTS
-            .iter()
-            .any(|needle| local == *needle || local.starts_with(&format!("{needle}-")))
-        {
+        if is_automated_address(&local) {
             reasons.push(Reason {
                 rule: "sender.automated".into(),
                 detail: format!("sent from the unattended address {local}@…"),
@@ -205,7 +339,9 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
             rule: "subject.transactional".into(),
             detail: format!("subject mentions “{hit}”"),
             category: Category::Transactional,
-            weight: 3.0,
+            // Above a List-Id and its List-Unsubscribe together: a bill sent
+            // through a utility's mailing system is still the bill.
+            weight: 4.0,
         });
 
         // A document attached to something that reads like a bill is usually
@@ -268,7 +404,12 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
             });
         }
 
-        if let Some(name) = facts.from_name {
+        let organisation = facts.from_addr.is_some_and(is_role_address)
+            || facts.from_addr.is_some_and(is_company_address)
+            || facts
+                .from_name
+                .is_some_and(|name| names_the_domain(name, facts.from_addr));
+        if let Some(name) = facts.from_name.filter(|_| !organisation) {
             if looks_like_a_person(name, facts.from_addr) {
                 reasons.push(Reason {
                     rule: "sender.person".into(),
@@ -279,7 +420,7 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
             }
         }
 
-        if facts.recipient_count == 1 {
+        if facts.recipient_count == 1 && !organisation {
             reasons.push(Reason {
                 rule: "recipients.single".into(),
                 detail: "addressed only to you".into(),
@@ -290,6 +431,97 @@ pub(crate) fn evaluate(facts: &MessageFacts<'_>) -> Vec<Reason> {
     }
 
     reasons
+}
+
+/// The bulk-sending label a sender's domain starts with, if any: the whole
+/// domain, for the explanation.
+fn bulk_subdomain(addr: &str) -> Option<String> {
+    let domain = addr.rsplit_once('@')?.1.trim().to_ascii_lowercase();
+    let labels: Vec<&str> = domain.split('.').collect();
+    // `news.example.com`, not `example.com`: the label must be a subdomain.
+    (labels.len() >= 3 && BULK_SUBDOMAINS.contains(&labels[0])).then_some(domain)
+}
+
+/// An address that is a role, not a person: `info@`, `service-center@`,
+/// `newsletter2@`.
+fn is_role_address(addr: &str) -> bool {
+    let local = addr
+        .split('@')
+        .next()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    for segment in segments(&local) {
+        if ROLE_LOCAL_PARTS.contains(&segment) {
+            return true;
+        }
+    }
+    false
+}
+
+/// uber@uber.com: an address that is the company's own name.
+fn is_company_address(addr: &str) -> bool {
+    let Some((local, domain)) = addr.rsplit_once('@') else {
+        return false;
+    };
+    let labels: Vec<&str> = domain.split('.').collect();
+    labels[..labels.len().saturating_sub(1)]
+        .iter()
+        .any(|label| label.eq_ignore_ascii_case(local))
+}
+
+/// An address kept by a machine: `noreply@`, `alerts-eu@`,
+/// `calendar-notification@`, `cloudplatform-noreply@`.
+fn is_automated_address(local: &str) -> bool {
+    let compact: String = local
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    segments(local).any(|segment| AUTOMATED_LOCAL_PARTS.contains(&segment))
+        || AUTOMATED_WORDS.iter().any(|word| compact.contains(word))
+}
+
+/// The words of an address's local part, without trailing numbers:
+/// `gkv-news` → gkv, news; `newsletter2` → newsletter.
+fn segments(local: &str) -> impl Iterator<Item = &str> {
+    local
+        .split(['.', '-', '_', '+'])
+        .map(|segment| segment.trim_end_matches(|c: char| c.is_ascii_digit()))
+        .filter(|segment| !segment.is_empty())
+}
+
+/// A display name that is the sending domain's name — "Sparkasse
+/// Aurich-Norden" from sparkasse-aurich-norden.de, "Vodafone Kundenservice"
+/// from vodafone.com — is the organisation speaking. Unless the address is
+/// the person's own: Anna Weber at anna@weber.de names her domain and still
+/// writes herself.
+fn names_the_domain(name: &str, addr: Option<&str>) -> bool {
+    let Some((local, domain)) = addr.and_then(|a| a.rsplit_once('@')) else {
+        return false;
+    };
+    let lowered = name.to_lowercase();
+    // "Anna über Kleinanzeigen", "Max via LinkedIn": a person, relayed.
+    if [" über ", " via ", "(via "]
+        .iter()
+        .any(|relay| lowered.contains(relay))
+    {
+        return false;
+    }
+    let domain = domain.to_ascii_lowercase();
+    let labels: Vec<&str> = domain.split('.').collect();
+
+    // Everything but the top-level domain, without its separators.
+    let body: String = labels[..labels.len().saturating_sub(1)]
+        .concat()
+        .replace('-', "");
+    let local = local.to_lowercase();
+    let tokens: Vec<String> = name
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| t.chars().count() >= 4)
+        .map(str::to_string)
+        .collect();
+    tokens.iter().any(|t| body.contains(t.as_str()))
+        && !tokens.iter().any(|t| local.contains(t.as_str()))
 }
 
 fn first_match<'k>(haystack: &str, needles: &[&'k str]) -> Option<&'k str> {

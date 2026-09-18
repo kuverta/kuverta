@@ -49,6 +49,17 @@ and English:
 | **notification** | Machine-generated status: CI, cron jobs, alerts, delivery notices. |
 | **unknown** | No signal strong enough to guess. A real answer, not a fallback. |
 
+**personal** is for people. Mail from a department or a company is not, however
+it is signed: an address like `info@`, `service@` or `kundenbetreuung@`, a
+sender named after its own domain (*Sparkasse Musterstadt* from
+sparkasse-musterstadt.de), or a domain for sending bulk mail (`news.…`,
+`email.…`). Mail a platform relays from a person — *Anna über Kleinanzeigen* —
+still counts as personal.
+
+When an update changes the rules, kuverta files your mail again with the new
+ones after the next sync, from the stored copy of each message. What you filed
+yourself stays where you put it.
+
 The categories in the sidebar are filters with counts. Click one to narrow the
 list to it and click it again to let go; inside a mailbox or smart mailbox, the
 heading says *Categories in …* and the counts are for that mailbox.
