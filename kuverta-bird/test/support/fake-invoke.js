@@ -30,6 +30,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
   const { paperMailboxes, documents } = paper;
   const messages = new Map();
   const queue = [];
+  const saved = [];
+  const opened = [];
   let nextId = 1;
 
   for (const message of seed) {
@@ -73,7 +75,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     },
   ];
   const aiTasks = new Map();
-  const AI_DEFAULTS = { vision: 'qwen2.5vl:3b', chat: 'llama3.2:3b' };
+  const AI_DEFAULTS = { vision: 'qwen2.5vl:3b', chat: 'llama3.2:3b', assistant: 'llama3.2:3b' };
   const OLLAMA_MODELS = [
     { name: 'llama3.2:3b', size_bytes: 2019393189, vision: false, embedding: false },
     { name: 'nomic-embed-text:latest', size_bytes: 274302450, vision: false, embedding: true },
@@ -171,6 +173,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
         cc: [],
         folders: [m.folder],
         body_text: m.body ?? null,
+        attachments: (m.attachments ?? []).map(attachmentView),
         // The shape core-rpc sends: the classifier's facts, camelCase.
         facts: {
           fromAddr: m.from?.match(/<([^>]+)>/)?.[1] ?? m.from ?? null,
@@ -185,6 +188,70 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
           recipientCount: 1,
           snippet: m.snippet ?? null,
         },
+      };
+    },
+
+    // Attachments: bytes for the viewer, and where Save would put them. The
+    // real commands answer with a binary response, which arrives as an
+    // ArrayBuffer; so does this.
+    attachment: async ({ id, index }) => {
+      const found = need(id).attachments?.[index];
+      if (!found) throw new Error(`message ${id} has no attachment ${index + 1}`);
+      const bytes = found.bytes ?? PIXEL_PNG;
+      return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    },
+    save_attachment: async ({ id, index }) => {
+      const found = need(id).attachments?.[index];
+      if (!found) throw new Error(`message ${id} has no attachment ${index + 1}`);
+      saved.push(found.name);
+      return `/Users/you/Downloads/${found.name}`;
+    },
+    open_attachment: async ({ id, index }) => {
+      const found = need(id).attachments?.[index];
+      if (!found) throw new Error(`message ${id} has no attachment ${index + 1}`);
+      if (found.risky) throw new Error(`${found.name} could run something when opened; save it instead if you trust it`);
+      opened.push(found.name);
+      return null;
+    },
+    // What was saved and opened, for a test to check.
+    attachment_log: async () => ({ saved, opened }),
+
+    // The assistant, without a model: it searches the seeded mail for the
+    // question's words, longest first, until one finds something, and shows
+    // it as the real one does — a line for looking, a card for the message.
+    assistant_ask: async ({ turns, message, onEvent }) => {
+      const matching = (word) =>
+        [...messages.values()].filter((m) =>
+          `${m.subject} ${m.body ?? ''}`.toLowerCase().replace(/-/g, '').includes(word),
+        );
+      const words = message
+        .toLowerCase()
+        .split(/[^\p{L}\p{N}]+/u)
+        .filter((w) => w.length >= 3)
+        .sort((a, b) => b.length - a.length);
+      const word = words.find((w) => matching(w).length) ?? words[0] ?? '';
+      const found = matching(word);
+      const events = [{ kind: 'looked', what: `searched for “${word}” — ${found.length} found` }];
+      const hit = found[0];
+      if (hit) {
+        events.push({
+          kind: 'message',
+          id: hit.id,
+          subject: hit.subject,
+          from: hit.from,
+          date_utc: hit.date_utc,
+          attachments: (hit.attachments ?? []).map(attachmentView),
+          note: hit.attachments?.length ? `It is in ${hit.attachments.find((a) => !a.inline)?.name}.` : null,
+        });
+      }
+      for (const event of events) onEvent?.onmessage?.(event);
+      const reply = hit ? `I found “${hit.subject}” from ${hit.from}.` : 'I found nothing.';
+      return {
+        turns: [...turns, { role: 'user', content: message }, { role: 'assistant', content: reply, calls: [] }],
+        reply,
+        events,
+        model: 'llama3.2:3b',
+        local: true,
       };
     },
 
@@ -386,6 +453,13 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     log_status: async () => ({ version: '0.0.0-test', path: '/tmp/kuverta.log', detailed: false, size_bytes: 0 }),
     log_tail: async () => '',
     log_ui: async () => null,
+    profiles: async () => [],
+    proposals: async () => [],
+    tasks: async () => [],
+    run_tasks: async () => [],
+    save_profile: async () => 1,
+    set_account_profile: async () => null,
+    set_postbox_profile: async () => null,
     urgent_messages: async () => [],
     urgency_of: async () => null,
     find_urgent: async () => ({ by_rules: 0, by_model: 0, model: null, local: true, stopped: null }),
@@ -462,6 +536,50 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
   // So a test can post a letter while the window is open.
   invoke._documents = documents;
   return invoke;
+}
+
+/** A 1×1 PNG, so a viewer has a real picture to decode. */
+const PIXEL_PNG = Uint8Array.from(
+  atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='),
+  (c) => c.charCodeAt(0),
+);
+
+/** An attachment as `core-rpc`'s `AttachmentView` has it. */
+function attachmentView(a, index) {
+  return {
+    index,
+    name: a.name,
+    content_type: a.content_type,
+    size: a.size ?? a.bytes?.length ?? PIXEL_PNG.length,
+    inline: Boolean(a.inline),
+    preview: a.preview ?? 'none',
+    risky: Boolean(a.risky),
+  };
+}
+
+/**
+ * The mail a mobile provider sends with an eSIM: the QR code attached, the
+ * contract as a PDF, a logo in the text, and a page that must not be opened.
+ */
+export function esimMessage() {
+  return {
+    subject: 'Ihre neue e-SIM ist da',
+    from: 'Mobilfunk Service <service@mobilfunk.example>',
+    date_utc: Math.floor(Date.UTC(2026, 1, 3, 9, 0, 0) / 1000),
+    unread: false,
+    has_attachments: true,
+    category: 'transactional',
+    folder: 'INBOX',
+    message_id: 'esim@mobilfunk.example',
+    snippet: 'Scannen Sie den QR-Code im Anhang.',
+    body: 'Scannen Sie den QR-Code im Anhang mit Ihrem Telefon.',
+    attachments: [
+      { name: 'logo.png', content_type: 'image/png', preview: 'image', inline: true },
+      { name: 'eSIM QR.png', content_type: 'image/png', preview: 'image' },
+      { name: 'Vertrag.pdf', content_type: 'application/pdf', preview: 'pdf', size: 48213 },
+      { name: 'login.html', content_type: 'text/html', preview: 'none', risky: true, size: 912 },
+    ],
+  };
 }
 
 export function defaultSeed() {

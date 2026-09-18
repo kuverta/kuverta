@@ -163,12 +163,18 @@ fn every_job_runs_on_this_computer_until_someone_chooses_otherwise() {
     assert!(!providers[0].has_key);
 
     let tasks = core.ai_tasks().unwrap();
-    assert_eq!(tasks.len(), 2);
+    assert_eq!(tasks.len(), 3, "reading scans, sorting mail, the assistant");
     assert!(tasks
         .iter()
         .all(|task| task.provider_id == LOCAL_PROVIDER && !task.chosen));
     let chat = tasks.iter().find(|task| task.task == Task::Chat).unwrap();
     assert_eq!(chat.model, "llama3.2:3b");
+    // The assistant uses the sorting model until it is given its own.
+    let assistant = tasks
+        .iter()
+        .find(|task| task.task == Task::Assistant)
+        .unwrap();
+    assert_eq!(assistant.model, chat.model);
 
     let _ = std::fs::remove_dir_all(dir);
 }

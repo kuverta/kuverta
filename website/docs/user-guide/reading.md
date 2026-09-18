@@ -1,5 +1,5 @@
 ---
-description: The message list, the six categories, picking several messages, searching, and how undo works.
+description: The message list, the six categories, picking several messages, attachments, searching, and how undo works.
 ---
 
 # Reading and sorting
@@ -69,12 +69,55 @@ you sort your own mail is not something that can be collected later.
 
 Scanned post is filed the same way; see [Paper post](paper.md#filing-post).
 
+## Attachments
+
+An open message lists what it carries under its header, one button each with
+the file's name and size. Click one to see it:
+
+![An eSIM's QR code opened from its mail](../assets/screens/attachment-viewer-light.webp#only-light)
+![An eSIM's QR code opened from its mail](../assets/screens/attachment-viewer-dark.webp#only-dark)
+
+- **Pictures, PDFs and plain text** open right there, in a viewer over the
+  window — a QR code sent as a picture can be scanned from the screen with a
+  phone.
+- **Save to Downloads** writes it to your Downloads folder and shows it there.
+  An existing file is never overwritten: a second copy is named `name (2)`.
+- **Open in another app** hands it to the program your computer uses for that
+  kind of file — Preview, a PDF reader, your office suite.
+
+Pictures a message shows inside its text — logos, mostly — are left out of the
+list; **N pictures in the text** shows them too.
+
+**Files that could run something are not opened from kuverta.** Programs,
+scripts, installers, disk images, Office files with macros and web pages are
+shown in red, and **Open in another app** is switched off for them: a web page
+in a mail is how a fake sign-in form arrives. You can still save one, and open
+it yourself if you trust where it came from.
+
+For [encrypted mail](encryption.md) the attachments are the ones inside the
+encryption, decrypted when you open them and never stored decrypted. Mail that
+cannot be decrypted shows none.
+
 ## Searching
 
 Press <kbd>/</kbd> (or click the search box), type, and press <kbd>Enter</kbd>.
 Search is full-text over the account's mail — senders, subjects and text — and
 results are ranked by relevance rather than date. <kbd>Esc</kbd> goes back to
 the list you came from.
+
+Search is forgiving about how things are written:
+
+- **Each word matches the start of a word**, so `rechnung` finds
+  *Rechnungsnummer* and `steuer` finds *Steuererklärung*.
+- **The words can be in any order** and anywhere in the message: `esim
+  vodafone` finds mail that has both.
+- **Spellings are tried both ways**: `esim` finds *eSIM*, *e-SIM* and *e SIM*;
+  `email` finds *E-Mail*.
+- **In double quotes, only that exact phrase**: `"Rust Weekly"`.
+
+A word *inside* a longer one is not found — `steuer` does not find
+*Einkommensteuer* — so search for the start of it, or ask the
+[assistant](assistant.md#finding-a-message), which tries several words.
 
 In a postal address, search uses Paperless's own full-text search over the
 scanned text.

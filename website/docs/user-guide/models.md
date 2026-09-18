@@ -10,6 +10,7 @@ kuverta has two jobs a language model can do:
 | --- | --- | --- |
 | **Reading scanned letters** — turning a photographed or scanned page into text | a model that can see images | `qwen2.5vl:3b` |
 | **Sorting mail** — a second opinion on each message's category, used by `kuverta classify` | any chat model | `llama3.2:3b` |
+| **The assistant** — the [chat and its tasks](assistant.md) | a chat model that can call tools; larger is better | the sorting model, until one is chosen |
 
 Both run with [Ollama](https://ollama.com) **on your computer** unless you choose
 otherwise. The [setup assistant](../install.md#the-first-run) checks for Ollama,
@@ -65,6 +66,7 @@ local. For any other, including an Ollama on another machine in your network:
 | --- | --- |
 | Reading scanned letters | the **scans of your letters** |
 | Sorting mail | the **sender, subject and start of each message** |
+| The assistant | **whatever it searches for and opens**, and for tasks that ask a model, the message they are about |
 
 The settings page says this in so many words under each job whenever it
 applies. A hosted service needs no download and is often better and faster;
