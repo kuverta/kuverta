@@ -114,10 +114,13 @@ jobs:
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
           restore-keys: fuzz-corpus-${{ matrix.target }}-
 
+      # The prebuilt cargo-fuzz is a musl binary, and cargo-fuzz builds for
+      # its own triple unless told otherwise: musl has no standard library
+      # installed here and no address sanitizer at all.
       - name: Fuzz
         run: |
           mkdir -p fuzz/corpus/${{ matrix.target }}
-          cargo +nightly fuzz run ${{ matrix.target }} \
+          cargo +nightly fuzz run --target x86_64-unknown-linux-gnu ${{ matrix.target }} \
             fuzz/corpus/${{ matrix.target }} \
             docker/dovecot/seed/inbox docker/dovecot/seed/archive \
             -- -max_total_time=$FUZZ_TIME -max_len=262144 -rss_limit_mb=4096
@@ -126,7 +129,7 @@ jobs:
       # that happened to be interesting once.
       - name: Minimise corpus
         if: success() && github.ref == 'refs/heads/main'
-        run: cargo +nightly fuzz cmin ${{ matrix.target }} fuzz/corpus/${{ matrix.target }}
+        run: cargo +nightly fuzz cmin --target x86_64-unknown-linux-gnu ${{ matrix.target }} fuzz/corpus/${{ matrix.target }}
 
       - name: Save corpus
         if: success() && github.ref == 'refs/heads/main'
