@@ -1,21 +1,34 @@
 /**
- * The triage surface, in the standalone client.
+ * Cleanup — the triage surface — in the standalone client.
  *
  * The mirror image of `hosts/thunderbird/ui/triage.js`: same surface, same
  * model, a different adapter underneath. What lives here and not in `core/` is
  * everything that is a `kuverta` idea rather than a mail idea — the Tauri
- * bridge, and which account is being looked at.
+ * bridge, which account is being looked at, and unsubscribing, which needs
+ * this client's network and its outgoing mail.
  */
 
 import { Triage } from '../../../core/triage.js';
 import { mountTriage } from '../../../core/view/triage.js';
 import { KuvertaHost } from '../host.js';
+import { UnsubscribePanel } from './unsubscribe.js';
 
 const root = document.getElementById('root');
 const picker = document.getElementById('account');
 
 /** Undoes the last mount, so switching accounts does not stack key handlers. */
 let unmount = null;
+/** The Unsubscribe panel, made once the bridge is known. */
+let unsubscribe = null;
+
+// Choosing a category puts the list back. On the root rather than on each
+// mount's buttons, which the surface redraws.
+root.addEventListener('click', (event) => {
+  if (unsubscribe?.open && event.target.closest('.fb-scope:not(.fb-extra)')) {
+    unsubscribe.hide();
+    unmount?.redrawSidebar();
+  }
+});
 
 try {
   // Tauri v2 puts `invoke` here; v1 put it on `window.__TAURI__.invoke`.
@@ -55,6 +68,10 @@ async function open(invoke, account) {
     const host = await new KuvertaHost(invoke, account).open();
     const triage = new Triage(host);
 
+    unsubscribe ??= new UnsubscribePanel(invoke, () => unmount?.redrawSidebar());
+    unsubscribe.hide();
+    await unsubscribe.refreshCount(account);
+
     unmount = mountTriage({
       root,
       triage,
@@ -64,7 +81,22 @@ async function open(invoke, account) {
       // The standalone client has its own compose pane; this surface does not
       // rebuild it, so the key is left to the app that mounts this.
       onCompose: null,
+      // Below the categories, as one more kind of mail to deal with.
+      extras: () => [
+        {
+          label: 'Unsubscribe',
+          count: unsubscribe.count,
+          active: unsubscribe.open,
+          title: 'Senders whose mail can be unsubscribed from',
+          onClick: async () => {
+            await unsubscribe.show(account);
+            await unsubscribe.refreshCount(account);
+            unmount.redrawSidebar();
+          },
+        },
+      ],
     });
+    root.append(unsubscribe.node);
 
     await triage.start();
   } catch (error) {

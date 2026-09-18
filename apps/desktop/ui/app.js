@@ -17,6 +17,10 @@ const PAGE = 200;
 
 const el = (id) => document.getElementById(id);
 
+/// The list with nothing narrowing it. A smart mailbox is one more filter, and
+/// like a folder it is replaced rather than combined when another is chosen.
+const NO_FILTER = Object.freeze({ category: null, unreadOnly: false, folder: null, smart: null });
+
 /// Sidebar glyphs, as inline SVG.
 ///
 /// Drawn rather than pulled from a font: the webview has no access to SF
@@ -99,7 +103,9 @@ const state = {
   archive: null,
   trash: null,
   folders: [],
-  filter: { category: null, unreadOnly: false, folder: null },
+  filter: { ...NO_FILTER },
+  // Smart mailboxes on the current account, as the sidebar last drew them.
+  smartMailboxes: [],
   total: 0,
   // Sparse: offset -> row. Only what has been fetched.
   rows: new Map(),
@@ -181,6 +187,7 @@ async function loadPage(offset) {
             unreadOnly: state.filter.unreadOnly,
             folder: state.filter.folder,
             oldestFirst: mailOrder === "oldest",
+            smart: state.filter.smart,
           },
         });
 
@@ -221,6 +228,7 @@ async function reload({ keepPosition = false } = {}) {
 
   await loadPage(0);
   await refreshSidebar();
+  refreshCleanupCount();
 
   if (state.total === 0) {
     state.selected = -1;
@@ -312,6 +320,9 @@ async function refreshSidebar() {
   // Categories are for both: post is sorted by the same rules as mail.
   const onPost = state.postbox !== null;
   sidebar.folders.hidden = onPost;
+  el("folders-heading").hidden = onPost;
+  el("smart-heading").hidden = onPost;
+  el("smart").hidden = onPost;
   sidebar.categories.hidden = false;
   sidebar.categoriesHeading.hidden = false;
   if (onPost) {
@@ -328,30 +339,38 @@ async function refreshSidebar() {
       label: "All mail",
       icon: "all",
       count: null,
-      active: state.filter.folder === null,
+      active: state.filter.folder === null && state.filter.smart === null,
       onClick: async () => {
-        state.filter = { ...state.filter, folder: null };
+        state.filter = { ...state.filter, folder: null, smart: null };
         await reload();
       },
     }),
   );
   for (const folder of state.folders) {
-    sidebar.folders.append(
-      navItem({
-        label: folder.label,
-        icon: iconFor(folder),
-        count: folder.total,
-        unread: folder.unread,
-        title: `${folder.name} — ${folder.unread} unread of ${folder.total}`,
-        active: state.filter.folder === folder.id,
-        onClick: async () => {
-          const next = state.filter.folder === folder.id ? null : folder.id;
-          state.filter = { ...state.filter, folder: next };
-          await reload();
-        },
-      }),
-    );
+    const item = navItem({
+      label: folder.label,
+      icon: iconFor(folder),
+      count: folder.total,
+      unread: folder.unread,
+      title: `${folder.name} — ${folder.unread} unread of ${folder.total}`,
+      active: state.filter.folder === folder.id && state.filter.smart === null,
+      onClick: async () => {
+        const next = state.filter.folder === folder.id && state.filter.smart === null ? null : folder.id;
+        state.filter = { ...state.filter, folder: next, smart: null };
+        await reload();
+      },
+    });
+    // Its own menu: a mailbox inside it, or deleting it. See folders.js.
+    item.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      showFolderMenu(event, folder);
+    });
+    sidebar.folders.append(item);
   }
+
+  // Smart mailboxes and mail waiting to go, each drawn by its own file.
+  await renderSmartMailboxes();
+  await renderOutboxNav();
 
   renderCategories(
     await invoke("category_counts", {
@@ -365,6 +384,8 @@ async function refreshSidebar() {
 /// folder is not read as mail going missing.
 function categoriesHeading() {
   if (state.postbox) return "Categories";
+  const smart = state.smartMailboxes.find((m) => m.id === state.filter.smart);
+  if (smart) return `Categories in ${smart.name}`;
   const folder = state.folders.find((f) => f.id === state.filter.folder);
   return folder ? `Categories in ${folder.label}` : "Categories";
 }
@@ -414,6 +435,10 @@ function renderScope() {
   scopeBar.textContent = "";
   const parts = [];
   if (state.searching) parts.push("search results");
+  if (state.filter.smart !== null) {
+    const smart = state.smartMailboxes.find((m) => m.id === state.filter.smart);
+    if (smart) parts.push(smart.name);
+  }
   if (state.filter.folder !== null) {
     const folder = state.folders.find((f) => f.id === state.filter.folder);
     if (folder) parts.push(folder.label);
@@ -447,7 +472,7 @@ function renderScope() {
     clear.textContent = "clear";
     clear.onclick = async () => {
       searchBox.value = "";
-      state.filter = { category: null, unreadOnly: false, folder: null };
+      state.filter = { ...NO_FILTER };
       await reload();
     };
     scopeBar.append(clear);
@@ -504,7 +529,7 @@ function renderScope() {
 async function selectPostbox(postbox) {
   state.postbox = postbox;
   statusBar.textContent = postbox.label;
-  state.filter = { category: null, unreadOnly: false, folder: null };
+  state.filter = { ...NO_FILTER };
   closeCompose();
   if (!postbox.has_token) {
     say(`${postbox.label} has no Paperless token stored — add it in settings (,)`, true);
@@ -708,7 +733,7 @@ async function selectAccount(account) {
   state.account = account.id;
   state.email = account.email;
   statusBar.textContent = account.email;
-  state.filter = { category: null, unreadOnly: false, folder: null };
+  state.filter = { ...NO_FILTER };
 
   const special = await invoke("special_folders", { account: state.account });
   state.archive = special.archive;
@@ -869,6 +894,8 @@ async function openSelected() {
       const pages = detail.row.page_count;
       reading.hidden = false;
       emptyPane.hidden = true;
+      el("reading-actions").hidden = true;
+      showSecurity(null);
       el("reading-subject").textContent = detail.row.subject || "(untitled)";
       el("reading-meta").textContent = [
         detail.row.from,
@@ -899,6 +926,8 @@ async function openSelected() {
     const detail = await invoke("message", { account: state.account, id: row.id });
     reading.hidden = false;
     emptyPane.hidden = true;
+    el("reading-actions").hidden = false;
+    showSecurity(detail);
     el("reading-subject").textContent = detail.subject ?? "(no subject)";
     el("reading-meta").textContent = [
       detail.from,
@@ -1085,6 +1114,8 @@ function select(index) {
 let toastTimer = null;
 
 function say(message, isError = false) {
+  // An error shown is an error worth having in the log a bug report attaches.
+  if (isError) invoke("log_ui", { level: "error", message: String(message) }).catch(() => {});
   toast.textContent = message;
   toast.className = isError ? "toast error" : "toast";
   toast.hidden = false;
@@ -1102,7 +1133,7 @@ function say(message, isError = false) {
 async function act(command, args, describe) {
   const indexes = actingOn();
   const rows = indexes.map((index) => state.rows.get(index)).filter(Boolean);
-  if (!rows.length) return;
+  if (!rows.length) return 0;
 
   let done = 0;
   let failed = null;
@@ -1127,6 +1158,7 @@ async function act(command, args, describe) {
     say(String(failed), true);
   }
   await reload({ keepPosition: true });
+  return done;
 }
 
 async function archive() {
@@ -1142,7 +1174,15 @@ async function trash() {
     say("this account has no Trash folder", true);
     return;
   }
-  await act("move_to", { target: state.trash }, `moved to ${state.trash}`);
+  // Which messages went, read before they leave the list: one of them is
+  // what the look-alikes are found from.
+  const gone = actingOn()
+    .map((index) => state.rows.get(index))
+    .filter(Boolean);
+  const moved = await act("move_to", { target: state.trash }, `moved to ${state.trash}`);
+  // Only after a delete that happened: "more like the one you deleted" about
+  // one that is still there would be a question about nothing.
+  if (gone.length === 1 && moved === 1) offerSimilar(gone[0]);
 }
 
 async function toggleRead() {
@@ -1203,11 +1243,17 @@ function draftInput() {
     reply_to: compose.replyTo,
     reply_all: compose.replyAll,
     forward: compose.forward,
+    sign: el("compose-sign").checked,
+    encrypt: el("compose-encrypt").checked,
   };
 }
 
 function closeCompose() {
   compose.pane.hidden = true;
+  el("schedule-menu").hidden = true;
+  el("compose-sign").checked = false;
+  el("compose-encrypt").checked = false;
+  resetComposeSecurity();
   compose.replyTo = null;
   compose.forward = null;
   compose.replyAll = false;
@@ -1263,6 +1309,29 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
   await refreshEnvelope();
 }
 
+/// Fills compose from a draft the core kept — a scheduled message being
+/// edited again. Replies keep what they reply to, so threading survives.
+async function openComposeWith(draft) {
+  closeCompose();
+  compose.replyTo = draft.reply_to ?? null;
+  compose.replyAll = Boolean(draft.reply_all);
+  compose.forward = draft.forward ?? null;
+  compose.what.textContent = "Scheduled message";
+  compose.to.value = (draft.to ?? []).join(", ");
+  compose.cc.value = (draft.cc ?? []).join(", ");
+  compose.bcc.value = (draft.bcc ?? []).join(", ");
+  compose.subject.value = draft.subject ?? "";
+  compose.body.value = draft.body ?? "";
+  el("compose-sign").checked = Boolean(draft.sign);
+  el("compose-encrypt").checked = Boolean(draft.encrypt);
+  securityChosen = true;
+  compose.pane.hidden = false;
+  reading.hidden = true;
+  emptyPane.hidden = true;
+  compose.body.focus();
+  await refreshEnvelope();
+}
+
 /// Shows who would actually receive it, Bcc included.
 ///
 /// The envelope is the only place a blind recipient appears, and the one thing
@@ -1278,6 +1347,8 @@ async function refreshEnvelope() {
   } catch (err) {
     compose.envelope.textContent = String(err);
   }
+  // Which recipients have keys changes with the recipients. See encryption.js.
+  await refreshComposeSecurity();
 }
 
 async function sendDraft() {
@@ -1308,6 +1379,39 @@ async function sendDraft() {
 
 compose.send.onclick = sendDraft;
 compose.cancel.onclick = closeCompose;
+el("new-message").onclick = () => (state.postbox ? say("post cannot be answered from here", true) : openCompose());
+el("open-settings").onclick = () => openSettings();
+
+for (const button of el("reading-actions").querySelectorAll("[data-act]")) {
+  button.onclick = () =>
+    ({
+      reply: () => openCompose({ replyAll: false }),
+      "reply-all": () => openCompose({ replyAll: true }),
+      forward: () => openCompose({ forward: true }),
+      archive,
+      trash,
+    })[button.dataset.act]();
+}
+
+/// How much bulk mail is still in the Inbox, beside Cleanup in the header.
+async function refreshCleanupCount() {
+  const badge = el("cleanup-count");
+  const link = el("cleanup-link");
+  if (state.account === null) {
+    badge.hidden = true;
+    return;
+  }
+  try {
+    const counts = await invoke("cleanup_counts", { account: state.account });
+    badge.textContent = counts.bulk_in_inbox > 999 ? "999+" : String(counts.bulk_in_inbox);
+    badge.hidden = counts.bulk_in_inbox === 0;
+    link.title =
+      `${counts.bulk_in_inbox} newsletter, marketing and notification message${counts.bulk_in_inbox === 1 ? "" : "s"} in the Inbox` +
+      ` · ${counts.unsubscribable} sender${counts.unsubscribable === 1 ? "" : "s"} you can unsubscribe from`;
+  } catch {
+    badge.hidden = true;
+  }
+}
 for (const field of [compose.to, compose.cc, compose.bcc]) {
   field.addEventListener("change", refreshEnvelope);
 }
@@ -1441,6 +1545,21 @@ document.addEventListener("keydown", async (event) => {
   // been told.
   if (!el("setup").hidden) return;
 
+  // A dialog on top owns the keys; Escape closes it.
+  const dialog = [...document.querySelectorAll(".sheet.dialog")].find((sheet) => !sheet.hidden);
+  if (dialog) {
+    if (event.key === "Escape") closeDialog(dialog);
+    return;
+  }
+  if (!el("context-menu").hidden && event.key === "Escape") {
+    el("context-menu").hidden = true;
+    return;
+  }
+  if (!el("schedule-menu").hidden && event.key === "Escape") {
+    el("schedule-menu").hidden = true;
+    return;
+  }
+
   // The settings sheet is a form: every key belongs to whatever field has
   // focus, and none of them are triage shortcuts.
   if (!settings.sheet.hidden) {
@@ -1451,6 +1570,9 @@ document.addEventListener("keydown", async (event) => {
   // While composing, the keys belong to the fields — otherwise typing "e"
   // into a subject line would archive something.
   if (compose.pane.contains(event.target)) {
+    // The send-later menu is inside compose and has its own keys: ⌘↩ there
+    // must not also send the message now.
+    if (el("schedule-menu").contains(event.target)) return;
     if (event.key === "Escape") closeCompose();
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) await sendDraft();
     return;
@@ -1486,6 +1608,9 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
+  // ⌘C copies, ⌘R is not sync: a single-letter shortcut is the letter alone.
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+
   const action = KEYS[event.key];
   if (action) {
     event.preventDefault();
@@ -1515,6 +1640,13 @@ content.addEventListener("click", (event) => {
     openSelected();
   }
 });
+
+/// Closes a dialog, saying so to whoever opened it: each dialog file listens
+/// for `close` to tidy up after itself.
+function closeDialog(sheet) {
+  sheet.hidden = true;
+  sheet.dispatchEvent(new Event("close"));
+}
 
 // -- start -----------------------------------------------------------------
 
@@ -1632,6 +1764,7 @@ function fillForm(account) {
 
   el("settings-delete").hidden = account.id === null;
   settings.report.hidden = true;
+  setPageHead("account", account.id === null ? "New account" : account.email);
   syncAuthFields();
   renderSettingsList();
 }
@@ -1644,10 +1777,62 @@ function syncAuthFields() {
   settings.passwordFields.hidden = oauth;
 }
 
+/// The buttons that open a new, empty form of each kind. Held here because
+/// the list is redrawn from scratch and they are moved into it each time —
+/// moving keeps their handlers; recreating would lose them.
+const ADD_BUTTONS = {
+  account: el("settings-add"),
+  paper: el("settings-add-paper"),
+  models: el("settings-models"),
+  provider: el("settings-add-provider"),
+};
+
+/// The settings pages that are not one of the four forms.
+const SETTINGS_PAGES = {
+  smart: el("smart-page"),
+  keys: el("keys-page"),
+  general: el("general-page"),
+  diagnostics: el("diagnostics-page"),
+};
+
+/// What each section is, at the top of its page.
+const PAGE_HEADS = {
+  account: ["Account", "Where mail comes from and goes out through. Passwords go to the system keychain and are never shown again."],
+  paper: ["Postal address", "Scanned post from Paperless-ngx, read beside your mail."],
+  models: ["Models", "Which model reads scans and sorts mail, and where it runs."],
+  provider: ["Model provider", "An Ollama elsewhere, or a hosted service with an OpenAI-compatible API."],
+  smart: ["Smart mailboxes", "Saved searches that live in the sidebar."],
+  keys: ["Encryption", "OpenPGP keys for signing and encrypting mail."],
+  general: ["General", ""],
+  diagnostics: ["Diagnostics", "A log to attach when something goes wrong."],
+};
+
+function setPageHead(mode, title) {
+  const [defaultTitle, sub] = PAGE_HEADS[mode] ?? ["Settings", ""];
+  el("settings-page-title").textContent = title ?? defaultTitle;
+  el("settings-page-sub").textContent = sub;
+}
+
+/// A heading in the settings list, with its add button when it has one.
+function settingsHeading(text, button, label) {
+  const heading = document.createElement("div");
+  heading.className = "sidebar-heading";
+  const words = document.createElement("span");
+  words.textContent = text;
+  heading.append(words);
+  if (button) {
+    button.textContent = label;
+    button.className = "";
+    heading.append(button);
+  }
+  return heading;
+}
+
 function renderSettingsList() {
   settings.list.textContent = "";
   const onAccounts = settings.mode === "account";
 
+  settings.list.append(settingsHeading("Accounts", ADD_BUTTONS.account, "+ Add"));
   for (const account of settings.accounts) {
     settings.list.append(
       navItem({
@@ -1666,11 +1851,7 @@ function renderSettingsList() {
   // Addresses under their own heading: they are configured like accounts and
   // are not accounts, and a single list pretending otherwise would be a list
   // where "Home" sits between two email addresses with no explanation.
-  const heading = document.createElement("div");
-  heading.className = "sidebar-heading";
-  heading.textContent = "Postal addresses";
-  settings.list.append(heading);
-
+  settings.list.append(settingsHeading("Postal addresses", ADD_BUTTONS.paper, "+ Add"));
   for (const address of paper.addresses) {
     settings.list.append(
       navItem({
@@ -1689,18 +1870,16 @@ function renderSettingsList() {
     );
   }
 
-  // Models last: where they run is set up once and seldom visited.
-  const modelsHeading = document.createElement("div");
-  modelsHeading.className = "sidebar-heading";
-  modelsHeading.textContent = "Models";
-  settings.list.append(modelsHeading);
-  settings.list.append(
-    navItem({
-      label: "Model for each job",
-      active: settings.mode === "models",
-      onClick: showModels,
-    }),
-  );
+  // Models: where they run is set up once and seldom visited.
+  settings.list.append(settingsHeading("Models", ADD_BUTTONS.provider, "+ Add"));
+  const jobs = ADD_BUTTONS.models;
+  jobs.className = `nav-item${settings.mode === "models" ? " active" : ""}`;
+  jobs.textContent = "";
+  const jobsLabel = document.createElement("span");
+  jobsLabel.className = "label";
+  jobsLabel.textContent = "Model for each job";
+  jobs.append(jobsLabel);
+  settings.list.append(jobs);
   for (const provider of models.providers) {
     settings.list.append(
       navItem({
@@ -1719,16 +1898,40 @@ function renderSettingsList() {
       navItem({ label: "New provider…", active: true, onClick: () => {} }),
     );
   }
+
+  settings.list.append(settingsHeading("Mail"));
+  settings.list.append(
+    navItem({ label: "Smart mailboxes", active: settings.mode === "smart", onClick: () => showSettingsPage("smart") }),
+    navItem({ label: "Encryption", active: settings.mode === "keys", onClick: () => showSettingsPage("keys") }),
+  );
+
+  settings.list.append(settingsHeading("kuverta"));
+  settings.list.append(
+    navItem({ label: "General", active: settings.mode === "general", onClick: () => showSettingsPage("general") }),
+    navItem({ label: "Diagnostics", active: settings.mode === "diagnostics", onClick: () => showSettingsPage("diagnostics") }),
+  );
 }
 
-async function openSettings() {
+/// One of the pages that is not a form: each file that owns one is told it
+/// is being shown, so it can fill itself.
+function showSettingsPage(mode) {
+  settings.mode = mode;
+  hideSettingsForms();
+  SETTINGS_PAGES[mode].hidden = false;
+  setPageHead(mode);
+  renderSettingsList();
+  SETTINGS_PAGES[mode].dispatchEvent(new Event("show"));
+}
+
+async function openSettings(page = null) {
   settings.accounts = await invoke("account_settings");
   // Post is an addition to the settings, not a prerequisite for them: a
   // failure to list addresses must not stop anyone editing an account.
   paper.addresses = await invoke("paper_mailboxes").catch(() => []);
   models.providers = await invoke("ai_providers").catch(() => []);
   settings.sheet.hidden = false;
-  fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
+  if (page) showSettingsPage(page);
+  else fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
 }
 
 async function closeSettings() {
@@ -1947,6 +2150,7 @@ function fillPaper(address) {
   el("paper-delete").hidden = address.id === null;
   hideSettingsForms();
   paper.form.hidden = false;
+  setPageHead("paper", address.id === null ? "New postal address" : address.label || address.base_url);
   settings.report.hidden = true;
   syncSelectorField();
   renderSettingsList();
@@ -2076,6 +2280,7 @@ function hideSettingsForms() {
   paper.form.hidden = true;
   models.form.hidden = true;
   models.providerForm.hidden = true;
+  for (const page of Object.values(SETTINGS_PAGES)) page.hidden = true;
   settings.report.hidden = true;
 }
 
@@ -2105,6 +2310,7 @@ async function showModels() {
   settings.mode = "models";
   hideSettingsForms();
   models.form.hidden = false;
+  setPageHead("models");
   renderSettingsList();
   try {
     const [providers, tasks] = await Promise.all([invoke("ai_providers"), invoke("ai_tasks")]);
@@ -2243,6 +2449,7 @@ function fillProvider(provider) {
   models.kind = provider.kind;
   hideSettingsForms();
   models.providerForm.hidden = false;
+  setPageHead("provider", provider.id === null ? "New model provider" : provider.label);
 
   const f = models.providerForm;
   // The service is a starting point for a new provider; an existing one is

@@ -12,12 +12,21 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub mod blobs;
 pub mod dedup;
+pub mod hygiene;
 pub mod model;
+pub mod outbox;
 mod schema;
+pub mod smart;
 
 pub use blobs::Blobs;
 pub use dedup::{dedup_key, normalize_message_id};
+pub use hygiene::{
+    sender_key, BackfilledHeaders, SimilarityRow, UnsubscribeSender, Unsubscription,
+    CLEANUP_CATEGORIES,
+};
 pub use model::*;
+pub use outbox::OutboxEntry;
+pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -69,6 +78,7 @@ impl Store {
 
         ensure_fts5(&conn)?;
         schema::migrate(&conn)?;
+        register_functions(&conn)?;
 
         Ok(Self { conn })
     }
@@ -329,8 +339,10 @@ impl Store {
                     "INSERT INTO message
                          (account_id, dedup_key, rfc822_message_id, subject, from_name, from_addr,
                           date_utc, size_bytes, snippet, has_attachments, list_id, in_reply_to,
-                          body_path, first_seen_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                          body_path, first_seen_at, recipients, list_unsubscribe,
+                          list_unsubscribe_post, headers_read)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+                             ?16, ?17, 1)",
                     params![
                         account_id,
                         key,
@@ -346,6 +358,9 @@ impl Store {
                         message.in_reply_to,
                         message.body_path,
                         now(),
+                        message.recipients,
+                        message.list_unsubscribe,
+                        message.list_unsubscribe_post,
                     ],
                 )?;
                 let id = tx.last_insert_rowid();
@@ -802,6 +817,14 @@ impl Store {
 
         if filter.unread_only {
             clauses.push(UNREAD_PREDICATE.into());
+        }
+
+        // A smart mailbox is one more predicate, like the rest: its rules are
+        // compiled with every value bound, never spliced.
+        if let Some(query) = &filter.smart {
+            let compiled = smart::compile(query, now());
+            clauses.push(compiled.sql);
+            args.extend(compiled.args);
         }
 
         // And gone from wherever it was moved out of. A move waits in the undo
@@ -1597,7 +1620,7 @@ pub struct Disagreement {
 ///
 /// Written once and shared, because three queries have to agree about this and
 /// a fourth — `disagreements` — has to deliberately not.
-const CURRENT_CATEGORY_JOIN: &str = "\
+pub(crate) const CURRENT_CATEGORY_JOIN: &str = "\
     LEFT JOIN classification c
       ON c.id = (
           SELECT c2.id FROM classification c2
@@ -1617,7 +1640,7 @@ const COMING_HERE: &str = "(SELECT COUNT(DISTINCT o.message_id) FROM operation o
                             WHERE o.account_id = f.account_id AND o.state = 'pending'
                               AND o.kind = 'move' AND o.target_folder = f.name)";
 
-const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
+pub(crate) const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
                                             WHERE ul.message_id = m.id
                                               AND ul.flags LIKE '%\\Seen%')";
 
@@ -1716,6 +1739,25 @@ fn row_to_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageSummary> {
     })
 }
 
+/// SQL functions the store's queries use that SQLite does not have.
+///
+/// `kuverta_lower` lowercases the way Rust does. SQLite's own `lower()` knows
+/// only ASCII without ICU, so "Änderung" stayed "Änderung" and a smart mailbox
+/// for "änderung" never matched it — in a mailbox that is half German.
+fn register_functions(conn: &Connection) -> Result<()> {
+    use rusqlite::functions::FunctionFlags;
+    conn.create_scalar_function(
+        "kuverta_lower",
+        1,
+        FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+        |ctx| {
+            let text: Option<String> = ctx.get(0)?;
+            Ok(text.map(|text| text.to_lowercase()))
+        },
+    )?;
+    Ok(())
+}
+
 /// Fails loudly at open time rather than at the first search: a build without
 /// FTS5 would otherwise look healthy until someone tried to use it.
 fn ensure_fts5(conn: &Connection) -> Result<()> {
@@ -1728,7 +1770,7 @@ fn ensure_fts5(conn: &Connection) -> Result<()> {
     }
 }
 
-fn now() -> i64 {
+pub(crate) fn now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)

@@ -11,3 +11,6 @@ rusqlite.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 sha2.workspace = true
+# Smart mailbox rules are stored as JSON.
+serde.workspace = true
+serde_json.workspace = true

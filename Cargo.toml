@@ -9,6 +9,7 @@ members = [
     "crates/core-ai",
     "crates/core-smtp",
     "crates/core-rpc",
+    "crates/core-pgp",
     "apps/cli",
     "apps/desktop",
     "apps/scannerd",
@@ -31,6 +32,7 @@ core-paper = { path = "crates/core-paper" }
 core-ai = { path = "crates/core-ai" }
 core-smtp = { path = "crates/core-smtp" }
 core-rpc = { path = "crates/core-rpc" }
+core-pgp = { path = "crates/core-pgp" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.20"
@@ -44,10 +46,14 @@ toml = "1.1.5"
 chrono = "0.4.45"
 clap = { version = "4.6.6", features = ["derive", "env"] }
 
-rusqlite = { version = "0.40.2", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled", "functions"] }
 async-imap = { version = "0.11.3", default-features = false, features = ["runtime-tokio"] }
 mail-parser = "0.11.9"
 mail-builder = "0.5.0"
+# OpenPGP, in pure Rust. Without bzip2: it is the one compression GnuPG never
+# picks by default, and leaving it out keeps any chance of a C library out of
+# the build.
+pgp = { version = "0.20.0", default-features = false }
 # rustls throughout; ring rather than aws-lc to match the rest of the tree and
 # keep the C toolchain out of the build.
 mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12", "builder"] }

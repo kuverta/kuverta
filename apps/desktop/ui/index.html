@@ -7,7 +7,12 @@
 </head>
 <body>
   <header>
-    <strong>kuverta</strong>
+    <span class="brand">
+      <!-- The mark: an envelope whose edge is a k. Drawn in currentColor so it
+           follows the header in light and dark. See assets/brand/. -->
+      <svg class="brand-mark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M3.5 2H7v8h13.5L7 16l13.5 6h-17z"/><path class="brand-flap" d="M10.69 16l9.81-4.36v8.72z"/></svg>
+      <strong>kuverta</strong>
+    </span>
     <span id="status">starting…</span>
     <!-- How far a sync has got. Hidden until one is running: a first sync
          downloads a whole mailbox and takes long enough to need watching. -->
@@ -20,13 +25,25 @@
       <button type="button" id="update-notes">What's new</button>
       <button type="button" id="update-later">Later</button>
     </span>
-    <input id="search" type="search" placeholder="/ to search" spellcheck="false">
+    <button type="button" id="new-message" class="tool primary" title="New message (c)">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 16h12M13.1 3.9l3 3L7.6 15.4l-3.9.9.9-3.9z"/></svg>
+      New message
+    </button>
+    <input id="search" type="search" placeholder="Search  /" spellcheck="false">
     <!--
-      The shared triage surface, which this app and the Thunderbird extension
+      The shared cleanup surface, which this app and the Thunderbird extension
       both mount over their own adapter. Installed by `make triage-ui`, so the
-      link is dead until that has been run — see docs or the kuverta-bird repo.
+      link is dead until that has been run. The badge is how much bulk mail is
+      still in the Inbox.
     -->
-    <a id="triage-link" href="kuverta-bird/hosts/kuverta/ui/triage.html">triage</a>
+    <a id="cleanup-link" class="tool" href="kuverta-bird/hosts/kuverta/ui/triage.html" title="Clear out newsletters, marketing and notifications, and unsubscribe">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.5 3.5l5 5M9 6l5 5-5.5 5.5H5v-3.5zM3 17h14"/></svg>
+      Cleanup
+      <span id="cleanup-count" class="badge" hidden></span>
+    </a>
+    <button type="button" id="open-settings" class="tool icon-only" title="Settings (,)" aria-label="Settings">
+      <svg class="icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 12.6a2.6 2.6 0 100-5.2 2.6 2.6 0 000 5.2z"/><path d="M16.3 12.1a1.3 1.3 0 00.3 1.4l.1.1a1.6 1.6 0 11-2.2 2.2l-.1-.1a1.3 1.3 0 00-1.4-.3 1.3 1.3 0 00-.8 1.2v.2a1.6 1.6 0 11-3.2 0v-.1a1.3 1.3 0 00-.9-1.2 1.3 1.3 0 00-1.4.3l-.1.1a1.6 1.6 0 11-2.2-2.2l.1-.1a1.3 1.3 0 00.3-1.4 1.3 1.3 0 00-1.2-.8h-.2a1.6 1.6 0 110-3.2h.1a1.3 1.3 0 001.2-.9 1.3 1.3 0 00-.3-1.4l-.1-.1a1.6 1.6 0 112.2-2.2l.1.1a1.3 1.3 0 001.4.3h.1a1.3 1.3 0 00.8-1.2v-.2a1.6 1.6 0 113.2 0v.1a1.3 1.3 0 00.8 1.2 1.3 1.3 0 001.4-.3l.1-.1a1.6 1.6 0 112.2 2.2l-.1.1a1.3 1.3 0 00-.3 1.4v.1a1.3 1.3 0 001.2.8h.2a1.6 1.6 0 010 3.2h-.1a1.3 1.3 0 00-1.2.8z"/></svg>
+    </button>
   </header>
 
   <!-- Accounts, their folders, and the classifier's categories. The one place
@@ -37,7 +54,20 @@
          Paperless-ngx, read beside the mail. -->
     <div class="sidebar-heading" id="postboxes-heading" hidden>Post</div>
     <nav id="postboxes"></nav>
+    <div class="sidebar-heading with-action" id="folders-heading">
+      <span>Mailboxes</span>
+      <button type="button" id="folder-add" class="heading-action" title="New mailbox" aria-label="New mailbox">+</button>
+    </div>
     <nav id="folders"></nav>
+    <!-- Saved searches. They hold no mail: each is rules the list answers the
+         way it answers a folder. -->
+    <div class="sidebar-heading with-action" id="smart-heading">
+      <span>Smart mailboxes</span>
+      <button type="button" id="smart-add" class="heading-action" title="New smart mailbox" aria-label="New smart mailbox">+</button>
+    </div>
+    <nav id="smart"></nav>
+    <!-- Mail waiting to be sent later. Only there when there is some. -->
+    <nav id="outbox-nav"></nav>
     <div class="sidebar-heading" id="categories-heading">Categories</div>
     <nav id="categories"></nav>
   </aside>
@@ -59,8 +89,20 @@
     <div id="empty">Select a message</div>
 
     <article id="reading" hidden>
+      <!-- What can be done with the open message, as buttons as well as keys:
+           a reply should never depend on knowing that R is reply. -->
+      <div id="reading-actions" class="reading-actions" hidden>
+        <button type="button" data-act="reply" title="Reply (R)">Reply</button>
+        <button type="button" data-act="reply-all" title="Reply all (A)">Reply all</button>
+        <button type="button" data-act="forward" title="Forward (f)">Forward</button>
+        <span class="spacer"></span>
+        <button type="button" data-act="archive" title="Archive (e)">Archive</button>
+        <button type="button" data-act="trash" class="danger" title="Move to Trash (⌫)">Delete</button>
+      </div>
       <h2 id="reading-subject"></h2>
       <p id="reading-meta"></p>
+      <!-- Encrypted or signed mail: what was checked, and what it found. -->
+      <div id="reading-security" class="security-note" hidden></div>
       <!-- Post only: the OCR text, or the scan itself for when the text is no
            use. The choice is kept from letter to letter. -->
       <div id="reading-tabs" class="tabs" role="tablist" hidden>
@@ -85,15 +127,40 @@
         <strong id="compose-what">New message</strong>
         <span id="compose-envelope"></span>
       </div>
-      <input id="compose-to" placeholder="to — comma separated" spellcheck="false">
-      <input id="compose-cc" placeholder="cc" spellcheck="false">
-      <input id="compose-bcc" placeholder="bcc (never appears in the message)" spellcheck="false">
-      <input id="compose-subject" placeholder="subject">
-      <textarea id="compose-body" rows="8" spellcheck="false"></textarea>
+      <input id="compose-to" placeholder="To — comma separated" spellcheck="false">
+      <input id="compose-cc" placeholder="Cc" spellcheck="false">
+      <input id="compose-bcc" placeholder="Bcc (never appears in the message)" spellcheck="false">
+      <input id="compose-subject" placeholder="Subject">
+      <textarea id="compose-body" rows="10" spellcheck="true"></textarea>
+      <!-- OpenPGP, when there are keys to use. Shown by encryption.js. -->
+      <div id="compose-security" class="compose-security" hidden>
+        <label><input type="checkbox" id="compose-sign"> Sign</label>
+        <label><input type="checkbox" id="compose-encrypt"> Encrypt</label>
+        <span id="compose-security-note" class="hint"></span>
+      </div>
       <div class="compose-actions">
-        <button id="compose-send">Send</button>
-        <button id="compose-cancel">Cancel</button>
-        <span class="hint">ctrl/cmd+enter sends · escape cancels</span>
+        <button id="compose-send" class="primary">Send</button>
+        <div class="split">
+          <button id="compose-later" type="button" title="Send later">Send later…</button>
+          <!-- When to send it: a few common answers, or anything typed. -->
+          <div id="schedule-menu" class="popover" hidden>
+            <div class="popover-title">Send this later</div>
+            <div id="schedule-presets" class="preset-list"></div>
+            <label class="popover-field">Or say when
+              <input id="schedule-text" placeholder="tomorrow 8pm, monday 9:00, in 2 hours" spellcheck="false">
+            </label>
+            <label class="popover-field">Date and time
+              <input id="schedule-at" type="datetime-local">
+            </label>
+            <div id="schedule-read" class="hint"></div>
+            <div class="popover-actions">
+              <button type="button" id="schedule-cancel">Cancel</button>
+              <button type="button" id="schedule-confirm" class="primary" disabled>Schedule</button>
+            </div>
+          </div>
+        </div>
+        <button id="compose-cancel">Discard</button>
+        <span class="hint">⌘/ctrl+enter sends · escape discards</span>
       </div>
     </section>
   </section>
@@ -108,183 +175,298 @@
     <span>z undo</span>
     <span>c compose</span>
     <span>R reply</span>
+    <span>A reply all</span>
     <span>r sync</span>
     <span>v text/pdf</span>
     <span>/ search</span>
     <span>, settings</span>
   </footer>
 
-  <!-- Settings covers the window rather than replacing the panes, so leaving
-       it puts you back exactly where you were. -->
+  <!--
+    Settings: a sheet over the window rather than a replacement for the panes,
+    so leaving it puts you back exactly where you were. Sections down the left,
+    one page at a time on the right.
+  -->
   <div id="settings" class="sheet" hidden>
-    <div class="sheet-panel">
-      <div class="sheet-head">
-        <strong>Accounts and addresses</strong>
-        <button id="settings-add">Add account</button>
-        <button id="settings-add-paper">Add postal address</button>
-        <button id="settings-models">Models</button>
-        <button id="settings-add-provider">Add model provider</button>
-        <button id="settings-setup">Setup assistant</button>
-        <button id="settings-update">Check for updates</button>
-        <button id="settings-close">Done</button>
-      </div>
+    <div class="sheet-panel settings-panel">
+      <nav id="settings-nav">
+        <div class="settings-title">Settings</div>
+        <div id="settings-list"></div>
+        <div class="settings-nav-foot" id="settings-version"></div>
+      </nav>
 
-      <div class="sheet-body">
-        <nav id="settings-list"></nav>
+      <div class="settings-main">
+        <div class="settings-page-head">
+          <div>
+            <h2 id="settings-page-title">Accounts</h2>
+            <p id="settings-page-sub" class="hint"></p>
+          </div>
+          <button type="button" id="settings-close" class="primary">Done</button>
+        </div>
 
-        <form id="settings-form" autocomplete="off">
-          <label>Description<input name="label" placeholder="Work"></label>
-          <label>Email address<input name="email" required spellcheck="false"></label>
-          <label>Username<input name="username" placeholder="same as the email address" spellcheck="false"></label>
-
-          <div class="form-heading">Incoming — IMAP</div>
-          <div class="row3">
-            <label>Server<input name="imap_host" required spellcheck="false"></label>
-            <label>Port<input name="imap_port" type="number" min="1" max="65535" required></label>
-            <label>Security<select name="imap_security">
-              <option value="tls">TLS</option>
-              <option value="starttls">STARTTLS</option>
-              <option value="plaintext">None (localhost only)</option>
-            </select></label>
+        <div class="settings-scroll">
+          <!-- These open a new, empty form of their kind. Placed in the section
+               headings of the list by app.js; here so they exist from the start. -->
+          <div class="settings-hidden-actions">
+            <button type="button" id="settings-add">Add account</button>
+            <button type="button" id="settings-add-paper">Add postal address</button>
+            <button type="button" id="settings-models">Models</button>
+            <button type="button" id="settings-add-provider">Add model provider</button>
           </div>
 
-          <div class="form-heading">Outgoing — SMTP <span class="hint">optional; without it the account cannot send</span></div>
-          <div class="row3">
-            <label>Server<input name="smtp_host" spellcheck="false"></label>
-            <label>Port<input name="smtp_port" type="number" min="1" max="65535"></label>
-            <label>Security<select name="smtp_security">
-              <option value="tls">TLS</option>
-              <option value="starttls">STARTTLS</option>
-              <option value="plaintext">None (localhost only)</option>
-            </select></label>
-          </div>
+          <form id="settings-form" class="settings-page" autocomplete="off">
+            <section class="card">
+              <h3>Account</h3>
+              <div class="grid2">
+                <label>Description<input name="label" placeholder="Work"></label>
+                <label>Email address<input name="email" required spellcheck="false"></label>
+              </div>
+              <label>Username<input name="username" placeholder="same as the email address" spellcheck="false"></label>
+            </section>
 
-          <div class="form-heading">Authentication</div>
-          <label>Method<select name="auth_method">
-            <option value="app_password">App password</option>
-            <option value="oauth2">OAuth2</option>
-          </select></label>
+            <section class="card">
+              <h3>Incoming mail <span class="hint">IMAP</span></h3>
+              <div class="row3">
+                <label>Server<input name="imap_host" required spellcheck="false"></label>
+                <label>Port<input name="imap_port" type="number" min="1" max="65535" required></label>
+                <label>Security<select name="imap_security">
+                  <option value="tls">TLS</option>
+                  <option value="starttls">STARTTLS</option>
+                  <option value="plaintext">None (localhost only)</option>
+                </select></label>
+              </div>
+            </section>
 
-          <div id="oauth-fields" hidden>
-            <div class="row3">
-              <label>Provider<select name="oauth_provider">
-                <option value="microsoft">Microsoft 365</option>
-                <option value="google">Google</option>
+            <section class="card">
+              <h3>Outgoing mail <span class="hint">SMTP — without it this account cannot send</span></h3>
+              <div class="row3">
+                <label>Server<input name="smtp_host" spellcheck="false"></label>
+                <label>Port<input name="smtp_port" type="number" min="1" max="65535"></label>
+                <label>Security<select name="smtp_security">
+                  <option value="tls">TLS</option>
+                  <option value="starttls">STARTTLS</option>
+                  <option value="plaintext">None (localhost only)</option>
+                </select></label>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>Sign-in</h3>
+              <label>Method<select name="auth_method">
+                <option value="app_password">Password or app password</option>
+                <option value="oauth2">OAuth2</option>
               </select></label>
-              <label>Client id<input name="oauth_client_id" spellcheck="false"></label>
-              <label>Tenant<input name="oauth_tenant" placeholder="common" spellcheck="false"></label>
+
+              <div id="oauth-fields" hidden>
+                <div class="row3">
+                  <label>Provider<select name="oauth_provider">
+                    <option value="microsoft">Microsoft 365</option>
+                    <option value="google">Google</option>
+                  </select></label>
+                  <label>Client id<input name="oauth_client_id" spellcheck="false"></label>
+                  <label>Tenant<input name="oauth_tenant" placeholder="common" spellcheck="false"></label>
+                </div>
+                <p class="hint">Authorise with <code>kuverta login --email …</code>; the browser step needs a terminal.</p>
+              </div>
+
+              <div id="password-fields">
+                <label>Password<input name="password" type="password" placeholder="leave blank to keep the stored one"></label>
+                <p class="hint" id="password-state"></p>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>Folders not synced <span class="hint">one per line — a name, or an attribute like \All</span></h3>
+              <textarea name="excluded_folders" rows="2" spellcheck="false"></textarea>
+            </section>
+
+            <div class="form-actions">
+              <button type="button" id="settings-delete" class="danger">Remove account</button>
+              <span class="spacer"></span>
+              <button type="button" id="settings-verify">Verify</button>
+              <button type="submit" id="settings-save" class="primary">Save</button>
             </div>
-            <p class="hint">Authorise with <code>kuverta login --email …</code>; the browser step needs a terminal.</p>
+          </form>
+
+          <!--
+            A physical address is an account whose server is Paperless-ngx: the
+            post scanned into it reads like mail, beside mail. Same shape as the
+            account form on purpose, so it is one thing to learn rather than two.
+          -->
+          <form id="paper-form" class="settings-page" autocomplete="off" hidden>
+            <p class="lead">Post scanned into Paperless-ngx shows up beside your mail. Paperless does the scanning, OCR and archive; kuverta only reads it, and never changes a document.</p>
+            <section class="card">
+              <h3>Address</h3>
+              <label>Description<input name="label" placeholder="Home" required></label>
+              <label>Paperless-ngx address<input name="base_url" placeholder="http://paperless.local:8000" required spellcheck="false"></label>
+            </section>
+
+            <section class="card">
+              <h3>Which post belongs here <span class="hint">one Paperless can hold several addresses' post</span></h3>
+              <div class="row3">
+                <label>Documents<select name="selector_kind">
+                  <option value="everything">all of them</option>
+                  <option value="tag">with the tag</option>
+                  <option value="correspondent">from the correspondent</option>
+                  <option value="storage_path">in the storage path</option>
+                </select></label>
+                <label id="paper-selector-value">Name, as it is in Paperless<input name="selector_value" spellcheck="false"></label>
+              </div>
+            </section>
+
+            <section class="card">
+              <h3>Sign-in</h3>
+              <label>API token<input name="token" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
+              <p class="hint" id="paper-token-state"></p>
+            </section>
+
+            <div class="form-actions">
+              <button type="button" id="paper-delete" class="danger">Remove address</button>
+              <span class="spacer"></span>
+              <button type="button" id="paper-verify">Verify</button>
+              <button type="submit" id="paper-save" class="primary">Save</button>
+            </div>
+          </form>
+
+          <!--
+            Which model each job uses, and where it runs. A job moves off this
+            computer only when a hosted provider is chosen for it here, and the
+            note under it says what that sends.
+          -->
+          <form id="ai-form" class="settings-page" autocomplete="off" hidden>
+            <p class="lead">Models run on this computer with Ollama unless you choose otherwise. A hosted service needs no download and is often better and faster — and whatever a job sends it leaves this computer.</p>
+
+            <section class="card">
+              <h3>Reading scanned letters <span class="hint">needs a model that can see images</span></h3>
+              <div class="row3">
+                <label>Provider<select name="vision_provider"></select></label>
+                <label>Model<input name="vision_model" list="vision-models" spellcheck="false" required></label>
+              </div>
+              <datalist id="vision-models"></datalist>
+              <p class="hint ai-note" data-note="vision"></p>
+            </section>
+
+            <section class="card">
+              <h3>Sorting mail <span class="hint">kuverta classify — any chat model</span></h3>
+              <div class="row3">
+                <label>Provider<select name="chat_provider"></select></label>
+                <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>
+              </div>
+              <datalist id="chat-models"></datalist>
+              <p class="hint ai-note" data-note="chat"></p>
+            </section>
+
+            <div class="form-actions">
+              <span class="spacer"></span>
+              <button type="button" id="ai-try">Try them</button>
+              <button type="submit" id="ai-save" class="primary">Save</button>
+            </div>
+          </form>
+
+          <!--
+            One place models run: an Ollama, or a hosted service with an
+            OpenAI-compatible API — DeepSeek, OpenAI, OpenRouter and most others.
+          -->
+          <form id="provider-form" class="settings-page" autocomplete="off" hidden>
+            <section class="card">
+              <h3>Provider</h3>
+              <label id="provider-preset">Service<select name="preset">
+                <option value="deepseek">DeepSeek</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="custom">Another OpenAI-compatible service</option>
+                <option value="ollama">Ollama on another computer</option>
+              </select></label>
+              <div class="grid2">
+                <label>Name<input name="label" required></label>
+                <label>Address<input name="base_url" required spellcheck="false"></label>
+              </div>
+              <label id="provider-key">API key<input name="key" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
+              <p class="hint" id="provider-key-state"></p>
+            </section>
+
+            <div class="form-actions">
+              <button type="button" id="provider-delete" class="danger">Remove provider</button>
+              <span class="spacer"></span>
+              <button type="submit" id="provider-save" class="primary">Save</button>
+            </div>
+
+            <section class="card">
+              <h3>Models available here</h3>
+              <p class="hint" id="provider-models-status"></p>
+              <table id="provider-models" hidden>
+                <thead><tr><th>Model</th><th>Sees images</th><th>Size</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </section>
+          </form>
+
+          <!-- Smart mailboxes: the ones there are, and bringing over the ones
+               Thunderbird and Apple Mail have. Filled by smart.js. -->
+          <div id="smart-page" class="settings-page" hidden>
+            <p class="lead">A smart mailbox gathers mail by rules — who sent it, what it says, how old it is — without moving any of it. It sits in the sidebar and works like any mailbox.</p>
+            <section class="card">
+              <h3>Smart mailboxes <span class="hint" id="smart-page-account"></span></h3>
+              <div id="smart-page-list" class="item-list"></div>
+              <div class="card-actions">
+                <button type="button" id="smart-page-new" class="primary">New smart mailbox…</button>
+              </div>
+            </section>
+            <section class="card">
+              <h3>Bring them over <span class="hint">from Thunderbird and Apple Mail</span></h3>
+              <p class="hint">Reads the saved searches Thunderbird keeps in its profiles and the smart mailboxes Apple Mail keeps. Rules kuverta cannot express are listed, never silently dropped.</p>
+              <div id="smart-import-list" class="item-list"></div>
+              <div class="card-actions">
+                <button type="button" id="smart-import-scan">Look for smart mailboxes</button>
+                <button type="button" id="smart-import-go" class="primary" hidden>Import the chosen ones</button>
+              </div>
+            </section>
           </div>
 
-          <div id="password-fields">
-            <label>Password<input name="password" type="password" placeholder="leave blank to keep the stored one"></label>
-            <p class="hint" id="password-state"></p>
+          <!-- OpenPGP keys. Filled by encryption.js. -->
+          <div id="keys-page" class="settings-page" hidden></div>
+
+          <!-- Everything that is not one account or one model. -->
+          <div id="general-page" class="settings-page" hidden>
+            <section class="card">
+              <h3>Setup</h3>
+              <p class="hint">The assistant that opened on the first run: local models, Paperless, and the mail accounts other programs on this computer know.</p>
+              <div class="card-actions"><button type="button" id="settings-setup">Open the setup assistant</button></div>
+            </section>
+            <section class="card">
+              <h3>Deleting mail</h3>
+              <label class="check"><input type="checkbox" id="pref-similar"> After deleting a message, offer to delete messages like it too</label>
+              <p class="hint">Spam and bulk mail come in runs. When a message you delete has look-alikes — the same sender and subject pattern, the same list, or the same text from different senders — kuverta shows them and lets you delete them together or gather them in a smart mailbox.</p>
+            </section>
+            <section class="card">
+              <h3>Updates</h3>
+              <p class="hint" id="settings-version-line"></p>
+              <div class="card-actions"><button type="button" id="settings-update">Check for updates</button></div>
+            </section>
           </div>
 
-          <div class="form-heading">Folders not synced <span class="hint">one per line — a name, or an attribute like \All</span></div>
-          <textarea name="excluded_folders" rows="2" spellcheck="false"></textarea>
-
-          <div class="form-actions">
-            <button type="submit" id="settings-save">Save</button>
-            <button type="button" id="settings-verify">Verify</button>
-            <button type="button" id="settings-delete" class="danger">Remove account</button>
-          </div>
-        </form>
-
-        <!--
-          A physical address is an account whose server is Paperless-ngx: the
-          post scanned into it reads like mail, beside mail. Same shape as the
-          account form on purpose, so it is one thing to learn rather than two.
-        -->
-        <form id="paper-form" autocomplete="off" hidden>
-          <p class="hint">Post scanned into Paperless-ngx shows up beside your mail. Paperless does the scanning, OCR and archive; this only reads it, and never changes a document.</p>
-          <label>Description<input name="label" placeholder="Home" required></label>
-          <label>Paperless-ngx address<input name="base_url" placeholder="http://paperless.local:8000" required spellcheck="false"></label>
-
-          <div class="form-heading">Which post belongs here <span class="hint">one Paperless can hold several addresses' post</span></div>
-          <div class="row3">
-            <label>Documents<select name="selector_kind">
-              <option value="everything">all of them</option>
-              <option value="tag">with the tag</option>
-              <option value="correspondent">from the correspondent</option>
-              <option value="storage_path">in the storage path</option>
-            </select></label>
-            <label id="paper-selector-value">Name, as it is in Paperless<input name="selector_value" spellcheck="false"></label>
+          <!-- The log, for a bug report. Filled by diagnostics.js. -->
+          <div id="diagnostics-page" class="settings-page" hidden>
+            <section class="card">
+              <h3>Detailed logging</h3>
+              <label class="check"><input type="checkbox" id="log-detailed"> Record what kuverta does in detail</label>
+              <p class="hint">Turn this on, do what went wrong again, then export the log and attach it to a bug report. Detailed logs grow faster; turn it off again when you are done. The log never holds passwords or tokens. It does hold addresses and subjects, and with detailed logging on it can hold what a model answered about a message, which may quote from it.</p>
+              <p class="hint" id="log-where"></p>
+            </section>
+            <section class="card grow">
+              <h3>Recent log <span class="hint">newest at the bottom</span></h3>
+              <pre id="log-view" class="log-view"></pre>
+              <div class="card-actions">
+                <button type="button" id="log-refresh">Refresh</button>
+                <button type="button" id="log-copy">Copy</button>
+                <span class="spacer"></span>
+                <button type="button" id="log-export" class="primary">Export log…</button>
+              </div>
+            </section>
           </div>
 
-          <div class="form-heading">Authentication</div>
-          <label>API token<input name="token" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
-          <p class="hint" id="paper-token-state"></p>
-
-          <div class="form-actions">
-            <button type="submit" id="paper-save">Save</button>
-            <button type="button" id="paper-verify">Verify</button>
-            <button type="button" id="paper-delete" class="danger">Remove address</button>
-          </div>
-        </form>
-
-        <!--
-          Which model each job uses, and where it runs. A job moves off this
-          computer only when a hosted provider is chosen for it here, and the
-          note under it says what that sends.
-        -->
-        <form id="ai-form" autocomplete="off" hidden>
-          <p class="hint">Models run on this computer with Ollama unless you choose otherwise. A hosted service needs no download and is often better and faster — and whatever a job sends it leaves this computer.</p>
-
-          <div class="form-heading">Reading scanned letters <span class="hint">needs a model that can see images</span></div>
-          <div class="row3">
-            <label>Provider<select name="vision_provider"></select></label>
-            <label>Model<input name="vision_model" list="vision-models" spellcheck="false" required></label>
-          </div>
-          <datalist id="vision-models"></datalist>
-          <p class="hint ai-note" data-note="vision"></p>
-
-          <div class="form-heading">Sorting mail <span class="hint">kuverta classify — any chat model</span></div>
-          <div class="row3">
-            <label>Provider<select name="chat_provider"></select></label>
-            <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>
-          </div>
-          <datalist id="chat-models"></datalist>
-          <p class="hint ai-note" data-note="chat"></p>
-
-          <div class="form-actions">
-            <button type="submit" id="ai-save">Save</button>
-            <button type="button" id="ai-try">Try them</button>
-          </div>
-        </form>
-
-        <!--
-          One place models run: an Ollama, or a hosted service with an
-          OpenAI-compatible API — DeepSeek, OpenAI, OpenRouter and most others.
-        -->
-        <form id="provider-form" autocomplete="off" hidden>
-          <label id="provider-preset">Service<select name="preset">
-            <option value="deepseek">DeepSeek</option>
-            <option value="openai">OpenAI</option>
-            <option value="openrouter">OpenRouter</option>
-            <option value="custom">Another OpenAI-compatible service</option>
-            <option value="ollama">Ollama on another computer</option>
-          </select></label>
-          <label>Name<input name="label" required></label>
-          <label>Address<input name="base_url" required spellcheck="false"></label>
-          <label id="provider-key">API key<input name="key" type="password" placeholder="leave blank to keep the stored one" spellcheck="false"></label>
-          <p class="hint" id="provider-key-state"></p>
-
-          <div class="form-actions">
-            <button type="submit" id="provider-save">Save</button>
-            <button type="button" id="provider-delete" class="danger">Remove provider</button>
-          </div>
-
-          <div class="form-heading">Models available here</div>
-          <p class="hint" id="provider-models-status"></p>
-          <table id="provider-models" hidden>
-            <thead><tr><th>Model</th><th>Sees images</th><th>Size</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </form>
-
-        <pre id="settings-report" hidden></pre>
+          <pre id="settings-report" hidden></pre>
+        </div>
       </div>
     </div>
   </div>
@@ -326,7 +508,7 @@
             <h2>Models on this computer</h2>
             <p>Reading photographed letters and sorting mail use two small models, run by Ollama on this computer.</p>
             <div class="setup-card" id="ollama-card"><p class="hint">Looking for Ollama…</p></div>
-            <p class="hint">Would you rather use a hosted service such as DeepSeek or OpenAI? Add it later under Settings → Add model provider; what a job sends then leaves this computer.</p>
+            <p class="hint">Would you rather use a hosted service such as DeepSeek or OpenAI? Add it later under Settings → Models; what a job sends then leaves this computer.</p>
           </section>
 
           <section data-page="paper" hidden>
@@ -389,7 +571,7 @@
               <label>Add another address<input name="email" type="email" placeholder="you@example.com" spellcheck="false" required></label>
               <button type="submit">Find settings</button>
             </form>
-            <p class="hint">Passwords are not taken from other programs — they keep them encrypted. Enter each once; kuverta keeps it in the system keychain.</p>
+            <p class="hint">Thunderbird's saved passwords come with its accounts. Apple Mail's stay in the login keychain, so enter each of those once; kuverta keeps it in the system keychain.</p>
           </section>
 
           <section data-page="done" hidden>
@@ -408,10 +590,112 @@
     </div>
   </div>
 
+  <!--
+    After a delete: the messages that look like the deleted one. Moving them
+    too, gathering them in a smart mailbox, or leaving them. Filled by similar.js.
+  -->
+  <div id="similar-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel">
+      <div class="dialog-head">
+        <h2 id="similar-title">Similar messages</h2>
+        <p class="hint" id="similar-sub"></p>
+      </div>
+      <div class="dialog-body">
+        <label class="check select-all"><input type="checkbox" id="similar-all" checked> All of them</label>
+        <div id="similar-list" class="pick-list"></div>
+      </div>
+      <div class="dialog-foot">
+        <label class="check hint"><input type="checkbox" id="similar-never"> Don't ask again</label>
+        <span class="spacer"></span>
+        <button type="button" id="similar-keep">Only the one</button>
+        <button type="button" id="similar-smart">Smart mailbox…</button>
+        <button type="button" id="similar-trash" class="primary danger-fill">Move to Trash</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The smart mailbox editor: a name, rules, and what they select so far. -->
+  <div id="smart-sheet" class="sheet dialog" hidden>
+    <form id="smart-form" class="dialog-panel wide" autocomplete="off">
+      <div class="dialog-head">
+        <h2 id="smart-form-title">New smart mailbox</h2>
+        <p class="hint">Rules are checked against every message on the account. Nothing is moved.</p>
+      </div>
+      <div class="dialog-body">
+        <label class="field">Name<input name="name" required placeholder="Receipts" spellcheck="false"></label>
+        <div class="match-line">
+          Show mail that matches
+          <select name="match_all">
+            <option value="all">all</option>
+            <option value="any">any</option>
+          </select>
+          of these rules:
+        </div>
+        <div id="smart-rules" class="rules"></div>
+        <button type="button" id="smart-rule-add" class="link-button">+ Add a rule</button>
+        <div class="preview-box">
+          <div class="preview-head" id="smart-preview-count">…</div>
+          <div id="smart-preview" class="preview-rows"></div>
+        </div>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" id="smart-delete" class="danger" hidden>Delete</button>
+        <span class="spacer"></span>
+        <button type="button" id="smart-cancel">Cancel</button>
+        <button type="submit" id="smart-save" class="primary">Save</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Mail waiting to be sent later. Filled by outbox.js. -->
+  <div id="outbox-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel wide">
+      <div class="dialog-head">
+        <h2>Scheduled</h2>
+        <p class="hint">Sent at its time while kuverta is open. If it is closed then, a message goes the next time kuverta opens.</p>
+      </div>
+      <div class="dialog-body">
+        <div id="outbox-list" class="item-list"></div>
+      </div>
+      <div class="dialog-foot">
+        <span class="spacer"></span>
+        <button type="button" id="outbox-close" class="primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- A new mailbox on the server. -->
+  <div id="folder-sheet" class="sheet dialog" hidden>
+    <form id="folder-form" class="dialog-panel" autocomplete="off">
+      <div class="dialog-head">
+        <h2>New mailbox</h2>
+        <p class="hint" id="folder-form-account"></p>
+      </div>
+      <div class="dialog-body">
+        <label class="field">Name<input name="name" required spellcheck="false" placeholder="Receipts"></label>
+        <label class="field">Inside<select name="parent"></select></label>
+      </div>
+      <div class="dialog-foot">
+        <span class="spacer"></span>
+        <button type="button" id="folder-cancel">Cancel</button>
+        <button type="submit" class="primary">Create</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- A folder's own menu: right-click on it in the sidebar. -->
+  <div id="context-menu" class="context-menu" hidden></div>
+
   <div id="toast" class="toast" hidden></div>
 
   <script src="app.js"></script>
   <script src="setup.js"></script>
   <script src="update.js"></script>
+  <script src="folders.js"></script>
+  <script src="outbox.js"></script>
+  <script src="smart.js"></script>
+  <script src="similar.js"></script>
+  <script src="diagnostics.js"></script>
+  <script src="encryption.js"></script>
 </body>
 </html>

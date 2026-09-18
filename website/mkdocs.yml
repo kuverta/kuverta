@@ -1,0 +1,126 @@
+# The public website and user documentation, published with GitHub Pages by
+# .github/workflows/pages.yml. Build locally with:
+#
+#   mkdocs serve -f website/mkdocs.yml          # live preview on :8000
+#   mkdocs build --strict -f website/mkdocs.yml # what CI runs
+#
+# Everything the site needs lives under website/: the brand files it uses are
+# copied into docs/assets/brand, so a build never reaches outside this folder.
+
+site_name: kuverta
+site_url: https://kuverta.github.io/kuverta/
+site_description: >-
+  A desktop mail client that puts your email and your scanned paper post in one
+  list, sorts both, and says why.
+repo_url: https://github.com/kuverta/kuverta
+repo_name: kuverta/kuverta
+edit_uri: edit/main/website/docs/
+copyright: kuverta is free software under the AGPL-3.0.
+
+theme:
+  name: material
+  custom_dir: overrides
+  language: en
+  logo: assets/brand/kuverta-glyph-paper.svg
+  favicon: assets/brand/favicon.svg
+  font: false
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: custom
+      toggle:
+        icon: material/weather-night
+        name: Switch to system preference
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+extra_css:
+  - stylesheets/extra.css
+
+extra:
+  download_url: https://github.com/kuverta/kuverta/releases/latest
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/kuverta/kuverta
+      name: kuverta on GitHub
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+nav:
+  - Home: index.md
+  - Install: install.md
+  - User guide:
+      - user-guide/index.md
+      - Reading and sorting: user-guide/reading.md
+      - Writing: user-guide/writing.md
+      - Mailboxes: user-guide/mailboxes.md
+      - Smart mailboxes: user-guide/smart-mailboxes.md
+      - Cleanup and unsubscribing: user-guide/cleanup.md
+      - Similar messages: user-guide/similar.md
+      - Paper post: user-guide/paper.md
+      - Models: user-guide/models.md
+      - Encryption: user-guide/encryption.md
+      - Settings: user-guide/settings.md
+      - Diagnostics and bug reports: user-guide/diagnostics.md
+      - Keyboard shortcuts: user-guide/shortcuts.md
+      - Privacy: user-guide/privacy.md
+      - Troubleshooting and FAQ: user-guide/faq.md
+  - For developers:
+      - developers/index.md
+      - The dev stack: developers/dev-stack.md
+      - The command line: developers/cli.md
+      - The MCP server: developers/mcp.md
+      - Thunderbird extension: developers/thunderbird.md
+      - The scanner: developers/scanner.md
+      - Architecture: developers/architecture.md
+      - Releasing: developers/releasing.md

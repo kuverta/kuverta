@@ -30,8 +30,14 @@ const OVERSCAN = 6;
  * @param {string} [options.title]  What this mailbox is — an account address,
  *   usually. The core has no idea which account it is looking at, and the
  *   person reading it very much needs to.
+ * @param {() => Array<{label: string, count?: number, title?: string,
+ *   active?: boolean, onClick: Function}>} [options.extras]  Entries a host adds
+ *   below the categories — things it can do that are not a view of the list,
+ *   such as unsubscribing. Asked for each time the sidebar is drawn; redraw
+ *   with `redrawSidebar` on what this returns.
+ * @returns {Function & {redrawSidebar: Function}} Lets go of the document.
  */
-export function mountTriage({ root, triage, onCompose = null, title = '' }) {
+export function mountTriage({ root, triage, onCompose = null, title = '', extras = () => [] }) {
   root.classList.add('fb-triage');
   root.innerHTML = LAYOUT;
 
@@ -135,11 +141,13 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
    * once on a list nobody can see, which with `e` and `#` bound means archiving
    * a message the user never looked at.
    */
-  return () => {
+  const release = () => {
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('resize', onResize);
     unsubscribe();
   };
+  release.redrawSidebar = drawSidebar;
+  return release;
 
   // -- keys ---------------------------------------------------------------
 
@@ -336,8 +344,34 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
           button.addEventListener('click', () => triage.setScope(scope));
           return button;
         }),
+        ...drawExtras(),
       );
     });
+  }
+
+  /** The host's own entries, under a rule, styled like the scopes above. */
+  function drawExtras() {
+    const entries = extras();
+    if (!entries.length) return [];
+    const rule = document.createElement('hr');
+    rule.className = 'fb-extras-rule';
+    return [
+      rule,
+      ...entries.map((entry) => {
+        const button = document.createElement('button');
+        button.className = `fb-scope fb-extra${entry.active ? ' fb-active' : ''}`;
+        button.textContent = entry.label;
+        if (entry.title) button.title = entry.title;
+        if (entry.count) {
+          const count = document.createElement('span');
+          count.className = 'fb-count fb-count-strong';
+          count.textContent = String(entry.count);
+          button.append(count);
+        }
+        button.addEventListener('click', () => entry.onClick());
+        return button;
+      }),
+    ];
   }
 
   function drawReading() {
@@ -493,7 +527,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '' }) {
 
     panel.append(
       paragraph(
-        'Triage sorts that out before you look. Each message is filed under one of six ' +
+        'Cleanup sorts that out before you look. Each message is filed under one of six ' +
           'categories, so you can deal with a whole kind at once — read the newsletters ' +
           'when you want to read, do the invoices when you are doing money, and answer ' +
           'the few messages a person actually sent you. That is the point: a mailbox ' +

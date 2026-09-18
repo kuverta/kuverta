@@ -101,7 +101,11 @@ pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<Parsed> {
     // inside the struct literal it would outlive it.
     let has_attachments = parsed.attachments().next().is_some();
 
+    let list_unsubscribe = raw_header(&parsed, "List-Unsubscribe");
     let message = NewMessage {
+        recipients: recipients(&parsed),
+        list_unsubscribe: list_unsubscribe.clone(),
+        list_unsubscribe_post: raw_header(&parsed, "List-Unsubscribe-Post"),
         rfc822_message_id: parsed.message_id().map(str::to_string),
         subject: parsed.subject().map(str::to_string),
         from_name: from_name.clone(),
@@ -121,7 +125,7 @@ pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<Parsed> {
         from_name,
         subject: message.subject.clone(),
         list_id,
-        list_unsubscribe: header_text(&parsed, "List-Unsubscribe"),
+        list_unsubscribe,
         precedence: header_text(&parsed, "Precedence"),
         auto_submitted: header_text(&parsed, "Auto-Submitted"),
         in_reply_to,
@@ -131,6 +135,59 @@ pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<Parsed> {
     };
 
     Some(Parsed { message, facts })
+}
+
+/// The headers the store came to keep after mail had already been synced
+/// without them, read back from a stored raw message. See
+/// `core_store::hygiene`.
+pub fn backfill_headers(raw: &[u8]) -> Option<core_store::BackfilledHeaders> {
+    // Headers only: the body is irrelevant here, and a mailbox's worth of
+    // attachments parsed for nothing would make the backfill slow.
+    let end = raw
+        .windows(4)
+        .position(|w| w == b"\r\n\r\n")
+        .map(|at| at + 4)
+        .or_else(|| raw.windows(2).position(|w| w == b"\n\n").map(|at| at + 2))
+        .unwrap_or(raw.len());
+    let parsed = MessageParser::default().parse_headers(&raw[..end])?;
+    Some(core_store::BackfilledHeaders {
+        recipients: recipients(&parsed),
+        list_unsubscribe: raw_header(&parsed, "List-Unsubscribe"),
+        list_unsubscribe_post: raw_header(&parsed, "List-Unsubscribe-Post"),
+    })
+}
+
+/// To and Cc addresses, lowercased, comma-separated.
+fn recipients(message: &mail_parser::Message<'_>) -> Option<String> {
+    let mut all = Vec::new();
+    for field in [message.to(), message.cc()] {
+        match field {
+            Some(Address::List(addrs)) => all.extend(
+                addrs
+                    .iter()
+                    .filter_map(|a| a.address())
+                    .map(str::to_lowercase),
+            ),
+            Some(Address::Group(groups)) => all.extend(
+                groups
+                    .iter()
+                    .flat_map(|g| g.addresses.iter())
+                    .filter_map(|a| a.address())
+                    .map(str::to_lowercase),
+            ),
+            None => {}
+        }
+    }
+    (!all.is_empty()).then(|| all.join(", "))
+}
+
+/// A header as sent, unfolded. For the `List-*` headers `mail-parser` reads
+/// as addresses — which loses the `<https://…>` URIs that are the whole point.
+fn raw_header(message: &mail_parser::Message<'_>, name: &str) -> Option<String> {
+    message
+        .header_raw(name)
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|value| !value.is_empty())
 }
 
 fn count_addresses(address: Option<&Address<'_>>) -> usize {
@@ -212,6 +269,38 @@ mod tests {
                     body\r\n";
         let m = parse_message(raw, None).unwrap().message;
         assert_eq!(m.list_id.as_deref(), Some("news.rustweekly.example"));
+    }
+
+    #[test]
+    fn keeps_the_unsubscribe_headers_and_the_recipients() {
+        let raw = b"Message-ID: <n@example>\r\n\
+                    To: Erika Mustermann <Erika@Example.de>, max@example.de\r\n\
+                    Cc: team@example.de\r\n\
+                    List-Unsubscribe: <https://news.example/u?id=1>,\r\n\
+                    \t<mailto:leave@news.example?subject=unsubscribe>\r\n\
+                    List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\
+                    \r\n\
+                    body\r\n";
+        let parsed = parse_message(raw, None).unwrap();
+        let m = parsed.message;
+        assert_eq!(
+            m.list_unsubscribe.as_deref(),
+            Some("<https://news.example/u?id=1>, <mailto:leave@news.example?subject=unsubscribe>")
+        );
+        assert_eq!(
+            m.list_unsubscribe_post.as_deref(),
+            Some("List-Unsubscribe=One-Click")
+        );
+        assert_eq!(
+            m.recipients.as_deref(),
+            Some("erika@example.de, max@example.de, team@example.de")
+        );
+        // The classifier reads the same header, and has to see it too.
+        assert!(parsed.facts.list_unsubscribe.is_some());
+
+        let back = backfill_headers(raw).unwrap();
+        assert_eq!(back.list_unsubscribe, m.list_unsubscribe);
+        assert_eq!(back.recipients, m.recipients);
     }
 
     #[test]

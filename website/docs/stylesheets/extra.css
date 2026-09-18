@@ -1,0 +1,363 @@
+/*
+ * kuverta's colours on top of Material. The palette is assets/brand/README.md:
+ * petrol for surfaces, paper for the envelope, amber for the flap only — so
+ * here amber is used for one thing, the download button, and nothing else.
+ */
+
+:root {
+  --ku-petrol: #1b4a4e;
+  --ku-petrol-light: #22585c;
+  --ku-petrol-dark: #0f2f32;
+  --ku-teal: #1d6b6f;
+  --ku-paper: #f4efe6;
+  --ku-amber: #e9a23b;
+  --ku-ink: #16292b;
+}
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color: var(--ku-petrol);
+  --md-primary-fg-color--light: var(--ku-petrol-light);
+  --md-primary-fg-color--dark: var(--ku-petrol-dark);
+  --md-primary-bg-color: var(--ku-paper);
+  --md-primary-bg-color--light: rgba(244, 239, 230, 0.7);
+  --md-accent-fg-color: var(--ku-teal);
+  --md-accent-fg-color--transparent: rgba(29, 107, 111, 0.1);
+  --md-typeset-a-color: var(--ku-teal);
+  --md-default-fg-color: rgba(22, 41, 43, 0.9);
+  --ku-surface: #faf7f1;
+  --ku-card: #ffffff;
+  --ku-border: rgba(27, 74, 78, 0.14);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 185;
+  --md-primary-fg-color: var(--ku-petrol);
+  --md-primary-fg-color--light: var(--ku-petrol-light);
+  --md-primary-fg-color--dark: var(--ku-petrol-dark);
+  --md-primary-bg-color: var(--ku-paper);
+  --md-primary-bg-color--light: rgba(244, 239, 230, 0.7);
+  --md-accent-fg-color: #6cc3c3;
+  --md-accent-fg-color--transparent: rgba(108, 195, 195, 0.12);
+  --md-typeset-a-color: #7fcaca;
+  --md-default-bg-color: #121b1c;
+  --md-code-bg-color: #182425;
+  --md-footer-bg-color: #0c1414;
+  --md-footer-bg-color--dark: #080e0e;
+  --ku-surface: #152122;
+  --ku-card: #182627;
+  --ku-border: rgba(244, 239, 230, 0.1);
+}
+
+/* Screenshots in the guide: a frame, so a white window does not melt into a
+   white page. */
+.md-typeset img[src*="assets/screens/"] {
+  border: 1px solid var(--ku-border);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(15, 47, 50, 0.1);
+}
+
+.md-typeset figure {
+  margin: 1.5em auto;
+}
+
+.md-typeset figcaption {
+  max-width: none;
+  font-size: 0.7rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* The one amber thing on the site. */
+.md-typeset .md-button--primary,
+.ku-hero .md-button--primary,
+.ku-cta .md-button--primary {
+  background-color: var(--ku-amber);
+  border-color: var(--ku-amber);
+  color: var(--ku-ink);
+}
+
+.md-typeset .md-button--primary:hover,
+.md-typeset .md-button--primary:focus,
+.ku-hero .md-button--primary:hover,
+.ku-cta .md-button--primary:hover {
+  background-color: #f2ae48;
+  border-color: #f2ae48;
+  color: var(--ku-ink);
+}
+
+/* -- the home page ----------------------------------------------------------- */
+
+.ku-hero {
+  background: linear-gradient(180deg, var(--ku-paper) 0%, var(--md-default-bg-color) 100%);
+  border-bottom: 1px solid var(--ku-border);
+}
+
+[data-md-color-scheme="slate"] .ku-hero {
+  background: linear-gradient(180deg, #16292b 0%, var(--md-default-bg-color) 100%);
+}
+
+.ku-hero__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 2.4rem;
+  align-items: center;
+  padding: 2.8rem 0.8rem 3rem;
+}
+
+.ku-hero__logo {
+  display: block;
+  height: 2.6rem;
+  width: auto;
+  margin-bottom: 1.2rem;
+}
+
+.ku-hero h1 {
+  margin: 0 0 0.8rem;
+  font-size: 1.55rem;
+  line-height: 1.25;
+  font-weight: 700;
+  color: var(--md-default-fg-color);
+}
+
+[data-md-color-scheme="slate"] .ku-hero h1 {
+  color: var(--ku-paper);
+}
+
+.ku-hero__lead {
+  font-size: 0.86rem;
+  line-height: 1.6;
+  margin: 0 0 1.2rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.ku-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.ku-hero .md-button,
+.ku-cta .md-button {
+  display: inline-block;
+  padding: 0.55em 1.4em;
+  border: 0.1rem solid var(--md-primary-fg-color);
+  border-radius: 0.2rem;
+  font-weight: 700;
+  font-size: 0.8rem;
+  color: var(--md-primary-fg-color);
+  transition: background-color 125ms, color 125ms;
+}
+
+[data-md-color-scheme="slate"] .ku-hero .md-button:not(.md-button--primary),
+[data-md-color-scheme="slate"] .ku-cta .md-button:not(.md-button--primary) {
+  border-color: var(--ku-paper);
+  color: var(--ku-paper);
+}
+
+.ku-hero .md-button:not(.md-button--primary):hover,
+.ku-cta .md-button:not(.md-button--primary):hover {
+  background-color: var(--md-primary-fg-color);
+  color: var(--ku-paper);
+}
+
+.ku-hero__small {
+  font-size: 0.68rem;
+  color: var(--md-default-fg-color--light);
+  margin: 0;
+}
+
+.ku-hero__small a,
+.ku-card a,
+.ku-dev a {
+  color: var(--md-typeset-a-color);
+}
+
+.ku-hero__shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--ku-border);
+  box-shadow: 0 18px 48px rgba(15, 47, 50, 0.22);
+}
+
+/* The page body of the home page is ours, not Markdown's. */
+.ku-features,
+.ku-shots,
+.ku-cta,
+.ku-dev {
+  margin: 0 0 3rem;
+}
+
+.md-content .ku-features h2,
+.md-content .ku-shots h2,
+.md-content .ku-dev h2,
+.md-content .ku-cta h2 {
+  margin: 0 0 1rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--md-default-fg-color);
+}
+
+.ku-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.ku-card {
+  background: var(--ku-card);
+  border: 1px solid var(--ku-border);
+  border-radius: 10px;
+  padding: 1rem 1.1rem 1.1rem;
+  font-size: 0.74rem;
+  line-height: 1.6;
+}
+
+.ku-card h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--md-default-fg-color);
+}
+
+.ku-card p {
+  margin: 0 0 0.6rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.ku-card kbd,
+.ku-hero kbd {
+  font-family: var(--md-code-font-family);
+  font-size: 0.85em;
+  padding: 0 0.35em;
+  border: 1px solid var(--ku-border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--ku-surface);
+}
+
+.ku-shots__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1.4rem;
+}
+
+.ku-shots figure {
+  margin: 0;
+}
+
+.ku-shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid var(--ku-border);
+  box-shadow: 0 8px 28px rgba(15, 47, 50, 0.14);
+}
+
+.ku-shots figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--md-default-fg-color--light);
+}
+
+.ku-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.2rem 2rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.4rem 1.6rem;
+  border-radius: 12px;
+  background: var(--ku-petrol);
+  color: var(--ku-paper);
+}
+
+.md-content .ku-cta h2 {
+  color: var(--ku-paper);
+  margin-bottom: 0.4rem;
+}
+
+.ku-cta p {
+  margin: 0;
+  max-width: 34rem;
+  font-size: 0.76rem;
+  line-height: 1.6;
+  color: rgba(244, 239, 230, 0.85);
+}
+
+.ku-cta__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.ku-cta .md-button:not(.md-button--primary) {
+  border-color: var(--ku-paper);
+  color: var(--ku-paper);
+}
+
+.ku-dev {
+  padding-top: 0.4rem;
+}
+
+.ku-dev__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.6rem;
+  font-size: 0.76rem;
+  line-height: 1.6;
+}
+
+.ku-dev__grid p {
+  margin-top: 0;
+  color: var(--md-default-fg-color--light);
+}
+
+.ku-dev__grid ul {
+  padding-left: 1.1rem;
+  margin: 0;
+}
+
+.ku-dev__grid li {
+  margin-bottom: 0.3rem;
+}
+
+.ku-dev pre {
+  margin: 0;
+  padding: 1rem 1.2rem;
+  border-radius: 8px;
+  background: var(--md-code-bg-color);
+  font-size: 0.72rem;
+  line-height: 1.7;
+  overflow-x: auto;
+}
+
+@media screen and (max-width: 76.1875em) {
+  .ku-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media screen and (max-width: 59.9375em) {
+  .ku-hero__inner {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: 2rem;
+  }
+
+  .ku-shots__grid,
+  .ku-dev__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media screen and (max-width: 44.9375em) {
+  .ku-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ku-hero h1 {
+    font-size: 1.3rem;
+  }
+}

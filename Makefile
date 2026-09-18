@@ -10,7 +10,7 @@ DEV_ENV := KUVERTA_INSTANCE=dev KUVERTA_DATA_DIR=.devdata
         fill-mailbox fill-dev scannerd-pi scannerd-to-pi bundle release clean
 
 help: ## Show this help
-	@grep -hE '^[a-z-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
+	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
 	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
 ## -- dev services ----------------------------------------------------------

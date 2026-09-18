@@ -431,3 +431,22 @@
 .fb-why li {
   padding: 1px 0;
 }
+
+/* -- the host's own entries ------------------------------------------------ */
+
+/* Below the categories, set off by a rule: things a host can do that are not
+   a way of looking at the list. */
+.fb-extras-rule {
+  border: 0;
+  border-top: 1px solid var(--fb-line);
+  margin: 8px 12px;
+}
+
+.fb-scope.fb-active {
+  background: var(--fb-selected);
+  font-weight: 600;
+}
+
+.fb-count.fb-count-strong {
+  font-weight: 700;
+}

@@ -224,6 +224,25 @@ enum Command {
         #[arg(long)]
         email: Option<String>,
     },
+    /// Senders whose mail can be unsubscribed from, and how.
+    ///
+    /// Read-only: it lists, and unsubscribes from nothing — that is done in
+    /// the window's Cleanup, where each sender is chosen. Mail synced before
+    /// the store kept `List-Unsubscribe` has it read back from disk first.
+    Unsubscribable {
+        #[arg(long)]
+        email: Option<String>,
+    },
+    /// Messages that look like one — what the window offers to delete with it.
+    ///
+    /// Read-only, for seeing what the likeness rules make of real mail.
+    Similar {
+        /// The message, by its id in the store (`kuverta list` shows them).
+        #[arg(long)]
+        id: i64,
+        #[arg(long)]
+        email: Option<String>,
+    },
     /// Score the rules, a prompted model and embeddings against labelled mail.
     ///
     /// Every method is scored on the same held-out half. Generate the input with
@@ -383,6 +402,13 @@ struct SendArgs {
     /// Forward the message with this Message-ID. Needs at least one --to.
     #[arg(long)]
     forward: Option<String>,
+    /// Sign with the account's OpenPGP key (PGP/MIME).
+    #[arg(long)]
+    sign: bool,
+    /// Encrypt with OpenPGP to every recipient and to yourself. Refused with
+    /// --bcc, which the encrypted message would disclose.
+    #[arg(long)]
+    encrypt: bool,
     /// Print the message and its envelope instead of sending it.
     #[arg(long)]
     dry_run: bool,
@@ -646,6 +672,31 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
+        Command::Similar { id, email } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let core = core_rpc::Core::new(store, blobs);
+            let trash = core.special_folders(account)?.trash;
+            let report = core.similar(account, id, trash.as_deref())?;
+            for m in &report.matches {
+                println!(
+                    "{:>6}  {:<28} {:<50} {}",
+                    m.id,
+                    truncate(&m.from, 28),
+                    truncate(&m.subject, 50),
+                    m.reason
+                );
+            }
+            println!(
+                "\n{} alike; a smart mailbox for them: {} — {:?}",
+                report.matches.len(),
+                report.suggestion.name,
+                report.suggestion.query.rules
+            );
+            Ok(())
+        }
+        Command::Unsubscribable { email } => {
+            list_unsubscribable(store, blobs, &data_dir, email.as_deref())
+        }
         Command::Eval {
             facts,
             model,
@@ -1225,6 +1276,8 @@ async fn send(store: &Store, data_dir: &std::path::Path, args: SendArgs) -> Resu
         reply_to: args.reply_to.as_ref().map(resolve).transpose()?,
         reply_all: args.reply_all,
         forward: args.forward.as_ref().map(resolve).transpose()?,
+        sign: args.sign,
+        encrypt: args.encrypt,
     };
 
     let session = core_rpc::Session::new(data_dir).with_password_env(args.password_env.clone());
@@ -1725,6 +1778,63 @@ fn list_disagreements(store: &Store, email: Option<&str>) -> Result<()> {
         );
     }
     println!("\n{} message(s)", rows.len());
+    Ok(())
+}
+
+fn list_unsubscribable(
+    store: Store,
+    blobs: Blobs,
+    data_dir: &std::path::Path,
+    email: Option<&str>,
+) -> Result<()> {
+    let account = resolve_account(&store, email)?;
+    let address = store
+        .accounts()?
+        .into_iter()
+        .find(|a| a.id == account)
+        .map(|a| a.email)
+        .context("the account has gone")?;
+    let session = core_rpc::Session::new(data_dir);
+    while session.backfill_headers(&address, 2_000)? > 0 {}
+
+    let core = core_rpc::Core::new(store, blobs);
+    let senders = core.unsubscribe_senders(account)?;
+    if senders.is_empty() {
+        println!("no mail here says how to unsubscribe");
+        return Ok(());
+    }
+    println!("{:>5} {:>6}  {:<12} sender", "mail", "unread", "how");
+    for sender in &senders {
+        let how = match sender.method {
+            core_rpc::UnsubscribeMethod::OneClick { .. } => "one click",
+            core_rpc::UnsubscribeMethod::Mailto { .. } => "by mail",
+            core_rpc::UnsubscribeMethod::Browser { .. } => "web page",
+        };
+        let done = match &sender.last_attempt {
+            Some(attempt) if attempt.state == "done" => "  (unsubscribed)",
+            Some(attempt) if attempt.state == "opened" => "  (page opened)",
+            Some(_) => "  (last attempt failed)",
+            None => "",
+        };
+        println!(
+            "{:>5} {:>6}  {:<12} {} — {}{done}",
+            sender.messages,
+            sender.unread,
+            how,
+            truncate(&sender.name, 30),
+            sender
+                .list_id
+                .as_deref()
+                .or(sender.address.as_deref())
+                .unwrap_or(""),
+        );
+    }
+    let counts = core.cleanup_counts(account)?;
+    println!(
+        "\n{} sender(s); {} bulk message(s) still in the Inbox",
+        senders.len(),
+        counts.bulk_in_inbox
+    );
     Ok(())
 }
 

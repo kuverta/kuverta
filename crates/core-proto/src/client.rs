@@ -44,6 +44,9 @@ pub struct RemoteFolder {
     pub special_use: Option<String>,
     /// `\Noselect` folders are hierarchy nodes with no messages.
     pub selectable: bool,
+    /// What separates levels in this server's folder names, `/` or `.`
+    /// usually. `None` for a server with a flat namespace.
+    pub delimiter: Option<String>,
 }
 
 /// State reported when a folder is opened.
@@ -231,8 +234,34 @@ impl ImapClient {
                     .attributes()
                     .iter()
                     .any(|a| matches!(a, NameAttribute::NoSelect)),
+                delimiter: name.delimiter().map(str::to_string),
             })
             .collect())
+    }
+
+    /// Deletes a folder.
+    ///
+    /// IMAP `DELETE` removes a folder *and every message in it*, which is the
+    /// one command here that can destroy mail outright — so this refuses
+    /// unless the server itself says the folder is empty, checked on the same
+    /// connection immediately before. A caller's own count is not enough: it
+    /// is only as fresh as the last sync, and another client may have filed
+    /// something there since.
+    pub async fn delete_empty_folder(&mut self, name: &str) -> Result<(), ProtoError> {
+        let state = self.examine(name).await?;
+        if state.exists > 0 {
+            return Err(ProtoError::Refused(format!(
+                "{name} still holds {} message{} on the server; move {} out first",
+                state.exists,
+                if state.exists == 1 { "" } else { "s" },
+                if state.exists == 1 { "it" } else { "them" },
+            )));
+        }
+        // Out of the folder before deleting it: some servers refuse to delete
+        // the selected mailbox.
+        self.session.close().await.ok();
+        self.session.delete(name).await?;
+        Ok(())
     }
 
     /// Opens a folder read-only.
@@ -859,6 +888,7 @@ mod tests {
             name: name.into(),
             special_use: special_use.map(Into::into),
             selectable: true,
+            delimiter: Some("/".into()),
         }
     }
 

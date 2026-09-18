@@ -18,6 +18,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod logging;
+
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -35,6 +37,7 @@ struct App {
     /// held across that is a frozen window. SQLite is in WAL mode, so the list
     /// goes on being served from the other connection while this one writes.
     data_dir: PathBuf,
+    logs: logging::Logs,
 }
 
 /// Tauri needs a serialisable error; `RpcError` is not one.
@@ -61,6 +64,8 @@ struct ListQuery {
     folder: Option<i64>,
     #[serde(default)]
     oldest_first: bool,
+    /// A smart mailbox, by id: its rules narrow the list like any filter.
+    smart: Option<i64>,
 }
 
 #[tauri::command]
@@ -71,17 +76,19 @@ fn messages(
     limit: usize,
     filter: ListQuery,
 ) -> Result<MessagePage, String> {
+    let core = app.core.lock().unwrap();
+    let smart = match filter.smart {
+        Some(id) => Some(core.smart_query(id).map_err(fail)?),
+        None => None,
+    };
     let filter = ListFilter {
         category: filter.category,
         unread_only: filter.unread_only,
         folder: filter.folder,
         oldest_first: filter.oldest_first,
+        smart,
     };
-    app.core
-        .lock()
-        .unwrap()
-        .messages(account, offset, limit, &filter)
-        .map_err(fail)
+    core.messages(account, offset, limit, &filter).map_err(fail)
 }
 
 #[tauri::command]
@@ -469,12 +476,21 @@ async fn sync(
             .build()
             .map_err(fail)?;
         runtime.block_on(async {
-            core_rpc::Session::new(data_dir)
+            let session = core_rpc::Session::new(data_dir);
+            let summary = session
                 .sync_account_reporting(&email, |at| {
                     let _ = on_progress.send(at);
                 })
                 .await
-                .map_err(fail)
+                .map_err(fail)?;
+            // Headers the store came to keep after this mail was synced, read
+            // back from disk once. Nothing to do on every sync after the first.
+            while let Ok(left) = session.backfill_headers(&email, 2_000) {
+                if left == 0 {
+                    break;
+                }
+            }
+            Ok(summary)
         })
     })
     .await
@@ -520,6 +536,100 @@ fn preview(
 ) -> Result<core_rpc::DraftPreview, String> {
     core_rpc::Session::new(&app.data_dir)
         .preview(&email, &draft)
+        .map_err(fail)
+}
+
+// -- encryption ---------------------------------------------------------------
+//
+// OpenPGP keys. The keyring is files in the data directory and passphrases in
+// the keychain, so none of this goes near the network or waits on it; the
+// store lock is held only by `pgp_import_from_message`, which reads a message.
+// Passphrases go one way, like passwords: in, and never back to the window.
+// Signing and encrypting outgoing mail are `sign` and `encrypt` on the draft
+// that `send` and `preview` already take; decryption happens in `message`.
+
+#[tauri::command]
+fn pgp_keys(app: State<'_, App>) -> Result<Vec<core_rpc::KeyView>, String> {
+    app.core.lock().unwrap().pgp_keys().map_err(fail)
+}
+
+/// Without a passphrase one is made up and kept in the keychain.
+#[tauri::command]
+fn pgp_generate(
+    app: State<'_, App>,
+    name: String,
+    email: String,
+    passphrase: Option<String>,
+) -> Result<core_rpc::KeyView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_generate(&name, &email, passphrase.as_deref())
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn pgp_import(app: State<'_, App>, armored: String) -> Result<core_rpc::ImportReport, String> {
+    app.core.lock().unwrap().pgp_import(&armored).map_err(fail)
+}
+
+/// The public half only; secret keys are never handed to the window.
+#[tauri::command]
+fn pgp_export_public(app: State<'_, App>, fingerprint: String) -> Result<String, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_export_public(&fingerprint)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn pgp_delete(app: State<'_, App>, fingerprint: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_delete(&fingerprint)
+        .map_err(fail)
+}
+
+/// Checked against the secret key before it is stored.
+#[tauri::command]
+fn pgp_set_passphrase(
+    app: State<'_, App>,
+    fingerprint: String,
+    passphrase: String,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_set_passphrase(&fingerprint, &passphrase)
+        .map_err(fail)
+}
+
+/// For compose: which recipients have keys, and whether `email` can sign.
+#[tauri::command]
+fn pgp_recipients(
+    app: State<'_, App>,
+    email: String,
+    recipients: Vec<String>,
+) -> Result<core_rpc::RecipientKeys, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_recipients(&email, &recipients)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn pgp_import_from_message(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+) -> Result<core_rpc::ImportReport, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .pgp_import_from_message(account, id)
         .map_err(fail)
 }
 
@@ -920,18 +1030,338 @@ async fn check_for_update(manual: bool) -> Result<Option<core_rpc::update::Updat
     })))
 }
 
+// -- folders ------------------------------------------------------------------
+
+/// Runs a future that holds a `Store` across awaits on a thread of its own —
+/// see [`sync`] for why that is needed at all.
+async fn on_own_thread<T, F, Fut>(what: &'static str, work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(fail)?;
+        runtime.block_on(work())
+    })
+    .await
+    .map_err(|err| format!("the {what} thread did not finish: {err}"))?
+}
+
+#[tauri::command]
+async fn create_folder(
+    app: State<'_, App>,
+    email: String,
+    name: String,
+    parent: Option<String>,
+) -> Result<core_rpc::CreatedFolder, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("folder", move || async move {
+        core_rpc::Session::new(data_dir)
+            .create_folder(&email, &name, parent.as_deref())
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn delete_folder(app: State<'_, App>, email: String, folder: i64) -> Result<String, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("folder", move || async move {
+        core_rpc::Session::new(data_dir)
+            .delete_folder(&email, folder)
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+// -- sending later ------------------------------------------------------------
+
+/// Puts a message in the outbox. Checked the way sending would check it, and
+/// sent by the scheduler thread started in `main` when its time comes.
+#[tauri::command]
+fn schedule_send(
+    app: State<'_, App>,
+    email: String,
+    draft: core_rpc::DraftInput,
+    send_at: i64,
+) -> Result<i64, String> {
+    core_rpc::Session::new(&app.data_dir)
+        .schedule(&email, &draft, send_at)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn outbox(app: State<'_, App>) -> Result<Vec<core_rpc::OutboxView>, String> {
+    app.core.lock().unwrap().outbox().map_err(fail)
+}
+
+#[tauri::command]
+fn cancel_scheduled(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().cancel_scheduled(id).map_err(fail)
+}
+
+#[tauri::command]
+fn reschedule(app: State<'_, App>, id: i64, send_at: i64) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .reschedule(id, send_at)
+        .map_err(fail)
+}
+
+/// A waiting message's account and draft, for opening it in compose again.
+#[tauri::command]
+fn scheduled_draft(app: State<'_, App>, id: i64) -> Result<(String, core_rpc::DraftInput), String> {
+    app.core.lock().unwrap().scheduled_draft(id).map_err(fail)
+}
+
+/// Sends whatever is due now, rather than at the scheduler's next look.
+#[tauri::command]
+async fn send_due(app: State<'_, App>) -> Result<Vec<core_rpc::OutboxSent>, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("outbox", move || async move {
+        core_rpc::Session::new(data_dir)
+            .send_due()
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+// -- smart mailboxes ----------------------------------------------------------
+
+#[tauri::command]
+fn smart_mailboxes(
+    app: State<'_, App>,
+    account: i64,
+) -> Result<Vec<core_rpc::SmartMailboxView>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .smart_mailboxes(account)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn save_smart_mailbox(
+    app: State<'_, App>,
+    input: core_rpc::SmartMailboxInput,
+) -> Result<i64, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_smart_mailbox(&input)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_smart_mailbox(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .delete_smart_mailbox(id)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn preview_smart(
+    app: State<'_, App>,
+    account: i64,
+    query: core_rpc::SmartQuery,
+) -> Result<core_rpc::SmartPreview, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .preview_smart(account, &query, 8)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn scan_smart_imports(app: State<'_, App>) -> Result<core_rpc::SmartImportScan, String> {
+    app.core.lock().unwrap().scan_smart_imports().map_err(fail)
+}
+
+#[tauri::command]
+fn import_smart_mailboxes(
+    app: State<'_, App>,
+    chosen: Vec<core_rpc::FoundSmartMailbox>,
+    fallback: i64,
+) -> Result<usize, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .import_smart_mailboxes(&chosen, fallback)
+        .map_err(fail)
+}
+
+// -- cleanup ------------------------------------------------------------------
+
+#[tauri::command]
+fn cleanup_counts(app: State<'_, App>, account: i64) -> Result<core_rpc::CleanupCounts, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .cleanup_counts(account)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn unsubscribe_senders(
+    app: State<'_, App>,
+    account: i64,
+) -> Result<Vec<core_rpc::UnsubscribeSenderView>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .unsubscribe_senders(account)
+        .map_err(fail)
+}
+
+/// Reads headers back out of mail synced before they were kept; returns how
+/// many messages are left. Its own connection, so the list stays usable.
+#[tauri::command]
+async fn backfill_headers(app: State<'_, App>, email: String) -> Result<usize, String> {
+    let data_dir = app.data_dir.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::Session::new(data_dir)
+            .backfill_headers(&email, 2_000)
+            .map_err(fail)
+    })
+    .await
+    .map_err(fail)?
+}
+
+#[tauri::command]
+async fn unsubscribe(
+    app: State<'_, App>,
+    email: String,
+    keys: Vec<String>,
+) -> Result<Vec<core_rpc::UnsubscribeResult>, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("unsubscribe", move || async move {
+        core_rpc::Session::new(data_dir)
+            .unsubscribe(&email, &keys)
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+#[tauri::command]
+fn unsubscribe_opened(
+    app: State<'_, App>,
+    account: i64,
+    key: String,
+    url: String,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .record_unsubscribe_opened(account, &key, &url)
+        .map_err(fail)
+}
+
+/// Every message from a sender, to the Trash — each an ordinary queued move
+/// with its own undo.
+#[tauri::command]
+fn trash_from_sender(app: State<'_, App>, account: i64, key: String) -> Result<usize, String> {
+    let core = app.core.lock().unwrap();
+    let trash = core
+        .special_folders(account)
+        .map_err(fail)?
+        .trash
+        .ok_or("this account has no Trash folder")?;
+    core.trash_from_sender(account, &key, &trash).map_err(fail)
+}
+
+/// Messages like `id`: for asking, after it is deleted, whether they should go too.
+#[tauri::command]
+fn similar(app: State<'_, App>, account: i64, id: i64) -> Result<core_rpc::SimilarReport, String> {
+    let core = app.core.lock().unwrap();
+    let trash = core.special_folders(account).map_err(fail)?.trash;
+    core.similar(account, id, trash.as_deref()).map_err(fail)
+}
+
+// -- the log ------------------------------------------------------------------
+
+#[tauri::command]
+fn log_status(app: State<'_, App>) -> logging::LogStatus {
+    app.logs.status()
+}
+
+#[tauri::command]
+fn set_detailed_logging(app: State<'_, App>, on: bool) -> Result<(), String> {
+    app.logs.set_detailed(on)
+}
+
+#[tauri::command]
+fn log_tail(app: State<'_, App>, lines: usize) -> String {
+    app.logs.tail(lines.min(2_000))
+}
+
+/// Writes the log to Downloads and shows it there.
+#[tauri::command]
+fn export_log(app: State<'_, App>) -> Result<String, String> {
+    let path = app.logs.export(&app.data_dir)?;
+    let _ = logging::reveal(&path);
+    Ok(path.display().to_string())
+}
+
+/// Something the window wants on the record — an error it showed, mostly —
+/// so a log sent with a report has both halves of what happened.
+#[tauri::command]
+fn log_ui(level: String, message: String) {
+    let message: String = message.chars().take(2_000).collect();
+    match level.as_str() {
+        "error" => tracing::error!(target: "window", "{message}"),
+        "warn" => tracing::warn!(target: "window", "{message}"),
+        _ => tracing::info!(target: "window", "{message}"),
+    }
+}
+
+/// Sends scheduled mail when it falls due, for as long as the window is open.
+///
+/// A thread of its own with its own store connection, like a sync. Every
+/// half minute is often enough that "8:00" means 8:00 to anyone reading it,
+/// and a look at an empty outbox is one indexed query.
+fn start_scheduler(handle: tauri::AppHandle, data_dir: PathBuf) {
+    use tauri::Emitter;
+    std::thread::spawn(move || {
+        let runtime = match tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+        {
+            Ok(runtime) => runtime,
+            Err(err) => {
+                tracing::error!(%err, "could not start the outbox scheduler");
+                return;
+            }
+        };
+        let session = core_rpc::Session::new(&data_dir);
+        loop {
+            match runtime.block_on(session.send_due()) {
+                Ok(sent) if !sent.is_empty() => {
+                    let _ = handle.emit("outbox-sent", &sent);
+                }
+                Ok(_) => {}
+                Err(err) => tracing::warn!(%err, "the outbox could not be checked"),
+            }
+            std::thread::sleep(std::time::Duration::from_secs(30));
+        }
+    });
+}
+
 fn default_data_dir() -> PathBuf {
     core_accounts::default_data_dir()
 }
 
 fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
-        )
-        .with_target(false)
-        .init();
-
     let data_dir = default_data_dir();
     // One window per data directory. Two — the installed app and one built
     // from source, say — would each sync the same store and each believe its
@@ -943,6 +1373,8 @@ fn main() {
             std::process::exit(1);
         }
     };
+    let logs = logging::Logs::init(&data_dir);
+    tracing::info!(version = env!("CARGO_PKG_VERSION"), "kuverta starting");
     let core = match Core::open(&data_dir) {
         Ok(core) => core,
         Err(err) => {
@@ -953,10 +1385,20 @@ fn main() {
         }
     };
     tracing::info!(dir = %data_dir.display(), "opened store");
+    // A send the last window was in the middle of when it closed. Whether it
+    // went cannot be known from here, so it waits for a person rather than
+    // being sent again on a guess.
+    match core.store().recover_interrupted_sends() {
+        Ok(0) => {}
+        Ok(n) => tracing::warn!(n, "scheduled messages were interrupted mid-send"),
+        Err(err) => tracing::warn!(%err, "could not check the outbox"),
+    }
 
     let instance = core_accounts::instance();
+    let scheduler_dir = data_dir.clone();
     tauri::Builder::default()
         .setup(move |app| {
+            start_scheduler(app.handle().clone(), scheduler_dir.clone());
             // A dev window says so, so it is never mistaken for the real one.
             if let Some(instance) = &instance {
                 use tauri::Manager;
@@ -969,6 +1411,7 @@ fn main() {
         .manage(App {
             core: Mutex::new(core),
             data_dir,
+            logs,
         })
         .invoke_handler(tauri::generate_handler![
             accounts,
@@ -998,6 +1441,14 @@ fn main() {
             sync,
             send,
             preview,
+            pgp_keys,
+            pgp_generate,
+            pgp_import,
+            pgp_export_public,
+            pgp_delete,
+            pgp_set_passphrase,
+            pgp_recipients,
+            pgp_import_from_message,
             special_folders,
             account_settings,
             save_account,
@@ -1028,6 +1479,32 @@ fn main() {
             lookup_account,
             open_external,
             check_for_update,
+            create_folder,
+            delete_folder,
+            schedule_send,
+            outbox,
+            cancel_scheduled,
+            reschedule,
+            scheduled_draft,
+            send_due,
+            smart_mailboxes,
+            save_smart_mailbox,
+            delete_smart_mailbox,
+            preview_smart,
+            scan_smart_imports,
+            import_smart_mailboxes,
+            cleanup_counts,
+            unsubscribe_senders,
+            backfill_headers,
+            unsubscribe,
+            unsubscribe_opened,
+            trash_from_sender,
+            similar,
+            log_status,
+            set_detailed_logging,
+            log_tail,
+            export_log,
+            log_ui,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

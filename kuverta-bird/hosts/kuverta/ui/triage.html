@@ -2,29 +2,20 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>kuverta — triage</title>
+    <title>kuverta — Cleanup</title>
     <link rel="stylesheet" href="../../../core/view/triage.css" />
-    <style>
-      html, body { height: 100%; margin: 0; font: message-box; }
-      body { display: grid; grid-template-rows: auto 1fr; }
-      /*
-        The way back lives here rather than in the shared surface: the surface
-        does not know it is inside this app, and a "back to kuverta" button in
-        `core/` would be the first crack in that.
-      */
-      #bar {
-        display: flex; align-items: center; gap: 10px;
-        padding: 5px 10px;
-        border-bottom: 1px solid color-mix(in srgb, WindowText 15%, transparent);
-      }
-      #bar a { color: inherit; }
-      #root { min-height: 0; }
-    </style>
+    <link rel="stylesheet" href="cleanup.css" />
   </head>
   <body>
+    <!--
+      The way back lives here rather than in the shared surface: the surface
+      does not know it is inside this app, and a "back to kuverta" button in
+      `core/` would be the first crack in that.
+    -->
     <div id="bar">
       <a href="../../../../index.html">← kuverta</a>
-      <strong>triage</strong>
+      <strong>Cleanup</strong>
+      <span class="bar-hint">Deal with a whole kind of mail at once, and stop the mail you never read.</span>
       <!-- Only shown when there is more than one account to choose between. -->
       <select id="account" hidden></select>
     </div>

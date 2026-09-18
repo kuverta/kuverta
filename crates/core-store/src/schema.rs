@@ -308,6 +308,66 @@ CREATE TABLE ai_task (
     model       TEXT NOT NULL
 );
 "#,
+    // v12 — sending later, smart mailboxes, and cleaning up.
+    //
+    // The outbox is a ledger of promises: the draft as JSON (core-rpc owns its
+    // shape), when it is due, and what happened. Smart mailboxes are saved
+    // questions, their rules JSON for the same reason. `unsubscription` records
+    // every attempt, because "did I already unsubscribe from these?" is the
+    // question the next newsletter from them raises.
+    //
+    // The message columns are headers the store threw away until now. Mail
+    // synced before this migration has them NULL and `headers_read = 0`, and is
+    // read back from the stored raw message once — see `hygiene.rs`.
+    r#"
+ALTER TABLE message ADD COLUMN recipients TEXT;
+ALTER TABLE message ADD COLUMN list_unsubscribe TEXT;
+ALTER TABLE message ADD COLUMN list_unsubscribe_post TEXT;
+ALTER TABLE message ADD COLUMN headers_read INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX message_unread_headers ON message (account_id, headers_read);
+
+CREATE TABLE outbox (
+    id          INTEGER PRIMARY KEY,
+    account_id  INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    draft       TEXT    NOT NULL,
+    subject     TEXT    NOT NULL,
+    recipients  TEXT    NOT NULL,
+    send_at     INTEGER NOT NULL,
+    -- 'scheduled' | 'sending' | 'sent' | 'failed' | 'cancelled'
+    state       TEXT    NOT NULL,
+    attempts    INTEGER NOT NULL DEFAULT 0,
+    last_error  TEXT,
+    created_at  INTEGER NOT NULL,
+    sent_at     INTEGER
+);
+CREATE INDEX outbox_due ON outbox (state, send_at);
+
+CREATE TABLE smart_mailbox (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    match_all  INTEGER NOT NULL DEFAULT 1,
+    rules      TEXT    NOT NULL,
+    -- 'thunderbird' | 'apple_mail' when imported; NULL when made here.
+    source     TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE unsubscription (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    -- A List-Id, else a lowercased From address.
+    sender     TEXT    NOT NULL,
+    -- 'one_click' | 'mailto' | 'browser'
+    method     TEXT    NOT NULL,
+    target     TEXT    NOT NULL,
+    -- 'done' | 'opened' | 'failed'
+    state      TEXT    NOT NULL,
+    detail     TEXT,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX unsubscription_by_sender ON unsubscription (account_id, sender);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
