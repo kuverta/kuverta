@@ -24,15 +24,25 @@ ticked**, so nothing goes that you did not see going. Untick the ones to keep.
 ## What counts as similar
 
 kuverta compares the deleted message with the recent mail of the same account
-(outside the Trash) and gives the first reason that fits:
+that is still somewhere you receive mail — not the Trash, Sent or Drafts — and
+gives the first reason that fits:
 
 | Reason shown | Means |
 | --- | --- |
 | same mailing list | The same `List-Id`. |
-| same sender, similar subject | The same address, with a subject built the same way — or nearly the same text. |
-| same subject / same subject, same domain | The very same subject line. |
+| same sender, similar subject | The same address, with a subject built the same way ("Your order #1234 has shipped", "Your order #5678 has shipped") or nearly the same text. |
+| same subject and text | Different senders, but the same subject line *and* much the same text. |
 | nearly the same text | Near-identical text from different senders: what a spam run looks like. |
-| same domain, similar subject | The same sending domain and a similar subject. |
+
+Some mail is never offered, whatever it looks like:
+
+- **Conversations.** Mail filed as *personal*, and replies (anything answering
+  another message, or with a subject starting *Re:* or *AW:*). Many people write
+  "Rückfrage zum Angebot"; deleting one of their messages says nothing about the
+  others.
+- **Likeness by provider alone.** Two senders at gmail.com, web.de or gmx.de
+  have nothing in common but their provider, so a shared domain never counts on
+  its own, and a suggested smart mailbox never names such a domain.
 
 ## Turning it off
 

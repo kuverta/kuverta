@@ -109,6 +109,17 @@ impl OpenAiCompatible {
 
     /// One exchange, deterministic and short, as [`Ollama::chat`].
     pub async fn chat(&self, model: &str, system: &str, user: &str) -> Result<ChatReply, AiError> {
+        self.chat_up_to(model, system, user, 12).await
+    }
+
+    /// As [`Ollama::chat_up_to`].
+    pub async fn chat_up_to(
+        &self,
+        model: &str,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<ChatReply, AiError> {
         self.exchange(&json!({
             "model": model,
             "messages": [
@@ -116,7 +127,7 @@ impl OpenAiCompatible {
                 { "role": "user", "content": user },
             ],
             "temperature": 0,
-            "max_tokens": 12,
+            "max_tokens": max_tokens,
         }))
         .await
     }
@@ -240,6 +251,20 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.chat(model, system, user).await,
             Self::OpenAi(service) => service.chat(model, system, user).await,
+        }
+    }
+
+    /// An answer longer than one word; see [`Ollama::chat_up_to`].
+    pub async fn chat_up_to(
+        &self,
+        model: &str,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<ChatReply, AiError> {
+        match self {
+            Self::Ollama(ollama) => ollama.chat_up_to(model, system, user, max_tokens).await,
+            Self::OpenAi(service) => service.chat_up_to(model, system, user, max_tokens).await,
         }
     }
 

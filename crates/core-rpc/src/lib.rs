@@ -21,6 +21,7 @@
 
 pub mod ai;
 pub mod cleanup;
+pub mod conversations;
 pub mod mailboxes;
 pub mod outbox;
 pub mod paper;
@@ -30,12 +31,14 @@ pub mod settings;
 pub mod setup;
 pub mod smart;
 pub mod update;
+pub mod urgency;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
 pub use cleanup::{
     CleanupCounts, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
     UnsubscribeResult, UnsubscribeSenderView,
 };
+pub use conversations::{Bubble, ConversationPage, ConversationView, Thread};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};
 pub use core_paper::PaperReport;
 pub use core_pgp::{
@@ -56,6 +59,7 @@ pub use settings::{AccountInput, AccountSettings};
 pub use smart::{
     FoundSmartMailbox, SmartImportScan, SmartMailboxInput, SmartMailboxView, SmartPreview,
 };
+pub use urgency::{UrgencyJob, UrgencyView, UrgentRow};
 
 use std::path::Path;
 

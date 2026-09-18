@@ -159,6 +159,18 @@ impl Ollama {
 
     /// One exchange with a chat model.
     pub async fn chat(&self, model: &str, system: &str, user: &str) -> Result<ChatReply, AiError> {
+        self.chat_up_to(model, system, user, 12).await
+    }
+
+    /// As [`Self::chat`], with room for an answer of up to `max_tokens` — a
+    /// judgement with its reason rather than one word.
+    pub async fn chat_up_to(
+        &self,
+        model: &str,
+        system: &str,
+        user: &str,
+        max_tokens: u32,
+    ) -> Result<ChatReply, AiError> {
         let body = json!({
             "model": model,
             "stream": false,
@@ -169,7 +181,7 @@ impl Ollama {
             // Deterministic, so the same mail gets the same verdict twice and a
             // comparison with the rules means something. And short: the answer
             // is one word, and a model given room to explain itself will.
-            "options": { "temperature": 0, "num_predict": 12 },
+            "options": { "temperature": 0, "num_predict": max_tokens },
         });
 
         self.exchange(&body).await

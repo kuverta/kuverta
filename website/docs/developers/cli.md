@@ -120,6 +120,7 @@ exactly like an address that has had no post.
 | --- | --- |
 | `unsubscribable` | senders whose mail can be unsubscribed from, and how |
 | `similar --id <id>` | messages that look like one — what the window offers to delete with it |
+| `urgent [--model] [--min N]` | Inbox mail that needs you soonest, as the urgency agent judges it; `--model` asks the sorting model too |
 
 ## Models
 
