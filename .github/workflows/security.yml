@@ -1,0 +1,146 @@
+name: Security
+
+# Dependencies with known advisories or unexpected licences and sources,
+# static analysis, and fuzzing of the code that reads other people's bytes.
+#
+# Pushes and pull requests get a short fuzz run per target; the nightly run
+# fuzzes for longer and picks up advisories published since the last push.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Advisories (RustSec), licences, banned crates and crates from anywhere
+  # but crates.io, as deny.toml sets them out.
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check
+
+  # jsdom and Playwright are dev dependencies only, but they run in CI and on
+  # every developer's machine.
+  npm-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Audit kuverta-bird
+        working-directory: kuverta-bird
+        run: npm audit --audit-level=high
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        # Rust is analysed from source without building it; the UI is plain
+        # JavaScript; `actions` looks for injection in these workflows.
+        language: [rust, javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [parse_message, backfill_headers, open_pgp, reply_source, text]
+    env:
+      # A minute each on a push or pull request, ten at night.
+      FUZZ_TIME: ${{ github.event_name == 'schedule' && '600' || '60' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # core-accounts links D-Bus for the keychain on Linux.
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends pkg-config libdbus-1-dev
+
+      - name: Nightly toolchain
+        run: rustup toolchain install nightly --profile minimal
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-fuzz
+
+      # The fuzz crate has no lock file of its own: starting from the app's
+      # means the parsers fuzzed are the versions that ship.
+      - name: Use the workspace's dependency versions
+        run: cp Cargo.lock fuzz/Cargo.lock
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            fuzz/target
+          key: fuzz-${{ matrix.target }}-${{ hashFiles('Cargo.lock', 'fuzz/Cargo.toml') }}
+          restore-keys: fuzz-${{ matrix.target }}-
+
+      # The corpus grows run by run: restored from the latest run on any
+      # branch, saved under a new key each time since caches are immutable.
+      - name: Restore corpus
+        uses: actions/cache/restore@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+          restore-keys: fuzz-corpus-${{ matrix.target }}-
+
+      - name: Fuzz
+        run: |
+          mkdir -p fuzz/corpus/${{ matrix.target }}
+          cargo +nightly fuzz run ${{ matrix.target }} \
+            fuzz/corpus/${{ matrix.target }} \
+            docker/dovecot/seed/inbox docker/dovecot/seed/archive \
+            -- -max_total_time=$FUZZ_TIME -max_len=262144 -rss_limit_mb=4096
+
+      # Merged down so the cache holds a minimal corpus, not every input
+      # that happened to be interesting once.
+      - name: Minimise corpus
+        if: success() && github.ref == 'refs/heads/main'
+        run: cargo +nightly fuzz cmin ${{ matrix.target }} fuzz/corpus/${{ matrix.target }}
+
+      - name: Save corpus
+        if: success() && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: fuzz/corpus/${{ matrix.target }}
+          key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
+
+      # The input that crashed, to reproduce with
+      # `cargo +nightly fuzz run <target> <file>`.
+      - name: Upload crash
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
