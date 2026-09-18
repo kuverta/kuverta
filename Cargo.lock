@@ -1036,7 +1036,7 @@ dependencies = [
  "chrono",
  "core-accounts",
  "core-store",
- "mail-builder",
+ "mail-builder 1.0.0",
  "mail-parser",
  "mail-send",
  "reqwest",
@@ -3273,6 +3273,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mail-builder"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ccbc27cb02a58a311a404769a22f5abf63fe3173b290d80be7c534f9c7023151"
+dependencies = [
+ "gethostname",
+]
+
+[[package]]
 name = "mail-parser"
 version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3289,7 +3298,7 @@ checksum = "8355326d14f08c9de5e9badfe606d9ba8fea2febb60fe4318ecbac33cfb7b41e"
 dependencies = [
  "base64 0.23.1",
  "gethostname",
- "mail-builder",
+ "mail-builder 0.5.0",
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
