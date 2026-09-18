@@ -42,4 +42,6 @@ base64.workspace = true
 serde_json.workspace = true
 roxmltree = "0.21.1"
 thiserror.workspace = true
+# Today's date for the urgency agent, and checking the deadlines it is given.
+chrono.workspace = true
 tracing.workspace = true

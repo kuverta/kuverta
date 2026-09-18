@@ -233,6 +233,22 @@ enum Command {
         #[arg(long)]
         email: Option<String>,
     },
+    /// Inbox mail that needs you soonest, as kuverta's urgency agent sees it.
+    ///
+    /// The rules judge every recent message at once; with --model the model
+    /// chosen for sorting mail (settings → Models) judges each in turn, told
+    /// what kuverta checked about it. Verdicts are kept, so each message is
+    /// asked about once.
+    Urgent {
+        #[arg(long)]
+        email: Option<String>,
+        /// Also ask the model, not only the rules.
+        #[arg(long)]
+        model: bool,
+        /// Show everything down to this urgency (0–3).
+        #[arg(long, default_value_t = 2)]
+        min: i64,
+    },
     /// Messages that look like one — what the window offers to delete with it.
     ///
     /// Read-only, for seeing what the likeness rules make of real mail.
@@ -672,6 +688,56 @@ async fn main() -> Result<()> {
             .await
         }
         Command::Disagreements { email } => list_disagreements(&store, email.as_deref()),
+        Command::Urgent { email, model, min } => {
+            let account = resolve_account(&store, email.as_deref())?;
+            let core = core_rpc::Core::new(store, blobs);
+            let judged = core.judge_by_rules(account)?;
+            if judged > 0 {
+                println!("the rules judged {judged} message(s)");
+            }
+            if model {
+                let choice = core.ai_for(core_rpc::Task::Chat)?;
+                let jobs = core.urgency_jobs(account, true, 150)?;
+                println!("asking {} about {} message(s)…", choice.model, jobs.len());
+                let mut failures = 0;
+                for job in &jobs {
+                    match core_rpc::urgency::ask_model(&choice.provider, &choice.model, job).await {
+                        Ok(urgency) => {
+                            failures = 0;
+                            core.record_urgency(job.id, &urgency)?;
+                        }
+                        Err(err) => {
+                            eprintln!("  {}: {err}", truncate(&job.subject, 40));
+                            failures += 1;
+                            if failures >= 3 {
+                                eprintln!("stopped after three failures in a row");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            let rows = core.urgent(account, min, 100)?;
+            if rows.is_empty() {
+                println!("nothing needs you at urgency {min} or above");
+            }
+            for r in &rows {
+                println!(
+                    "{}  {:<6} {:<26} {:<44} {}{}",
+                    r.urgency.score,
+                    r.urgency.action.as_deref().unwrap_or(""),
+                    truncate(&r.row.from, 26),
+                    truncate(&r.row.subject, 44),
+                    r.urgency.reason,
+                    r.urgency
+                        .deadline
+                        .as_deref()
+                        .map(|d| format!(" (by {d})"))
+                        .unwrap_or_default()
+                );
+            }
+            Ok(())
+        }
         Command::Similar { id, email } => {
             let account = resolve_account(&store, email.as_deref())?;
             let core = core_rpc::Core::new(store, blobs);

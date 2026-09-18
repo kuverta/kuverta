@@ -368,6 +368,29 @@ CREATE TABLE unsubscription (
 );
 CREATE INDEX unsubscription_by_sender ON unsubscription (account_id, sender);
 "#,
+    // v13 — how soon a message needs acting on. One verdict per message, the
+    // rules' first and a model's in its place when one is asked: advice that
+    // orders the "needs attention" view and moves nothing. `in_reply_to` and
+    // the sender are indexed for the questions urgency asks — has this been
+    // answered, and has this person been written to.
+    r#"
+CREATE TABLE urgency (
+    message_id INTEGER PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
+    -- 0 nothing to do, 1 can wait, 2 this week, 3 today
+    score      INTEGER NOT NULL,
+    reason     TEXT    NOT NULL,
+    -- 'reply' | 'pay' | 'attend' | 'decide' | 'read' | 'none'
+    action     TEXT,
+    -- YYYY-MM-DD
+    deadline   TEXT,
+    -- 'rules' | 'model'
+    source     TEXT    NOT NULL,
+    model      TEXT,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX urgency_by_score ON urgency (score);
+CREATE INDEX message_by_reply ON message (account_id, in_reply_to);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

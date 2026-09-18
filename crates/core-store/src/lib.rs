@@ -15,6 +15,7 @@ pub mod dedup;
 pub mod hygiene;
 pub mod model;
 pub mod outbox;
+pub mod people;
 mod schema;
 pub mod smart;
 
@@ -26,6 +27,9 @@ pub use hygiene::{
 };
 pub use model::*;
 pub use outbox::OutboxEntry;
+pub use people::{
+    Conversation, ConversationMessage, ConversationWindow, Urgency, UrgencyCandidate, UrgentMessage,
+};
 pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};
 
 #[derive(Debug, thiserror::Error)]

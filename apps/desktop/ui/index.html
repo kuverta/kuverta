@@ -54,6 +54,8 @@
          Paperless-ngx, read beside the mail. -->
     <div class="sidebar-heading" id="postboxes-heading" hidden>Post</div>
     <nav id="postboxes"></nav>
+    <!-- Mail ranked by how soon it needs you. See people.js. -->
+    <nav id="attention-nav"></nav>
     <div class="sidebar-heading with-action" id="folders-heading">
       <span>Mailboxes</span>
       <button type="button" id="folder-add" class="heading-action" title="New mailbox" aria-label="New mailbox">+</button>
@@ -101,6 +103,8 @@
       </div>
       <h2 id="reading-subject"></h2>
       <p id="reading-meta"></p>
+      <!-- How soon it needs you, and why, when the urgency agent says soon. -->
+      <div id="reading-urgency" class="urgency-note" hidden></div>
       <!-- Encrypted or signed mail: what was checked, and what it found. -->
       <div id="reading-security" class="security-note" hidden></div>
       <!-- Post only: the OCR text, or the scan itself for when the text is no
@@ -121,6 +125,23 @@
         <div id="reading-file-status" class="file-status"></div>
       </div>
     </article>
+
+    <!-- One person's exchange with you, as a messenger shows it. -->
+    <section id="conversation" hidden>
+      <div class="conversation-head">
+        <span id="conversation-avatar" class="avatar"></span>
+        <div>
+          <div id="conversation-name" class="conversation-name"></div>
+          <div id="conversation-address" class="hint"></div>
+        </div>
+      </div>
+      <div id="bubbles" class="bubbles"></div>
+      <div class="conversation-compose">
+        <textarea id="conversation-reply" rows="2" placeholder="Write a reply…" spellcheck="true"></textarea>
+        <button type="button" id="conversation-send" class="primary">Send</button>
+      </div>
+      <div class="hint conversation-hint">⌘/ctrl+enter sends, as a reply to their latest message. Double-click a bubble for the whole message.</div>
+    </section>
 
     <section id="compose" hidden>
       <div class="compose-head">
@@ -439,6 +460,11 @@
               <p class="hint">Spam and bulk mail come in runs. When a message you delete has look-alikes — the same sender and subject pattern, the same list, or the same text from different senders — kuverta shows them and lets you delete them together or gather them in a smart mailbox.</p>
             </section>
             <section class="card">
+              <h3>Needs attention</h3>
+              <label class="check"><input type="checkbox" id="pref-urgency-model"> After each sync, let the model for sorting mail judge how soon new mail needs me</label>
+              <p class="hint">kuverta's urgency agent always checks what it can itself — whether you write to the sender, whether you have answered, deadline and payment words. With this on, it also shows the model chosen under Models → Sorting mail the start of each new message that is not bulk mail, with those findings, and asks how soon it needs you and why. With a hosted model, that text leaves this computer.</p>
+            </section>
+            <section class="card">
               <h3>Updates</h3>
               <p class="hint" id="settings-version-line"></p>
               <div class="card-actions"><button type="button" id="settings-update">Check for updates</button></div>
@@ -697,5 +723,6 @@
   <script src="similar.js"></script>
   <script src="diagnostics.js"></script>
   <script src="encryption.js"></script>
+  <script src="people.js"></script>
 </body>
 </html>

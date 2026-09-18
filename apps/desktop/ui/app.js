@@ -104,6 +104,9 @@ const state = {
   trash: null,
   folders: [],
   filter: { ...NO_FILTER },
+  // "mail", or one of the other ways of looking at it: "urgent" (Needs
+  // attention) or "people". See people.js.
+  view: "mail",
   // Smart mailboxes on the current account, as the sidebar last drew them.
   smartMailboxes: [],
   total: 0,
@@ -162,9 +165,15 @@ function setMailOrder(value) {
 
 // -- data ------------------------------------------------------------------
 
+/// Which list the pages being fetched are for. A reload starts a new one, and
+/// a page that answers an older list — a folder or a view left while it was on
+/// its way — is dropped rather than drawn into the new one.
+let listGeneration = 0;
+
 async function loadPage(offset) {
   if (state.requested.has(offset)) return;
   state.requested.add(offset);
+  const generation = listGeneration;
 
   try {
     // A postbox's page comes from Paperless, in the shape a page of mail has,
@@ -178,7 +187,9 @@ async function loadPage(offset) {
           order: postOrder,
           category: state.filter.category,
         })
-      : await invoke("messages", {
+      : state.view !== "mail"
+        ? await viewPage(offset, PAGE)
+        : await invoke("messages", {
           account: state.account,
           offset,
           limit: PAGE,
@@ -191,6 +202,7 @@ async function loadPage(offset) {
           },
         });
 
+    if (generation !== listGeneration) return;
     // The total can move under us while a sync is running, so it is taken
     // from every page rather than once at the start.
     if (page.total !== state.total) {
@@ -201,6 +213,7 @@ async function loadPage(offset) {
     page.rows.forEach((row, i) => state.rows.set(page.offset + i, row));
     render(true);
   } catch (err) {
+    if (generation !== listGeneration) return;
     state.requested.delete(offset);
     const what = state.postbox ? `post from ${state.postbox.label}` : "messages";
     say(`could not load ${what}: ${err}`, true);
@@ -215,6 +228,7 @@ async function loadPage(offset) {
 /// other case — there the old position means nothing, so it resets.
 async function reload({ keepPosition = false } = {}) {
   const wasAt = state.selected;
+  listGeneration += 1;
   state.rows.clear();
   state.requested.clear();
   state.firstRendered = -1;
@@ -332,6 +346,7 @@ async function refreshSidebar() {
     return;
   }
 
+  await renderAttentionNav();
   state.folders = await invoke("folders", { account: state.account });
   sidebar.folders.textContent = "";
   sidebar.folders.append(
@@ -339,8 +354,9 @@ async function refreshSidebar() {
       label: "All mail",
       icon: "all",
       count: null,
-      active: state.filter.folder === null && state.filter.smart === null,
+      active: state.view === "mail" && state.filter.folder === null && state.filter.smart === null,
       onClick: async () => {
+        state.view = "mail";
         state.filter = { ...state.filter, folder: null, smart: null };
         await reload();
       },
@@ -353,8 +369,9 @@ async function refreshSidebar() {
       count: folder.total,
       unread: folder.unread,
       title: `${folder.name} — ${folder.unread} unread of ${folder.total}`,
-      active: state.filter.folder === folder.id && state.filter.smart === null,
+      active: state.view === "mail" && state.filter.folder === folder.id && state.filter.smart === null,
       onClick: async () => {
+        state.view = "mail";
         const next = state.filter.folder === folder.id && state.filter.smart === null ? null : folder.id;
         state.filter = { ...state.filter, folder: next, smart: null };
         await reload();
@@ -404,6 +421,7 @@ function renderCategories(counts) {
         icon: "inbox",
         active: state.filter.unreadOnly,
         onClick: async () => {
+          state.view = "mail";
           state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
           await reload();
         },
@@ -418,6 +436,7 @@ function renderCategories(counts) {
         count,
         active: state.filter.category === category,
         onClick: async () => {
+          if (!state.postbox) state.view = "mail";
           const next = state.filter.category === category ? null : category;
           state.filter = { ...state.filter, category: next };
           await reload();
@@ -460,6 +479,17 @@ function renderScope() {
 
   const label = document.createElement("span");
   const letters = `letter${state.total === 1 ? "" : "s"}`;
+  if (!state.postbox && state.view === "urgent") {
+    label.textContent = `${state.total} need${state.total === 1 ? "s" : ""} attention`;
+    label.className = "scope-name";
+    scopeBar.append(label, ...viewTools());
+    return;
+  }
+  if (!state.postbox && state.view === "people") {
+    label.textContent = `${state.total} ${state.total === 1 ? "person" : "people"}`;
+    scopeBar.append(label, ...viewTools(), viewToggle());
+    return;
+  }
   label.textContent = parts.length
     ? `${state.total} in ${parts.join(" · ")}`
     : state.postbox
@@ -480,6 +510,7 @@ function renderScope() {
 
   // Mail is sorted by date; which end it starts at is the choice.
   if (!state.postbox) {
+    scopeBar.append(viewToggle());
     const toggle = document.createElement("span");
     toggle.className = "order";
     for (const [value, text, title] of [
@@ -528,6 +559,8 @@ function renderScope() {
 /// newest first, read like mail.
 async function selectPostbox(postbox) {
   state.postbox = postbox;
+  state.view = "mail";
+  hideConversation();
   statusBar.textContent = postbox.label;
   state.filter = { ...NO_FILTER };
   closeCompose();
@@ -543,7 +576,11 @@ async function selectPostbox(postbox) {
 /// these keys say so rather than doing something to the account behind it.
 function mailOnly(action) {
   return () =>
-    state.postbox ? say(`${state.postbox.label} is post — that is done in Paperless`, true) : action();
+    state.postbox
+      ? say(`${state.postbox.label} is post — that is done in Paperless`, true)
+      : state.view === "people" && action !== openCompose
+        ? say("People lists people, not messages — open one, or switch to Messages", true)
+        : action();
 }
 
 /// How many letters each postbox holds, asked in the background: the sidebar
@@ -730,6 +767,8 @@ setInterval(checkForPost, POST_POLL_MS);
 
 async function selectAccount(account) {
   state.postbox = null;
+  state.view = "mail";
+  hideConversation();
   state.account = account.id;
   state.email = account.email;
   statusBar.textContent = account.email;
@@ -887,6 +926,11 @@ function ensureLoaded(from, to) {
 async function openSelected() {
   const row = state.rows.get(state.selected);
   if (!row) return;
+  if (!state.postbox && state.view === "people") {
+    await openConversation(row);
+    return;
+  }
+  hideConversation();
 
   try {
     if (state.postbox) {
@@ -895,6 +939,7 @@ async function openSelected() {
       reading.hidden = false;
       emptyPane.hidden = true;
       el("reading-actions").hidden = true;
+      el("reading-urgency").hidden = true;
       showSecurity(null);
       el("reading-subject").textContent = detail.row.subject || "(untitled)";
       el("reading-meta").textContent = [
@@ -928,6 +973,7 @@ async function openSelected() {
     emptyPane.hidden = true;
     el("reading-actions").hidden = false;
     showSecurity(detail);
+    showUrgency(row.id);
     el("reading-subject").textContent = detail.subject ?? "(no subject)";
     el("reading-meta").textContent = [
       detail.from,
@@ -1106,7 +1152,7 @@ function select(index) {
   keepInView();
   render(true);
   renderScope();
-  if (!reading.hidden) openSelected();
+  if (!reading.hidden || !conversationPane.hidden) openSelected();
 }
 
 // -- changes ---------------------------------------------------------------
@@ -1188,6 +1234,7 @@ async function trash() {
 async function toggleRead() {
   const row = state.rows.get(state.selected);
   if (!row) return;
+  if (!state.postbox && state.view === "people") return;
   if (state.postbox) {
     await markPostRead(row, row.unread);
     say(row.unread ? "marked unread" : "marked read");
@@ -1451,6 +1498,8 @@ async function sync() {
     if (s.expunged) parts.push(`${s.expunged} gone`);
     say(parts.length ? parts.join(", ") : "nothing new");
     await reload({ keepPosition: true });
+    // New mail gets its urgency judged, in the background.
+    judgeUrgency();
   } catch (err) {
     say(String(err), true);
   } finally {
@@ -1481,7 +1530,8 @@ function showSyncProgress(at) {
 // -- search ----------------------------------------------------------------
 
 async function runSearch(query) {
-  if (!query.trim()) {
+  if (!query.trim() || (!state.postbox && state.view === "people")) {
+    // In People the box narrows the people, which the next page asks for.
     await reload();
     return;
   }
@@ -1578,6 +1628,11 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
+  if (conversationPane.contains(event.target) && event.target.tagName === "TEXTAREA") {
+    if (event.key === "Escape") event.target.blur();
+    return;
+  }
+
   if (event.target === searchBox) {
     if (event.key === "Enter") await runSearch(searchBox.value);
     if (event.key === "Escape") {
@@ -1596,6 +1651,7 @@ document.addEventListener("keydown", async (event) => {
   if (event.key === "Escape") {
     clearSelection();
     reading.hidden = true;
+    hideConversation();
     emptyPane.hidden = false;
     return;
   }
@@ -1680,6 +1736,9 @@ async function start() {
   state.accounts = accounts;
   buildPool();
   await selectAccount(accounts[0]);
+
+  // What arrived since last time gets judged, quietly.
+  judgeUrgency();
 
   const pending = await invoke("queue", { account: state.account });
   if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);

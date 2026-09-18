@@ -85,9 +85,10 @@ async function renderSmartMailboxes() {
       count: mailbox.total,
       unread: mailbox.unread,
       title: `${describeQuery(mailbox.query)} — ${mailbox.unread} unread of ${mailbox.total}`,
-      active: state.filter.smart === mailbox.id,
+      active: state.view === "mail" && state.filter.smart === mailbox.id,
       onClick: async () => {
         const next = state.filter.smart === mailbox.id ? null : mailbox.id;
+        state.view = "mail";
         state.filter = { ...state.filter, smart: next, folder: null, category: null };
         await reload();
       },

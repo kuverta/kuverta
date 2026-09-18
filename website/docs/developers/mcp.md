@@ -49,6 +49,8 @@ does with read access.
 | `pending_changes` | read | changes not yet sent, and how long each is still held |
 | `list_postal_addresses` | read | physical addresses whose post is in Paperless |
 | `list_post`, `read_post` | read | scanned post, which reads like mail |
+| `urgent_messages` | read | Inbox mail ranked by how soon it needs the user, with action, deadline and reason ([Needs attention](../user-guide/attention.md)) |
+| `read_conversation` | read | everything with one person, oldest first, quotes and signatures taken off ([People](../user-guide/people.md)) |
 | `file_message` | write | file under a category — as a suggestion, see below |
 | `archive_message` | write | queued move to Archive |
 | `trash_message` | write | queued move to Trash; nothing is deleted |

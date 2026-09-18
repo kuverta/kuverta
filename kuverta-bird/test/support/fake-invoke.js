@@ -386,6 +386,35 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     log_status: async () => ({ version: '0.0.0-test', path: '/tmp/kuverta.log', detailed: false, size_bytes: 0 }),
     log_tail: async () => '',
     log_ui: async () => null,
+    urgent_messages: async () => [],
+    urgency_of: async () => null,
+    find_urgent: async () => ({ by_rules: 0, by_model: 0, model: null, local: true, stopped: null }),
+    conversations: async ({ offset }) => {
+      const people = new Map();
+      for (const m of visible()) {
+        const key = (m.from.match(/<(.+)>/)?.[1] ?? m.from).toLowerCase();
+        const person = people.get(key) ?? {
+          key, name: m.from.replace(/\s*<.*>/, ''), messages: 0, unread: 0,
+          last_utc: m.date_utc, last_subject: m.subject, last_snippet: m.snippet, last_from_me: false,
+        };
+        person.messages += 1;
+        person.unread += m.unread ? 1 : 0;
+        people.set(key, person);
+      }
+      const rows = [...people.values()];
+      return { total: rows.length, offset, rows: rows.slice(offset, offset + 200) };
+    },
+    conversation: async ({ key }) => {
+      const mine = visible().filter((m) => m.from.toLowerCase().includes(key));
+      return {
+        key,
+        name: mine[0]?.from.replace(/\s*<.*>/, '') ?? key,
+        reply_to: mine[0]?.id ?? null,
+        bubbles: mine.reverse().map((m) => ({
+          id: m.id, from_me: false, date_utc: m.date_utc, subject: m.subject, text: m.body, unread: m.unread,
+        })),
+      };
+    },
     pgp_keys: async () => [],
     pgp_recipients: async ({ email, recipients }) => ({
       sender: email,
