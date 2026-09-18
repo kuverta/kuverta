@@ -107,7 +107,7 @@ pub fn tools() -> Vec<ToolSpec> {
                 "alternatives": {"type": "array", "items": {"type": "string"}, "description": "Other ways the message could say it, each tried on its own."},
                 "limit": {"type": "integer", "default": 20}
             }, "required": ["query"]})),
-        tool("list_mail", "Messages newest first, optionally only in one folder, one category, or unread. Returns id, from, subject, date, category and first line.",
+        tool("list_mail", "Messages newest first, optionally only in one folder, one category, or unread. Mail from people is category personal. Returns what was listed, the total, and for each message id, from, subject, date, category and first line.",
             json!({"type": "object", "properties": {
                 "folder": {"type": "string", "description": "A folder name from list_folders."},
                 "category": {"type": "string", "enum": ["personal", "newsletter", "marketing", "transactional", "notification", "unknown"]},
@@ -346,23 +346,74 @@ impl Core {
                     ),
                     None => None,
                 };
+                // Models name these every which way; a filter quietly dropped
+                // lists all mail as if it were the answer.
+                let category = match args.get("category").or_else(|| args.get("categories")) {
+                    Some(Value::String(c)) if !c.trim().is_empty() => Some(category_named(c)?),
+                    Some(Value::Array(items)) => match items.first().and_then(Value::as_str) {
+                        Some(c) => Some(category_named(c)?),
+                        None => None,
+                    },
+                    _ => None,
+                };
+                let unread_only = ["unread_only", "unread", "only_unread", "is_unread"]
+                    .iter()
+                    .find_map(|key| flag(args, key))
+                    .unwrap_or(false);
+                const KNOWN: &[&str] = &[
+                    "folder",
+                    "category",
+                    "categories",
+                    "unread_only",
+                    "unread",
+                    "only_unread",
+                    "is_unread",
+                    "limit",
+                    "offset",
+                ];
+                let ignored: Vec<&String> = args
+                    .as_object()
+                    .map(|o| o.keys().filter(|k| !KNOWN.contains(&k.as_str())).collect())
+                    .unwrap_or_default();
                 let filter = ListFilter {
-                    category: args
-                        .get("category")
-                        .and_then(Value::as_str)
-                        .map(str::to_string),
-                    unread_only: flag(args, "unread_only").unwrap_or(false),
+                    category: category.clone(),
+                    unread_only,
                     folder,
                     ..Default::default()
                 };
-                let offset = args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize;
+                let offset = args
+                    .get("offset")
+                    .and_then(|v| v.as_u64().or_else(|| v.as_str()?.trim().parse().ok()))
+                    .unwrap_or(0) as usize;
                 let page = self
                     .messages(account, offset, limit(args, 20), &filter)
                     .map_err(e)?;
+                let described = [
+                    unread_only.then_some("unread"),
+                    category.as_deref(),
+                    Some("mail"),
+                    args.get("folder").and_then(Value::as_str).map(|_| "in"),
+                    args.get("folder").and_then(Value::as_str),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(" ");
+                let mut result = json!({
+                    "listed": described,
+                    "total": page.total,
+                    "messages": page.rows.iter().map(row_json).collect::<Vec<_>>(),
+                });
+                if !ignored.is_empty() {
+                    result["ignored"] = json!(format!(
+                        "not filters of list_mail, so not applied: {}; use find_mail for other rules",
+                        ignored.iter().map(|k| k.as_str()).collect::<Vec<_>>().join(", ")
+                    ));
+                }
                 Ok(ToolOutcome::ok(
-                    json!({ "total": page.total, "messages": page.rows.iter().map(row_json).collect::<Vec<_>>() }),
+                    result,
                     Some(AssistantEvent::Looked {
-                        what: format!("listed mail — {} in all", page.total),
+                        what: format!("listed {described} — {} in all", page.total),
                     }),
                 ))
             }
@@ -637,6 +688,56 @@ impl Core {
     }
 }
 
+/// Whether a model service's error is its content filter refusing the input,
+/// rather than anything wrong with the request. DeepSeek says "Content Exists
+/// Risk"; OpenAI and Azure say content_filter or content management policy.
+fn is_content_refusal(error: &str) -> bool {
+    let error = error.to_lowercase();
+    [
+        "content exists risk",
+        "content_filter",
+        "content management policy",
+        "content_policy_violation",
+    ]
+    .iter()
+    .any(|signal| error.contains(signal))
+}
+
+/// Takes the mail out of what this question's tools returned, so the model is
+/// asked again without it. Earlier questions' results stay: they were accepted.
+fn withhold_mail(turns: &mut [Turn]) {
+    let since = turns
+        .iter()
+        .rposition(|turn| matches!(turn, Turn::User { .. }))
+        .unwrap_or(0);
+    for turn in &mut turns[since..] {
+        if let Turn::Tool { content, .. } = turn {
+            *content = json!({
+                "withheld": "the model service refused this mail's content, so it is not shown; answer from what you have and say that some mail could not be read"
+            })
+            .to_string();
+        }
+    }
+}
+
+/// A category as a model may name it: one of the six, or a word for one.
+fn category_named(name: &str) -> std::result::Result<String, String> {
+    let name = name.trim().to_lowercase();
+    let known = match name.as_str() {
+        "people" | "person" | "persons" | "human" | "humans" | "private" => "personal",
+        "newsletters" => "newsletter",
+        "ads" | "advertising" | "promotions" | "promotional" => "marketing",
+        "notifications" | "alerts" => "notification",
+        "receipts" | "invoices" | "orders" => "transactional",
+        other => other,
+    };
+    core_rules::Category::parse(known)
+        .map(|_| known.to_string())
+        .ok_or_else(|| {
+            format!("{name} is not a category; the categories are personal, newsletter, marketing, transactional, notification and unknown")
+        })
+}
+
 /// A task's rules in words: "subject contains invoice and from ends with
 /// @acme.example".
 pub fn describe_rules(query: &core_store::SmartQuery) -> String {
@@ -721,12 +822,42 @@ impl Session {
 
         let specs = tools();
         let mut events = Vec::new();
+        let mut withheld = false;
         for _ in 0..MAX_STEPS {
-            let reply = choice
+            let reply = match choice
                 .provider
                 .converse(&choice.model, &turns, &specs)
                 .await
-                .map_err(|err| RpcError::Network(format!("{}: {err}", choice.model)))?;
+            {
+                Ok(reply) => reply,
+                // A hosted service's content filter took offence at something
+                // in the mail it was shown — spam, usually. Once, the mail
+                // this question fetched is taken back out and it is asked
+                // again; the answer is then from less, and says so.
+                Err(err) if is_content_refusal(&err.to_string()) && !withheld => {
+                    tracing::info!(model = %choice.model, "the model service refused the mail it was shown; asking again without it");
+                    withheld = true;
+                    withhold_mail(&mut turns);
+                    let event = AssistantEvent::Failed {
+                        what: format!(
+                            "{} refused to read some of this mail (its content filter); asking again without it",
+                            choice.model
+                        ),
+                    };
+                    on_event(&event);
+                    events.push(event);
+                    continue;
+                }
+                Err(err) if is_content_refusal(&err.to_string()) => {
+                    return Err(RpcError::Rejected(format!(
+                        "{} refuses to work on some of this mail: the service filters what it is sent, and \
+                         something in your mail — spam, usually — trips that filter. Ask about fewer \
+                         messages, or use a model on this computer for this question.",
+                        choice.model
+                    )));
+                }
+                Err(err) => return Err(RpcError::Network(format!("{}: {err}", choice.model))),
+            };
             turns.push(Turn::Assistant {
                 content: reply.content.clone(),
                 calls: reply.calls.clone(),
@@ -741,6 +872,8 @@ impl Session {
                 });
             }
             for call in &reply.calls {
+                // Detailed logging only: the arguments can hold search words.
+                tracing::debug!(tool = %call.name, arguments = %call.arguments, "assistant tool call");
                 let outcome = if call.name == "create_folder" {
                     self.folder_tool(&email, call).await
                 } else {
@@ -852,5 +985,49 @@ impl Session {
             runs.push(run);
         }
         Ok(runs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_content_filter_is_told_from_other_errors() {
+        assert!(is_content_refusal(
+            r#"the model server answered 400: {"error":{"message":"Content Exists Risk","type":"invalid_request_error"}}"#
+        ));
+        assert!(is_content_refusal("400: finish_reason content_filter"));
+        assert!(!is_content_refusal("400: model not found"));
+        assert!(!is_content_refusal("timed out"));
+    }
+
+    #[test]
+    fn withholding_takes_out_only_this_question_s_mail() {
+        let tool = |content: &str| Turn::Tool {
+            call_id: "1".into(),
+            name: "list_mail".into(),
+            content: content.into(),
+        };
+        let mut turns = vec![
+            Turn::User {
+                content: "earlier".into(),
+            },
+            tool("earlier mail"),
+            Turn::User {
+                content: "now".into(),
+            },
+            tool("spam"),
+        ];
+        withhold_mail(&mut turns);
+        assert!(matches!(&turns[1], Turn::Tool { content, .. } if content == "earlier mail"));
+        assert!(matches!(&turns[3], Turn::Tool { content, .. } if content.contains("withheld")));
+    }
+
+    #[test]
+    fn categories_are_understood_as_models_name_them() {
+        assert_eq!(category_named("People").unwrap(), "personal");
+        assert_eq!(category_named("newsletter").unwrap(), "newsletter");
+        assert!(category_named("invoice-ish").is_err());
     }
 }
