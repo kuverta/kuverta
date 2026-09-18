@@ -22,7 +22,7 @@ jobs:
     outputs:
       id: ${{ steps.draft.outputs.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The tag and the version the app reports have to agree, or the update
       # check would offer this release to itself forever.
@@ -38,7 +38,7 @@ jobs:
       # again fills the same draft.
       - name: Draft release
         id: draft
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
@@ -81,7 +81,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Rust toolchain and targets
         run: |
@@ -106,7 +106,7 @@ jobs:
         if: runner.os == 'Windows'
         uses: ilammy/setup-nasm@v1
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -115,7 +115,7 @@ jobs:
           key: release-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: release-${{ matrix.os }}-
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -157,7 +157,7 @@ jobs:
           done
 
       - name: Build and upload
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
