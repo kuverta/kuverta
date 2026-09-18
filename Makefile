@@ -6,7 +6,7 @@ DEV_ENV := KUVERTA_INSTANCE=dev KUVERTA_DATA_DIR=.devdata
 .DEFAULT_GOAL := help
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
-        triage-ui triage test-js test-e2e \
+        triage-ui triage test-js test-e2e audit fuzz fuzz-list \
         fill-mailbox fill-dev scannerd-pi scannerd-to-pi bundle release clean
 
 help: ## Show this help
@@ -80,6 +80,27 @@ check: ## What CI runs
 	cargo fmt --all -- --check
 	$(MAKE) lint
 	$(MAKE) test-all
+
+## -- security -------------------------------------------------------------
+
+# What the Security workflow runs, minus CodeQL. Needs
+# `cargo install --locked cargo-deny`.
+audit: ## Check dependencies for advisories, licences and unknown sources
+	cargo deny check
+	cd kuverta-bird && npm audit --audit-level=high
+
+# The fuzz crate is its own workspace on a nightly compiler; see fuzz/Cargo.toml.
+# Needs `rustup toolchain install nightly` and `cargo install --locked cargo-fuzz`.
+# The seeded dev mail is read as a starting corpus, never written to.
+FUZZ_TARGET ?= parse_message
+FUZZ_TIME ?= 60
+fuzz: ## Fuzz one target (FUZZ_TARGET=parse_message FUZZ_TIME=60 seconds)
+	@mkdir -p fuzz/corpus/$(FUZZ_TARGET)
+	cargo +nightly fuzz run $(FUZZ_TARGET) fuzz/corpus/$(FUZZ_TARGET) docker/dovecot/seed/inbox docker/dovecot/seed/archive \
+	  -- -max_total_time=$(FUZZ_TIME) -max_len=262144
+
+fuzz-list: ## List the fuzz targets
+	@cargo +nightly fuzz list
 
 ## -- the app ---------------------------------------------------------------
 

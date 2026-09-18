@@ -1,0 +1,69 @@
+# Fuzz targets for the code that reads bytes someone else wrote: raw mail off
+# an IMAP server, PGP packets inside it, and text a model sent back.
+#
+# Its own workspace, so the main build and `cargo test --workspace` never see
+# it: libFuzzer needs a nightly compiler and the rest of the tree is pinned to
+# a stable one. Run with `make fuzz` or `cargo +nightly fuzz run <target>`.
+
+[package]
+name = "kuverta-fuzz"
+version = "0.0.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+core-proto = { path = "../crates/core-proto" }
+core-pgp = { path = "../crates/core-pgp" }
+core-smtp = { path = "../crates/core-smtp" }
+core-store = { path = "../crates/core-store" }
+core-ai = { path = "../crates/core-ai" }
+
+[workspace]
+members = ["."]
+
+[profile.release]
+# Assertions and overflow checks on: an arithmetic overflow in a parser is
+# exactly the kind of thing this is here to find.
+debug = 1
+debug-assertions = true
+overflow-checks = true
+
+[[bin]]
+name = "parse_message"
+path = "fuzz_targets/parse_message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "backfill_headers"
+path = "fuzz_targets/backfill_headers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "open_pgp"
+path = "fuzz_targets/open_pgp.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "reply_source"
+path = "fuzz_targets/reply_source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text"
+path = "fuzz_targets/text.rs"
+test = false
+doc = false
+bench = false
