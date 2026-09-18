@@ -78,7 +78,7 @@ tokio-rustls = "0.26.5"
 # provider. Every TLS config in this workspace names its provider instead of
 # relying on that default, so the feature is requested here rather than
 # inherited by accident.
-rustls = { version = "0.23.44", features = ["ring"] }
+rustls = { version = "0.23.45", features = ["ring"] }
 rustls-platform-verifier = "0.7.0"
 
 [profile.dev]

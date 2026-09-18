@@ -55,7 +55,8 @@ registration, `--auth oauth2 --client-id …`, then `login`.
 | --- | --- |
 | `sync [--email …]` | fetch new mail into the store; every account by default. `--password-env VAR` reads the password from an environment variable instead of the keychain (for the dev stack and CI). |
 | `list [-n 20]` | the most recent messages, numbered |
-| `search <query>` | full-text search |
+| `search <query>` | full-text search: each word as the start of a word, in any order, spellings like *eSIM*/*e-SIM* both ways; `'"exact phrase"'` for a phrase |
+| `attachments --id <id> [--save <n>] [--out <dir>]` | a message's attachments, or save one (never overwriting) |
 | `triage [--category …]` | each message's category as the rules filed it; optionally only one category |
 | `status` | what is in the store |
 
@@ -120,6 +121,8 @@ exactly like an address that has had no post.
 | --- | --- |
 | `unsubscribable` | senders whose mail can be unsubscribed from, and how |
 | `similar --id <id>` | messages that look like one — what the window offers to delete with it |
+| `ask "…"` | ask the assistant, with the window's tools; prints what it does and its answer |
+| `run-tasks [--model]` | run the account's tasks now |
 | `urgent [--model] [--min N]` | Inbox mail that needs you soonest, as the urgency agent judges it; `--model` asks the sorting model too |
 
 ## Models

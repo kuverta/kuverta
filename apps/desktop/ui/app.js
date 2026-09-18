@@ -294,9 +294,10 @@ async function refreshSidebar() {
   // Accounts. Hidden when there is only one, because a list of one is a label
   // pretending to be a choice — unless there is post beside it, when the
   // account is the way back to mail.
+  renderProfileBar();
   sidebar.accounts.textContent = "";
-  if (state.accounts.length > 1 || state.postboxes.length) {
-    for (const account of state.accounts) {
+  if (visibleAccounts().length > 1 || visiblePostboxes().length) {
+    for (const account of visibleAccounts()) {
       sidebar.accounts.append(
         navItem({
           label: account.email,
@@ -310,8 +311,8 @@ async function refreshSidebar() {
 
   // Each postal address is an inbox of its own: its post, beside the mail.
   sidebar.postboxes.textContent = "";
-  sidebar.postboxesHeading.hidden = state.postboxes.length === 0;
-  for (const postbox of state.postboxes) {
+  sidebar.postboxesHeading.hidden = visiblePostboxes().length === 0;
+  for (const postbox of visiblePostboxes()) {
     sidebar.postboxes.append(
       navItem({
         label: postbox.label || postbox.base_url,
@@ -767,6 +768,10 @@ setInterval(checkForPost, POST_POLL_MS);
 
 async function selectAccount(account) {
   state.postbox = null;
+  if (assistantOpen()) queueMicrotask(() => {
+    ensureConversation();
+    if (currentTab() === "tasks") refreshTasks();
+  });
   state.view = "mail";
   hideConversation();
   state.account = account.id;
@@ -941,6 +946,7 @@ async function openSelected() {
       el("reading-actions").hidden = true;
       el("reading-urgency").hidden = true;
       showSecurity(null);
+      hideAttachments();
       el("reading-subject").textContent = detail.row.subject || "(untitled)";
       el("reading-meta").textContent = [
         detail.row.from,
@@ -986,6 +992,7 @@ async function openSelected() {
     // means an empty body — an attachment-only message, or one whose stored
     // copy has gone.
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
+    showAttachments(detail);
   } catch (err) {
     say(`could not open: ${err}`, true);
   }
@@ -1498,8 +1505,9 @@ async function sync() {
     if (s.expunged) parts.push(`${s.expunged} gone`);
     say(parts.length ? parts.join(", ") : "nothing new");
     await reload({ keepPosition: true });
-    // New mail gets its urgency judged, in the background.
+    // New mail gets its urgency judged and the tasks run, in the background.
     judgeUrgency();
+    runTasks();
   } catch (err) {
     say(String(err), true);
   } finally {
@@ -1585,6 +1593,7 @@ const KEYS = {
   },
   c: mailOnly(() => openCompose()),
   ",": openSettings,
+  i: () => setAssistantOpen(!assistantOpen()),
   R: mailOnly(() => openCompose({ replyAll: false })),
   A: mailOnly(() => openCompose({ replyAll: true })),
   f: mailOnly(() => openCompose({ forward: true })),
@@ -1625,6 +1634,10 @@ document.addEventListener("keydown", async (event) => {
     if (el("schedule-menu").contains(event.target)) return;
     if (event.key === "Escape") closeCompose();
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) await sendDraft();
+    return;
+  }
+
+  if (el("assistant").contains(event.target) && ["TEXTAREA", "INPUT", "SELECT"].includes(event.target.tagName)) {
     return;
   }
 
@@ -1734,11 +1747,18 @@ async function start() {
   }
 
   state.accounts = accounts;
+  await loadProfiles();
   buildPool();
-  await selectAccount(accounts[0]);
+  // The profile shown last time, and its first account.
+  const first = visibleAccounts()[0];
+  if (first) await selectAccount(first);
+  else if (visiblePostboxes().length) await selectPostbox(visiblePostboxes()[0]);
+  else await selectAccount(accounts[0]);
 
-  // What arrived since last time gets judged, quietly.
+  // What arrived since last time gets judged, quietly; and what tasks are
+  // waiting for shows on the Assistant button.
   judgeUrgency();
+  refreshAssistantBadge();
 
   const pending = await invoke("queue", { account: state.account });
   if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);
@@ -1815,6 +1835,11 @@ function fillForm(account) {
   f.oauth_tenant.value = account.oauth_tenant ?? "";
   f.excluded_folders.value = (account.excluded_folders ?? []).join("\n");
   f.password.value = "";
+  // A new account goes in the profile on screen, unless told otherwise.
+  fillProfileSelect(
+    f.profile,
+    account.id === null ? activeProfile() : state.accounts.find((a) => a.id === account.id)?.profile_id ?? null,
+  );
 
   // The field never shows a password, so it has to say whether there is one.
   settings.passwordState.textContent = account.has_password
@@ -1848,6 +1873,7 @@ const ADD_BUTTONS = {
 
 /// The settings pages that are not one of the four forms.
 const SETTINGS_PAGES = {
+  profiles: el("profiles-page"),
   smart: el("smart-page"),
   keys: el("keys-page"),
   general: el("general-page"),
@@ -1856,6 +1882,7 @@ const SETTINGS_PAGES = {
 
 /// What each section is, at the top of its page.
 const PAGE_HEADS = {
+  profiles: ["Profiles", "Private, one company, another — kept apart."],
   account: ["Account", "Where mail comes from and goes out through. Passwords go to the system keychain and are never shown again."],
   paper: ["Postal address", "Scanned post from Paperless-ngx, read beside your mail."],
   models: ["Models", "Which model reads scans and sorts mail, and where it runs."],
@@ -1890,6 +1917,10 @@ function settingsHeading(text, button, label) {
 function renderSettingsList() {
   settings.list.textContent = "";
   const onAccounts = settings.mode === "account";
+
+  settings.list.append(
+    navItem({ label: "Profiles", active: settings.mode === "profiles", onClick: () => showSettingsPage("profiles") }),
+  );
 
   settings.list.append(settingsHeading("Accounts", ADD_BUTTONS.account, "+ Add"));
   for (const account of settings.accounts) {
@@ -1988,6 +2019,7 @@ async function openSettings(page = null) {
   // failure to list addresses must not stop anyone editing an account.
   paper.addresses = await invoke("paper_mailboxes").catch(() => []);
   models.providers = await invoke("ai_providers").catch(() => []);
+  await loadProfiles();
   settings.sheet.hidden = false;
   if (page) showSettingsPage(page);
   else fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
@@ -2000,6 +2032,8 @@ async function closeSettings() {
   state.accounts = await invoke("accounts");
   // Postal addresses too: one added, renamed or removed shows in the sidebar.
   state.postboxes = await invoke("paper_mailboxes").catch(() => []);
+  // And profiles, which settings may have changed.
+  await loadProfiles();
   countPostboxes();
   if (state.postbox) {
     const box = state.postboxes.find((p) => p.id === state.postbox.id);
@@ -2017,8 +2051,8 @@ async function closeSettings() {
     statusBar.textContent = "no accounts — add one in settings";
     return;
   }
-  const still = state.accounts.find((a) => a.id === state.account);
-  await selectAccount(still ?? state.accounts[0]);
+  const still = visibleAccounts().find((a) => a.id === state.account);
+  await selectAccount(still ?? visibleAccounts()[0] ?? state.accounts[0]);
 }
 
 /// The form's state, as the core wants it.
@@ -2060,6 +2094,8 @@ settings.form.addEventListener("submit", async (event) => {
     if (password) {
       await invoke("set_password", { email: input.email, password });
     }
+    await invoke("set_account_profile", { account: id, profile: selectedProfile(settings.form.profile) });
+    state.accounts = await invoke("accounts");
 
     settings.accounts = await invoke("account_settings");
     fillForm(settings.accounts.find((a) => a.id === id) ?? NEW_ACCOUNT);
@@ -2199,6 +2235,7 @@ function fillPaper(address) {
   f.selector_kind.value = address.selector_kind ?? "everything";
   f.selector_value.value = address.selector_value ?? "";
   f.token.value = "";
+  fillProfileSelect(f.profile, address.id === null ? activeProfile() : address.profile_id ?? null);
 
   // As with passwords: the field never shows the token, so it says whether
   // there is one — and where to get one, since that is not obvious.
@@ -2241,6 +2278,7 @@ async function savePaper() {
   // After the row, so a token is never stored for an address that failed to
   // save — a credential with nothing to use it.
   if (token) await invoke("set_paper_token", { id, token });
+  await invoke("set_postbox_profile", { postbox: id, profile: selectedProfile(paper.form.profile) });
   paper.addresses = await invoke("paper_mailboxes");
   return id;
 }
@@ -2319,8 +2357,8 @@ const models = {
 };
 
 const LOCAL_PROVIDER = 1;
-const TASKS = ["vision", "chat"];
-const TASK_NAMES = { vision: "reading scans", chat: "sorting mail" };
+const TASKS = ["vision", "chat", "assistant"];
+const TASK_NAMES = { vision: "reading scans", chat: "sorting mail", assistant: "the assistant" };
 
 /// Where a new provider starts. Each address is the service's own documented
 /// base for its OpenAI-compatible API.
@@ -2441,7 +2479,9 @@ function noteFor(task, offered, failed) {
     notes.push(
       task === "vision"
         ? `Scans of your letters will be sent to ${provider.label}.`
-        : `The sender, subject and start of each message will be sent to ${provider.label}.`,
+        : task === "assistant"
+          ? `What the assistant reads of your mail — whatever it searches for and opens — will be sent to ${provider.label}.`
+          : `The sender, subject and start of each message will be sent to ${provider.label}.`,
     );
   }
 

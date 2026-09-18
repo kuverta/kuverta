@@ -49,9 +49,9 @@ impl Chat for Ollama {
 
 /// A hosted service with an OpenAI-compatible API.
 pub struct OpenAiCompatible {
-    base: String,
+    pub(crate) base: String,
     key: Option<String>,
-    http: reqwest::Client,
+    pub(crate) http: reqwest::Client,
 }
 
 impl OpenAiCompatible {
@@ -180,7 +180,7 @@ impl OpenAiCompatible {
         })
     }
 
-    async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, AiError> {
+    pub(crate) async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, AiError> {
         let request = match &self.key {
             Some(key) => request.bearer_auth(key),
             None => request,

@@ -51,6 +51,7 @@ picks one more.
 | Key | |
 | --- | --- |
 | <kbd>v</kbd> | switch a letter between its text and the scan |
+| <kbd>i</kbd> | open or close the [assistant](assistant.md) |
 | <kbd>,</kbd> | settings |
 | <kbd>Esc</kbd> | close settings, a dialog or a menu |
 

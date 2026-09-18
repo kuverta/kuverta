@@ -30,15 +30,19 @@ pub enum Task {
     Vision,
     /// Sorting mail into categories, as `kuverta classify` does.
     Chat,
+    /// The assistant: a conversation with tools. Needs a model that can call
+    /// them, and is better the larger it is.
+    Assistant,
 }
 
 impl Task {
-    pub const ALL: [Task; 2] = [Task::Vision, Task::Chat];
+    pub const ALL: [Task; 3] = [Task::Vision, Task::Chat, Task::Assistant];
 
     pub fn as_str(self) -> &'static str {
         match self {
             Task::Vision => "vision",
             Task::Chat => "chat",
+            Task::Assistant => "assistant",
         }
     }
 
@@ -52,7 +56,7 @@ impl Task {
                 .ok()
                 .filter(|model| !model.trim().is_empty())
                 .unwrap_or_else(|| "qwen2.5vl:3b".to_string()),
-            Task::Chat => "llama3.2:3b".to_string(),
+            Task::Chat | Task::Assistant => "llama3.2:3b".to_string(),
         }
     }
 }
@@ -202,6 +206,24 @@ impl Core {
                         model: row.model.clone(),
                         chosen: true,
                     },
+                    // The assistant uses the sorting model until it is given
+                    // one of its own.
+                    None if task == Task::Assistant => {
+                        match chosen.iter().find(|row| row.task == Task::Chat.as_str()) {
+                            Some(row) => AiTaskView {
+                                task,
+                                provider_id: row.provider_id,
+                                model: row.model.clone(),
+                                chosen: false,
+                            },
+                            None => AiTaskView {
+                                task,
+                                provider_id: LOCAL_PROVIDER,
+                                model: task.default_model(),
+                                chosen: false,
+                            },
+                        }
+                    }
                     None => AiTaskView {
                         task,
                         provider_id: LOCAL_PROVIDER,
@@ -353,6 +375,38 @@ pub async fn try_model(provider: &core_ai::Provider, task: Task, model: &str) ->
                 },
                 passed,
                 reply: short(&reply.content),
+                latency_ms: reply.latency_ms,
+            })
+        }
+        Task::Assistant => {
+            // One tool, and a question only it answers: a model that cannot
+            // call tools answers in words instead, and that is the finding.
+            let tools = [core_ai::ToolSpec {
+                name: "count_unread".into(),
+                description: "How many unread messages are in the inbox.".into(),
+                parameters: serde_json::json!({"type": "object", "properties": {}}),
+            }];
+            let turns = [
+                core_ai::Turn::System {
+                    content: "You answer questions about the user's mail using the tools.".into(),
+                },
+                core_ai::Turn::User {
+                    content: "How many unread messages do I have?".into(),
+                },
+            ];
+            let reply = provider
+                .converse(model, &turns, &tools)
+                .await
+                .map_err(|err| RpcError::Network(err.to_string()))?;
+            let passed = reply.calls.iter().any(|call| call.name == "count_unread");
+            Ok(AiTrial {
+                passed,
+                verdict: if passed {
+                    "it called the tool it was given, so it can work as the assistant".into()
+                } else {
+                    "it answered without calling the tool — it cannot drive the assistant; choose a larger model or a hosted one".into()
+                },
+                reply: reply.content.chars().take(200).collect(),
                 latency_ms: reply.latency_ms,
             })
         }

@@ -85,18 +85,22 @@ On a new installation kuverta opens a **setup assistant** instead of an empty
 window. Every step can be skipped and done later; it can be opened again from
 **Settings → General → Open the setup assistant**.
 
-1. **Local models.** Checks whether [Ollama](https://ollama.com) is installed and
+1. **Profiles.** How you want to keep your mail apart — private, one company,
+   another. Add a row per profile, or none to keep everything together; the
+   later steps ask which profile each account and address goes in. See
+   [Profiles](user-guide/profiles.md).
+2. **Local models.** Checks whether [Ollama](https://ollama.com) is installed and
    running, offers the download link or install command if it is not, starts it
    if it is installed but stopped, and downloads the models kuverta uses, with
    progress. See [Models](user-guide/models.md).
-2. **Paper mail.** Looks for a Paperless-ngx at `localhost:8000` and
+3. **Paper mail.** Looks for a Paperless-ngx at `localhost:8000` and
    `paperless.local:8000`. Connect to one you have — with your Paperless user
    name and password, which are exchanged for an API token, or with a token you
    paste — or let kuverta **install one with Docker**: it writes a compose file
    and an owner-only settings file into `paperless/` in its data directory and
    starts it. Docker itself is yours to install; the assistant says where. See
    [Paper post](user-guide/paper.md).
-3. **Mail accounts.** Reads the accounts Thunderbird and Apple Mail know. For
+4. **Mail accounts.** Reads the accounts Thunderbird and Apple Mail know. For
    any other address it finds the servers from a built-in list of common
    providers, the provider's own autoconfig file, or Mozilla's directory — the
    way Thunderbird does. Thunderbird's saved passwords come across with its

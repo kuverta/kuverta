@@ -499,7 +499,12 @@ fn strip_prefixes(subject: &str, prefixes: &[&str]) -> String {
     let mut rest = subject.trim();
     'outer: loop {
         for prefix in prefixes {
-            if rest.len() >= prefix.len() && rest[..prefix.len()].eq_ignore_ascii_case(prefix) {
+            // `get`, not slicing: the subject is the sender's, and a
+            // multi-byte character across the prefix's length would panic.
+            if rest
+                .get(..prefix.len())
+                .is_some_and(|head| head.eq_ignore_ascii_case(prefix))
+            {
                 rest = rest[prefix.len()..].trim_start();
                 continue 'outer;
             }
@@ -789,6 +794,16 @@ mod tests {
         // A forward prefix is not a reply prefix and must survive.
         assert_eq!(reply_subject("Fwd: Rechnung"), "Re: Fwd: Rechnung");
         assert_eq!(forward_subject("WG: Rechnung"), "Fwd: Rechnung");
+    }
+
+    // Found by the reply_source fuzz target: `Aä` has a character boundary
+    // inside the length of `aw:`, and slicing there panicked.
+    #[test]
+    fn a_subject_with_a_multibyte_character_at_the_prefix_length_is_kept() {
+        assert_eq!(reply_subject("Aä Rechnung"), "Re: Aä Rechnung");
+        assert_eq!(reply_subject("Ré"), "Re: Ré");
+        assert_eq!(forward_subject("Wü"), "Fwd: Wü");
+        assert_eq!(reply_subject("€"), "Re: €");
     }
 
     #[test]

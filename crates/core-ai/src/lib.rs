@@ -24,12 +24,14 @@
 //! hosted service with an OpenAI-compatible API can stand in for it, when the
 //! person chooses one — see [`Provider`].
 
+mod agent;
 mod neighbours;
 mod ollama;
 mod prompt;
 mod provider;
 mod transcript;
 
+pub use agent::{AssistantReply, ToolCall, ToolSpec, Turn};
 pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
 pub use ollama::{
     AiError, ChatReply, Embedded, Ollama, PullProgress, TRANSCRIBE, TRANSCRIBE_CONTEXT,

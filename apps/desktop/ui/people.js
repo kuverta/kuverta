@@ -332,6 +332,9 @@ async function openWholeMessage(id) {
     el("reading-subject").textContent = detail.subject ?? "(no subject)";
     el("reading-meta").textContent = [detail.from, formatDate(detail.date_utc)].filter(Boolean).join("  ·  ");
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
+    el("reading-urgency").hidden = true;
+    showSecurity(detail);
+    showAttachments(detail);
   } catch (err) {
     say(String(err), true);
   }

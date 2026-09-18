@@ -282,3 +282,53 @@ fn a_key_attached_to_a_message_can_be_imported() {
     assert!(status.can_encrypt && status.can_sign, "{status:?}");
     assert_eq!(core.pgp_keys().unwrap().len(), 3);
 }
+
+#[test]
+fn an_encrypted_message_lists_the_attachments_inside_it() {
+    let world = world("attachments");
+    // A message with a file, encrypted to Erika as a whole: its only outer
+    // part is ciphertext, and the file is inside.
+    let plain = "From: Max Mustermann <max@example.org>\r\n\
+                 To: erika@example.com\r\n\
+                 Subject: Vertrag\r\n\
+                 MIME-Version: 1.0\r\n\
+                 Content-Type: multipart/mixed; boundary=\"b\"\r\n\r\n\
+                 --b\r\nContent-Type: text/plain\r\n\r\nAnbei.\r\n\
+                 --b\r\nContent-Type: application/pdf\r\n\
+                 Content-Disposition: attachment; filename=\"Vertrag.pdf\"\r\n\r\n\
+                 %PDF-1.4 geheim\r\n\
+                 --b--\r\n";
+    let sealed = core_pgp::protect(
+        &world.erika,
+        plain.as_bytes(),
+        ERIKA,
+        &[ERIKA.to_string()],
+        &[],
+        core_pgp::Protection {
+            sign: false,
+            encrypt: true,
+        },
+    )
+    .unwrap();
+    assert!(!String::from_utf8_lossy(&sealed).contains("geheim"));
+
+    let core = core(&world);
+    let id = store_message(&world, &core, "sealed-file", &sealed);
+    let detail = core.message(world.account, id).unwrap();
+    assert_eq!(detail.attachments.len(), 1, "{:?}", detail.attachments);
+    assert_eq!(detail.attachments[0].name, "Vertrag.pdf");
+    let fetched = core.attachment(world.account, id, 0).unwrap();
+    assert!(String::from_utf8_lossy(&fetched.bytes).starts_with("%PDF-1.4 geheim"));
+
+    // Without the key: nothing to list, and nothing to fetch.
+    let bare = Core::new(
+        Store::open(world.dir.0.join("kuverta.db")).unwrap(),
+        Blobs::new(world.dir.0.join("blobs")),
+    );
+    assert!(bare
+        .message(world.account, id)
+        .unwrap()
+        .attachments
+        .is_empty());
+    assert!(bare.attachment(world.account, id, 0).is_err());
+}

@@ -568,3 +568,87 @@ fn urgency_is_asked_once_and_ranks_the_view() {
         1
     );
 }
+
+// -- profiles -------------------------------------------------------------------
+
+#[test]
+fn profiles_hold_accounts_and_let_go_of_them_when_deleted() {
+    let (store, account) = store_with_account();
+    let private = store.add_profile("Private").unwrap();
+    let work = store.add_profile("Work").unwrap();
+    assert!(
+        store.add_profile("private").is_err(),
+        "names are unique, whatever the case"
+    );
+    assert_eq!(store.profile_named("WORK").unwrap(), Some(work));
+
+    store.set_account_profile(account, Some(work)).unwrap();
+    assert_eq!(store.account_profiles().unwrap(), [(account, Some(work))]);
+
+    store.reorder_profiles(&[work, private]).unwrap();
+    let names: Vec<String> = store
+        .profiles()
+        .unwrap()
+        .into_iter()
+        .map(|p| p.name)
+        .collect();
+    assert_eq!(names, ["Work", "Private"]);
+
+    store.delete_profile(work).unwrap();
+    assert_eq!(store.account_profiles().unwrap(), [(account, None)]);
+    assert_eq!(store.profiles().unwrap().len(), 1);
+}
+
+// -- tasks ----------------------------------------------------------------------
+
+#[test]
+fn a_task_deals_with_each_message_once_and_proposals_settle_once() {
+    let (store, account, _, _) = mailbox();
+    let query = SmartQuery {
+        match_all: true,
+        rules: vec![SmartRule {
+            field: SmartField::Category,
+            op: SmartOp::Is,
+            value: "marketing".into(),
+        }],
+    };
+    let id = store
+        .save_task(
+            None,
+            account,
+            "Shops",
+            &query,
+            r#"{"kind":"archive"}"#,
+            false,
+            true,
+        )
+        .unwrap();
+    let task = store.task(id).unwrap().unwrap();
+    assert_eq!(task.query, query);
+    assert!(task.enabled && !task.review);
+
+    store.mark_task_seen(id, &[1, 2]).unwrap();
+    store.mark_task_seen(id, &[2]).unwrap();
+    assert_eq!(store.task_seen(id).unwrap().len(), 2);
+
+    let proposal = store
+        .add_proposal(&core_store::NewProposal {
+            task_id: Some(id),
+            account_id: account,
+            message_id: Some(1),
+            kind: "archive".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(store.pending_proposals(account).unwrap().len(), 1);
+    assert_eq!(store.pending_by_task(account).unwrap(), [(Some(id), 1)]);
+    assert!(store.settle_proposal(proposal, "done", None).unwrap());
+    assert!(
+        !store.settle_proposal(proposal, "done", None).unwrap(),
+        "only once"
+    );
+    assert!(store.pending_proposals(account).unwrap().is_empty());
+
+    store.delete_task(id).unwrap();
+    assert!(store.tasks(account).unwrap().is_empty());
+}

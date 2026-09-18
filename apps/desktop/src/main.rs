@@ -18,6 +18,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod files;
 mod logging;
 
 use std::path::PathBuf;
@@ -94,6 +95,67 @@ fn messages(
 #[tauri::command]
 fn message(app: State<'_, App>, account: i64, id: i64) -> Result<MessageDetail, String> {
     app.core.lock().unwrap().message(account, id).map_err(fail)
+}
+
+/// An attachment's bytes, for the window to show: a binary response, since
+/// an attachment is often megabytes.
+#[tauri::command]
+fn attachment(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    index: usize,
+) -> Result<tauri::ipc::Response, String> {
+    let found = app
+        .core
+        .lock()
+        .unwrap()
+        .attachment(account, id, index)
+        .map_err(fail)?;
+    Ok(tauri::ipc::Response::new(found.bytes))
+}
+
+/// Saves an attachment to Downloads, shows it there, and says where.
+#[tauri::command]
+fn save_attachment(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    index: usize,
+) -> Result<String, String> {
+    let found = app
+        .core
+        .lock()
+        .unwrap()
+        .attachment(account, id, index)
+        .map_err(fail)?;
+    let dir = files::downloads().ok_or("there is no Downloads folder to save to")?;
+    let path = files::save_new(&dir, &found.view.name, &found.bytes)?;
+    tracing::info!(id, index, "saved an attachment");
+    let _ = logging::reveal(&path);
+    Ok(path.display().to_string())
+}
+
+/// Opens an attachment in the program the system has for it. Not one that
+/// could run something: those are saved, and opening them is the person's
+/// own deliberate step.
+#[tauri::command]
+fn open_attachment(app: State<'_, App>, account: i64, id: i64, index: usize) -> Result<(), String> {
+    let found = app
+        .core
+        .lock()
+        .unwrap()
+        .attachment(account, id, index)
+        .map_err(fail)?;
+    if found.view.risky {
+        return Err(format!(
+            "{} could run something when opened; save it instead if you trust it",
+            found.view.name
+        ));
+    }
+    let path = files::copy_to_open(&found.view.name, &found.bytes)?;
+    tracing::info!(id, index, "opened an attachment");
+    files::open(&path)
 }
 
 #[tauri::command]
@@ -1430,6 +1492,168 @@ fn conversation(
         .map_err(fail)
 }
 
+// -- profiles -------------------------------------------------------------------
+
+#[tauri::command]
+fn profiles(app: State<'_, App>) -> Result<Vec<core_rpc::ProfileView>, String> {
+    app.core.lock().unwrap().profiles().map_err(fail)
+}
+
+#[tauri::command]
+fn save_profile(app: State<'_, App>, id: Option<i64>, name: String) -> Result<i64, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_profile(id, &name)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_profile(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_profile(id).map_err(fail)
+}
+
+#[tauri::command]
+fn reorder_profiles(app: State<'_, App>, ids: Vec<i64>) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .reorder_profiles(&ids)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_account_profile(
+    app: State<'_, App>,
+    account: i64,
+    profile: Option<i64>,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_account_profile(account, profile)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_postbox_profile(
+    app: State<'_, App>,
+    postbox: i64,
+    profile: Option<i64>,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_postbox_profile(postbox, profile)
+        .map_err(fail)
+}
+
+// -- the assistant and tasks -------------------------------------------------------
+
+/// One question to the assistant. The window keeps the conversation and sends
+/// it each time; what the assistant does arrives on `on_event` as it happens.
+/// On a thread of its own with a store connection of its own, like a sync, so
+/// the window stays usable however long the model thinks.
+#[tauri::command]
+async fn assistant_ask(
+    app: State<'_, App>,
+    account: i64,
+    turns: Vec<core_ai::Turn>,
+    message: String,
+    on_event: tauri::ipc::Channel<core_rpc::AssistantEvent>,
+) -> Result<core_rpc::AssistantTurn, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("assistant", move || async move {
+        core_rpc::Session::new(data_dir)
+            .assistant_turn(account, turns, &message, |event| {
+                let _ = on_event.send(event.clone());
+            })
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+#[tauri::command]
+fn tasks(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::TaskView>, String> {
+    app.core.lock().unwrap().tasks(account).map_err(fail)
+}
+
+#[tauri::command]
+fn save_task(app: State<'_, App>, input: core_rpc::TaskInput) -> Result<i64, String> {
+    app.core.lock().unwrap().save_task(&input).map_err(fail)
+}
+
+#[tauri::command]
+fn delete_task(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_task(id).map_err(fail)
+}
+
+#[tauri::command]
+fn set_task_enabled(app: State<'_, App>, id: i64, enabled: bool) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_task_enabled(id, enabled)
+        .map_err(fail)
+}
+
+/// Runs the account's tasks: the simple ones at once, and with `use_model`
+/// those that ask the model, reporting `[done, total]` for those.
+#[tauri::command]
+async fn run_tasks(
+    app: State<'_, App>,
+    account: i64,
+    use_model: bool,
+    on_progress: tauri::ipc::Channel<(usize, usize)>,
+) -> Result<Vec<core_rpc::TaskRun>, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("tasks", move || async move {
+        core_rpc::Session::new(data_dir)
+            .run_tasks(account, use_model, |done, total| {
+                let _ = on_progress.send((done, total));
+            })
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+#[tauri::command]
+fn proposals(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::ProposalView>, String> {
+    app.core.lock().unwrap().proposals(account).map_err(fail)
+}
+
+#[tauri::command]
+fn approve_proposal(app: State<'_, App>, account: i64, id: i64) -> Result<Option<i64>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .approve_proposal(account, id)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn settle_proposal(
+    app: State<'_, App>,
+    id: i64,
+    state: String,
+    detail: Option<String>,
+) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .settle_proposal(id, &state, detail.as_deref())
+        .map_err(fail)
+}
+
+/// Cancels queued changes — the assistant's, by the ids it reported — while
+/// they are still waiting.
+#[tauri::command]
+fn cancel_changes(app: State<'_, App>, ids: Vec<i64>) -> Result<usize, String> {
+    app.core.lock().unwrap().cancel_changes(&ids).map_err(fail)
+}
+
 // -- the log ------------------------------------------------------------------
 
 #[tauri::command]
@@ -1559,6 +1783,9 @@ fn main() {
             accounts,
             messages,
             message,
+            attachment,
+            save_attachment,
+            open_attachment,
             search,
             folders,
             category_counts,
@@ -1652,6 +1879,22 @@ fn main() {
             urgency_of,
             conversations,
             conversation,
+            profiles,
+            save_profile,
+            delete_profile,
+            reorder_profiles,
+            set_account_profile,
+            set_postbox_profile,
+            assistant_ask,
+            tasks,
+            save_task,
+            delete_task,
+            set_task_enabled,
+            run_tasks,
+            proposals,
+            approve_proposal,
+            settle_proposal,
+            cancel_changes,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");

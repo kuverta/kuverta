@@ -1,7 +1,8 @@
 // The setup assistant.
 //
-// Five pages over the window, each of which can be skipped: the models on this
-// computer, a Paperless for paper post, and the mail accounts. It opens by
+// Five pages over the window, each of which can be skipped: profiles to keep
+// private and work mail apart, the models on this computer, a Paperless for
+// paper post, and the mail accounts. It opens by
 // itself the first time kuverta runs with nothing to show, and from settings
 // after that. Everything it finds out, it asks the core; the pages only show
 // the answers and pass on what was typed.
@@ -10,7 +11,7 @@
 
 const setup = {
   sheet: el("setup"),
-  steps: ["welcome", "models", "paper", "mail", "done"],
+  steps: ["profiles", "models", "paper", "mail", "done"],
   step: 0,
   // What each page came to, for the summary.
   models: null,
@@ -54,9 +55,11 @@ function showStep(index) {
   });
   el("setup-back").hidden = setup.step === 0;
   el("setup-next").textContent =
-    name === "welcome" ? "Start" : name === "done" ? "Open kuverta" : "Continue";
+    name === "profiles" ? "Continue" : name === "done" ? "Open kuverta" : "Continue";
   el("setup-foot-note").textContent = "";
 
+  if (name === "profiles") showSetupProfiles();
+  if (name === "paper" || name === "mail") fillSetupProfileFields();
   if (name === "models") refreshModels();
   if (name === "paper") refreshPaper();
   if (name === "mail" && !setup.found.length) scanAccounts();
@@ -67,6 +70,10 @@ function showStep(index) {
 el("setup-back").onclick = () => showStep(setup.step - 1);
 el("setup-next").onclick = async () => {
   const name = setup.steps[setup.step];
+  if (name === "profiles") {
+    const ok = await saveSetupProfiles();
+    if (!ok) return;
+  }
   if (name === "mail") {
     const ok = await addChosenAccounts();
     if (!ok) return;
@@ -330,6 +337,7 @@ connectForm.addEventListener("submit", async (event) => {
     result.className = "setup-result ok";
     result.textContent = `Connected: ${report.documents_matching} of ${report.documents_total} documents belong here.${notes}`;
     setup.paper = input.base_url;
+    await placePostbox(input.base_url, connectForm.profile);
     await refreshPaper();
   } catch (err) {
     result.className = "setup-result bad";
@@ -387,7 +395,7 @@ installForm.addEventListener("submit", async (event) => {
     log.scrollTop = log.scrollHeight;
   };
   try {
-    await invoke("install_paperless", {
+    const postbox = await invoke("install_paperless", {
       install: { username: f.username.trim(), password: f.password, on_network: Boolean(f.on_network) },
       label: f.label,
       onOutput: channel,
@@ -396,6 +404,7 @@ installForm.addEventListener("submit", async (event) => {
     result.textContent = `Paperless is running and connected. Its web page is where you upload and manage documents; sign in as ${f.username.trim()}.`;
     installForm.password.value = "";
     setup.paper = "installed";
+    await invoke("set_postbox_profile", { postbox, profile: selectedProfile(installForm.profile) }).catch(() => {});
     await refreshPaper();
   } catch (err) {
     result.className = "setup-result bad";
@@ -578,6 +587,12 @@ function accountCard(entry) {
     clientId.hidden = method.value !== "oauth2";
   };
   details.append(node("div", { className: "setup-row" }, node("label", {}, "Sign in with", method), clientId));
+  if (state.profiles.length) {
+    const profile = node("select", { name: "profile" });
+    fillProfileSelect(profile, entry.profile ?? activeProfile() ?? state.profiles[0].id);
+    profile.onchange = () => (entry.profile = selectedProfile(profile));
+    fields.append(node("label", {}, "Profile", profile));
+  }
   fields.append(details);
   card.append(fields);
 
@@ -663,14 +678,16 @@ async function addChosenAccounts() {
       if (useFound && input.auth_method !== "oauth2") {
         // Saved and given its password in one call: the password never
         // crosses into this window.
-        await invoke("save_account_with_found_password", {
+        const id = await invoke("save_account_with_found_password", {
           input,
           primaryPassword: setup.primaryPassword || null,
         });
         saved = true;
+        await placeAccount(id, entry);
       } else {
-        await invoke("save_account", { input });
+        const id = await invoke("save_account", { input });
         saved = true;
+        await placeAccount(id, entry);
         if (input.auth_method === "oauth2") {
           show(`Added. Sign in once in a terminal: kuverta login --email ${input.email}`, true);
           setup.added.push(input.email);
@@ -701,6 +718,88 @@ async function addChosenAccounts() {
   return allOk;
 }
 
+// -- profiles ------------------------------------------------------------------------
+
+/// The profile rows on the first page: the ones there are, then new ones.
+async function showSetupProfiles() {
+  await loadProfiles();
+  const list = el("setup-profiles");
+  if (list.dataset.filled) return;
+  list.dataset.filled = "1";
+  list.textContent = "";
+  for (const profile of state.profiles) addSetupProfileRow(profile.name, profile.id);
+}
+
+function addSetupProfileRow(name = "", id = null) {
+  const list = el("setup-profiles");
+  const input = node("input", { value: name, placeholder: "Name, e.g. Private", spellcheck: false });
+  input.dataset.id = id ?? "";
+  const row = node("div", { className: "setup-profile" }, input);
+  if (id === null) {
+    const remove = node("button", { type: "button", textContent: "Remove" });
+    remove.onclick = () => row.remove();
+    row.append(remove);
+  }
+  list.append(row);
+  if (!name) input.focus();
+}
+
+el("setup-profile-add").onclick = () => addSetupProfileRow();
+for (const chip of setup.sheet.querySelectorAll("[data-suggest]")) {
+  chip.onclick = () => {
+    const taken = [...el("setup-profiles").querySelectorAll("input")].map((i) => i.value.trim().toLowerCase());
+    if (!taken.includes(chip.dataset.suggest.toLowerCase())) addSetupProfileRow(chip.dataset.suggest);
+  };
+}
+
+/// Saves new profiles and renames; true when all went, so the assistant moves on.
+async function saveSetupProfiles() {
+  const rows = [...el("setup-profiles").querySelectorAll("input")];
+  for (const input of rows) {
+    const name = input.value.trim();
+    const id = input.dataset.id ? Number(input.dataset.id) : null;
+    if (!name) continue;
+    try {
+      const saved = await invoke("save_profile", { id, name });
+      input.dataset.id = String(saved);
+    } catch (err) {
+      el("setup-foot-note").textContent = String(err);
+      input.focus();
+      return false;
+    }
+  }
+  await loadProfiles();
+  return true;
+}
+
+/// The Profile fields on the paper page, shown once there are profiles.
+function fillSetupProfileFields() {
+  for (const label of setup.sheet.querySelectorAll("[data-profile-field]")) {
+    const select = label.querySelector("select");
+    fillProfileSelect(select, activeProfile() ?? state.profiles[0]?.id ?? null);
+    label.hidden = state.profiles.length === 0;
+  }
+  // The account cards draw theirs when they are drawn; draw them again so a
+  // profile added on the first page is offered.
+  // Only when they lack the field: redrawing loses what was typed into them.
+  const cards = el("import-accounts");
+  if (setup.found.length && state.profiles.length && !cards.querySelector("[name=profile]")) renderFound();
+}
+
+async function placeAccount(id, entry) {
+  const profile = entry.card.querySelector("[name=profile]");
+  if (!profile) return;
+  await invoke("set_account_profile", { account: id, profile: selectedProfile(profile) }).catch(() => {});
+}
+
+/// The postal address just connected, found by its address, put in a profile.
+async function placePostbox(baseUrl, select) {
+  if (!state.profiles.length) return;
+  const postboxes = await invoke("paper_mailboxes").catch(() => []);
+  const postbox = postboxes.filter((p) => p.base_url === baseUrl).pop();
+  if (postbox) await invoke("set_postbox_profile", { postbox: postbox.id, profile: selectedProfile(select) }).catch(() => {});
+}
+
 // -- finish ------------------------------------------------------------------------
 
 async function showSummary() {
@@ -717,6 +816,10 @@ async function showSummary() {
     ? checkLine("ok", `Paper mail: ${postboxes.map((p) => p.label).join(", ")}.`)
     : checkLine("wait", "No paper mail connected."));
   const accounts = await invoke("accounts").catch(() => []);
+  await loadProfiles();
+  if (state.profiles.length) {
+    lines.push(checkLine("ok", `Profiles: ${state.profiles.map((p) => `${p.name} (${p.accounts.length + p.postboxes.length})`).join(", ")}.`));
+  }
   lines.push(accounts.length
     ? checkLine("ok", `${accounts.length} mail account${accounts.length === 1 ? "" : "s"}.`)
     : checkLine("wait", "No mail accounts yet — add them in settings."));
