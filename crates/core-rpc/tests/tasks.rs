@@ -292,4 +292,26 @@ fn the_assistant_s_tools_look_and_act_as_the_window_does() {
     );
     assert!(matches!(wrong.event, Some(AssistantEvent::Failed { .. })));
     assert!(wrong.content.contains("error"));
+
+    // Filters as models send them are applied, and said: never all mail
+    // passed off as the answer.
+    let listed = core.assistant_tool(
+        account,
+        &call(
+            "list_mail",
+            json!({"category": "people", "unread": "true", "sender": "x"}),
+        ),
+    );
+    let listed_json: serde_json::Value = serde_json::from_str(&listed.content).unwrap();
+    assert_eq!(listed_json["listed"], "unread personal mail");
+    assert_eq!(listed_json["total"], 2);
+    assert!(listed_json["ignored"].as_str().unwrap().contains("sender"));
+    assert!(
+        matches!(listed.event, Some(AssistantEvent::Looked { ref what }) if what == "listed unread personal mail — 2 in all")
+    );
+    let bad = core.assistant_tool(
+        account,
+        &call("list_mail", json!({"category": "invoices-ish"})),
+    );
+    assert!(bad.content.contains("not a category"));
 }
