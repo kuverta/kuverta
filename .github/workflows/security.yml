@@ -26,7 +26,7 @@ jobs:
   cargo-deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -36,8 +36,8 @@ jobs:
   npm-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Audit kuverta-bird
@@ -56,13 +56,13 @@ jobs:
         # JavaScript; `actions` looks for injection in these workflows.
         language: [rust, javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
         with:
           category: /language:${{ matrix.language }}
 
@@ -76,7 +76,7 @@ jobs:
       # A minute each on a push or pull request, ten at night.
       FUZZ_TIME: ${{ github.event_name == 'schedule' && '600' || '60' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # core-accounts links D-Bus for the keychain on Linux.
       - name: System libraries
@@ -96,7 +96,7 @@ jobs:
       - name: Use the workspace's dependency versions
         run: cp Cargo.lock fuzz/Cargo.lock
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -108,7 +108,7 @@ jobs:
       # The corpus grows run by run: restored from the latest run on any
       # branch, saved under a new key each time since caches are immutable.
       - name: Restore corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -130,7 +130,7 @@ jobs:
 
       - name: Save corpus
         if: success() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -139,7 +139,7 @@ jobs:
       # `cargo +nightly fuzz run <target> <file>`.
       - name: Upload crash
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}
