@@ -369,6 +369,34 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       };
     },
 
+    // -- what the window around the list asks for ---------------------------
+    // Smart mailboxes, the outbox, cleanup and the log: the window calls these
+    // as it opens, and a page that errors on them is a page with a bug.
+    smart_mailboxes: async () => [],
+    outbox: async () => [],
+    cleanup_counts: async () => ({
+      bulk_in_inbox: [...messages.values()].filter(
+        (m) => m.folder === INBOX && ['newsletter', 'marketing', 'notification'].includes(m.category),
+      ).length,
+      unsubscribable: 0,
+    }),
+    unsubscribe_senders: async () => [],
+    backfill_headers: async () => 0,
+    similar: async () => ({ matches: [], suggestion: { name: '', query: { match_all: true, rules: [] } } }),
+    log_status: async () => ({ version: '0.0.0-test', path: '/tmp/kuverta.log', detailed: false, size_bytes: 0 }),
+    log_tail: async () => '',
+    log_ui: async () => null,
+    pgp_keys: async () => [],
+    pgp_recipients: async ({ email, recipients }) => ({
+      sender: email,
+      sender_key: null,
+      can_sign: false,
+      sign_problem: 'no key of your own',
+      can_encrypt: false,
+      recipients: recipients.map((address) => ({ address, fingerprint: null })),
+      missing: [email, ...recipients],
+    }),
+
     undo: async () => {
       const change = queue.pop();
       if (!change) return null;

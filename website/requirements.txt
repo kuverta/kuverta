@@ -1,0 +1,12 @@
+# The website's build: MkDocs with the Material theme. Pinned, so the site
+# builds the same on a laptop and in .github/workflows/pages.yml.
+#
+#   python3 -m venv .venv && .venv/bin/pip install -r website/requirements.txt
+#   .venv/bin/mkdocs serve -f website/mkdocs.yml
+mkdocs==1.6.1
+mkdocs-material==9.7.7
+mkdocs-material-extensions==1.3.1
+mkdocs-get-deps==0.2.2
+pymdown-extensions==12.0.1
+Markdown==3.10.3
+Pygments==2.21.0

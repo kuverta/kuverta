@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>kuverta</title>
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22585C"/>
+      <stop offset="1" stop-color="#0F2F32"/>
+    </linearGradient>
+    <radialGradient id="sheen" cx=".3" cy="0" r="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".1"/>
+      <stop offset=".6" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F8F4EC"/>
+      <stop offset="1" stop-color="#EAE2D3"/>
+    </linearGradient>
+    <linearGradient id="flap" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F2AE48"/>
+      <stop offset="1" stop-color="#E0922F"/>
+    </linearGradient>
+    <filter id="lift" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#041618" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <!-- Tile: Apple's 824 px body on the 1024 grid, a superellipse rather than a rounded rect. -->
+  <path d="M924 512C924 569.5 925.2 627.3 922.6 694.8C920.3 753.9 914.5 826.8 870.7 870.7C826.8 914.5 753.9 920.3 694.8 922.6C627.3 925.2 569.5 924 512 924C454.5 924 396.7 925.2 329.2 922.6C270.1 920.3 197.2 914.5 153.3 870.7C109.5 826.8 103.7 753.9 101.4 694.8C98.8 627.3 100 569.5 100 512C100 454.5 98.8 396.7 101.4 329.2C103.7 270.1 109.5 197.2 153.3 153.3C197.2 109.5 270.1 103.7 329.2 101.4C396.7 98.8 454.5 100 512 100C569.5 100 627.3 98.8 694.8 101.4C753.9 103.7 826.8 109.5 870.7 153.3C914.5 197.2 920.3 270.1 922.6 329.2C925.2 396.7 924 454.5 924 512z" fill="url(#tile)"/>
+  <path d="M924 512C924 569.5 925.2 627.3 922.6 694.8C920.3 753.9 914.5 826.8 870.7 870.7C826.8 914.5 753.9 920.3 694.8 922.6C627.3 925.2 569.5 924 512 924C454.5 924 396.7 925.2 329.2 922.6C270.1 920.3 197.2 914.5 153.3 870.7C109.5 826.8 103.7 753.9 101.4 694.8C98.8 627.3 100 569.5 100 512C100 454.5 98.8 396.7 101.4 329.2C103.7 270.1 109.5 197.2 153.3 153.3C197.2 109.5 270.1 103.7 329.2 101.4C396.7 98.8 454.5 100 512 100C569.5 100 627.3 98.8 694.8 101.4C753.9 103.7 826.8 109.5 870.7 153.3C914.5 197.2 920.3 270.1 922.6 329.2C925.2 396.7 924 454.5 924 512z" fill="url(#sheen)"/>
+  <!-- The mark: an envelope whose left edge rises into the stem of a k, and whose flap is the k's arm. -->
+  <g filter="url(#lift)">
+    <path d="M256 224h96v224h416L352 624l416 176H256z" fill="url(#paper)"/>
+    <path d="M444.39 624 768 487.09v273.82z" fill="url(#flap)"/>
+  </g>
+</svg>

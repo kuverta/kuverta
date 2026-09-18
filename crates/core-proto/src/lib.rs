@@ -36,6 +36,11 @@ pub enum ProtoError {
     #[error("{0}")]
     Unsupported(&'static str),
 
+    /// The server's state makes a request unsafe to carry out, said in words
+    /// a person can act on.
+    #[error("{0}")]
+    Refused(String),
+
     #[error(transparent)]
     Auth(#[from] core_accounts::AuthError),
 

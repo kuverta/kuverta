@@ -241,6 +241,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
                     .unwrap_or(false),
                 folder: args.get("folder").and_then(Value::as_i64),
                 oldest_first: false,
+                smart: None,
             };
             let (offset, limit) = (offset(args), limit(args));
             let page = core.messages(account, offset, limit, &filter)?;
@@ -392,6 +393,10 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
                     .and_then(Value::as_bool)
                     .unwrap_or(false),
                 forward: args.get("forward").and_then(Value::as_i64),
+                // An assistant's draft is plain. Signing would put the
+                // user's name to words they have not read yet.
+                sign: false,
+                encrypt: false,
             };
             if input.to.is_empty() && input.reply_to.is_none() {
                 bail!(
