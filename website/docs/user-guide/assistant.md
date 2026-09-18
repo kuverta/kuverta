@@ -96,3 +96,9 @@ much better. Without any model, the [search box](reading.md#searching) finds
 With a hosted model, what the assistant reads — whatever it searches for and
 opens — is sent to that service; the line under the chat says which model is
 answering and where. Tasks that ask a model send the message they are about.
+
+Some hosted services filter what they are sent, and refuse a request when
+something in it trips the filter — spam and phishing mail do. DeepSeek answers
+*Content Exists Risk*. The assistant then asks once more with the mail from that
+question left out, and tells you some mail could not be read; if the service
+refuses again, it says so. A model on this computer has no such filter.
