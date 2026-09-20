@@ -1442,6 +1442,7 @@ for (const button of el("reading-actions").querySelectorAll("[data-act]")) {
       reply: () => openCompose({ replyAll: false }),
       "reply-all": () => openCompose({ replyAll: true }),
       forward: () => openCompose({ forward: true }),
+      ask: () => askAboutMessages(actingOn().map((index) => state.rows.get(index)).filter(Boolean)),
       archive,
       trash,
     })[button.dataset.act]();
@@ -1594,10 +1595,18 @@ const KEYS = {
   c: mailOnly(() => openCompose()),
   ",": openSettings,
   i: () => setAssistantOpen(!assistantOpen()),
+  I: mailOnly(() => askAboutMessages(actingOn().map((index) => state.rows.get(index)).filter(Boolean))),
   R: mailOnly(() => openCompose({ replyAll: false })),
   A: mailOnly(() => openCompose({ replyAll: true })),
   f: mailOnly(() => openCompose({ forward: true })),
 };
+
+// Going back to the list takes the keys back with it: while the chat input
+// has focus every key belongs to it, and j, x or e would otherwise do nothing.
+content.addEventListener("mousedown", () => {
+  const focused = document.activeElement;
+  if (focused && el("assistant").contains(focused) && focused.tagName === "TEXTAREA") focused.blur();
+});
 
 document.addEventListener("keydown", async (event) => {
   // The assistant is a form too, and Escape does not throw away what it has

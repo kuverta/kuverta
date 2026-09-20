@@ -31,9 +31,10 @@ pub enum AssistantEvent {
     Looked { what: String },
     /// It changed mail. `changes` are the queued changes, for an Undo.
     Changed { what: String, changes: Vec<i64> },
-    /// It drafted a reply, for the person to open or send.
+    /// It drafted mail, for the person to read, change and send: a reply to
+    /// a message, or — with no `message_id` — a new one.
     Draft {
-        message_id: i64,
+        message_id: Option<i64>,
         to: String,
         subject: String,
         body: String,
@@ -140,6 +141,12 @@ pub fn tools() -> Vec<ToolSpec> {
             json!({"type": "object", "properties": {"name": {"type": "string"}, "parent": {"type": "string"}}, "required": ["name"]})),
         tool("draft_reply", "Write a reply to one message for the person to read, change and send. It is never sent by you.",
             json!({"type": "object", "properties": {"id": {"type": "integer"}, "body": {"type": "string", "description": "The reply's text only; the quoted original is added."}}, "required": ["id", "body"]})),
+        tool("draft_message", "Write a new message to someone — a summary, a forwarding note, an enquiry — for the person to read, change and send. Not a reply: draft_reply answers a message. It is never sent by you.",
+            json!({"type": "object", "properties": {
+                "to": {"type": "string", "description": "One or more addresses, separated by commas."},
+                "subject": {"type": "string"},
+                "body": {"type": "string"}
+            }, "required": ["to", "subject", "body"]})),
         tool("create_task", "Create a standing task for mail that keeps arriving: rules say which mail, the action what to do with each. Runs after every sync. Use it when the person says always, automatically, from now on, or every time.",
             json!({"type": "object", "properties": {
                 "name": {"type": "string"},
@@ -167,6 +174,9 @@ and subject, not by id.\n\
 Changes you make are queued and the person can undo them, so act when asked — but before moving \
 or trashing more than 30 messages, say how many and ask first. You cannot send mail: draft_reply \
 writes a reply for the person to send.\n\
+Mail the person has open comes with the question, between <message> tags, with its id: work on \
+those messages unless they name others. To write to somebody else about them — a summary, a \
+forwarding note — use draft_message.\n\
 When the person wants something done to mail that keeps arriving (always, automatically, from now \
 on, every time), create a task with create_task; find_mail first shows what its rules would \
 select. A move needs an existing folder; create it with create_folder if the person agrees.\n\
@@ -584,8 +594,22 @@ impl Core {
                 Ok(ToolOutcome::ok(
                     json!({ "drafted": true, "note": "shown to the person, who reads it and sends it; you did not send it" }),
                     Some(AssistantEvent::Draft {
-                        message_id: id,
+                        message_id: Some(id),
                         to: detail.from.unwrap_or_default(),
+                        subject,
+                        body,
+                    }),
+                ))
+            }
+            "draft_message" => {
+                let to = text(args, "to")?.to_string();
+                let subject = text(args, "subject")?.to_string();
+                let body = text(args, "body")?.to_string();
+                Ok(ToolOutcome::ok(
+                    json!({ "drafted": true, "note": "shown to the person, who reads it and sends it; you did not send it" }),
+                    Some(AssistantEvent::Draft {
+                        message_id: None,
+                        to,
                         subject,
                         body,
                     }),
@@ -721,6 +745,67 @@ fn withhold_mail(turns: &mut [Turn]) {
     }
 }
 
+/// How many of the open messages go to the model, and how much of each.
+const ABOUT_MESSAGES: usize = 5;
+const ABOUT_CHARS: usize = 4_000;
+
+/// The messages the person has open, as the first half of their question:
+/// what the window sends with "answer this and confirm the appointment".
+/// Fenced like every other quotation of mail: what is inside was written by
+/// someone else and is never an instruction.
+pub fn attached(core: &Core, account: AccountId, about: &[i64]) -> String {
+    let fence = |text: &str| {
+        text.replace("</message>", "[/message]")
+            .replace("<message>", "[message]")
+    };
+    let mut out = String::new();
+    for id in about.iter().take(ABOUT_MESSAGES) {
+        let Ok(detail) = core.message(account, *id) else {
+            continue;
+        };
+        let body: String = detail
+            .body_text
+            .unwrap_or_default()
+            .chars()
+            .take(ABOUT_CHARS)
+            .collect();
+        let attachments: Vec<&str> = detail
+            .attachments
+            .iter()
+            .filter(|a| !a.inline)
+            .map(|a| a.name.as_str())
+            .collect();
+        out.push_str(&format!(
+            "<message id={id}>\nFrom: {from}\nTo: {to}\nDate: {date}\nSubject: {subject}\n{attachments}\n{body}\n</message>\n",
+            from = fence(detail.from.as_deref().unwrap_or("(unknown)")),
+            to = fence(&detail.to.join(", ")),
+            date = detail
+                .date_utc
+                .and_then(|t| chrono::DateTime::from_timestamp(t, 0))
+                .map(|d| d.format("%Y-%m-%d %H:%M").to_string())
+                .unwrap_or_default(),
+            subject = fence(detail.subject.as_deref().unwrap_or("(no subject)")),
+            attachments = if attachments.is_empty() {
+                String::new()
+            } else {
+                format!("Attachments: {}\n", fence(&attachments.join(", ")))
+            },
+            body = fence(&body),
+        ));
+    }
+    if out.is_empty() {
+        return out;
+    }
+    format!(
+        "{}{out}",
+        if about.len() > 1 {
+            "These messages are open in front of the person:\n"
+        } else {
+            "This message is open in front of the person:\n"
+        }
+    )
+}
+
 /// A category as a model may name it: one of the six, or a word for one.
 fn category_named(name: &str) -> std::result::Result<String, String> {
     let name = name.trim().to_lowercase();
@@ -791,7 +876,10 @@ fn smart_query(args: &Value) -> std::result::Result<core_store::SmartQuery, Stri
 
 impl Session {
     /// One question to the assistant: the conversation so far and the new
-    /// message in, the conversation and the answer out. `on_event` hears each
+    /// message in, the conversation and the answer out. `about` are messages
+    /// the person has open — selected in the list, or the one they are
+    /// reading — which arrive with the question, so that "answer this and
+    /// confirm the appointment" needs no search first. `on_event` hears each
     /// thing the assistant does as it does it.
     ///
     /// On a store connection of its own, like a sync, so the window stays
@@ -801,6 +889,7 @@ impl Session {
         account: AccountId,
         mut turns: Vec<Turn>,
         message: &str,
+        about: &[i64],
         mut on_event: impl FnMut(&AssistantEvent),
     ) -> Result<AssistantTurn> {
         let core = Core::open(self.data_dir())?;
@@ -818,7 +907,10 @@ impl Session {
             },
         );
         turns.push(Turn::User {
-            content: message.to_string(),
+            content: match attached(&core, account, about) {
+                open if open.is_empty() => message.to_string(),
+                open => format!("{open}\n{message}"),
+            },
         });
 
         let specs = tools();

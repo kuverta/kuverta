@@ -37,6 +37,31 @@ it happens:
 
 Before moving or trashing more than 30 messages it says how many and asks.
 
+### Working on a message you have open
+
+**Ask the assistant** on an open message — or <kbd>Shift</kbd>+<kbd>I</kbd> on
+the message under the cursor, or on several you have picked — hands it over
+with your question. The messages show above the chat box, each with **×** to
+leave one out, and what you ask is about those:
+
+- *"Reply and confirm the appointment."*
+- *"What does this need from me?"*
+- *"Write a summary of this for clara@example.com so I can send it."*
+
+![A message handed to the assistant, with what to do with it](../assets/screens/ask-about-light.webp#only-light)
+![A message handed to the assistant, with what to do with it](../assets/screens/ask-about-dark.webp#only-dark)
+
+It gets the text of those messages with the question, so it answers without
+searching first — which matters with a small model. Up to five messages go
+along, and about four pages of each.
+
+A reply comes back as a card you can edit and **Send**, or **Open in compose**;
+a message to somebody else comes back the same way, addressed to whoever you
+named. The assistant never sends either of them.
+
+![The reply it wrote, ready to read and send](../assets/screens/ask-about-draft-light.webp#only-light)
+![The reply it wrote, ready to read and send](../assets/screens/ask-about-draft-dark.webp#only-dark)
+
 ### Finding a message
 
 *"I got an eSIM by mail a while ago — how do I get to it?"*, *"Where is the

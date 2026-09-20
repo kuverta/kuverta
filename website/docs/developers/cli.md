@@ -122,7 +122,7 @@ exactly like an address that has had no post.
 | --- | --- |
 | `unsubscribable` | senders whose mail can be unsubscribed from, and how |
 | `similar --id <id>` | messages that look like one — what the window offers to delete with it |
-| `ask "…"` | ask the assistant, with the window's tools; prints what it does and its answer |
+| `ask [--about <id>…] "…"` | ask the assistant, with the window's tools; prints what it does and its answer; `--about` hands it the messages that question is about, as the window does |
 | `run-tasks [--model]` | run the account's tasks now |
 | `urgent [--model] [--min N]` | Inbox mail that needs you soonest, as the urgency agent judges it; `--model` asks the sorting model too |
 
