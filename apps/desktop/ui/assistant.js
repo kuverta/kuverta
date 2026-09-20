@@ -19,7 +19,19 @@ const assistant = {
   turns: [],
   account: null,
   busy: false,
+  // The messages this question is about: id and a line to show, in the order
+  // they were picked. Emptied once the question has been asked — from then on
+  // they are part of the conversation.
+  about: [],
 };
+
+/// What to do with the messages you handed it, offered as a starting point.
+const ABOUT_SUGGESTIONS = [
+  "Reply and confirm.",
+  "What does this need from me?",
+  "Summarise this for me.",
+  "Write a summary of this I can send to someone.",
+];
 
 const SUGGESTIONS = [
   "What needs my attention today?",
@@ -87,16 +99,81 @@ el("assistant-new").onclick = () => {
   showAssistantTab("chat");
 };
 
+// -- the messages a question is about --------------------------------------------------
+
+/// Hands messages to the assistant: opens the panel with them attached, ready
+/// for "answer this and confirm the appointment".
+async function askAboutMessages(rows) {
+  if (state.account === null || state.postbox) {
+    say("the assistant works on mail accounts", true);
+    return;
+  }
+  if (!rows.length) return;
+  ensureConversation();
+  assistant.about = rows.map((row) => ({
+    id: row.id,
+    label: row.subject || "(no subject)",
+    from: row.from ?? "",
+  }));
+  if (!assistantOpen()) setAssistantOpen(true);
+  showAssistantTab("chat");
+  showAbout();
+  assistant.input.focus();
+}
+
+/// The attached messages, each with a way to take it off again.
+function showAbout() {
+  const bar = el("chat-about");
+  bar.textContent = "";
+  if (!assistant.about.length) {
+    bar.hidden = true;
+    return;
+  }
+  const head = document.createElement("span");
+  head.className = "hint";
+  head.textContent = assistant.about.length === 1 ? "About:" : `About ${assistant.about.length} messages:`;
+  bar.append(head);
+  for (const message of assistant.about) {
+    const chip = document.createElement("span");
+    chip.className = "about-chip";
+    const what = document.createElement("span");
+    what.className = "name";
+    // textContent: a subject is whatever the sender wrote.
+    what.textContent = message.label;
+    what.title = `${message.label} — ${message.from}`;
+    const off = document.createElement("button");
+    off.type = "button";
+    off.className = "remove";
+    off.textContent = "×";
+    off.title = "Leave this one out";
+    off.setAttribute("aria-label", `Leave out ${message.label}`);
+    off.onclick = () => {
+      assistant.about = assistant.about.filter((m) => m.id !== message.id);
+      showAbout();
+    };
+    chip.append(what, off);
+    bar.append(chip);
+  }
+  bar.hidden = false;
+  showSuggestions(ABOUT_SUGGESTIONS);
+}
+
 // -- the conversation ------------------------------------------------------------------
 
 /// A fresh conversation for the account on screen, with suggestions to start.
-function ensureConversation() {
+function ensureConversation(suggestions = SUGGESTIONS) {
   if (assistant.account !== state.account) {
     assistant.account = state.account;
     assistant.turns = [];
     assistant.log.textContent = "";
   }
-  if (!assistant.log.childElementCount) {
+  showSuggestionsInto(suggestions);
+}
+
+/// Offers ways to start, until something has been said.
+function showSuggestionsInto(suggestions) {
+  if (!assistant.log.childElementCount || assistant.log.querySelector(".chat-suggestions")) {
+    assistant.log.querySelector(".chat-suggestions")?.remove();
     const box = document.createElement("div");
     box.className = "chat-suggestions";
     const hint = document.createElement("div");
@@ -105,7 +182,7 @@ function ensureConversation() {
       ? `Ask about the mail on ${state.email}, or say what to do with it. Everything it changes can be undone, and it never sends mail itself.`
       : "Choose a mail account first.";
     box.append(hint);
-    for (const text of SUGGESTIONS) {
+    for (const text of suggestions) {
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = text;
@@ -118,6 +195,11 @@ function ensureConversation() {
     assistant.log.append(box);
   }
   showAssistantModel();
+}
+
+/// Replaces the offered starting points, when the question has a subject.
+function showSuggestions(suggestions) {
+  if (assistant.log.querySelector(".chat-suggestions")) showSuggestionsInto(suggestions);
 }
 
 /// Which model answers, and — for a hosted one — that mail leaves the computer.
@@ -226,7 +308,15 @@ async function sendToAssistant() {
   assistant.busy = true;
   el("chat-send").disabled = true;
   assistant.input.value = "";
+  // Asked with the messages that were attached; from now on they are part of
+  // the conversation, so the bar empties.
+  const about = assistant.about;
+  assistant.about = [];
+  showAbout();
   appendChat("chat-msg user", text);
+  if (about.length) {
+    appendChat("chat-activity", `about ${about.map((m) => `“${m.label}”`).join(", ")}`);
+  }
   const thinking = appendChat("chat-thinking", "Thinking…");
 
   const channel = progressChannel((event) => {
@@ -240,6 +330,7 @@ async function sendToAssistant() {
       account,
       turns: assistant.turns,
       message: text,
+      about: about.map((m) => m.id),
       onEvent: channel,
     });
     thinking.remove();
@@ -337,21 +428,43 @@ function changeCard(event) {
 }
 
 function draftCard(event) {
-  const { box, actions } = card(`Reply to ${event.to}`, event.subject);
+  const reply = event.message_id != null;
+  const { box, actions } = card(
+    reply ? `Reply to ${event.to}` : `New message to ${event.to}`,
+    event.subject,
+  );
   const body = document.createElement("textarea");
   body.value = event.body;
   box.insertBefore(body, actions);
   cardButton(actions, "Send", async (button) => {
-    if (!confirm(`Send this reply to ${event.to}?`)) {
+    if (!confirm(`Send this to ${event.to}?`)) {
       button.disabled = false;
       return;
     }
-    await sendReply(event.message_id, body.value);
+    if (reply) {
+      await sendReply(event.message_id, body.value);
+    } else {
+      await sendNew(event.to, event.subject, body.value);
+    }
     box.classList.add("done");
     button.textContent = "Sent";
   }, "primary");
   cardButton(actions, "Open in compose", async () => {
-    await openReplyInCompose(event.message_id, body.value);
+    if (reply) {
+      await openReplyInCompose(event.message_id, body.value);
+      return;
+    }
+    await openComposeWith({
+      to: event.to.split(",").map((address) => address.trim()).filter(Boolean),
+      cc: [],
+      bcc: [],
+      subject: event.subject,
+      body: `${body.value.trim()}\n`,
+      reply_to: null,
+      reply_all: false,
+      forward: null,
+    });
+    compose.what.textContent = "New message";
   });
   return box;
 }
@@ -400,6 +513,27 @@ function taskCard(event) {
     button.textContent = "Deleted";
   }, "danger");
   return box;
+}
+
+/// Sends a new message the person has read: to whoever the assistant named,
+/// with the subject it wrote.
+async function sendNew(to, subject, body) {
+  const sent = await invoke("send", {
+    email: state.email,
+    draft: {
+      to: to.split(",").map((address) => address.trim()).filter(Boolean),
+      cc: [],
+      bcc: [],
+      subject,
+      body: `${body.trim()}\n`,
+      reply_to: null,
+      reply_all: false,
+      forward: null,
+      sign: false,
+      encrypt: false,
+    },
+  });
+  say(sent.filing_error ? `sent — but not filed: ${sent.filing_error}` : `sent to ${sent.recipients.join(", ")}`);
 }
 
 /// Sends a reply the person has read: threaded as a reply to the message,

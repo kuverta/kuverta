@@ -158,6 +158,66 @@ test('a file that could run something can be saved but not opened', async () => 
   await context.close();
 });
 
+test('a message you pick is handed to the assistant, which drafts from it', async () => {
+  const { page, context, problems } = await openWindow();
+
+  // From the open message: the button hands it over and opens the chat.
+  await page.locator('#content .row', { hasText: 'Ihre neue e-SIM ist da' }).click();
+  await page.locator('#reading-actions [data-act=ask]').click();
+  await page.waitForSelector('#assistant:not([hidden])');
+  const about = page.locator('#chat-about .about-chip');
+  assert.equal(await about.locator('.name').innerText(), 'Ihre neue e-SIM ist da');
+
+  // The suggestions become things to do with it.
+  assert.ok(
+    (await page.locator('.chat-suggestions button').allInnerTexts()).includes('Reply and confirm.'),
+  );
+
+  await page.locator('#chat-input').fill('Reply and confirm the appointment.');
+  await page.locator('#chat-send').click();
+
+  // Asked with the message attached, and the bar empties once it is asked.
+  const draft = page.locator('#chat-log .chat-card', { hasText: 'Reply to' });
+  await draft.waitFor();
+  assert.equal(await page.locator('#chat-about').isHidden(), true);
+  assert.match(await page.locator('#chat-log .chat-activity').last().innerText(), /about “Ihre neue e-SIM ist da”/);
+  assert.match(await draft.locator('textarea').inputValue(), /1 message\(s\) read/);
+
+  // Picking a block with the keyboard hands all of it over — and clicking
+  // back into the list takes the keys back from the chat input.
+  await page.locator('#content .row', { hasText: 'Message 00' }).click();
+  await page.keyboard.press('J');
+  await page.keyboard.press('I');
+  await page.waitForFunction(() => document.querySelectorAll('#chat-about .about-chip').length === 2);
+  // One can be left out again.
+  await page.locator('#chat-about .about-chip .remove').first().click();
+  assert.equal(await about.count(), 1);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('the assistant can draft a new message to someone else about what it read', async () => {
+  const { page, context, problems } = await openWindow();
+
+  await page.locator('#content .row', { hasText: 'Ihre neue e-SIM ist da' }).click();
+  await page.locator('#reading-actions [data-act=ask]').click();
+  await page.waitForSelector('#chat-about:not([hidden])');
+  await page.locator('#chat-input').fill('Write a summary for clara@example.com so I can send it.');
+  await page.locator('#chat-send').click();
+
+  const draft = page.locator('#chat-log .chat-card', { hasText: 'New message to clara@example.com' });
+  await draft.waitFor();
+  // Into compose, addressed and ready, rather than sent behind your back.
+  await draft.locator('button', { hasText: 'Open in compose' }).click();
+  await page.waitForFunction(() => !document.getElementById('compose').hidden);
+  assert.equal(await page.locator('#compose-to').inputValue(), 'clara@example.com');
+  assert.match(await page.locator('#compose-body').inputValue(), /e-SIM/);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('the assistant shows the mail it found as a card, attachments and all', async () => {
   const { page, context, problems } = await openWindow();
 

@@ -219,7 +219,32 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     // The assistant, without a model: it searches the seeded mail for the
     // question's words, longest first, until one finds something, and shows
     // it as the real one does — a line for looking, a card for the message.
-    assistant_ask: async ({ turns, message, onEvent }) => {
+    assistant_ask: async ({ turns, message, about, onEvent }) => {
+      // Asked about messages the person had open: it answers from those, and
+      // drafts what they asked for.
+      if (about?.length) {
+        const open = about.map((id) => need(id));
+        const events = [
+          {
+            kind: 'draft',
+            message_id: /summar|zusammenfass/i.test(message) ? null : open[0].id,
+            to: /summar|zusammenfass/i.test(message)
+              ? (message.match(/[\w.+-]+@[\w.-]+/) ?? ['clara@example.com'])[0]
+              : open[0].from,
+            subject: `Re: ${open[0].subject}`,
+            body: `About “${open[0].subject}”: ${open.length} message(s) read.`,
+          },
+        ];
+        for (const event of events) onEvent?.onmessage?.(event);
+        const reply = `I read ${open.length} message(s) and drafted something for you.`;
+        return {
+          turns: [...turns, { role: 'user', content: message }, { role: 'assistant', content: reply, calls: [] }],
+          reply,
+          events,
+          model: 'llama3.2:3b',
+          local: true,
+        };
+      }
       const matching = (word) =>
         [...messages.values()].filter((m) =>
           `${m.subject} ${m.body ?? ''}`.toLowerCase().replace(/-/g, '').includes(word),
