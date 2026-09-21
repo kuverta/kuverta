@@ -121,6 +121,8 @@ const GERMAN = {
   "Postal addresses": "Postadressen",
   "Add postal address": "Postadresse hinzufügen",
   Models: "Modelle",
+  "Model name": "Modellname",
+  "Enter model name…": "Modellnamen eingeben…",
   "Add model provider": "Modellanbieter hinzufügen",
   Profiles: "Profile",
   Keys: "Schlüssel",
