@@ -498,9 +498,8 @@
               <h3>Reading scanned letters <span class="hint">needs a model that can see images</span></h3>
               <div class="row3">
                 <label>Provider<select name="vision_provider"></select></label>
-                <label>Model<input name="vision_model" list="vision-models" spellcheck="false" required></label>
+                <label for="vision-models">Model<select id="vision-models" name="vision_model_choice"></select><input name="vision_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="vision-models"></datalist>
               <p class="hint ai-note" data-note="vision"></p>
             </section>
 
@@ -508,9 +507,8 @@
               <h3>Sorting mail <span class="hint">kuverta classify — any chat model</span></h3>
               <div class="row3">
                 <label>Provider<select name="chat_provider"></select></label>
-                <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>
+                <label for="chat-models">Model<select id="chat-models" name="chat_model_choice"></select><input name="chat_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="chat-models"></datalist>
               <p class="hint ai-note" data-note="chat"></p>
             </section>
 
@@ -518,9 +516,8 @@
               <h3>The assistant <span class="hint">needs a model that can use tools; larger is better</span></h3>
               <div class="row3">
                 <label>Provider<select name="assistant_provider"></select></label>
-                <label>Model<input name="assistant_model" list="assistant-models" spellcheck="false" required></label>
+                <label for="assistant-models">Model<select id="assistant-models" name="assistant_model_choice"></select><input name="assistant_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="assistant-models"></datalist>
               <p class="hint ai-note" data-note="assistant"></p>
             </section>
 
