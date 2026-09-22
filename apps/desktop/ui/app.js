@@ -172,6 +172,10 @@ let listGeneration = 0;
 
 async function loadPage(offset) {
   if (state.requested.has(offset)) return;
+  // A resize or scroll before start has picked an account draws the empty
+  // list, and the empty list asks for its first page. There is nothing to ask
+  // for yet; choosing the account reloads.
+  if (!state.postbox && state.view === "mail" && state.account === null) return;
   state.requested.add(offset);
   const generation = listGeneration;
 
@@ -217,6 +221,7 @@ async function loadPage(offset) {
     state.requested.delete(offset);
     const what = state.postbox ? `post from ${state.postbox.label}` : "messages";
     say(`could not load ${what}: ${err}`, true);
+    if (state.postbox) checkPaperless();
   }
 }
 
@@ -330,6 +335,7 @@ async function refreshSidebar() {
       }),
     );
   }
+  renderPaperStatus();
 
   // Folders belong to a mail account; Paperless keeps post under its own tags.
   // Categories are for both: post is sorted by the same rules as mail.
@@ -584,9 +590,91 @@ function mailOnly(action) {
         : action();
 }
 
+// -- whether Paperless is up -------------------------------------------------
+
+/// Each postbox's Paperless as last asked: answering, and whether kuverta
+/// installed it and so can start it. Filled by `checkPaperless`.
+const paperHealth = new Map();
+/// What starting it is doing, while it is; null otherwise.
+let paperStarting = null;
+
+/// Asks each postbox's Paperless whether it is there, and redraws the line
+/// under Post. In the background: a Paperless that is away answers slowly.
+async function checkPaperless() {
+  const health = await invoke("paperless_health").catch(() => null);
+  if (!health) return;
+  paperHealth.clear();
+  for (const h of health) paperHealth.set(h.id, h);
+  renderPaperStatus();
+}
+
+function renderPaperStatus() {
+  const line = el("paper-status");
+  const shown = visiblePostboxes()
+    .map((p) => paperHealth.get(p.id))
+    .filter(Boolean);
+  line.hidden = !shown.length && paperStarting === null;
+  if (line.hidden) return;
+
+  const down = shown.filter((h) => !h.answering);
+  const dot = document.createElement("span");
+  dot.className = "dot";
+  const text = document.createElement("span");
+  text.className = "grow";
+  line.replaceChildren(dot, text);
+
+  if (paperStarting !== null) {
+    line.className = "paper-status";
+    text.textContent = paperStarting;
+    text.title = paperStarting;
+    return;
+  }
+  line.className = `paper-status ${down.length ? "down" : "up"}`;
+  if (!down.length) {
+    text.textContent = "Paperless is running";
+    text.title = shown.map((h) => h.base_url).join(", ");
+    return;
+  }
+  text.textContent = "Paperless is not running";
+  text.title = `Nothing answers at ${down.map((h) => h.base_url).join(", ")}`;
+  if (down.some((h) => h.startable)) {
+    const start = document.createElement("button");
+    start.type = "button";
+    start.textContent = "Start";
+    start.title = "Start Docker if need be, then Paperless";
+    start.onclick = startPaperless;
+    line.append(start);
+  } else {
+    text.title += " — it runs elsewhere, so start it there";
+  }
+}
+
+async function startPaperless() {
+  if (paperStarting !== null) return;
+  paperStarting = "starting…";
+  renderPaperStatus();
+  const channel = new window.__TAURI__.core.Channel();
+  channel.onmessage = (line) => {
+    paperStarting = line;
+    renderPaperStatus();
+  };
+  try {
+    await invoke("start_paperless", { onOutput: channel });
+    say("Paperless is running");
+  } catch (err) {
+    say(`could not start Paperless: ${err}`, true);
+  } finally {
+    paperStarting = null;
+    await checkPaperless();
+  }
+  countPostboxes();
+  if (state.postbox) await reload();
+}
+
 /// How many letters each postbox holds, asked in the background: the sidebar
 /// shows it when it arrives, and a slow or absent Paperless holds nothing up.
 function countPostboxes() {
+  checkPaperless();
   const redraw = () => (state.account !== null || state.postbox ? refreshSidebar() : null);
   for (const postbox of state.postboxes) {
     if (!postbox.has_token) continue;
@@ -1856,6 +1944,7 @@ function fillForm(account) {
     : "No password stored yet.";
 
   el("settings-delete").hidden = account.id === null;
+  el("settings-import").hidden = account.id !== null;
   settings.report.hidden = true;
   setPageHead("account", account.id === null ? "New account" : account.email);
   syncAuthFields();
