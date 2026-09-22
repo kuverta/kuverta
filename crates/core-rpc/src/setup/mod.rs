@@ -536,11 +536,44 @@ const PAPERLESS_IMAGE: &str = "ghcr.io/paperless-ngx/paperless-ngx:3.1.3";
 
 /// Never 8000: that is where the dev stack's Paperless listens, and an
 /// installed Paperless on it would stop the dev stack from starting.
+/// The ports an install tries, in order. A dev instance is a hundred above,
+/// so a development build installing its own Paperless can never take the
+/// port the installed app's is on — nor land on it when that one is stopped.
+fn port_choices() -> [u16; 5] {
+    match core_accounts::instance() {
+        Some(_) => [8110, 8120, 8130, 8140, 8988],
+        None => [8010, 8020, 8030, 8040, 8888],
+    }
+}
+
 fn free_port() -> u16 {
-    [8010u16, 8020, 8030, 8040, 8888]
+    let choices = port_choices();
+    choices
         .into_iter()
         .find(|&port| TcpListener::bind(("0.0.0.0", port)).is_ok())
-        .unwrap_or(8050)
+        .unwrap_or(choices[0] + 40)
+}
+
+/// The compose project an install is: its containers, its network and its
+/// volumes all hang off this name, so two kuvertas sharing it would be
+/// starting and stopping each other's Paperless and writing to one database.
+/// A dev instance therefore gets its own. The name people already have is
+/// kept as it is: renaming it would leave its volumes — its post — behind.
+fn compose_project(dir: &Path) -> String {
+    if let Some(name) = std::fs::read_to_string(dir.join("docker-compose.yml"))
+        .ok()
+        .and_then(|text| {
+            text.lines()
+                .find_map(|line| line.strip_prefix("name:").map(|name| name.trim().to_string()))
+        })
+        .filter(|name| !name.is_empty())
+    {
+        return name;
+    }
+    match core_accounts::instance() {
+        Some(instance) => format!("kuverta-paperless-{instance}"),
+        None => "kuverta-paperless".to_string(),
+    }
 }
 
 fn time_zone() -> String {
@@ -581,6 +614,7 @@ pub fn write_paperless(data_dir: &Path, install: &PaperlessInstall) -> Result<(S
         ));
     }
     let dir = paperless_dir(data_dir);
+    let project = compose_project(&dir);
     std::fs::create_dir_all(dir.join("consume"))?;
     std::fs::create_dir_all(dir.join("export"))?;
 
@@ -603,7 +637,7 @@ pub fn write_paperless(data_dir: &Path, install: &PaperlessInstall) -> Result<(S
     let compose = format!(
         "# Paperless-ngx for kuverta, written by its setup assistant.\n\
          # Start: docker compose up -d    Stop: docker compose down\n\
-         name: kuverta-paperless\n\
+         name: {project}\n\
          services:\n\
          \x20 broker:\n\
          \x20   image: docker.io/library/redis:7-alpine\n\
@@ -1307,6 +1341,38 @@ mod tests {
         };
         assert!(write_paperless(&dir, &short).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn an_install_that_exists_keeps_the_compose_project_it_was_written_with() {
+        let dir = std::env::temp_dir().join(format!("kuverta-project-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let paperless = paperless_dir(&dir);
+        std::fs::create_dir_all(&paperless).unwrap();
+
+        // Nothing there yet: the name is this instance's. The tests run
+        // without KUVERTA_INSTANCE, so that is the plain one.
+        assert_eq!(compose_project(&paperless), "kuverta-paperless");
+
+        // Renaming an install would leave its volumes — its post — behind,
+        // so whatever it says stays.
+        std::fs::write(
+            paperless.join("docker-compose.yml"),
+            "name: kuverta-paperless-dev\nservices: {}\n",
+        )
+        .unwrap();
+        assert_eq!(compose_project(&paperless), "kuverta-paperless-dev");
+
+        let install = PaperlessInstall {
+            username: "erika".into(),
+            password: "a long enough password".into(),
+            on_network: false,
+        };
+        let (_, folder) = write_paperless(&dir, &install).unwrap();
+        let compose = std::fs::read_to_string(folder.join("docker-compose.yml")).unwrap();
+        assert!(compose.contains("name: kuverta-paperless-dev\n"), "{compose}");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[tokio::test]
