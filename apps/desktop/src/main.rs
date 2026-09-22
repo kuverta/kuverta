@@ -972,6 +972,38 @@ async fn install_paperless(
     Ok(id)
 }
 
+/// Whether each postal address's Paperless answers, and which kuverta can
+/// start.
+#[tauri::command]
+async fn paperless_health(
+    app: State<'_, App>,
+) -> Result<Vec<core_rpc::setup::PaperlessHealth>, String> {
+    let mailboxes: Vec<(i64, String)> = app
+        .core
+        .lock()
+        .unwrap()
+        .paper_mailboxes()
+        .map_err(fail)?
+        .into_iter()
+        .map(|mailbox| (mailbox.id, mailbox.base_url))
+        .collect();
+    Ok(core_rpc::setup::paperless_health(&mailboxes, &app.data_dir).await)
+}
+
+/// Starts the Paperless kuverta installed, Docker first if need be. What is
+/// happening arrives on `on_output` line by line.
+#[tauri::command]
+async fn start_paperless(
+    app: State<'_, App>,
+    on_output: tauri::ipc::Channel<String>,
+) -> Result<String, String> {
+    core_rpc::setup::start_paperless(&app.data_dir, move |line| {
+        let _ = on_output.send(line);
+    })
+    .await
+    .map_err(fail)
+}
+
 fn known_addresses(app: &State<'_, App>) -> Result<Vec<String>, String> {
     Ok(app
         .core
@@ -1866,6 +1898,8 @@ fn main() {
             find_paperless,
             connect_paperless,
             install_paperless,
+            paperless_health,
+            start_paperless,
             import_accounts,
             save_account_with_found_password,
             lookup_account,
