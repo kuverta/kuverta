@@ -269,6 +269,20 @@ impl Store {
             .map_err(Into::into)
     }
 
+    /// When each account last finished a pass over one of its folders, as a
+    /// Unix time: the newest of its folders' stamps, and `None` for an
+    /// account no folder of which has ever been synced.
+    pub fn last_synced(&self) -> Result<Vec<(AccountId, Option<i64>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT a.id, MAX(f.last_synced_at)
+             FROM account a LEFT JOIN folder f ON f.account_id = a.id
+             GROUP BY a.id",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     /// Records the IMAP sync state after a successful pass over a folder.
     pub fn set_folder_sync_state(
         &self,

@@ -116,6 +116,9 @@ pub struct AccountView {
     pub can_send: bool,
     /// The profile it is in — private, a company — when it is in one.
     pub profile_id: Option<i64>,
+    /// When mail was last fetched for it, as a Unix time. `None` until the
+    /// first sync: nothing has been downloaded yet.
+    pub last_synced: Option<i64>,
 }
 
 /// A row as the list renders it.
@@ -364,12 +367,15 @@ impl Core {
     pub fn accounts(&self) -> Result<Vec<AccountView>> {
         let profiles: std::collections::HashMap<i64, Option<i64>> =
             self.store.account_profiles()?.into_iter().collect();
+        let synced: std::collections::HashMap<i64, Option<i64>> =
+            self.store.last_synced()?.into_iter().collect();
         Ok(self
             .store
             .accounts()?
             .into_iter()
             .map(|account| AccountView {
                 profile_id: profiles.get(&account.id).copied().flatten(),
+                last_synced: synced.get(&account.id).copied().flatten(),
                 id: account.id,
                 email: account.email,
                 label: account.label,
