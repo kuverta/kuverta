@@ -61,6 +61,8 @@
          Paperless-ngx, read beside the mail. -->
     <div class="sidebar-heading" id="postboxes-heading" hidden>Post</div>
     <nav id="postboxes"></nav>
+    <!-- Whether Paperless is up, and a way to start the one kuverta installed. -->
+    <div id="paper-status" class="paper-status" hidden></div>
     <!-- Mail ranked by how soon it needs you. See people.js. -->
     <nav id="attention-nav"></nav>
     <div class="sidebar-heading with-action" id="folders-heading">
@@ -290,6 +292,13 @@
           </div>
 
           <form id="settings-form" class="settings-page" autocomplete="off">
+            <!-- Only on a new account: one already set up elsewhere need not
+                 be typed in again. -->
+            <section class="card" id="settings-import">
+              <h3>Import</h3>
+              <p class="hint">Accounts already set up in Thunderbird or Apple Mail can be taken over with their servers and saved passwords.</p>
+              <div class="card-actions"><button type="button" id="settings-import-accounts">Import from other mail programs…</button></div>
+            </section>
             <section class="card">
               <h3>Account</h3>
               <div class="grid2">

@@ -225,6 +225,35 @@ footer {
   font-weight: 600;
 }
 
+/* One line under Post: a dot, what it means, and Start when it is down. */
+.paper-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.paper-status .dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.paper-status.up .dot { background: var(--ok); }
+.paper-status.down .dot { background: var(--error); }
+.paper-status .grow { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.paper-status button {
+  flex: none;
+  padding: 0 8px;
+  height: 20px;
+  font-size: 11px;
+}
+
 .sidebar-heading.with-action {
   display: flex;
   align-items: center;

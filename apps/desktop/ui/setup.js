@@ -24,11 +24,16 @@ const setup = {
   primaryPassword: "",
 };
 
-async function openSetup() {
+/// `step` opens a page other than the first: settings' Import goes straight
+/// to the mail accounts, looked for afresh, since what is already in kuverta
+/// may have changed since the last look.
+async function openSetup(step = "profiles") {
   settings.sheet.hidden = true;
   setup.sheet.hidden = false;
   setup.added = [];
-  showStep(0);
+  const at = Math.max(0, setup.steps.indexOf(step));
+  if (step === "mail" && setup.found.length) scanAccounts();
+  showStep(at);
 }
 
 /// Leaves the assistant and puts the window back together, with whatever was
@@ -41,7 +46,8 @@ async function leaveSetup() {
 }
 
 el("setup-later").onclick = leaveSetup;
-el("settings-setup").onclick = openSetup;
+el("settings-setup").onclick = () => openSetup();
+el("settings-import-accounts").onclick = () => openSetup("mail");
 
 function showStep(index) {
   setup.step = Math.max(0, Math.min(index, setup.steps.length - 1));
