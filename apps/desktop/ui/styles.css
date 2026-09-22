@@ -297,6 +297,38 @@ footer {
 
 .nav-item:hover { background: var(--selected); border-color: transparent; }
 
+/* An account and its sync button. The button only appears under the pointer
+   or the keyboard, so a column of addresses stays a column of addresses. */
+.nav-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.nav-row .nav-item { flex: 1; min-width: 0; }
+
+.nav-row .nav-action {
+  position: absolute;
+  right: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--muted);
+  opacity: 0;
+  cursor: pointer;
+}
+
+.nav-row:hover .nav-action,
+.nav-row .nav-action:focus-visible { opacity: 1; }
+.nav-row .nav-action:hover { color: var(--fg); }
+.nav-row .nav-action .icon { width: 14px; height: 14px; }
+
 .nav-item.active {
   background: var(--accent);
   color: var(--accent-fg);

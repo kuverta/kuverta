@@ -36,6 +36,8 @@ const ICONS = {
   all: "M3 5.5h14M3 10h14M3 14.5h9",
   tag: "M3 3h6.3a1 1 0 01.7.3l6.7 6.7a1 1 0 010 1.4l-5.3 5.3a1 1 0 01-1.4 0L3.3 10A1 1 0 013 9.3zM6.5 6.5v.01",
   post: "M3 6h14v8.5a1 1 0 01-1 1H4a1 1 0 01-1-1zM3 6.5l7 5 7-5",
+  // Two arrows round: fetching and sending, which is what a sync is.
+  sync: "M16.5 9a6.5 6.5 0 00-11.4-4.2M3.5 11a6.5 6.5 0 0011.4 4.2M3.2 4.4v3.3h3.3M16.8 15.6v-3.3h-3.3",
 };
 
 /// Which glyph a folder gets, from its special-use attribute and then its name.
@@ -307,6 +309,52 @@ function navItem({ label, count, unread, active, className, onClick, title, icon
   return button;
 }
 
+/// A nav item with a button beside it, shown when the row is hovered or the
+/// button has the keyboard. A button cannot sit inside a button, so the two
+/// are siblings in a row rather than one nested in the other.
+function navRow(item, action) {
+  const row = document.createElement("div");
+  row.className = "nav-row";
+  row.append(item, action);
+  return row;
+}
+
+/// How long ago something happened, for a tooltip: "4 minutes ago", and the
+/// date once it is older than a week, where "8 days ago" stops being a
+/// picture of anything.
+function howLongAgo(unixSeconds) {
+  const seconds = Math.round(Date.now() / 1000) - unixSeconds;
+  if (seconds < 90) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days <= 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return new Date(unixSeconds * 1000).toLocaleString();
+}
+
+/// The sync button on an account row. Its tooltip is the one place the window
+/// says when mail was last fetched, which is what "is this account stuck?"
+/// really asks.
+function syncButton(account) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "nav-action";
+  button.setAttribute("aria-label", `Sync ${account.email}`);
+  button.append(iconSvg("sync"));
+  button.title = account.last_synced
+    ? `Last synced ${howLongAgo(account.last_synced)} — sync now`
+    : "Never synced — sync now";
+  button.onclick = (event) => {
+    // The row beneath it selects the account; syncing one is not asking to
+    // go there.
+    event.stopPropagation();
+    sync(account);
+  };
+  return button;
+}
+
 async function refreshSidebar() {
   // Accounts. Hidden when there is only one, because a list of one is a label
   // pretending to be a choice — unless there is post beside it, when the
@@ -316,12 +364,15 @@ async function refreshSidebar() {
   if (visibleAccounts().length > 1 || visiblePostboxes().length) {
     for (const account of visibleAccounts()) {
       sidebar.accounts.append(
-        navItem({
-          label: account.email,
-          className: "account",
-          active: !state.postbox && account.id === state.account,
-          onClick: () => selectAccount(account),
-        }),
+        navRow(
+          navItem({
+            label: account.email,
+            className: "account",
+            active: !state.postbox && account.id === state.account,
+            onClick: () => selectAccount(account),
+          }),
+          syncButton(account),
+        ),
       );
     }
   }
@@ -1601,8 +1652,12 @@ for (const field of [compose.to, compose.cc, compose.bcc]) {
 /// The button is disabled while it runs rather than queueing a second pass:
 /// two syncs of one account racing each other is a way to discover locking
 /// behaviour, not a feature.
-async function sync() {
-  if (state.postbox) {
+async function sync(account = null) {
+  // From the sidebar: that account, wherever the window happens to be.
+  // From the keyboard: whatever is open.
+  const email = account?.email ?? state.email;
+  const mine = email === state.email && !state.postbox;
+  if (account === null && state.postbox) {
     // Post is read from Paperless as it is shown, so syncing is asking again.
     await reload({ keepPosition: true });
     say(`${state.postbox.label}: ${state.total} letter${state.total === 1 ? "" : "s"} in Paperless`);
@@ -1610,7 +1665,7 @@ async function sync() {
   }
   if (state.syncing) return;
   state.syncing = true;
-  statusBar.textContent = `${state.email} — syncing…`;
+  statusBar.textContent = `${email} — syncing…`;
   showSyncProgress(null);
 
   try {
@@ -1621,23 +1676,30 @@ async function sync() {
       if (!state.syncing) return;
       showSyncProgress(at);
     };
-    const s = await invoke("sync", { email: state.email, onProgress: channel });
+    const s = await invoke("sync", { email, onProgress: channel });
     const parts = [];
     if (s.changes_sent) parts.push(`${s.changes_sent} change(s) sent`);
     if (s.changes_refused) parts.push(`${s.changes_refused} refused`);
     if (s.inserted) parts.push(`${s.inserted} new`);
     if (s.expunged) parts.push(`${s.expunged} gone`);
-    say(parts.length ? parts.join(", ") : "nothing new");
-    await reload({ keepPosition: true });
+    const what = parts.length ? parts.join(", ") : "nothing new";
+    say(mine ? what : `${email}: ${what}`);
+    // The list is showing something else, so there is nothing to redraw in
+    // it; the sidebar still is, and its tooltip has just changed.
+    if (mine) await reload({ keepPosition: true });
+    else {
+      state.accounts = await invoke("accounts");
+      await refreshSidebar();
+    }
     // New mail gets its urgency judged and the tasks run, in the background.
     judgeUrgency();
     runTasks();
   } catch (err) {
-    say(String(err), true);
+    say(`${email}: ${err}`, true);
   } finally {
     state.syncing = false;
     syncProgress.hidden = true;
-    statusBar.textContent = state.email;
+    statusBar.textContent = state.postbox ? state.postbox.label : state.email;
   }
 }
 
