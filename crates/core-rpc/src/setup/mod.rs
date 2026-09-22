@@ -563,8 +563,10 @@ fn compose_project(dir: &Path) -> String {
     if let Some(name) = std::fs::read_to_string(dir.join("docker-compose.yml"))
         .ok()
         .and_then(|text| {
-            text.lines()
-                .find_map(|line| line.strip_prefix("name:").map(|name| name.trim().to_string()))
+            text.lines().find_map(|line| {
+                line.strip_prefix("name:")
+                    .map(|name| name.trim().to_string())
+            })
         })
         .filter(|name| !name.is_empty())
     {
@@ -818,7 +820,10 @@ pub struct PaperlessHealth {
 
 /// Asks each address's Paperless whether it is there. `mailboxes` is
 /// `(id, base_url)`.
-pub async fn paperless_health(mailboxes: &[(i64, String)], data_dir: &Path) -> Vec<PaperlessHealth> {
+pub async fn paperless_health(
+    mailboxes: &[(i64, String)],
+    data_dir: &Path,
+) -> Vec<PaperlessHealth> {
     let ours = installed_paperless(data_dir).map(|(url, _)| normal_url(&url));
     let mut health = Vec::with_capacity(mailboxes.len());
     for (id, base_url) in mailboxes {
@@ -874,7 +879,8 @@ pub async fn start_paperless(
             }
             if waited >= 180 {
                 return Err(RpcError::Rejected(
-                    "Docker has not started after three minutes; open it and look at what it says".into(),
+                    "Docker has not started after three minutes; open it and look at what it says"
+                        .into(),
                 ));
             }
             if waited.is_multiple_of(15) {
@@ -1370,7 +1376,10 @@ mod tests {
         };
         let (_, folder) = write_paperless(&dir, &install).unwrap();
         let compose = std::fs::read_to_string(folder.join("docker-compose.yml")).unwrap();
-        assert!(compose.contains("name: kuverta-paperless-dev\n"), "{compose}");
+        assert!(
+            compose.contains("name: kuverta-paperless-dev\n"),
+            "{compose}"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
