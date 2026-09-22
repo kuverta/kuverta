@@ -18,6 +18,8 @@ include <common-2020.scad>
 // Bar runs along Y with its bottom face at z=0. The mount grips its +X side.
 back      = inner / 2 + wall;      // outer face of the part against the bar's side
 top_z     = profile + clearance;   // underside of the plate over the bar
+closed    = false;                 // a fourth wall on the open side: a ring the bar has
+                                   // to be pushed through; see pi-camera-bracket-closed.scad
 
 // Pi Zero: 65 x 30 board, holes 58 x 23 apart; M3 screws go through them.
 // pi4-camera-bracket.scad sets these for a Pi 4 and reuses everything else.
@@ -41,15 +43,16 @@ plate     = [[-17, back], [-34, 34]];
 board     = [25, 25];
 cam_board = board + [0.6, 0.6]; // the slot: 0.3 mm of play on each side, so the
                             // board goes in without room to rattle; in along +Y
-board_t   = 3.5;            // board, plus what is soldered within reach of the lips
+// A closed ring cannot flex to let the board's cable connector squeeze under the
+// lips, so its slot is 2 mm taller, and the camera block sits 2 mm lower to keep the
+// same material between the slot and the bar.
+board_t   = closed ? 5.5 : 3.5; // board, plus what is soldered within reach of the lips
 window    = [21.6, 18];     // what the camera looks through, and the channel's width;
                             // what is left either side is the 2 mm ledge the board rests on
-lead_in   = 1;              // funnel at the mouth of the slot; at most `rim`
-tray_z    = -12;            // underside of the tray
+tray_z    = closed ? -14 : -12; // underside of the tray
 floor_t   = 2;
 rim       = 1.2;            // material around the slot, beside it and behind it
 lip       = 2;              // how far the lips reach in over the board's edges
-bump      = 1.2;            // stops the board sliding back out
 
 // The tray keeps `rim` of wall on the back side too, sitting over if the slot is
 // wider than the room between the bar's side and the back of this part. The block
@@ -57,8 +60,6 @@ bump      = 1.2;            // stops the board sliding back out
 cam_x     = min(0, -(cam_board[0] / 2 + rim - back));
 
 web_y     = 20;
-closed    = false;          // a fourth wall on the open side: a ring the bar has to be
-                            // pushed through; see pi-camera-bracket-closed.scad
 bar_screws = [-13, 13];
 
 slot_z    = tray_z + floor_t;
@@ -113,11 +114,9 @@ difference() {
     open_to = closed ? inner / 2 : far;
     below   = closed ? clearance : 0;
     translate([-open_to, -far, -below]) cube([open_to + inner / 2, 2 * far, top_z + below]);
+    // The slot: a plain rectangle, straight in from the mouth to the back wall.
     translate([cam_x - cam_board[0] / 2, -cam_board[1] / 2, slot_z])
         cube([cam_board[0], far, board_t]);
-    hull() for (d = [0, lead_in])
-        translate([cam_x - cam_board[0] / 2 - d, cam_board[1] / 2 + rim - d, slot_z - d])
-            cube([cam_board[0] + 2 * d, 0.01, board_t + 2 * d]);
     // over the board: open, apart from a lip along each side
     translate([cam_x - cam_board[0] / 2 + lip, -cam_board[1] / 2 + lip, slot_z + board_t])
         cube([cam_board[0] - 2 * lip, far, lip + 1]);
@@ -130,9 +129,3 @@ difference() {
         translate([pi_x + x * pi_holes[0] / 2, y * pi_holes[1] / 2, top_z - 1])
             cylinder(d = post_hole, h = wall + post_h + 2, $fn = 24);
 }
-
-// A bump on each ledge, just behind the board's back edge once it is all the way in,
-// to keep it from sliding out. The board rides over them on the way in.
-for (x = [-1, 1])
-    translate([cam_x + x * (cam_board[0] + window[0]) / 4, -cam_board[1] / 2 + board[1] + 1, slot_z])
-        cylinder(d = 1.5, h = bump, $fn = 16);   // narrower than the ledge it sits on
