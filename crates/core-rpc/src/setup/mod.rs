@@ -771,6 +771,108 @@ pub async fn wait_and_sign_in(
     }
 }
 
+/// Whether a postal address's Paperless is up, for the sidebar to say.
+#[derive(Debug, Clone, Serialize)]
+pub struct PaperlessHealth {
+    pub id: i64,
+    pub base_url: String,
+    pub answering: bool,
+    /// It is the Paperless kuverta installed, so kuverta can start it. One
+    /// that runs elsewhere is somebody else's to start.
+    pub startable: bool,
+}
+
+/// Asks each address's Paperless whether it is there. `mailboxes` is
+/// `(id, base_url)`.
+pub async fn paperless_health(mailboxes: &[(i64, String)], data_dir: &Path) -> Vec<PaperlessHealth> {
+    let ours = installed_paperless(data_dir).map(|(url, _)| normal_url(&url));
+    let mut health = Vec::with_capacity(mailboxes.len());
+    for (id, base_url) in mailboxes {
+        health.push(PaperlessHealth {
+            id: *id,
+            base_url: base_url.clone(),
+            answering: core_paper::probe(base_url).await == core_paper::Probe::Paperless,
+            startable: ours.as_deref() == Some(normal_url(base_url).as_str()),
+        });
+    }
+    health
+}
+
+fn normal_url(url: &str) -> String {
+    url.trim()
+        .trim_end_matches('/')
+        .to_ascii_lowercase()
+        .replace("://127.0.0.1", "://localhost")
+}
+
+/// Starts the Paperless kuverta installed, and waits until it answers:
+/// Docker first when its engine is not running — after a restart it usually
+/// is not — then Paperless's containers. Returns its address.
+pub async fn start_paperless(
+    data_dir: &Path,
+    progress: impl Fn(String) + Send + Sync + Clone + 'static,
+) -> Result<String> {
+    let (base_url, dir) = installed_paperless(data_dir).ok_or_else(|| {
+        RpcError::Rejected("kuverta did not install this Paperless, so it cannot start it".into())
+    })?;
+
+    let docker = tokio::task::spawn_blocking(docker_status)
+        .await
+        .map_err(|err| RpcError::Rejected(err.to_string()))?;
+    if !docker.installed {
+        return Err(RpcError::Rejected(
+            "Docker is not installed, and Paperless runs in it".into(),
+        ));
+    }
+    if !docker.running {
+        progress("starting Docker…".into());
+        start_docker()?;
+        let mut waited = 0u64;
+        loop {
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            waited += 3;
+            let running = tokio::task::spawn_blocking(docker_status)
+                .await
+                .map_err(|err| RpcError::Rejected(err.to_string()))?
+                .running;
+            if running {
+                break;
+            }
+            if waited >= 180 {
+                return Err(RpcError::Rejected(
+                    "Docker has not started after three minutes; open it and look at what it says".into(),
+                ));
+            }
+            if waited.is_multiple_of(15) {
+                progress(format!("waiting for Docker to start ({waited} s)…"));
+            }
+        }
+    }
+
+    progress("starting Paperless…".into());
+    let output = progress.clone();
+    tokio::task::spawn_blocking(move || compose_up(&dir, output))
+        .await
+        .map_err(|err| RpcError::Rejected(err.to_string()))??;
+
+    let mut waited = 0u64;
+    while core_paper::probe(&base_url).await != core_paper::Probe::Paperless {
+        if waited >= 300 {
+            return Err(RpcError::Network(format!(
+                "Paperless has not answered at {base_url} after five minutes; `docker compose logs` in {} says why",
+                data_dir.join("paperless").display()
+            )));
+        }
+        if waited.is_multiple_of(15) {
+            progress(format!("waiting for Paperless to answer ({waited} s)…"));
+        }
+        tokio::time::sleep(Duration::from_secs(3)).await;
+        waited += 3;
+    }
+    progress("Paperless is running.".into());
+    Ok(base_url)
+}
+
 /// A Paperless user's token, from their name and password.
 pub async fn sign_in_paperless(base_url: &str, username: &str, password: &str) -> Result<String> {
     if core_paper::probe(base_url).await != core_paper::Probe::Paperless {
@@ -1205,6 +1307,26 @@ mod tests {
         };
         assert!(write_paperless(&dir, &short).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[tokio::test]
+    async fn only_the_paperless_kuverta_installed_can_be_started_from_here() {
+        let dir = std::env::temp_dir().join(format!("kuverta-setup-health-{}", std::process::id()));
+        let install = PaperlessInstall {
+            username: "erika".into(),
+            password: "a long enough password".into(),
+            on_network: false,
+        };
+        let (ours, _) = write_paperless(&dir, &install).unwrap();
+        let theirs = "http://127.0.0.1:9".to_string();
+
+        let health = paperless_health(&[(1, format!("{ours}/")), (2, theirs)], &dir).await;
+        assert!(health[0].startable);
+        assert!(!health[1].startable);
+        // Nothing was started, so nothing answers.
+        assert!(!health[0].answering && !health[1].answering);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
