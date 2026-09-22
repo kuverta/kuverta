@@ -207,6 +207,8 @@ async function loadPage(offset) {
         });
 
     if (generation !== listGeneration) return;
+    // Post arrived, so whatever the token was refused for before is over.
+    if (state.postbox) paperRejected.delete(state.postbox.id);
     // The total can move under us while a sync is running, so it is taken
     // from every page rather than once at the start.
     if (page.total !== state.total) {
@@ -220,8 +222,18 @@ async function loadPage(offset) {
     if (generation !== listGeneration) return;
     state.requested.delete(offset);
     const what = state.postbox ? `post from ${state.postbox.label}` : "messages";
-    say(`could not load ${what}: ${err}`, true);
-    if (state.postbox) checkPaperless();
+    const token = state.postbox && /token/i.test(String(err));
+    say(
+      token
+        ? `${state.postbox.label}: Paperless rejected kuverta's token — sign in again in settings (,)`
+        : `could not load ${what}: ${err}`,
+      true,
+    );
+    if (state.postbox) {
+      if (token) paperRejected.add(state.postbox.id);
+      else paperRejected.delete(state.postbox.id);
+      checkPaperless();
+    }
   }
 }
 
@@ -595,6 +607,10 @@ function mailOnly(action) {
 /// Each postbox's Paperless as last asked: answering, and whether kuverta
 /// installed it and so can start it. Filled by `checkPaperless`.
 const paperHealth = new Map();
+/// Postboxes whose Paperless answered but refused kuverta's token. A token
+/// can be revoked in Paperless, or belong to an instance that was rebuilt;
+/// either way it is signing in again that fixes it, not waiting.
+const paperRejected = new Set();
 /// What starting it is doing, while it is; null otherwise.
 let paperStarting = null;
 
@@ -617,6 +633,7 @@ function renderPaperStatus() {
   if (line.hidden) return;
 
   const down = shown.filter((h) => !h.answering);
+  const rejected = shown.filter((h) => h.answering && paperRejected.has(h.id));
   const dot = document.createElement("span");
   dot.className = "dot";
   const text = document.createElement("span");
@@ -629,7 +646,18 @@ function renderPaperStatus() {
     text.title = paperStarting;
     return;
   }
-  line.className = `paper-status ${down.length ? "down" : "up"}`;
+  line.className = `paper-status ${down.length || rejected.length ? "down" : "up"}`;
+  if (!down.length && rejected.length) {
+    // Running, and refusing us: a wait will not help, so say what will.
+    text.textContent = "Paperless rejected kuverta's token";
+    text.title = `Sign in again for ${rejected.map((h) => h.base_url).join(", ")}`;
+    const again = document.createElement("button");
+    again.type = "button";
+    again.textContent = "Sign in again";
+    again.onclick = () => openPostboxSettings(rejected[0].id);
+    line.append(again);
+    return;
+  }
   if (!down.length) {
     text.textContent = "Paperless is running";
     text.title = shown.map((h) => h.base_url).join(", ");
@@ -647,6 +675,13 @@ function renderPaperStatus() {
   } else {
     text.title += " — it runs elsewhere, so start it there";
   }
+}
+
+/// Settings, open on one postal address: where its token is signed for again.
+async function openPostboxSettings(id) {
+  await openSettings();
+  const address = paper.addresses.find((a) => a.id === id);
+  if (address) fillPaper(address);
 }
 
 async function startPaperless() {
