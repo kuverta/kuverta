@@ -57,6 +57,8 @@ bump      = 1.2;            // stops the board sliding back out
 cam_x     = min(0, -(cam_board[0] / 2 + rim - back));
 
 web_y     = 20;
+closed    = false;          // a fourth wall on the open side: a ring the bar has to be
+                            // pushed through; see pi-camera-bracket-closed.scad
 bar_screws = [-13, 13];
 
 slot_z    = tray_z + floor_t;
@@ -88,15 +90,29 @@ module posts() pi_frame() for (x = [-1, 1], y = [-1, 1])
 
 module web() translate([inner / 2, -web_y, tray_z]) cube([wall, 2 * web_y, top_z + wall - tray_z]);
 
+// The same wall on the open side, closing the C into a ring round the bar, and the
+// gap under the bar filled down to the camera block, so the bar has the same
+// clearance underneath as on its other three sides.
+module side_wall() {
+    translate([-inner / 2 - wall, -web_y, tray_z])
+        cube([wall, 2 * web_y, top_z + wall - tray_z]);
+    translate([-inner / 2 - wall, -web_y, tray_z + floor_t + board_t])
+        cube([inner + 2 * wall, 2 * web_y, -(tray_z + floor_t + board_t)]);
+}
+
 module tray() translate([cam_x - cam_board[0] / 2 - rim, -cam_board[1] / 2 - rim, tray_z])
     cube([cam_board[0] / 2 + rim + back - cam_x, cam_board[1] + 2 * rim,
           floor_t + board_t + lip]);
 
 difference() {
-    union() { pi_plate(); posts(); web(); tray(); }
+    union() { pi_plate(); posts(); web(); tray(); if (closed) side_wall(); }
 
     // the bar itself, and the slot the camera board slides into
-    translate([-far, -far, 0]) cube([far + inner / 2, 2 * far, top_z]);
+    // Open on the far side, unless the ring is closed: then only the bar's own size,
+    // with clearance underneath as well.
+    open_to = closed ? inner / 2 : far;
+    below   = closed ? clearance : 0;
+    translate([-open_to, -far, -below]) cube([open_to + inner / 2, 2 * far, top_z + below]);
     translate([cam_x - cam_board[0] / 2, -cam_board[1] / 2, slot_z])
         cube([cam_board[0], far, board_t]);
     hull() for (d = [0, lead_in])
