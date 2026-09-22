@@ -2373,8 +2373,8 @@ function fillPaper(address) {
   // As with passwords: the field never shows the token, so it says whether
   // there is one — and where to get one, since that is not obvious.
   paper.tokenState.textContent = address.has_token
-    ? "A token is stored in the keychain."
-    : "No token stored yet. In Paperless: your profile menu → API Auth Token.";
+    ? "A token is stored in the keychain. Sign in again below if Paperless stops accepting it."
+    : "No token stored yet. The button below opens Paperless at its profile page, where the API token is; sign in there, copy it, and paste it above.";
 
   el("paper-delete").hidden = address.id === null;
   hideSettingsForms();
@@ -2426,6 +2426,22 @@ paper.form.addEventListener("submit", async (event) => {
     say(String(err), true);
   }
 });
+
+/// Paperless keeps the API token on the signed-in user's profile page, which
+/// is several clicks in and named differently from anything here. The link
+/// goes to the address in the form rather than the saved one, so it works
+/// while an address is still being typed — and through the login page, which
+/// comes back to the profile when it is done.
+el("paper-token-link").onclick = () => {
+  const typed = paper.form.base_url.value.trim().replace(/\/+$/, "");
+  if (!typed) {
+    say("fill in the Paperless address first", true);
+    return;
+  }
+  // An address typed without one is http, as the placeholder shows it.
+  const base = /^https?:\/\//i.test(typed) ? typed : `http://${typed}`;
+  invoke("open_external", { url: `${base}/accounts/profile/` }).catch((err) => say(String(err), true));
+};
 
 el("settings-add-paper").onclick = () => fillPaper(NEW_ADDRESS);
 paper.form.selector_kind.addEventListener("change", syncSelectorField);
