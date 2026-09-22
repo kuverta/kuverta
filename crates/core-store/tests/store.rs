@@ -523,6 +523,29 @@ fn folder_round_trips_its_sync_state() {
 }
 
 #[test]
+fn an_account_is_last_synced_when_its_newest_folder_was() {
+    let (store, account) = store_with_account();
+
+    // Nothing fetched yet, which is not the same as "never mind".
+    assert_eq!(store.last_synced().unwrap(), vec![(account, None)]);
+
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let archive = store.upsert_folder(account, "Archive", None).unwrap();
+    store
+        .set_folder_sync_state(inbox, Some(1), Some(2), None)
+        .unwrap();
+    let after_one = store.last_synced().unwrap()[0].1.unwrap();
+
+    store
+        .set_folder_sync_state(archive, Some(1), Some(2), None)
+        .unwrap();
+    let after_both = store.last_synced().unwrap()[0].1.unwrap();
+    // The newest of the folders, so a sync that ended a moment ago is not
+    // reported as the age of the oldest mailbox it passed over.
+    assert!(after_both >= after_one);
+}
+
+#[test]
 fn an_oauth_account_round_trips_its_app_registration() {
     let store = Store::open_in_memory().unwrap();
     store
