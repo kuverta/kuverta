@@ -7,7 +7,9 @@
 //! its input modalities, and the rest a bare list of names. Where nobody says,
 //! [`ModelInfo::vision`] is `None` rather than a guess.
 
+use std::collections::HashSet;
 use std::future::Future;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -52,6 +54,9 @@ pub struct OpenAiCompatible {
     pub(crate) base: String,
     key: Option<String>,
     pub(crate) http: reqwest::Client,
+    /// Models that think before answering unless told not to, and spent a
+    /// short answer's whole budget doing it. They are told from then on.
+    unthinking: Mutex<HashSet<String>>,
 }
 
 impl OpenAiCompatible {
@@ -71,6 +76,7 @@ impl OpenAiCompatible {
             base,
             key: key.filter(|key| !key.trim().is_empty()),
             http,
+            unthinking: Mutex::new(HashSet::new()),
         })
     }
 
@@ -113,6 +119,14 @@ impl OpenAiCompatible {
     }
 
     /// As [`Ollama::chat_up_to`].
+    ///
+    /// A model that thinks first — DeepSeek's `deepseek-flash`, OpenAI's
+    /// reasoning models — counts its thinking against `max_tokens`, and a
+    /// budget sized for one line of JSON is gone before the answer starts:
+    /// the reply comes back empty. Such a model is asked again with thinking
+    /// off, which a short judgement does not need, and is asked that way from
+    /// then on. `reasoning_effort` is OpenAI's name for it, and DeepSeek takes
+    /// it too. A service that refuses the field keeps the first reply.
     pub async fn chat_up_to(
         &self,
         model: &str,
@@ -120,7 +134,7 @@ impl OpenAiCompatible {
         user: &str,
         max_tokens: u32,
     ) -> Result<ChatReply, AiError> {
-        self.exchange(&json!({
+        let mut body = json!({
             "model": model,
             "messages": [
                 { "role": "system", "content": system },
@@ -128,8 +142,23 @@ impl OpenAiCompatible {
             ],
             "temperature": 0,
             "max_tokens": max_tokens,
-        }))
-        .await
+        });
+        let told = self.unthinking.lock().unwrap().contains(model);
+        if told {
+            body["reasoning_effort"] = json!("none");
+        }
+        let (reply, thought_out) = self.exchange_noting_thought(&body).await?;
+        if told || !thought_out {
+            return Ok(reply);
+        }
+        body["reasoning_effort"] = json!("none");
+        match self.exchange_noting_thought(&body).await {
+            Ok((again, _)) => {
+                self.unthinking.lock().unwrap().insert(model.to_string());
+                Ok(again)
+            }
+            Err(_) => Ok(reply),
+        }
     }
 
     /// A page's text, as [`Ollama::transcribe`], with the page as a data URL.
@@ -158,6 +187,11 @@ impl OpenAiCompatible {
     }
 
     async fn exchange(&self, body: &Value) -> Result<ChatReply, AiError> {
+        Ok(self.exchange_noting_thought(body).await?.0)
+    }
+
+    /// The reply, and whether the model ran out of room while still thinking.
+    async fn exchange_noting_thought(&self, body: &Value) -> Result<(ChatReply, bool), AiError> {
         let started = Instant::now();
         let reply = self
             .send(
@@ -170,14 +204,27 @@ impl OpenAiCompatible {
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
             .ok_or_else(|| AiError::Shape("no choices[0].message.content in the reply".into()))?;
-        Ok(ChatReply {
-            content: content.to_string(),
-            latency_ms: started.elapsed().as_millis() as i64,
-            truncated: reply
-                .pointer("/choices/0/finish_reason")
-                .and_then(Value::as_str)
-                == Some("length"),
-        })
+        let truncated = reply
+            .pointer("/choices/0/finish_reason")
+            .and_then(Value::as_str)
+            == Some("length");
+        // DeepSeek hands back what it thought; OpenAI only counts it.
+        let thought = reply
+            .pointer("/choices/0/message/reasoning_content")
+            .and_then(Value::as_str)
+            .is_some_and(|text| !text.is_empty())
+            || reply
+                .pointer("/usage/completion_tokens_details/reasoning_tokens")
+                .and_then(Value::as_u64)
+                .is_some_and(|tokens| tokens > 0);
+        Ok((
+            ChatReply {
+                content: content.to_string(),
+                latency_ms: started.elapsed().as_millis() as i64,
+                truncated,
+            },
+            truncated && thought,
+        ))
     }
 
     pub(crate) async fn send(&self, request: reqwest::RequestBuilder) -> Result<Value, AiError> {

@@ -312,3 +312,70 @@ async fn an_assistant_answer_cut_off_by_the_length_limit_says_so() {
     // Room for a long summary before it comes to that.
     assert!(seen.recv().unwrap().body["max_tokens"].as_u64().unwrap() >= 8_000);
 }
+
+/// What a thinking model sends back when its budget ran out mid-thought, and
+/// the answer it gives once told not to think.
+fn thinks_unless_told(_: &str, _: &str, body: &Value) -> (u16, Value) {
+    if body["reasoning_effort"] == "none" {
+        return (200, completion(r#"{"urgency": 2}"#));
+    }
+    (
+        200,
+        json!({
+            "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": "", "reasoning_content": "We need to judge" },
+                "finish_reason": "length",
+            }],
+            "usage": { "completion_tokens": 160, "completion_tokens_details": { "reasoning_tokens": 160 } },
+        }),
+    )
+}
+
+#[tokio::test]
+async fn a_model_that_thought_its_budget_away_is_asked_again_without_thinking() {
+    let (base, seen) = serve(thinks_unless_told);
+    let service = OpenAiCompatible::new(&base, Some("sk-test".into())).unwrap();
+
+    let reply = service
+        .chat_up_to("deepseek-flash", "system", "user", 160)
+        .await
+        .unwrap();
+    assert_eq!(reply.content, r#"{"urgency": 2}"#);
+    assert!(seen.recv().unwrap().body.get("reasoning_effort").is_none());
+    assert_eq!(seen.recv().unwrap().body["reasoning_effort"], "none");
+
+    // And is told straight away the next time.
+    service
+        .chat_up_to("deepseek-flash", "system", "user", 160)
+        .await
+        .unwrap();
+    assert_eq!(seen.recv().unwrap().body["reasoning_effort"], "none");
+    assert!(seen.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn a_service_that_refuses_to_stop_thinking_keeps_its_first_reply() {
+    let (base, seen) = serve(|_, _, body| {
+        if body.get("reasoning_effort").is_some() {
+            return (400, json!({ "error": { "message": "Unrecognized request argument" } }));
+        }
+        thinks_unless_told("", "", body)
+    });
+    let service = OpenAiCompatible::new(&base, Some("sk-test".into())).unwrap();
+
+    let reply = service.chat_up_to("o-mini", "system", "user", 160).await.unwrap();
+    assert_eq!(reply.content, "");
+    assert!(reply.truncated);
+    assert_eq!(seen.iter().take(2).count(), 2);
+}
+
+#[tokio::test]
+async fn a_model_that_answers_is_not_told_anything() {
+    let (base, seen) = serve(|_, _, _| (200, completion(r#"{"urgency": 1}"#)));
+    let service = OpenAiCompatible::new(&base, Some("sk-test".into())).unwrap();
+
+    service.chat_up_to("deepseek-chat", "system", "user", 160).await.unwrap();
+    assert!(seen.recv().unwrap().body.get("reasoning_effort").is_none());
+    assert!(seen.try_recv().is_err());
+}
