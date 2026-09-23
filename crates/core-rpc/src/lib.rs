@@ -29,6 +29,7 @@ pub mod outbox;
 pub mod paper;
 pub mod pgp;
 pub mod profiles;
+pub mod sender;
 pub mod session;
 pub mod settings;
 pub mod setup;
@@ -59,6 +60,7 @@ pub use paper::{
     PaperSignIn,
 };
 pub use profiles::ProfileView;
+pub use sender::{SenderFolder, SenderMessage, SenderView};
 pub use session::{
     DraftInput, DraftPreview, SavedDraft, SentSummary, Session, SyncProgress, SyncSummary,
     VerifiedFolder, VerifyReport,

@@ -549,6 +549,63 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       const rows = [...people.values()];
       return { total: rows.length, offset, rows: rows.slice(offset, offset + 200) };
     },
+    // Who a message is with, for the card beside the assistant. The same
+    // grouping `conversations` uses, summed up rather than listed.
+    sender: async ({ id, address }) => {
+      const of = (m) => (m.from.match(/<(.+)>/)?.[1] ?? m.from).toLowerCase();
+      const who = address?.toLowerCase() ?? of(visible().find((m) => m.id === id) ?? { from: '' });
+      const theirs = visible().filter((m) => of(m) === who);
+      const dates = theirs.map((m) => m.date_utc).filter(Boolean);
+      return {
+        address: who,
+        postal: null,
+        name: theirs[0]?.from.replace(/\s*<.*>/, '') ?? who,
+        received: theirs.length,
+        sent: 0,
+        unread: theirs.filter((m) => m.unread).length,
+        first_utc: dates.length ? Math.min(...dates) : null,
+        last_from_them_utc: dates.length ? Math.max(...dates) : null,
+        last_to_them_utc: null,
+        with_attachments: theirs.filter((m) => m.has_attachments).length,
+        category: theirs[0]?.category ?? null,
+        category_count: theirs.length,
+        bulk: false,
+        folders: [{ name: 'INBOX', messages: theirs.length }],
+        waiting: null,
+        recent: theirs.slice(0, 6).map((m) => ({
+          id: m.id, from_me: false, date_utc: m.date_utc, subject: m.subject,
+          snippet: m.snippet, unread: m.unread,
+        })),
+      };
+    },
+    // A letter's sender, which carries a postal address where a message's
+    // card carries an e-mail one.
+    paper_sender: async ({ id, documentId }) => {
+      const letter = documents.find((d) => d.mailbox === id && d.id === documentId);
+      if (!letter) throw new Error(`no such document: ${documentId}`);
+      const theirs = documents.filter((d) => d.mailbox === id && d.from === letter.from);
+      return {
+        address: '',
+        postal: 'Musterstraße 1\n80331 München',
+        name: letter.from,
+        received: theirs.length,
+        sent: 0,
+        unread: theirs.filter((d) => d.unread).length,
+        first_utc: Math.min(...theirs.map((d) => d.date_utc)),
+        last_from_them_utc: Math.max(...theirs.map((d) => d.date_utc)),
+        last_to_them_utc: null,
+        with_attachments: 0,
+        category: letter.category ?? null,
+        category_count: theirs.length,
+        bulk: false,
+        folders: [...new Set(theirs.flatMap((d) => d.tags ?? []))].map((name) => ({ name, messages: 1 })),
+        waiting: null,
+        recent: theirs.map((d) => ({
+          id: d.id, from_me: false, date_utc: d.date_utc, subject: d.subject,
+          snippet: d.snippet, unread: d.unread,
+        })),
+      };
+    },
     conversation: async ({ key }) => {
       const mine = visible().filter((m) => m.from.toLowerCase().includes(key));
       return {

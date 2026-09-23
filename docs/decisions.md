@@ -1673,3 +1673,67 @@ the store holds the newest message and not the oldest; and a store wound into
 the state an interrupted walk leaves, which the next sync fills without being
 asked, ending with nothing owed. Both fail if the walk is put back the way it
 was.
+
+## 28. Who the message is with, and when a letter's address may be claimed
+
+**2026-09-23.**
+
+A sender line says a name. It does not say whether this is the fortieth letter
+from a shop you never answer or the first from somebody you have been writing
+to for three years, and that is usually what decides what to do with the
+message. `crates/core-rpc/src/sender.rs` answers it from mail already in the
+store: how much there is each way, since when, who spoke last, what their mail
+usually is, where it gets filed, whether any of it is still waiting, and the
+last few messages either way.
+
+Three things were decided rather than fallen into.
+
+**Asked by message, not by address.** The window has a row under the cursor,
+not an address, and the other person in a message the account itself sent is
+its first recipient rather than its sender. The store settles that with the
+same `COUNTERPART` expression the conversation list groups by, so a card
+opened from a letter and the conversation it belongs to are always about the
+same person. An address may be passed instead, which is what the People list
+has to hand.
+
+**One column on the right, not a second sidebar.** The card first went under
+the mailboxes on the left, which was wrong twice over: it is about the message
+in front of you, not about where mail lives, and it pushed the navigation
+around every time a message opened. It shares the fourth column with the
+assistant instead — both are about what is open — and the column exists only
+when something is in it. They are stacked in a flex column where the card is
+capped at 45% and what does not fit scrolls inside it, because the assistant
+is where the typing happens and a card must never push the input off screen.
+
+**A postal address is claimed only where it cannot be the reader's own.**
+Paperless keeps no address for a correspondent, so a scanned letter's can only
+come off the page — and the difficulty is that the recipient's address block
+sits right under the letterhead and looks exactly the same. The dev-stack
+letters are that shape: `Stadtwerke Musterstadt GmbH`, then `Erika Mustermann,
+Hauptstrasse 12, 80331 Muenchen`, which is where the letter went, not where it
+came from. Naming that as the sender's would be wrong in the most confusing
+way available. So `Document::postal_address` answers in two layouts and no
+others: the return line on the letterhead itself, which DIN 5008 puts there
+for this purpose — `Stadtwerke Musterstadt GmbH · Postfach 1234 · 80000
+München` — and a letter carrying two address blocks near the top, where by the
+same standard the first is the sender's and the second the recipient's.
+Anything else is `None`. Most scans will show no address, which is the honest
+answer; somebody else's address on a card is worse than none.
+
+### Verified
+
+`crates/core-store/tests/cleanup.rs` sums a correspondent up from both
+directions and finds the same person from her letter and from the reply to it;
+`crates/core-rpc/tests/surface.rs` checks the card is the same whichever way
+it is asked for. `crates/core-paper/tests/letters.rs` reads the address out of
+both layouts that allow it and returns nothing for the two dev-stack letters,
+whose only address block is the reader's.
+
+`kuverta-bird/test/desktop-sender.test.js` drives the card itself in jsdom —
+counts of nothing left out, the exchange newest first with its direction, the
+hover copy free of anything that could not be clicked. What jsdom cannot see
+is the layout, which is the whole point of the column, so
+`kuverta-bird/e2e/sender.test.js` asks a real engine: the column sits beside
+the reading pane, the card and the assistant share it with the chat input
+still on screen, the list gets its width back when the message closes, and the
+hover card lands clear of the list and inside the window.

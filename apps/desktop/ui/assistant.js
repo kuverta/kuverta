@@ -58,15 +58,14 @@ function assistantOpen() {
 
 function setAssistantOpen(open) {
   assistant.panel.hidden = !open;
-  document.body.classList.toggle("assistant-open", open);
   try {
     localStorage.setItem("assistantOpen", open ? "yes" : "no");
   } catch {
     // Lasts until the window closes.
   }
-  // The list's pool is sized to its height, and its width changed.
-  buildPool();
-  render(true);
+  // It shares the right-hand column with the sender card, which decides
+  // whether the column is there at all and redraws the list if it moved.
+  syncAside();
   if (open) {
     showAssistantTab(currentTab());
     if (currentTab() === "chat") assistant.input.focus();

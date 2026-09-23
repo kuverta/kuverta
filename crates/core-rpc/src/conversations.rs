@@ -146,7 +146,7 @@ impl Core {
 
     /// Folders whose mail is not part of anyone's conversation: the Trash
     /// and Junk.
-    fn folders_to_leave_out(&self, account: AccountId) -> Result<Vec<String>> {
+    pub(crate) fn folders_to_leave_out(&self, account: AccountId) -> Result<Vec<String>> {
         Ok(self
             .store()
             .folder_summaries(account)?

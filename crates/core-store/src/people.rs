@@ -54,6 +54,37 @@ pub struct ConversationMessage {
     pub rfc822_message_id: Option<String>,
 }
 
+/// What is known about one correspondent, for the card that summarises them.
+///
+/// Counts are of the mail that the conversation view counts — the Trash and
+/// the Junk left out — so the card and the conversation list never disagree
+/// about how much mail there is with somebody.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Correspondent {
+    /// Their address, lowercased.
+    pub address: String,
+    /// Their name as they last wrote it.
+    pub name: Option<String>,
+    /// Messages from them, and messages the account sent them.
+    pub received: usize,
+    pub sent: usize,
+    /// Of theirs, how many are unread.
+    pub unread: usize,
+    /// When the first message either way is dated, and the last in each
+    /// direction: together these are "since when" and "who spoke last".
+    pub first_utc: Option<i64>,
+    pub last_from_them_utc: Option<i64>,
+    pub last_to_them_utc: Option<i64>,
+    /// How many of their messages carry an attachment.
+    pub with_attachments: usize,
+    /// What their mail is most often classified as, and how much of it is.
+    pub usual_category: Option<(String, usize)>,
+    /// Where their mail sits, the fullest folder first.
+    pub folders: Vec<(String, usize)>,
+    /// The most pressing verdict on their Inbox mail, when there is one.
+    pub waiting: Option<Urgency>,
+}
+
 /// How soon a message needs acting on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Urgency {
@@ -472,6 +503,165 @@ impl Store {
             )
             .optional()?
             .is_some())
+    }
+
+    /// The other person in one message: its sender, or, when the account
+    /// sent it, its first recipient — the same rule the conversation list
+    /// groups by, so a card opened from a message and the conversation it
+    /// belongs to are about the same person.
+    pub fn counterpart_of(
+        &self,
+        account_id: AccountId,
+        me: &str,
+        id: MessageId,
+    ) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                &format!(
+                    "SELECT {COUNTERPART} FROM message m WHERE m.account_id = ?2 AND m.id = ?3"
+                ),
+                params![me.to_lowercase(), account_id, id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map(|found| {
+                found
+                    .flatten()
+                    .map(|who| who.trim().to_lowercase())
+                    .filter(|who| !who.is_empty())
+            })
+            .map_err(Into::into)
+    }
+
+    /// Everything the store knows about one correspondent.
+    ///
+    /// Four small queries rather than one wide one: the counts, where the
+    /// mail is filed, what it usually is, and whether any of it is waiting.
+    /// Each is a different grain, and joining them into a single statement
+    /// would multiply the rows of one by the rows of another.
+    pub fn correspondent(
+        &self,
+        account_id: AccountId,
+        me: &str,
+        address: &str,
+        skip_folders: &[String],
+    ) -> Result<Correspondent> {
+        let skip = serde_json::to_string(skip_folders).unwrap_or_else(|_| "[]".into());
+        let me = me.to_lowercase();
+        let who = address.trim().to_lowercase();
+        let filter = conversation_filter();
+        let join = crate::CURRENT_CATEGORY_JOIN;
+        let unread = crate::UNREAD_PREDICATE;
+        // Bulk mail is counted here: the card is asked about whoever sent the
+        // message on screen, and refusing to describe a newsletter because it
+        // is a newsletter would leave the card blank exactly where the
+        // question "who is this?" is most often asked.
+        let args = params![me, account_id, skip, true, who];
+
+        let mut summary = self.conn.query_row(
+            &format!(
+                "SELECT COALESCE(SUM(CASE WHEN lower(m.from_addr) <> ?1 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN lower(m.from_addr) =  ?1 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN lower(m.from_addr) <> ?1 AND {unread}
+                                          THEN 1 ELSE 0 END), 0),
+                        MIN(NULLIF(COALESCE(m.date_utc, 0), 0)),
+                        MAX(CASE WHEN lower(m.from_addr) <> ?1 THEN m.date_utc END),
+                        MAX(CASE WHEN lower(m.from_addr) =  ?1 THEN m.date_utc END),
+                        COALESCE(SUM(CASE WHEN lower(m.from_addr) <> ?1 AND m.has_attachments
+                                          THEN 1 ELSE 0 END), 0),
+                        MAX(CASE WHEN lower(m.from_addr) <> ?1 THEN m.from_name END)
+                 FROM message m
+                 {join}
+                 WHERE {filter} AND {COUNTERPART} = ?5"
+            ),
+            args,
+            |row| {
+                Ok(Correspondent {
+                    address: who.clone(),
+                    received: row.get::<_, i64>(0)? as usize,
+                    sent: row.get::<_, i64>(1)? as usize,
+                    unread: row.get::<_, i64>(2)? as usize,
+                    first_utc: row.get(3)?,
+                    last_from_them_utc: row.get(4)?,
+                    last_to_them_utc: row.get(5)?,
+                    with_attachments: row.get::<_, i64>(6)? as usize,
+                    name: row
+                        .get::<_, Option<String>>(7)?
+                        .filter(|name| !name.trim().is_empty()),
+                    ..Default::default()
+                })
+            },
+        )?;
+
+        let mut folders = self.conn.prepare(&format!(
+            "SELECT f.name, COUNT(DISTINCT m.id)
+             FROM message m
+             {join}
+             JOIN message_location l ON l.message_id = m.id
+             JOIN folder f ON f.id = l.folder_id
+             WHERE {filter} AND {COUNTERPART} = ?5
+               AND f.name NOT IN (SELECT value FROM json_each(?3))
+             GROUP BY f.name
+             ORDER BY 2 DESC, 1
+             LIMIT 4"
+        ))?;
+        summary.folders = folders
+            .query_map(args, |row| {
+                Ok((row.get(0)?, row.get::<_, i64>(1)? as usize))
+            })?
+            .collect::<rusqlite::Result<Vec<(String, usize)>>>()?;
+
+        summary.usual_category = self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT c.category, COUNT(*)
+                     FROM message m
+                     {join}
+                     WHERE {filter} AND {COUNTERPART} = ?5
+                       AND lower(m.from_addr) <> ?1 AND c.category IS NOT NULL
+                     GROUP BY c.category
+                     ORDER BY 2 DESC, 1
+                     LIMIT 1"
+                ),
+                args,
+                |row| Ok((row.get(0)?, row.get::<_, i64>(1)? as usize)),
+            )
+            .optional()?;
+
+        // What of theirs is still in the Inbox and rated at least "this week",
+        // which is the line the reading pane shows for a single message.
+        summary.waiting = self
+            .conn
+            .query_row(
+                "SELECT u.score, u.reason, u.action, u.deadline, u.source, u.model
+                 FROM message m
+                 JOIN urgency u ON u.message_id = m.id
+                 WHERE m.account_id = ?1 AND lower(COALESCE(m.from_addr, '')) = ?2
+                   AND u.score >= 2
+                   AND EXISTS (SELECT 1 FROM message_location l JOIN folder f ON f.id = l.folder_id
+                               WHERE l.message_id = m.id AND upper(f.name) = 'INBOX')
+                   AND NOT EXISTS (SELECT 1 FROM operation o
+                                   WHERE o.message_id = m.id AND o.state = 'pending'
+                                     AND o.kind = 'move')
+                 ORDER BY u.score DESC, u.deadline IS NULL, u.deadline,
+                          COALESCE(m.date_utc, 0) DESC
+                 LIMIT 1",
+                params![account_id, who],
+                |row| {
+                    Ok(Urgency {
+                        score: row.get(0)?,
+                        reason: row.get(1)?,
+                        action: row.get(2)?,
+                        deadline: row.get(3)?,
+                        source: row.get(4)?,
+                        model: row.get(5)?,
+                    })
+                },
+            )
+            .optional()?;
+
+        Ok(summary)
     }
 
     /// How many messages have come from `address` before `before_utc`.

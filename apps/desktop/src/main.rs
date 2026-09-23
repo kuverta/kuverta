@@ -1636,6 +1636,35 @@ fn conversation(
         .map_err(fail)
 }
 
+// -- who the message is from ----------------------------------------------------
+
+#[tauri::command]
+fn sender(
+    app: State<'_, App>,
+    account: i64,
+    id: Option<i64>,
+    address: Option<String>,
+) -> Result<core_rpc::SenderView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .sender(account, id, address.as_deref())
+        .map_err(fail)
+}
+
+/// The same card for a scanned letter, which comes from Paperless rather than
+/// from the store — so the session is taken first and the lock let go, as
+/// every other paper command does.
+#[tauri::command]
+async fn paper_sender(
+    app: State<'_, App>,
+    id: i64,
+    document_id: i64,
+) -> Result<core_rpc::SenderView, String> {
+    let session = paper_session(&app, id)?;
+    session.sender_card(document_id).await.map_err(fail)
+}
+
 // -- profiles -------------------------------------------------------------------
 
 #[tauri::command]
@@ -2030,6 +2059,8 @@ fn main() {
             urgent_messages,
             urgency_of,
             conversations,
+            sender,
+            paper_sender,
             conversation,
             profiles,
             save_profile,

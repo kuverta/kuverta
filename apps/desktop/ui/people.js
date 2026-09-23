@@ -281,6 +281,7 @@ async function openConversation(row) {
   el("conversation-avatar").textContent = initials(data.name);
   el("conversation-name").textContent = data.name;
   el("conversation-address").textContent = data.key;
+  showSender({ address: data.key });
   if (!keepDraft) replyBox.value = "";
 
   bubbles.textContent = "";
@@ -348,6 +349,7 @@ async function openWholeMessage(id) {
     el("reading-meta").textContent = [detail.from, formatDate(detail.date_utc)].filter(Boolean).join("  ·  ");
     el("reading-body").textContent = detail.body_text ?? t("(no readable body)");
     el("reading-urgency").hidden = true;
+    showSender({ id });
     showSecurity(detail);
     showAttachments(detail);
   } catch (err) {

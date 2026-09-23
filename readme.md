@@ -85,6 +85,12 @@ in its header.
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in
   bubbles with quotes taken off, and a reply box underneath
+- **Who the message is with** — a card in the right-hand column, above the
+  assistant, while a message is open, and beside a list row on hover: how much
+  mail there is each way, since when, who spoke last, what their mail usually
+  is, where it gets filed, whether any of it is waiting, and the last few
+  messages either way. The same card for a scanned letter, with the sender's
+  postal address read off the page where the e-mail address would be
 - **Diagnostics** — a log file, detailed logging switched on live, and export
 - **A Docker dev stack** — a seeded Dovecot, an SMTP sink, and a second Dovecot
   wearing Gmail's folder layout, so none of it needs a real mailbox

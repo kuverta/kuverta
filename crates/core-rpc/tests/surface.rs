@@ -740,3 +740,81 @@ fn a_message_that_is_not_on_disk_has_no_facts_rather_than_half_of_them() {
         .id;
     assert!(core.message(account, id).unwrap().facts.is_none());
 }
+
+#[test]
+fn a_sender_card_answers_for_the_other_person_whichever_way_it_is_asked() {
+    let (core, account, inbox, _archive, _dir) = core_with("sender", 3);
+    let sent = core
+        .store()
+        .upsert_folder(account, "Sent", Some("\\Sent"))
+        .unwrap();
+    // One reply from the account, which is what makes this an exchange.
+    core.store()
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some("mine@example.com".into()),
+                subject: Some("Re: message 2".into()),
+                from_addr: Some("dev@kuverta.test".into()),
+                recipients: Some("anna@example.de, cc@example.org".into()),
+                date_utc: Some(1_700_000_100),
+                snippet: Some("my answer".into()),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: sent,
+                uid: 1,
+                flags: "\\Seen".into(),
+            }),
+        )
+        .unwrap();
+
+    let by_address = core.sender(account, None, Some("Anna@example.de")).unwrap();
+    assert_eq!(by_address.address, "anna@example.de");
+    assert_eq!(by_address.name, "Anna Weber");
+    assert_eq!((by_address.received, by_address.sent), (3, 1));
+    assert_eq!(by_address.unread, 3);
+    assert!(!by_address.bulk, "nothing has classified her as bulk");
+    assert_eq!(by_address.postal, None, "mail carries no postal address");
+    assert_eq!(
+        by_address.folders,
+        vec![
+            core_rpc::SenderFolder {
+                name: "INBOX".into(),
+                messages: 3
+            },
+            core_rpc::SenderFolder {
+                name: "Sent".into(),
+                messages: 1
+            },
+        ]
+    );
+    // Newest first, so the card can show the last correspondence at the top.
+    assert!(by_address.recent[0].from_me, "the reply is the latest");
+    assert_eq!(by_address.recent.len(), 4);
+
+    // From one of her messages, and from the account's own reply, the card is
+    // about her either way: a sent message's other person is its recipient.
+    let hers = core
+        .messages(account, 0, 10, &ListFilter::default())
+        .unwrap()
+        .rows
+        .into_iter()
+        .find(|row| row.subject == "message 2")
+        .unwrap()
+        .id;
+    assert_eq!(core.sender(account, Some(hers), None).unwrap(), by_address);
+    let mine = core
+        .store()
+        .message_window(account, 0, 50, &ListFilter::default())
+        .unwrap()
+        .messages
+        .into_iter()
+        .find(|m| m.summary.subject.as_deref() == Some("Re: message 2"))
+        .unwrap()
+        .summary
+        .id;
+    assert_eq!(core.sender(account, Some(mine), None).unwrap(), by_address);
+
+    let _ = inbox;
+}

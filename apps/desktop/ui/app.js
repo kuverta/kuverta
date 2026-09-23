@@ -254,6 +254,11 @@ async function reload({ keepPosition = false } = {}) {
   state.searching = false;
   reading.hidden = true;
   emptyPane.hidden = false;
+  // Whatever a sender card said about how much mail there is with somebody,
+  // the mail has just moved under it.
+  forgetSenders();
+  hideSender();
+  hideHover();
   if (!keepPosition) {
     state.selected = -1;
     viewport.scrollTop = 0;
@@ -974,6 +979,24 @@ async function selectAccount(account) {
   await reload();
 }
 
+/// The right-hand column is there when anything in it is: the sender card,
+/// the assistant, or both. Called by whatever shows or hides one of them.
+///
+/// Opening it takes width from the list, so the pool is rebuilt — but only
+/// when the column itself appeared or went, not when one of the two things
+/// inside it did.
+function syncAside() {
+  const aside = el("aside");
+  const assistantOpen = !el("assistant").hidden;
+  const open = assistantOpen || !el("sender").hidden;
+  aside.classList.toggle("with-assistant", assistantOpen);
+  if (open === !aside.hidden) return;
+  aside.hidden = !open;
+  document.body.classList.toggle("aside-open", open);
+  buildPool();
+  render(true);
+}
+
 // -- rendering -------------------------------------------------------------
 
 function buildPool() {
@@ -1073,6 +1096,9 @@ function render(force = false) {
       continue;
     }
     node.row.hidden = false;
+    // Which row this pooled node is standing in for, for sender.js: the pool
+    // is reused as the list scrolls, so a node's identity changes under it.
+    node.row.dataset.index = String(index);
     node.row.classList.toggle("selected", index === state.selected);
     node.row.classList.toggle("picked", state.selection.has(index));
 
@@ -1129,6 +1155,9 @@ async function openSelected() {
     if (state.postbox) {
       const detail = await invoke("paper_document", { id: state.postbox.id, documentId: row.id });
       const pages = detail.row.page_count;
+      // Who the letter is from, read off the page: the same card as a
+      // message's, with a postal address where the e-mail address goes.
+      showSender({ id: row.id, postbox: state.postbox.id });
       reading.hidden = false;
       emptyPane.hidden = true;
       el("reading-actions").hidden = true;
@@ -1168,6 +1197,7 @@ async function openSelected() {
     el("reading-actions").hidden = false;
     showSecurity(detail);
     showUrgency(row.id);
+    showSender({ id: row.id });
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     el("reading-meta").textContent = [
       detail.from,

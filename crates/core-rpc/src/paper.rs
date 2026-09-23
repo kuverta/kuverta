@@ -644,6 +644,129 @@ impl PaperSession {
         Ok(texts.join("\n\n"))
     }
 
+    /// How many of a correspondent's letters a card counts. Beyond this the
+    /// number stops being a fact about a person and starts being a fact
+    /// about the archive, and it is not worth a second request to find out.
+    pub const CARD_LETTERS: usize = 500;
+
+    /// Who a letter is from, summed up: the card in [`crate::sender`], filled
+    /// from paper instead of from mail.
+    ///
+    /// Their other letters are found by the correspondent where Paperless
+    /// has one, and by the letterhead where it has not — the same two
+    /// answers the list shows, in that order. A letter whose sender could not
+    /// be read at all is a card about that one letter: every such letter
+    /// shows a dash, and counting the dashes together would say "seventeen
+    /// letters from —", which is not a person.
+    pub async fn sender_card(&self, document_id: i64) -> Result<crate::SenderView> {
+        let document = self
+            .client
+            .document(document_id)
+            .await
+            .map_err(paper_error)?;
+        let readable = self.readable(&document);
+        let postal = readable.postal_address();
+        let this = self.row(&document);
+
+        // A correspondent Paperless knows is one request. A sender read off
+        // a letterhead exists nowhere upstream, so those are matched here,
+        // over the whole address — the sweep `category_counts` already makes.
+        let theirs: Vec<PaperRow> = match (&document.correspondent, readable.sender()) {
+            (Some(correspondent), _) => self
+                .client
+                .from_correspondent(&self.selector, correspondent, Self::CARD_LETTERS)
+                .await
+                .map_err(paper_error)?
+                .iter()
+                .map(|found| self.row(found))
+                .collect(),
+            (None, Some(sender)) => {
+                let wanted = sender.to_lowercase();
+                self.all_rows(None, Order::Created)
+                    .await?
+                    .into_iter()
+                    .filter(|row| row.from.to_lowercase() == wanted)
+                    .collect()
+            }
+            (None, None) => vec![],
+        };
+        // Whatever else was found, the letter in front of you is theirs: a
+        // card saying there is no post from somebody, over their letter,
+        // would be the one thing it cannot be allowed to say.
+        let theirs = if theirs.iter().any(|row| row.id == document_id) {
+            theirs
+        } else {
+            std::iter::once(this.clone()).chain(theirs).collect()
+        };
+
+        let mut categories: Vec<(String, usize)> = Vec::new();
+        let mut folders: Vec<crate::SenderFolder> = Vec::new();
+        for row in &theirs {
+            if let Some(category) = &row.category {
+                match categories.iter_mut().find(|(name, _)| name == category) {
+                    Some((_, count)) => *count += 1,
+                    None => categories.push((category.clone(), 1)),
+                }
+            }
+            for tag in &row.tags {
+                match folders.iter_mut().find(|folder| &folder.name == tag) {
+                    Some(folder) => folder.messages += 1,
+                    None => folders.push(crate::SenderFolder {
+                        name: tag.clone(),
+                        messages: 1,
+                    }),
+                }
+            }
+        }
+        categories.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        folders.sort_by(|a, b| {
+            b.messages
+                .cmp(&a.messages)
+                .then_with(|| a.name.cmp(&b.name))
+        });
+        folders.truncate(4);
+
+        let dates: Vec<i64> = theirs.iter().filter_map(|row| row.date_utc).collect();
+        let (category, category_count) = match categories.first() {
+            Some((name, count)) => (Some(name.clone()), *count),
+            None => (None, 0),
+        };
+        Ok(crate::SenderView {
+            address: String::new(),
+            postal,
+            name: this.from.clone(),
+            received: theirs.len(),
+            // Nothing goes back out through a scanner, and no letter has ever
+            // been read into kuverta before it was scanned.
+            sent: 0,
+            unread: theirs.iter().filter(|row| row.unread).count(),
+            first_utc: dates.iter().min().copied(),
+            last_from_them_utc: dates.iter().max().copied(),
+            last_to_them_utc: None,
+            // Every letter is a scan, so a count of them all says nothing.
+            with_attachments: 0,
+            bulk: category
+                .as_deref()
+                .is_some_and(|c| core_store::CLEANUP_CATEGORIES.contains(&c)),
+            category,
+            category_count,
+            folders,
+            waiting: None,
+            recent: theirs
+                .iter()
+                .take(crate::sender::RECENT)
+                .map(|row| crate::SenderMessage {
+                    id: row.id,
+                    from_me: false,
+                    date_utc: row.date_utc,
+                    subject: Some(row.subject.clone()),
+                    snippet: row.snippet.clone(),
+                    unread: row.unread,
+                })
+                .collect(),
+        })
+    }
+
     /// Every letter the address holds, as rows — for what Paperless cannot
     /// filter or count by. Capped, so a runaway instance is not read whole.
     async fn all_rows(&self, query: Option<&str>, order: Order) -> Result<Vec<PaperRow>> {

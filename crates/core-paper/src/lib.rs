@@ -238,6 +238,60 @@ impl Document {
         self.correspondent.as_deref().or_else(|| self.letterhead())
     }
 
+    /// The sender's postal address, when the page gives it up unambiguously.
+    ///
+    /// Paperless keeps no address for a correspondent, so this is the only
+    /// place one can come from, and the only real difficulty is that the
+    /// recipient's address block — the address of whoever lives here — sits
+    /// right under the letterhead and looks exactly the same. Naming that as
+    /// the sender's would be wrong in the most confusing way available, so
+    /// this answers only in the two layouts where it cannot be:
+    ///
+    /// - the return line on the letterhead itself, which DIN 5008 puts there
+    ///   for exactly this reason: "Stadtwerke Musterstadt GmbH · Postfach
+    ///   1234 · 80000 München";
+    /// - a letter with two address blocks near the top, where the first is
+    ///   the sender's and the second the recipient's, by the same standard.
+    ///
+    /// Anything else is `None`. A letter that names its sender once, above an
+    /// address block that turns out to be yours, is the common scan — and no
+    /// address is a better answer there than somebody else's.
+    pub fn postal_address(&self) -> Option<String> {
+        let text = self.content.as_deref()?;
+        let top: Vec<&str> = lines(text).take(10).collect();
+        let head = *top.first()?;
+
+        // The return line: what follows the name on the letterhead, when it
+        // carries a postcode and a place.
+        if let Some((name, rest)) = head.split_once(['·', '|']) {
+            let rest = rest.trim_matches(|c: char| c == '·' || c == '|' || c.is_whitespace());
+            if name.chars().filter(|c| c.is_alphabetic()).count() >= 3 && looks_like_address(rest) {
+                return Some(
+                    rest.split(['·', '|'])
+                        .map(str::trim)
+                        .filter(|part| !part.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                );
+            }
+        }
+
+        // Or two blocks: the sender's under the letterhead, the recipient's
+        // below it. Runs of lines, so the two postcodes have to be apart.
+        let addresses: Vec<usize> = top
+            .iter()
+            .enumerate()
+            .filter(|(_, line)| looks_like_address(line))
+            .map(|(at, _)| at)
+            .collect();
+        let first = *addresses.first()?;
+        let separate = addresses.iter().any(|at| *at > first + 1);
+        if !separate || !(1..=3).contains(&first) {
+            return None;
+        }
+        Some(top[1..=first].join("\n"))
+    }
+
     /// Whether [`Document::sender`] was read off the page rather than set in
     /// Paperless — worth showing, since a guess should look like one.
     pub fn sender_is_inferred(&self) -> bool {
@@ -585,6 +639,45 @@ impl Paperless {
 
         let body = self.get("/api/documents/", &params).await?;
         serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))
+    }
+
+    /// Every document from one correspondent, newest first, within whatever
+    /// the selector already narrows to.
+    ///
+    /// Paperless filters on the correspondent itself, so this is one request
+    /// rather than a walk over the whole address. It only works for a
+    /// correspondent Paperless knows: a sender read off a letterhead exists
+    /// nowhere upstream and has to be matched here.
+    pub async fn from_correspondent(
+        &self,
+        selector: &Selector,
+        name: &str,
+        limit: usize,
+    ) -> Result<Vec<Document>> {
+        let mut params = vec![
+            ("ordering".to_string(), Order::Created.param().to_string()),
+            ("page".to_string(), "1".to_string()),
+            ("page_size".to_string(), limit.max(1).to_string()),
+            ("correspondent__name__iexact".to_string(), name.to_string()),
+        ];
+        params.extend(
+            selector
+                .params()
+                .into_iter()
+                // The selector's own correspondent filter, when it has one,
+                // would fight with this one; this is the narrower of the two.
+                .filter(|(key, _)| *key != "correspondent__name__iexact")
+                .map(|(k, v)| (k.to_string(), v)),
+        );
+        let body = self.get("/api/documents/", &params).await?;
+        let listing: Listing =
+            serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))?;
+        let (correspondents, tags) = self.lookups().await?;
+        Ok(listing
+            .results
+            .into_iter()
+            .map(|raw| raw.into_document(&correspondents, &tags, &self.base))
+            .collect())
     }
 
     /// One document, with its text.

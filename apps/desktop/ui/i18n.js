@@ -698,6 +698,26 @@ const GERMAN = {
   sent: "gesendet",
   "also {names}": "außerdem {names}",
 
+  // -- who the message is with ----------------------------------------------
+  "from them": "von ihnen",
+  "from you": "von Ihnen",
+  "with a file": "mit Anhang",
+  "no mail with them yet": "noch keine Post mit ihnen",
+  Since: "Seit",
+  "They wrote": "Schrieb",
+  "You wrote": "Sie schrieben",
+  never: "nie",
+  Usually: "Meistens",
+  "{category} — bulk mail": "{category} — Massenpost",
+  "Filed in": "Abgelegt in",
+  "Waiting on you {when}: {reason}": "Wartet auf Sie {when}: {reason}",
+  "Last correspondence": "Letzter Schriftwechsel",
+  "Whole conversation": "Ganzes Gespräch",
+  "Everything with this person, as a messenger shows it":
+    "Alles mit dieser Person, wie es ein Messenger zeigt",
+  "that letter is further down the list than has been loaded":
+    "Dieser Brief liegt weiter unten in der Liste, als bisher geladen ist",
+
   // -- look-alikes ----------------------------------------------------------
   "{count} more like “{subject}”": "{count} weitere wie „{subject}“",
   "From {from}. They look alike because of: {reasons}. Untick any to keep.":
