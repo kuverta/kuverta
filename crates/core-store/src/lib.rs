@@ -783,6 +783,42 @@ impl Store {
 
     /// Recent messages, each with the most recent rules verdict recorded for
     /// it. Messages never classified come back with `category: None`.
+    /// The folders whose mail "All mail" leaves out: Sent, Drafts, Trash and
+    /// Junk, by the server's attribute or by what they are called.
+    fn not_incoming(&self, account_id: AccountId) -> Result<Vec<FolderId>> {
+        Ok(self
+            .folders(account_id)?
+            .into_iter()
+            .filter(|folder| {
+                !crate::model::holds_incoming(&folder.name, folder.special_use.as_deref())
+            })
+            .map(|folder| folder.id)
+            .collect())
+    }
+
+    /// `SQL` keeping only mail that arrived, for the folders given, or `None`
+    /// when this account has no such folder and every message qualifies.
+    ///
+    /// A message is left out when every copy of it is in one of them: on
+    /// Gmail a message you were sent and replied to is in Inbox and in Sent
+    /// at once, and that one is mail that arrived.
+    fn incoming_clause(folders: &[FolderId]) -> Option<String> {
+        if folders.is_empty() {
+            return None;
+        }
+        let ids = folders
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        Some(format!(
+            "EXISTS (SELECT 1 FROM message_location il
+                     WHERE il.message_id = m.id AND il.folder_id NOT IN ({ids}))
+             OR NOT EXISTS (SELECT 1 FROM message_location il
+                            WHERE il.message_id = m.id AND il.folder_id IN ({ids}))"
+        ))
+    }
+
     /// One window of the message list, newest first, with a total to size the
     /// scrollbar against.
     ///
@@ -839,6 +875,14 @@ impl Store {
 
         if filter.unread_only {
             clauses.push(UNREAD_PREDICATE.into());
+        }
+
+        // All mail is what arrived, not what you wrote or threw away. The ids
+        // are the store's own, never anything typed, so they go in the text.
+        if filter.incoming_only {
+            if let Some(clause) = Self::incoming_clause(&self.not_incoming(account_id)?) {
+                clauses.push(format!("({clause})"));
+            }
         }
 
         // A smart mailbox is one more predicate, like the rest: its rules are
@@ -964,12 +1008,21 @@ impl Store {
         account_id: AccountId,
         folder: Option<FolderId>,
     ) -> Result<Vec<(String, usize)>> {
+        // Counted over the same messages the list is showing, or the numbers
+        // under it describe a different mailbox: with no folder this is All
+        // mail, which leaves out what you wrote and what you threw away.
+        let incoming = match folder {
+            Some(_) => None,
+            None => Self::incoming_clause(&self.not_incoming(account_id)?),
+        };
         let in_folder = match folder {
-            Some(_) => {
-                "AND EXISTS (SELECT 1 FROM message_location fl
+            Some(_) => "AND EXISTS (SELECT 1 FROM message_location fl
                              WHERE fl.message_id = m.id AND fl.folder_id = ?2)"
-            }
-            None => "",
+                .to_string(),
+            None => match incoming {
+                Some(clause) => format!("AND ({clause})"),
+                None => String::new(),
+            },
         };
         let mut stmt = self.conn.prepare(&format!(
             "SELECT c.category, COUNT(m.id)
