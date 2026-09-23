@@ -93,6 +93,7 @@ async fn a_finish_is_acknowledged_at_once_and_given_up_waiting_on_movement() {
     let mut scanner = Scanner::new(3, Duration::from_secs(3600)).collecting(Letters {
         button,
         idle: Duration::from_secs(300),
+        when_clear: None,
     });
 
     // One page photographed and lifted, then a hand that never keeps still.

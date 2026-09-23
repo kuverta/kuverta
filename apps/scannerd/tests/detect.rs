@@ -294,3 +294,94 @@ fn the_last_measurements_are_kept_for_the_setup_page() {
     let (table, movement) = detector.last_measure().unwrap();
     assert!(table >= 0.18 && movement >= 0.18, "{table} {movement}");
 }
+
+// -- the next page, laid on top or turned over --------------------------------------
+
+use scannerd::detect::page_changed;
+
+/// A page on the desk, its top left at (`x`, `y`), with lines of text on it
+/// in a pattern chosen by `layout` — or none, for the back of a page.
+fn page_at(x: usize, y: usize, layout: Option<usize>) -> Vec<u8> {
+    let mut frame = desk();
+    for row in y..(y + 190).min(H) {
+        for column in x..(x + 230).min(W) {
+            let (px, py) = (column - x, row - y);
+            let text = layout.is_some_and(|layout| {
+                let line = (py + layout * 7) % 14 < 5;
+                let word = (px + layout * 11) % 23 < 16;
+                py > 15 && py < 175 && px > 15 && px < 215 && line && word
+            });
+            frame[row * W + column] = if text { 90 } else { 235 };
+        }
+    }
+    frame
+}
+
+/// Frames of a hand over the page.
+fn hand(over: &[u8]) -> Vec<Vec<u8>> {
+    vec![jittered(over, 0.4), jittered(over, 0.3)]
+}
+
+/// Photographs the first page, then runs the rest and says how many more
+/// photographs were taken.
+fn after_the_first(first: &[u8], then: Vec<Vec<u8>>) -> usize {
+    let mut detector = detector();
+    detector.observe(&desk());
+    let captured = (0..5)
+        .map(|_| detector.observe(first))
+        .filter(|step| *step == Step::Capture)
+        .count();
+    assert_eq!(captured, 1, "the first page");
+    then.iter()
+        .map(|frame| detector.observe(frame))
+        .filter(|step| *step == Step::Capture)
+        .count()
+}
+
+#[test]
+fn a_page_turned_over_where_it_lies_is_photographed() {
+    let front = page_at(40, 20, Some(0));
+    let back = page_at(40, 20, None);
+    let mut then = hand(&front);
+    then.extend(std::iter::repeat_n(back, 5));
+    assert_eq!(after_the_first(&front, then), 1);
+}
+
+#[test]
+fn the_next_page_laid_on_top_is_photographed() {
+    let first = page_at(40, 20, Some(0));
+    let second = page_at(44, 22, Some(1));
+    let mut then = hand(&first);
+    then.extend(std::iter::repeat_n(second, 5));
+    assert_eq!(after_the_first(&first, then), 1);
+}
+
+#[test]
+fn a_page_nudged_is_the_same_page() {
+    let page = page_at(40, 20, Some(0));
+    let nudged = page_at(45, 23, Some(0));
+    let mut then = hand(&page);
+    then.extend(std::iter::repeat_n(nudged, 6));
+    assert_eq!(after_the_first(&page, then), 0);
+}
+
+#[test]
+fn a_hand_passing_over_the_page_takes_nothing_new() {
+    let page = page_at(40, 20, Some(0));
+    let mut then = hand(&page);
+    then.extend(std::iter::repeat_n(page.clone(), 6));
+    then.extend(hand(&page));
+    then.extend(std::iter::repeat_n(page, 6));
+    assert_eq!(after_the_first(&page_at(40, 20, Some(0)), then), 0);
+}
+
+#[test]
+fn pages_are_told_apart_in_blocks_and_nudges_are_not_changes() {
+    let page = page_at(40, 20, Some(0));
+    assert_eq!(page_changed(&page, &page, W), 0.0);
+    assert!(page_changed(&page, &page_at(46, 24, Some(0)), W) < 0.22);
+    assert!(page_changed(&page, &page_at(40, 20, None), W) >= 0.22);
+    assert!(page_changed(&page, &page_at(40, 20, Some(1)), W) >= 0.22);
+    // Frames it cannot compare are no change, rather than a panic.
+    assert_eq!(page_changed(&page, &page[..100], W), 0.0);
+}

@@ -17,8 +17,11 @@
 //! rather than a page of geometry — and geometry that cannot be tested against
 //! real photographs is geometry that is guessed at.
 
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 
@@ -29,6 +32,15 @@ pub trait Camera {
     fn preview(&self) -> Result<Vec<u8>>;
     /// A full-resolution JPEG, written to `path`.
     fn capture(&self, path: &Path) -> Result<()>;
+    /// The same, exposed `ev` stops brighter than the camera would choose —
+    /// darker, for a negative `ev`. White paper fools a camera's exposure:
+    /// the rig's OV5647 turned it pure white and the text pale grey until it
+    /// was told two stops less. A camera that cannot be told takes it as it
+    /// would.
+    fn capture_at(&self, path: &Path, ev: f32) -> Result<()> {
+        let _ = ev;
+        self.capture(path)
+    }
     /// A small greyscale frame of the whole view, ignoring the crop — what
     /// setup finds the page in. The same as a preview for a camera with no
     /// crop.
@@ -42,7 +54,7 @@ pub trait Camera {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct RpiCamera {
     pub program: String,
     pub preview_width: u32,
@@ -55,7 +67,65 @@ pub struct RpiCamera {
     /// of. The Pi camera v1 (OV5647) is 2592×1944.
     pub sensor_width: u32,
     pub sensor_height: u32,
+    /// Previews from a video stream this program keeps running —
+    /// `rpicam-vid` — at `stream_fps` frames a second. `None`: a still for
+    /// each frame, as before.
+    ///
+    /// A still costs half a second of starting the camera every frame, which
+    /// with three still frames to wait for made a page lying still wait three
+    /// or four seconds to be photographed. A stream starts once, in under two
+    /// seconds, and then has a frame every fifth of a second. It is stopped
+    /// for the photograph, which needs the camera to itself, and started again
+    /// at the next preview.
+    pub video_program: Option<String>,
+    pub stream_fps: u32,
+    /// The running stream, shared by clones. Opaque: `..Default::default()`
+    /// fills it.
+    pub stream_state: StreamState,
 }
+
+/// Whatever stream an [`RpiCamera`] has running, and the last of its frames
+/// handed out, so the next is a newer one.
+#[derive(Clone, Default)]
+pub struct StreamState {
+    stream: Arc<Mutex<Option<Stream>>>,
+    seen: Arc<Mutex<u64>>,
+}
+
+impl std::fmt::Debug for RpiCamera {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RpiCamera")
+            .field("program", &self.program)
+            .field("roi", &self.roi)
+            .field("video_program", &self.video_program)
+            .finish()
+    }
+}
+
+/// The newest frame of a stream, and how many there have been.
+#[derive(Default)]
+struct Latest {
+    count: u64,
+    luma: Vec<u8>,
+    ended: bool,
+}
+
+/// A running `rpicam-vid`, and what it has sent.
+struct Stream {
+    child: Child,
+    roi: Option<String>,
+    latest: Arc<(Mutex<Latest>, Condvar)>,
+}
+
+impl Drop for Stream {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// How long a preview waits for the stream's next frame before giving up.
+const FRAME_WAIT: Duration = Duration::from_secs(5);
 
 impl Default for RpiCamera {
     fn default() -> Self {
@@ -71,6 +141,9 @@ impl Default for RpiCamera {
             settle_ms: 200,
             sensor_width: 2592,
             sensor_height: 1944,
+            video_program: None,
+            stream_fps: 5,
+            stream_state: StreamState::default(),
         }
     }
 }
@@ -99,6 +172,95 @@ impl RpiCamera {
             even(width * self.sensor_width as f64),
             even(height * self.sensor_height as f64),
         ))
+    }
+
+    /// Stops the stream, so a still can have the camera — or because nothing
+    /// is being watched. The next preview starts it again.
+    pub fn stop_stream(&self) {
+        *self.stream_state.stream.lock().unwrap() = None;
+    }
+
+    /// The next frame of the stream, starting it — or starting it again, for
+    /// a new crop or after it stopped — when it is not running.
+    fn streamed(&self, program: &str) -> Result<Vec<u8>> {
+        let latest = {
+            let mut stream = self.stream_state.stream.lock().unwrap();
+            let stale = stream.as_ref().is_some_and(|stream| {
+                stream.roi != self.roi || stream.latest.0.lock().unwrap().ended
+            });
+            if stale {
+                *stream = None;
+            }
+            if stream.is_none() {
+                *stream = Some(self.start_stream(program)?);
+            }
+            stream.as_ref().expect("started").latest.clone()
+        };
+        let (lock, arrived) = &*latest;
+        let mut seen = self.stream_state.seen.lock().unwrap();
+        let (guard, timeout) = arrived
+            .wait_timeout_while(lock.lock().unwrap(), FRAME_WAIT, |latest| {
+                latest.count <= *seen && !latest.ended
+            })
+            .unwrap();
+        if guard.count <= *seen {
+            let ended = guard.ended;
+            drop(guard);
+            self.stop_stream();
+            if ended || !timeout.timed_out() {
+                bail!("{program} stopped sending frames");
+            }
+            bail!("{program} sent no frame for {FRAME_WAIT:?}");
+        }
+        *seen = guard.count;
+        Ok(guard.luma.clone())
+    }
+
+    fn start_stream(&self, program: &str) -> Result<Stream> {
+        let (width, height) = (self.preview_width as usize, self.preview_height as usize);
+        let mut command = Command::new(program);
+        command
+            .arg("--nopreview")
+            .args(["--codec", "yuv420"])
+            .args(["--width", &width.to_string()])
+            .args(["--height", &height.to_string()])
+            .args(["--framerate", &self.stream_fps.max(1).to_string()])
+            .args(["--timeout", "0"])
+            .args(["--output", "-"])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        if let Some(roi) = &self.roi {
+            command.args(["--roi", roi]);
+        }
+        let mut child = command
+            .spawn()
+            .with_context(|| format!("could not run {program}"))?;
+        let mut stdout = child.stdout.take().context("no output from the stream")?;
+        let latest: Arc<(Mutex<Latest>, Condvar)> = Arc::default();
+        let feed = latest.clone();
+        // A new stream counts its frames from nothing.
+        *self.stream_state.seen.lock().unwrap() = 0;
+        std::thread::spawn(move || {
+            // YUV 4:2:0: the luma plane, then two quarter-size chroma planes.
+            let mut frame = vec![0u8; width * height * 3 / 2];
+            while stdout.read_exact(&mut frame).is_ok() {
+                let (lock, arrived) = &*feed;
+                let mut latest = lock.lock().unwrap();
+                latest.count += 1;
+                latest.luma.clear();
+                latest.luma.extend_from_slice(&frame[..width * height]);
+                arrived.notify_all();
+            }
+            let (lock, arrived) = &*feed;
+            lock.lock().unwrap().ended = true;
+            arrived.notify_all();
+        });
+        tracing::debug!(fps = self.stream_fps, "preview stream started");
+        Ok(Stream {
+            child,
+            roi: self.roi.clone(),
+            latest,
+        })
     }
 
     fn frame(&self, roi: Option<&str>) -> Result<Vec<u8>> {
@@ -141,14 +303,19 @@ impl Camera for RpiCamera {
         // of the frame, so without it they were fractions of the whole desk: a
         // page filling a tight crop could change too little of the full view
         // to count as present, and a hand beside the crop could count as one.
-        self.frame(self.roi.as_deref())
+        match &self.video_program {
+            Some(program) => self.streamed(program),
+            None => self.frame(self.roi.as_deref()),
+        }
     }
 
     fn full_view(&self) -> Result<Vec<u8>> {
+        self.stop_stream();
         self.frame(None)
     }
 
     fn snapshot(&self) -> Result<Vec<u8>> {
+        self.stop_stream();
         let mut command = Command::new(&self.program);
         command
             .arg("--nopreview")
@@ -164,16 +331,27 @@ impl Camera for RpiCamera {
     }
 
     fn capture(&self, path: &Path) -> Result<()> {
+        self.capture_at(path, 0.0)
+    }
+
+    fn capture_at(&self, path: &Path, ev: f32) -> Result<()> {
+        // The photograph needs the camera to itself.
+        self.stop_stream();
         let mut command = Command::new(&self.program);
         command
             .arg("--nopreview")
             // Autofocus where the sensor has it; harmless where it does not.
             .args(["--autofocus-mode", "auto"])
-            .args(["--timeout", "800"])
+            // Long enough for the exposure to settle after the camera starts;
+            // 800 was a third of a second more than the rig's needed.
+            .args(["--timeout", "500"])
             .args(["--output", &path.to_string_lossy()]);
 
         if let Some(roi) = &self.roi {
             command.args(["--roi", roi]);
+        }
+        if ev != 0.0 {
+            command.args(["--ev", &format!("{ev:.1}")]);
         }
         if let Some((width, height)) = self.capture_size() {
             command.args([

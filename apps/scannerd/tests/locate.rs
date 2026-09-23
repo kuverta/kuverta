@@ -30,7 +30,7 @@ fn a_page_on_a_table_is_found_with_room_around_it() {
     let area = find_page(&frame, W, H).expect("a page");
 
     // 120×160 pixels, plus 12% of that on each side.
-    let (margin_x, margin_y) = (120.0 * 0.12, 160.0 * 0.12);
+    let (margin_x, margin_y) = (120.0 * 0.03, 160.0 * 0.03);
     assert!(close(area.x, (100.0 - margin_x) / W as f32), "{area:?}");
     assert!(close(area.y, (40.0 - margin_y) / H as f32), "{area:?}");
     assert!(
@@ -101,7 +101,7 @@ fn an_area_is_written_as_the_crop_setting_takes_it() {
 }
 
 #[test]
-fn the_corners_of_a_page_seen_at_an_angle_are_found_with_room_around_them() {
+fn the_corners_of_a_page_seen_at_an_angle_are_found_with_a_thin_edge_round_them() {
     // A trapezium: the far edge from (120,40) to (200,40), the near one from
     // (80,200) to (240,200).
     let mut frame = table();
@@ -118,10 +118,10 @@ fn the_corners_of_a_page_seen_at_an_angle_are_found_with_room_around_them() {
     let outwards = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
     for ((&(x, y), (ex, ey)), (ox, oy)) in corners.0.iter().zip(expected).zip(outwards) {
         let (dx, dy) = (x * W as f64 - ex, y * H as f64 - ey);
-        // Moved outwards, by the margin: some pixels, not a lot — more at the
-        // near edge than the far one, as on the table.
-        assert!(dx * ox > 2.0 && dx * ox < 40.0, "{corners:?}");
-        assert!(dy * oy > 2.0 && dy * oy < 45.0, "{corners:?}");
+        // Moved outwards by the edge: a pixel or a few, and no more — a band
+        // of table round every photograph is what setup is for getting rid of.
+        assert!(dx * ox > 0.5 && dx * ox < 12.0, "{corners:?}");
+        assert!(dy * oy > 0.5 && dy * oy < 12.0, "{corners:?}");
     }
     assert!(scannerd::straighten::Corners::parse(&corners.to_setting()).is_ok());
 

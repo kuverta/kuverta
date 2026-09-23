@@ -4,7 +4,7 @@
 //! the kernel. One line in `/boot/firmware/config.txt`,
 //!
 //! ```text
-//! dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=28,label=scannerd
+//! dtoverlay=gpio-key,gpio=27,active_low=1,gpio_pull=up,keycode=28,label=scannerd
 //! ```
 //!
 //! turns a press into Enter on an input device, debounced by the `gpio-keys`
@@ -20,12 +20,20 @@ use std::sync::mpsc::{self, Receiver, Sender};
 
 use anyhow::{Context, Result};
 
-/// `struct input_event` on 64-bit Linux: a 16-byte `timeval`, then type
-/// (`u16`), code (`u16`) and value (`i32`), little-endian on a Pi.
-pub const EVENT_SIZE: usize = 24;
+/// Where an event's type starts: after its `timeval`, two `long`s. Eight bytes
+/// for a 32-bit program, sixteen for a 64-bit one — whatever the kernel is.
+/// The Pi 4 moved to runs a 64-bit kernel under 32-bit Raspberry Pi OS, and the
+/// kernel hands a 32-bit reader the 32-bit layout.
+pub const TIMEVAL: usize = 2 * std::mem::size_of::<std::os::raw::c_long>();
+/// `struct input_event`: the `timeval`, then type (`u16`), code (`u16`) and
+/// value (`i32`), little-endian on a Pi.
+pub const EVENT_SIZE: usize = TIMEVAL + 8;
 const EV_KEY: u16 = 1;
 /// `KEY_ENTER`, which the overlay line above sends.
 pub const KEY_ENTER: u16 = 28;
+/// `BTN_TOUCH`: a finger on a touchscreen, which makes the whole screen the
+/// button.
+pub const BTN_TOUCH: u16 = 330;
 
 /// How many presses of `key` a run of input events holds.
 ///
@@ -35,9 +43,10 @@ pub fn presses(events: &[u8], key: u16) -> usize {
     events
         .chunks_exact(EVENT_SIZE)
         .filter(|event| {
-            let kind = u16::from_le_bytes([event[16], event[17]]);
-            let code = u16::from_le_bytes([event[18], event[19]]);
-            let value = i32::from_le_bytes([event[20], event[21], event[22], event[23]]);
+            let at = |i: usize| event[TIMEVAL + i];
+            let kind = u16::from_le_bytes([at(0), at(1)]);
+            let code = u16::from_le_bytes([at(2), at(3)]);
+            let value = i32::from_le_bytes([at(4), at(5), at(6), at(7)]);
             kind == EV_KEY && code == key && value == 1
         })
         .count()

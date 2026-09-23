@@ -207,3 +207,130 @@ fn a_quarter_turn_clockwise_puts_the_left_edge_on_top() {
         "still clockwise"
     );
 }
+
+#[test]
+fn a_live_frame_is_straightened_into_the_pages_own_shape() {
+    use scannerd::straighten::straighten_luma;
+    // A 320×240 frame of a crop twice as wide as tall, so stretched: a dark
+    // page in the middle half of it, on a light table.
+    let (w, h) = (320usize, 240usize);
+    let frame: Vec<u8> = (0..w * h)
+        .map(|i| {
+            let (x, y) = (i % w, i / w);
+            if (80..240).contains(&x) && (60..180).contains(&y) {
+                20
+            } else {
+                230
+            }
+        })
+        .collect();
+    let page = Corners::new([(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)]).unwrap();
+    let picture = straighten_luma(&frame, w, h, 2.0, &page, 320, 320);
+    // Half the crop's width by half its height, in a crop twice as wide: a
+    // page twice as wide as tall, all of it dark.
+    assert_eq!((picture.width, picture.height), (320, 160));
+    assert!(picture.luma.iter().all(|&value| value == 20));
+
+    // Turned a quarter, it is as tall as it was wide.
+    let turned = straighten_luma(&frame, w, h, 2.0, &page.turned(1), 320, 320);
+    assert_eq!((turned.width, turned.height), (160, 320));
+}
+
+/// Packed RGB: a grey table with a white quadrilateral page, `page` being its
+/// corners as fractions.
+fn table_with_page(w: usize, h: usize, page: [(f64, f64); 4]) -> Vec<u8> {
+    let inside = |x: f64, y: f64| {
+        (0..4).all(|i| {
+            let (a, b) = (page[i], page[(i + 1) % 4]);
+            (b.0 - a.0) * (y - a.1) - (b.1 - a.1) * (x - a.0) >= 0.0
+        })
+    };
+    let mut rgb = Vec::with_capacity(w * h * 3);
+    for y in 0..h {
+        for x in 0..w {
+            let white = inside((x as f64 + 0.5) / w as f64, (y as f64 + 0.5) / h as f64);
+            let v = if white { 235 } else { 110 };
+            rgb.extend([v, v, v]);
+        }
+    }
+    rgb
+}
+
+#[test]
+fn a_letter_lying_off_the_corners_is_straightened_onto_itself() {
+    use scannerd::straighten::trim_to_page;
+    let (w, h) = (600usize, 800usize);
+    // Shifted right and down, and a little turned: table left, top and in wedges.
+    let page = [(0.18, 0.10), (0.97, 0.14), (0.93, 0.98), (0.14, 0.94)];
+    let (out, ow, oh) = trim_to_page(table_with_page(w, h, page), w as u32, h as u32);
+    assert!(ow < w as u32 && oh < h as u32, "{ow}×{oh}");
+    // Nearly all of what is left is page: the rest is the thin edge kept on
+    // purpose, 1.5% a side. Before, a third of it was table.
+    let white = out.chunks_exact(3).filter(|p| p[0] > 200).count();
+    assert!(
+        white * 100 >= (ow * oh) as usize * 90,
+        "{white} of {}",
+        ow * oh
+    );
+}
+
+#[test]
+fn without_a_clear_page_the_photograph_is_left_alone() {
+    use scannerd::straighten::trim_to_page;
+    let (w, h) = (300usize, 400usize);
+    // A small bright thing: not trusted to be the page.
+    let small = [(0.4, 0.4), (0.6, 0.4), (0.6, 0.6), (0.4, 0.6)];
+    let rgb = table_with_page(w, h, small);
+    let (out, ow, oh) = trim_to_page(rgb.clone(), w as u32, h as u32);
+    assert_eq!((ow, oh), (w as u32, h as u32));
+    assert_eq!(out, rgb);
+    // A page that already fills it: nothing to do.
+    let full = table_with_page(w, h, [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]);
+    let (_, ow, oh) = trim_to_page(full, w as u32, h as u32);
+    assert_eq!((ow, oh), (w as u32, h as u32));
+}
+
+#[test]
+fn paper_smaller_than_a_page_is_an_envelope() {
+    use scannerd::straighten::is_envelope;
+    // On corners a page fills: C5 about 0.6 of it, DL about 0.4.
+    assert!(!is_envelope(Some(0.95), 1.0));
+    assert!(!is_envelope(Some(0.8), 1.0));
+    assert!(is_envelope(Some(0.6), 1.0));
+    assert!(is_envelope(Some(0.39), 1.0));
+    // Nothing found, or a speck: not an envelope either.
+    assert!(!is_envelope(None, 1.0));
+    assert!(!is_envelope(Some(0.05), 1.0));
+    // On corners set generously, where a page covers 0.7 of them: a page is
+    // still a page, and a C5 envelope still an envelope.
+    assert!(!is_envelope(Some(0.68), 0.7));
+    assert!(is_envelope(Some(0.42), 0.7));
+}
+
+#[test]
+fn a_photograph_says_how_much_of_it_the_paper_covers() {
+    use scannerd::straighten::straighten_trimmed;
+    let (w, h) = (400usize, 560usize);
+    let jpeg = |page: [(f64, f64); 4]| {
+        let rgb = table_with_page(w, h, page);
+        let mut out = Vec::new();
+        jpeg_encoder::Encoder::new(&mut out, 90)
+            .encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb)
+            .unwrap();
+        out
+    };
+    // A DL envelope lying across the middle of an A4 page's corners.
+    let envelope = [(0.1, 0.3), (0.9, 0.3), (0.9, 0.78), (0.1, 0.78)];
+    let straight = straighten_trimmed(&jpeg(envelope), &Corners::WHOLE).unwrap();
+    let covered = straight.covered.expect("found");
+    assert!((covered - 0.38).abs() < 0.05, "{covered}");
+    assert!(scannerd::straighten::is_envelope(straight.covered, 1.0));
+
+    let page = [(0.03, 0.02), (0.98, 0.03), (0.97, 0.98), (0.02, 0.97)];
+    let straight = straighten_trimmed(&jpeg(page), &Corners::WHOLE).unwrap();
+    assert!(
+        !scannerd::straighten::is_envelope(straight.covered, 1.0),
+        "{:?}",
+        straight.covered
+    );
+}

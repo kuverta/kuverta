@@ -16,6 +16,15 @@
 //! **Has it stopped?** Against the previous frame. A hand placing the page is
 //! still in shot for a moment after the page is, and capturing then gets a
 //! photograph of a thumb.
+//!
+//! **Is it another page?** After a photograph the detector waits for the
+//! surface to be cleared — but a letter's pages are often laid one on top of
+//! the other, or turned over where they lie, and the surface is never clear.
+//! So once a hand has been over it and it is still again, what lies there is
+//! compared with what was photographed: in blocks of 8×8 pixels, allowing a
+//! block's shift either way, so a page nudged or turned a few degrees is the
+//! same page. On the rig a nudge changed 12–18% of the blocks, the blank back
+//! of a page 32%, another letter 37%.
 
 /// A greyscale frame: one byte per pixel, row-major.
 pub type Luma<'a> = &'a [u8];
@@ -34,6 +43,11 @@ pub struct Thresholds {
     pub still: f32,
     /// Below this fraction against the baseline, the surface is clear again.
     pub clear: f32,
+    /// A frame changed this much from the one before has a hand in it.
+    pub handled: f32,
+    /// This fraction of blocks changed from the photographed page, and what
+    /// lies there now is another page.
+    pub new_page: f32,
 }
 
 impl Default for Thresholds {
@@ -43,6 +57,8 @@ impl Default for Thresholds {
             present: 0.18,
             still: 0.01,
             clear: 0.05,
+            handled: 0.05,
+            new_page: 0.22,
         }
     }
 }
@@ -59,6 +75,88 @@ impl Default for Thresholds {
 /// pixels far more than others, which one offset for the whole frame does not
 /// hide.
 ///
+/// The side of a block [`page_changed`] compares.
+const BLOCK: usize = 8;
+/// A block's mean changed by more than this, once the frames' overall
+/// brightness is taken out, has changed.
+const BLOCK_CHANGE: f32 = 10.0;
+
+/// How far either way, in pixels, a page may have moved and still compare as
+/// itself; tried in steps of [`SHIFT_STEP`].
+const SHIFT: usize = 8;
+const SHIFT_STEP: usize = 2;
+
+/// The fraction of 8×8 blocks that differ between two frames `width` pixels
+/// wide, at the best of the shifts of up to [`SHIFT`] pixels either way — so a
+/// page moved a little, or turned a few degrees, compares as itself, and
+/// another page, or the other side of this one, does not. On the rig's frames:
+/// a page nudged 5 pixels 1%, nudged 10 and turned 4° 17%, the blank back of
+/// the page 31%, another letter 34%.
+pub fn page_changed(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
+    if a.len() != b.len() || width <= 2 * SHIFT + BLOCK * 4 || !a.len().is_multiple_of(width) {
+        return 0.0;
+    }
+    let height = a.len() / width;
+    if height <= 2 * SHIFT + BLOCK * 4 {
+        return 0.0;
+    }
+    let (bw, bh) = ((width - 2 * SHIFT) / BLOCK, (height - 2 * SHIFT) / BLOCK);
+    // Block means of `frame` over the middle, its window moved by (dx, dy).
+    let means = |frame: Luma<'_>, dx: isize, dy: isize| {
+        let mut out = Vec::with_capacity(bw * bh);
+        for by in 0..bh {
+            for bx in 0..bw {
+                let (x0, y0) = (
+                    (SHIFT + bx * BLOCK).wrapping_add_signed(dx),
+                    (SHIFT + by * BLOCK).wrapping_add_signed(dy),
+                );
+                let mut sum = 0u32;
+                for y in y0..y0 + BLOCK {
+                    sum += frame[y * width + x0..y * width + x0 + BLOCK]
+                        .iter()
+                        .map(|&v| v as u32)
+                        .sum::<u32>();
+                }
+                out.push(sum as f32 / (BLOCK * BLOCK) as f32);
+            }
+        }
+        out
+    };
+    let now = means(b, 0, 0);
+    let changed_at = |dx: isize, dy: isize| {
+        let then = means(a, dx, dy);
+        // The frames' overall brightness taken out, as the camera sets its
+        // exposure for every frame.
+        let offset = now.iter().zip(&then).map(|(n, t)| n - t).sum::<f32>() / now.len() as f32;
+        let changed = now
+            .iter()
+            .zip(&then)
+            .filter(|(n, t)| (**n - **t - offset).abs() > BLOCK_CHANGE)
+            .count();
+        changed as f32 / now.len() as f32
+    };
+    // Every other pixel first, then the pixels round the best of those.
+    let reach = SHIFT as isize;
+    let mut best = (1.0f32, 0isize, 0isize);
+    for dy in (-reach..=reach).step_by(SHIFT_STEP) {
+        for dx in (-reach..=reach).step_by(SHIFT_STEP) {
+            let changed = changed_at(dx, dy);
+            if changed < best.0 {
+                best = (changed, dx, dy);
+            }
+        }
+    }
+    let (mut least, cx, cy) = best;
+    for dy in cy - 1..=cy + 1 {
+        for dx in cx - 1..=cx + 1 {
+            if dx.abs() <= reach && dy.abs() <= reach {
+                least = least.min(changed_at(dx, dy));
+            }
+        }
+    }
+    least
+}
+
 /// Returns 0.0 for frames of different sizes rather than panicking: a camera
 /// that changes resolution mid-run should stall the state machine, not take
 /// the daemon down with it.
@@ -116,6 +214,15 @@ pub struct Detector {
     state: State,
     /// Consecutive frames, after a photograph, with no page in view.
     clear_frames: u8,
+    /// The frame a photograph was taken at: what the next page is told
+    /// apart from.
+    photographed: Option<Vec<u8>>,
+    /// Whether a hand has been over the page since it was photographed.
+    handled: bool,
+    /// Still frames, since the hand, with a page there.
+    still_since_handled: u8,
+    /// How wide the frames are, for comparing them in blocks.
+    width: usize,
     /// The last frame's change from the empty surface and from the frame
     /// before, for a person tuning the rig to look at.
     last_measure: Option<(f32, f32)>,
@@ -131,8 +238,28 @@ impl Detector {
             previous: None,
             state: State::Waiting,
             clear_frames: 0,
+            photographed: None,
+            handled: false,
+            still_since_handled: 0,
+            width: 320,
             last_measure: None,
         }
+    }
+
+    /// How wide the frames are: 320, unless the camera says otherwise.
+    pub fn frame_width(&mut self, width: usize) {
+        self.width = width;
+    }
+
+    /// A photograph is being taken of `frame`: from now on the next page is
+    /// looked for.
+    fn photographed(&mut self, frame: Luma<'_>) -> Step {
+        self.state = State::Spent;
+        self.clear_frames = 0;
+        self.photographed = Some(frame.to_vec());
+        self.handled = false;
+        self.still_since_handled = 0;
+        Step::Capture
     }
 
     /// The last frame's change from the empty surface, then from the frame
@@ -240,9 +367,7 @@ impl Detector {
                 } else if against_previous < self.thresholds.still {
                     let frames_still = frames_still.saturating_add(1);
                     if frames_still >= self.settle_frames {
-                        self.state = State::Spent;
-                        self.clear_frames = 0;
-                        Step::Capture
+                        self.photographed(frame)
                     } else {
                         self.state = State::Settling { frames_still };
                         Step::Wait
@@ -273,6 +398,28 @@ impl Detector {
                     }
                 } else {
                     self.clear_frames = 0;
+                    // A page is there. Another one, or this one turned over,
+                    // is photographed once a hand has been and gone and it
+                    // lies still.
+                    if against_previous >= self.thresholds.handled {
+                        self.handled = true;
+                        self.still_since_handled = 0;
+                    } else if self.handled && against_previous < self.thresholds.still {
+                        self.still_since_handled = self.still_since_handled.saturating_add(1);
+                        if self.still_since_handled >= self.settle_frames {
+                            let changed = self
+                                .photographed
+                                .as_deref()
+                                .map(|photographed| page_changed(photographed, frame, self.width))
+                                .unwrap_or(0.0);
+                            if changed >= self.thresholds.new_page {
+                                return self.photographed(frame);
+                            }
+                            // Touched, straightened, but the same page.
+                            self.handled = false;
+                            self.still_since_handled = 0;
+                        }
+                    }
                 }
                 Step::Wait
             }
