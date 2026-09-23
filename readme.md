@@ -46,7 +46,8 @@ in its header.
 - **Send** — compose, reply, reply-all, forward, SMTP submission, and a copy
   filed in Sent via `APPEND`
 - **Triage** — archive, delete, move, mark read/unread, with a durable queue,
-  an undo window, and conflict checks before anything is written
+  an undo window, and conflict checks before anything is written; several at
+  once, from the keyboard or the menu under the right button
 - **A desktop window** — three panes, a sidebar of accounts and folders,
   virtualized list (200k rows at 59.8 fps —
   [findings](docs/spike-tauri-list.md)), compose, search, and settings
@@ -63,7 +64,8 @@ in its header.
   app while it runs; a send interrupted by closing is never retried on a guess
 - **Mailboxes and smart mailboxes** — create and delete folders (only empty
   ones, never the account's own); saved searches with a live preview, imported
-  from Thunderbird and Apple Mail
+  from Thunderbird and Apple Mail, and offered ready-written when a run of
+  alike messages is picked in the list
 - **Cleanup** — a count of bulk mail in the Inbox, unsubscribing (RFC 8058 one
   click, by mail to the sender's own domain, or a page opened in the browser),
   and an offer to delete a message's look-alikes with it
