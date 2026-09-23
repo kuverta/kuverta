@@ -188,6 +188,7 @@ impl Rig {
         let scanner = Scanner::new(3, Duration::from_secs(30)).collecting(Letters {
             button,
             idle: Duration::from_secs(300),
+            when_clear: None,
         });
         Self {
             uploader: Uploader::new(&base, "token", vec![], "Post ".into()).unwrap(),
