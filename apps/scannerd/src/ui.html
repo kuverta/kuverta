@@ -87,18 +87,40 @@
      A second way to look at the same status: the page large, what it says
      beside it, and where it is going — for watching a pile of post go
      through with a keyboard rather than a phone. */
-  body.preview main { max-width: 1180px; }
+  /* It fills the window rather than running off the bottom of it. You stand
+     in front of this with a letter in your hand and a keyboard: a page that
+     has to be scrolled to see the keys is a page you cannot work from.
+     Everything that can grow gets a row and a `min-height: 0`, so the page
+     picture takes what is left over and the text beside it scrolls in place. */
+  body.preview { height: 100dvh; overflow: hidden; padding: 10px 14px 12px; }
+  body.preview main { max-width: 1180px; height: 100%; grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
   body.preview .only-page { display: none; }
+  /* Preview shows the preview and nothing else. By the rule rather than by
+     marking each one, so a section added later cannot quietly take a row of
+     the grid and push the keys off the bottom — which is what happened. */
+  body.preview main > section:not(.only-preview) { display: none !important; }
   .only-preview { display: none; }
   body.preview .only-preview { display: initial; }
   body.preview section.only-preview { display: block; }
-  #preview-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
-  @media (max-width: 860px) { #preview-grid { grid-template-columns: minmax(0, 1fr); } }
-  #preview-page { width: 100%; max-height: 62vh; object-fit: contain; background: #000; border-radius: var(--radius); border: 1px solid var(--line); display: block; }
-  #preview-sheets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  body.preview #preview { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; gap: 10px; min-height: 0; overflow: hidden; }
+  #preview-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: stretch; min-height: 0; }
+  #preview-pane { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+  #preview-side { display: flex; flex-direction: column; min-height: 0; }
+  #preview-page { flex: 1 1 auto; width: 100%; min-height: 0; object-fit: contain; background: #000; border-radius: var(--radius); border: 1px solid var(--line); display: block; }
+  #preview-sheets { display: flex; gap: 6px; flex-wrap: wrap; flex: none; }
   #preview-sheets button { padding: 4px 10px; font-size: .85rem; }
   #preview-sheets button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  #preview-text { margin: 0; white-space: pre-wrap; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 34vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+  #preview-text { margin: 0; white-space: pre-wrap; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; flex: 1 1 auto; min-height: 48px; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+  /* Narrow, or too short to divide up: let it scroll again rather than
+     squeezing the page into a strip. */
+  @media (max-width: 860px), (max-height: 560px) {
+    body.preview { height: auto; overflow: auto; padding: 12px 16px 40px; }
+    body.preview main { height: auto; grid-template-rows: none; }
+    body.preview #preview { display: block; overflow: visible; }
+    #preview-grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
+    #preview-page { flex: none; height: auto; min-height: 200px; max-height: 62vh; }
+    #preview-text { max-height: 34vh; }
+  }
   .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
   .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); font-size: .9rem; font-weight: 600; border: 1px solid transparent; }
   .chip.bin { background: var(--todo); }
@@ -121,7 +143,7 @@
     <div class="side-by-side">
       <div class="grow">
         <h1>scannerd</h1>
-        <p class="hint intro">Put the pages of a letter down one at a time and take your hand away — each is photographed once nothing moves. After the last page, press <b>Finish letter</b>.</p>
+        <p class="hint intro only-page">Put the pages of a letter down one at a time and take your hand away — each is photographed once nothing moves. After the last page, press <b>Finish letter</b>.</p>
       </div>
       <button id="preview-toggle" type="button" title="A bigger view for working through a pile (p)">Preview</button>
     </div>
@@ -139,11 +161,11 @@
       <img id="preview-live" alt="What the camera sees">
     </div>
     <div id="preview-grid">
-      <div>
+      <div id="preview-pane">
         <img id="preview-page" alt="The page just photographed">
         <div id="preview-sheets"></div>
       </div>
-      <div>
+      <div id="preview-side">
         <h3 style="margin-top:0">Where it goes</h3>
         <div class="chips" id="preview-folders"><span class="hint">Nothing read yet.</span></div>
         <form id="preview-add" class="row" autocomplete="off">

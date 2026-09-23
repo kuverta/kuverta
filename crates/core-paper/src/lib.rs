@@ -316,10 +316,16 @@ impl Document {
     }
 
     fn letterhead(&self) -> Option<&str> {
-        self.content
-            .as_deref()
-            .and_then(|text| lines(text).next())
+        let text = self.content.as_deref()?;
+        // Not simply the first line. OCR reads a letter's top in blocks and
+        // does not always start with the leftmost one, so the line above the
+        // sender's name is often the address beside it, the date, or a
+        // reference — none of which is anybody. The first line that could be
+        // a name is.
+        lines(text)
+            .take(LETTERHEAD_LINES)
             .map(letterhead_name)
+            .find(|line| could_be_a_name(line))
     }
 
     /// What the classifier reads, from a document instead of a message.
@@ -1011,15 +1017,35 @@ fn lines(text: &str) -> impl Iterator<Item = &str> {
         .filter(|line| line.chars().filter(|c| c.is_alphabetic()).count() >= 3)
 }
 
+/// How far down a letter a letterhead may still be. Past that it is not a
+/// letterhead any more, it is the letter.
+const LETTERHEAD_LINES: usize = 4;
+
 /// A letterhead line, cut to the name. "Stadtwerke Musterstadt GmbH · Postfach
 /// 1234 · 80000 München" is from the Stadtwerke, not from a Postfach.
+///
+/// Two spaces cut as well as punctuation does: that is the gap where OCR has
+/// run the letterhead and whatever stood beside it onto one line, which is
+/// how "Finanzamt(Finanzkasse)   26603 Aurich   02.05.25" arrives.
 fn letterhead_name(line: &str) -> &str {
-    let name = line
-        .find(['·', '|', ','])
+    let cut = [line.find("  "), line.find(['·', '|', ','])]
+        .into_iter()
+        .flatten()
+        .min();
+    let name = cut
         .map(|at| line[..at].trim())
         .filter(|name| name.chars().filter(|c| c.is_alphabetic()).count() >= 3)
         .unwrap_or(line);
     clip(name, 80)
+}
+
+/// Whether a line could be who a letter is from: enough letters to be a name,
+/// not mostly numbers, and not one of the things that share the top of a
+/// letter with the letterhead — a postcode and a place, a date, a reference.
+fn could_be_a_name(line: &str) -> bool {
+    let letters = line.chars().filter(|c| c.is_alphabetic()).count();
+    let digits = line.chars().filter(|c| c.is_ascii_digit()).count();
+    letters >= 3 && digits < letters && !looks_like_address(line) && !looks_like_date(line)
 }
 
 /// A title that is only a filename: "Post 1789400000-1", "IMG_2044",

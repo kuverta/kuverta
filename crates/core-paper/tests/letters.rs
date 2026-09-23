@@ -56,6 +56,44 @@ fn a_din_letter_skips_the_return_line_the_address_block_and_the_date() {
     assert_eq!(document.subject(), "Ihre Stromrechnung für August");
 }
 
+/// The Finanzamt letter from the rig, as tesseract read it once the page
+/// stopped being cut: the letterhead, the address beside it and the date all
+/// land at the top, and not in that order.
+const FINANZKASSE: &str = "Finanzamt(Finanzkasse)   26603 Aurich   02.05.25\n\
+                           Aurich-Wittmund   Hasseburger Str. 3\n\
+                           für als Gesamtrechtsnachf. n. Telefon (04941) 175-722\n\
+                           Herrn\n\
+                           Zemke, Dr.med. Bernd\n";
+
+#[test]
+fn the_sender_is_the_first_line_that_could_be_a_name() {
+    // Cut to the name: what stood beside it in the letterhead is not part of
+    // who the letter is from.
+    let finanzkasse = letter("Post 1790201500-181151108", None, Some(FINANZKASSE));
+    assert_eq!(finanzkasse.sender(), Some("Finanzamt(Finanzkasse)"));
+    assert!(finanzkasse.sender_is_inferred());
+
+    // A postcode and a place read first is where the sender used to come
+    // from, and it is nobody.
+    let ocr = "26603 Aurich\n02.05.25\nFinanzamt(Finanzkasse)\nHasseburger Str. 3\n";
+    assert_eq!(
+        letter("scan-0009", None, Some(ocr)).sender(),
+        Some("Finanzamt(Finanzkasse)")
+    );
+
+    // A reference number above the name is skipped the same way, and a top
+    // that is all numbers has no sender rather than a wrong one.
+    let ocr = "*B30*02.05*000019*\n248 Bl. 1\nStadtwerke Musterstadt GmbH\n";
+    assert_eq!(
+        letter("scan-0010", None, Some(ocr)).sender(),
+        Some("Stadtwerke Musterstadt GmbH")
+    );
+    assert_eq!(
+        letter("scan-0011", None, Some("12345 67890\n248 1 2\n0000 1111\n")).sender(),
+        None
+    );
+}
+
 #[test]
 fn a_postal_address_is_only_claimed_where_it_cannot_be_the_recipients() {
     // The return line on the letterhead, which is what DIN 5008 puts there.
