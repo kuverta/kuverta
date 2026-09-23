@@ -11,6 +11,7 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
+use crate::folders::Folder;
 use crate::settings::Settings;
 
 /// Something the page asked for.
@@ -18,6 +19,29 @@ use crate::settings::Settings;
 pub enum Command {
     /// The on-screen twin of the button.
     FinishLetter,
+    /// Start watching the camera for pages.
+    StartScanning,
+    /// Stop watching it: nothing is photographed until started again.
+    StopScanning,
+    /// Take the newest page of the open letter back.
+    UndoPage,
+    /// Throw the open letter away. Unconfirmed, the display asks first.
+    CancelLetter {
+        confirmed: bool,
+    },
+    /// Take the last finished letter back. Unconfirmed, the display asks
+    /// first.
+    UndoLetter {
+        confirmed: bool,
+    },
+    /// Show what is waiting to be sent, on the display, or stop showing it.
+    ShowQueue(bool),
+    /// Throw a letter waiting to be sent away: the display knows where it is
+    /// in the list, the page knows what it is called.
+    DiscardQueued {
+        which: Which,
+        confirmed: bool,
+    },
     /// Take the current frame as the empty table.
     LearnEmpty,
     /// Send everything waiting, whatever its backoff says.
@@ -40,10 +64,19 @@ pub struct Event {
     pub text: String,
 }
 
+/// Which letter of the queue.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Which {
+    At(usize),
+    Named(String),
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Queued {
     pub name: String,
     pub attempts: u32,
+    /// When it was photographed, from its name.
+    pub at: u64,
 }
 
 /// Settings as the page may see them: the token only as whether there is one.
@@ -57,6 +90,9 @@ pub struct SettingsView {
     /// Degrees clockwise every photograph is turned.
     pub rotate: u16,
     pub token_set: bool,
+    pub folders: Vec<Folder>,
+    /// The exposure photographs are taken at, in stops.
+    pub ev: f32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -69,6 +105,10 @@ pub struct Status {
     pub has_baseline: bool,
     /// Whether pages collect into letters.
     pub collecting: bool,
+    /// Whether the camera is being watched for pages.
+    pub scanning: bool,
+    /// Whether the last letter can still be taken back.
+    pub can_undo_letter: bool,
     pub open_pages: Vec<String>,
     pub queue: Vec<Queued>,
     /// Newest first.
@@ -76,6 +116,9 @@ pub struct Status {
     pub settings: SettingsView,
     /// The last connection check, if one was asked for.
     pub check: Option<Event>,
+    /// What just came of a button that does its work at once — learning the
+    /// table — pressed here or on the display, while it is news.
+    pub notice: Option<Event>,
     /// Counters, not times: the page reloads an image when its number changes.
     pub frame_at: u64,
     pub full_view_at: u64,
@@ -101,11 +144,14 @@ impl Default for Status {
             settle_frames: 0,
             has_baseline: false,
             collecting: false,
+            scanning: true,
+            can_undo_letter: false,
             open_pages: Vec::new(),
             queue: Vec::new(),
             events: Vec::new(),
             settings: SettingsView::default(),
             check: None,
+            notice: None,
             frame_at: 0,
             full_view_at: 0,
             suggested_crop: None,

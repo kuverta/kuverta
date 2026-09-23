@@ -93,6 +93,19 @@ impl Web {
 
         let command = match path {
             "/api/finish" => Command::FinishLetter,
+            "/api/start" => Command::StartScanning,
+            "/api/stop" => Command::StopScanning,
+            // The page asks "are you sure" itself.
+            "/api/undo-page" => Command::UndoPage,
+            "/api/cancel-letter" => Command::CancelLetter { confirmed: true },
+            "/api/undo-letter" => Command::UndoLetter { confirmed: true },
+            "/api/discard-queued" => match read_letter_name(body).await {
+                Ok(name) => Command::DiscardQueued {
+                    which: crate::hub::Which::Named(name),
+                    confirmed: true,
+                },
+                Err(message) => return text(StatusCode::BAD_REQUEST, &message),
+            },
             "/api/learn-empty" => Command::LearnEmpty,
             "/api/retry" => Command::RetryNow,
             "/api/full-view" => Command::FullView,
@@ -190,6 +203,29 @@ async fn read_page_name(body: Incoming) -> Result<String, String> {
         return Err(format!("{:?} is not a page", page.name));
     }
     Ok(page.name)
+}
+
+/// `{"name": "<letter file name>"}` — a letter of the queue, checked to be
+/// one before the loop sees it.
+async fn read_letter_name(body: Incoming) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct Letter {
+        name: String,
+    }
+    let bytes = Limited::new(body, 1024)
+        .collect()
+        .await
+        .map_err(|err| format!("could not read which letter: {err}"))?
+        .to_bytes();
+    let letter: Letter =
+        serde_json::from_slice(&bytes).map_err(|err| format!("which letter? {err}"))?;
+    let sane = !letter.name.contains('/')
+        && !letter.name.contains("..")
+        && (letter.name.ends_with(".pdf") || letter.name.ends_with(".jpg"));
+    if !sane {
+        return Err(format!("{:?} is not a letter", letter.name));
+    }
+    Ok(letter.name)
 }
 
 async fn read_settings(body: Incoming) -> Result<Settings, String> {
