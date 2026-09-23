@@ -297,6 +297,24 @@ footer {
 
 .nav-item:hover { background: var(--selected); border-color: transparent; }
 
+/* The Paperless sign-in, once asked for: a name and a password to read off
+   or copy, in a typeface where l and 1 are not the same shape. */
+.sign-in {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+
+.sign-in .what { color: var(--muted); font-size: 12px; }
+.sign-in .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; user-select: all; overflow-wrap: anywhere; }
+.sign-in .note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 12px; }
+
 /* An account and its sync button. The button only appears under the pointer
    or the keyboard, so a column of addresses stays a column of addresses. */
 .nav-row {
