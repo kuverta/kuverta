@@ -85,6 +85,11 @@ async function openSettings() {
           );
           return (await bridge)(command, args);
         },
+        // Progress arrives on a channel in the real bridge, and the window
+        // makes one for every sync, so without this nothing syncs here.
+        Channel: class {
+          onmessage = null;
+        },
       },
     };
   }, FAKE);

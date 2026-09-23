@@ -92,10 +92,19 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     return found;
   };
 
+  // How many syncs the window has asked for, and when the last one landed.
+  let syncs = 0;
+  let lastSynced = null;
+
   const commands = {
     // The first thing the real mount asks. One account, so the picker stays
     // hidden — a second would be a test of the picker.
-    accounts: async () => [{ id: 1, email: 'you@example.com', label: 'Dev', can_send: false }],
+    accounts: async () => [
+      { id: 1, email: 'you@example.com', label: 'Dev', can_send: false, last_synced: lastSynced },
+    ],
+
+    // Not a command: what the tests read to see that a sync happened.
+    __syncs: async () => syncs,
 
     // What the desktop app's own window asks on its way to the settings sheet,
     // kept in this one double so its browser test and the adapter's tests
@@ -481,6 +490,18 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     log_status: async () => ({ version: '0.0.0-test', path: '/tmp/kuverta.log', detailed: false, size_bytes: 0 }),
     log_tail: async () => '',
     log_ui: async () => null,
+
+    // The sidebar asks whether each postbox's Paperless is up. The fake one
+    // is, and it is not an install this computer made, so nothing here can
+    // start it.
+    paperless_health: async () => paperMailboxes.map((box) => ({
+      id: box.id,
+      base_url: box.base_url,
+      answering: true,
+      startable: false,
+    })),
+    // Nor is there a sign-in for it to show.
+    paper_sign_in: async () => null,
     profiles: async () => [],
     proposals: async () => [],
     tasks: async () => [],
@@ -535,7 +556,12 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       return { id: 1, message_id: 1, what: change.what, holds_for: 0, last_error: null };
     },
 
+    // Mail is fetched on a timer and when the window opens, as well as on
+    // asking, so a window that is merely open reaches this. Counted, so a
+    // test can watch it happen, and it moves "last synced" on the way.
     sync: async () => ({
+      __count: (syncs += 1),
+      __at: (lastSynced = Math.round(Date.now() / 1000)),
       email: 'you@example.com',
       changes_sent: queue.length,
       changes_obsolete: 0,
