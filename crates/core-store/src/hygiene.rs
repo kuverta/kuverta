@@ -7,7 +7,7 @@
 //! rather than the answers being wrong for every message older than the
 //! upgrade.
 
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
 
 use crate::model::{AccountId, MessageId};
 use crate::{Result, Store};
@@ -189,6 +189,74 @@ impl Store {
         Ok(senders)
     }
 
+    /// The sender of one message, as something to unsubscribe from — for the
+    /// offer made when that message is deleted. `None` when the message
+    /// carries no `List-Unsubscribe`, which is most of them.
+    ///
+    /// The counts are the sender's whole run, not this one message: the offer
+    /// says how much mail stops coming.
+    pub fn unsubscribe_for_message(
+        &self,
+        account_id: AccountId,
+        id: MessageId,
+    ) -> Result<Option<UnsubscribeSender>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT from_name, from_addr, list_id, date_utc, list_unsubscribe,
+                    list_unsubscribe_post, subject
+             FROM message
+             WHERE account_id = ?1 AND id = ?2 AND list_unsubscribe IS NOT NULL",
+        )?;
+        let found = stmt
+            .query_row(params![account_id, id], |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                ))
+            })
+            .optional()?;
+        let Some((from_name, from_addr, list_id, date, unsubscribe, post, subject)) = found else {
+            return Ok(None);
+        };
+
+        let key = sender_key(list_id.as_deref(), from_addr.as_deref());
+        let (messages, unread) = self.count_from_sender(account_id, &key)?;
+        Ok(Some(UnsubscribeSender {
+            key,
+            from_name,
+            from_addr,
+            list_id,
+            messages,
+            unread,
+            latest_utc: date,
+            list_unsubscribe: unsubscribe,
+            list_unsubscribe_post: post,
+            latest_message: id,
+            latest_subject: subject,
+        }))
+    }
+
+    /// How much mail one sender has here, and how much of it is unread —
+    /// counted the same way `unsubscribe_senders` counts it, the messages
+    /// carrying the header included and no others.
+    fn count_from_sender(&self, account_id: AccountId, key: &str) -> Result<(usize, usize)> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT COUNT(*), COALESCE(SUM({unread}), 0)
+             FROM message m
+             WHERE m.account_id = ?1 AND m.list_unsubscribe IS NOT NULL
+               AND (m.list_id = ?2 OR (m.list_id IS NULL AND lower(m.from_addr) = ?2))",
+            unread = crate::UNREAD_PREDICATE
+        ))?;
+        let counted = stmt.query_row(params![account_id, key], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+        })?;
+        Ok((counted.0.max(0) as usize, counted.1.max(0) as usize))
+    }
+
     /// The messages `unsubscribe_senders` counted for one sender, and no
     /// others: those carrying `List-Unsubscribe`. A person whose mail tool
     /// added the header to one newsletter shows as one message, and must not
@@ -313,7 +381,6 @@ impl Store {
         account_id: AccountId,
         id: MessageId,
     ) -> Result<Option<SimilarityRow>> {
-        use rusqlite::OptionalExtension;
         self.conn
             .query_row(
                 &format!(

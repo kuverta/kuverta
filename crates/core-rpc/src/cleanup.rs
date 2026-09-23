@@ -368,6 +368,58 @@ impl Core {
             .collect())
     }
 
+    /// The sender of one message, when there is something to unsubscribe
+    /// from: for the offer made as a message is deleted.
+    ///
+    /// `None` when the message carries no usable `List-Unsubscribe`, and also
+    /// when this sender has been unsubscribed from already — once is enough,
+    /// and the mail that was already on its way is no reason to ask again.
+    pub fn unsubscribe_for_message(
+        &self,
+        account: AccountId,
+        id: MessageId,
+    ) -> Result<Option<UnsubscribeSenderView>> {
+        let Some(sender) = self.store().unsubscribe_for_message(account, id)? else {
+            return Ok(None);
+        };
+        let own: Vec<&str> = [sender.from_addr.as_deref(), sender.list_id.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let Some(method) = unsubscribe_method_from(
+            &sender.list_unsubscribe,
+            sender.list_unsubscribe_post.as_deref(),
+            Some(&own),
+        ) else {
+            return Ok(None);
+        };
+        let last_attempt = self
+            .store()
+            .unsubscriptions(account)?
+            .iter()
+            .find(|attempt| attempt.sender == sender.key)
+            .map(UnsubscribeAttemptView::from);
+        if last_attempt
+            .as_ref()
+            .is_some_and(|attempt| attempt.state == "done")
+        {
+            return Ok(None);
+        }
+        Ok(Some(UnsubscribeSenderView {
+            name: display_name(sender.from_name.as_deref(), sender.from_addr.as_deref()),
+            address: sender.from_addr,
+            list_id: sender.list_id,
+            messages: sender.messages,
+            unread: sender.unread,
+            latest_utc: sender.latest_utc,
+            latest_subject: sender.latest_subject,
+            latest_message: sender.latest_message,
+            key: sender.key,
+            method,
+            last_attempt,
+        }))
+    }
+
     /// Queues every message from a sender for the Trash, each with its own
     /// undo like any other move. Returns how many were queued.
     pub fn trash_from_sender(&self, account: AccountId, key: &str, trash: &str) -> Result<usize> {
