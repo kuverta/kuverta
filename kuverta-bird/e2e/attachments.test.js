@@ -87,6 +87,11 @@ async function openWindow() {
     window.__TAURI__ = {
       core: {
         invoke: async (command, args) => (await window.__fakeBridge)(command, args),
+        // Progress arrives on a channel in the real bridge, and the window
+        // makes one for every sync, so without this nothing syncs here.
+        Channel: class {
+          onmessage = null;
+        },
       },
     };
   }, FAKE);
