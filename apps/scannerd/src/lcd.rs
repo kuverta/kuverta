@@ -101,41 +101,49 @@ impl Canvas {
 
 // -- the look ---------------------------------------------------------------------------
 
-/// The page: nearly black, a shade lighter at the bottom.
+// kuverta's own colours, in its dark shades (`apps/desktop/ui/styles.css`):
+// the screen on the rig and the window on the desk are one thing to look at,
+// so petrol is the accent here too and amber means the same as it does there.
+
+/// The page: kuverta's dark background, a shade lighter at the bottom.
 fn background_top() -> Color {
-    paint::colour(11, 13, 18)
+    paint::colour(22, 26, 27)
 }
 fn background_bottom() -> Color {
-    paint::colour(18, 22, 30)
+    paint::colour(27, 31, 32)
 }
 fn card_top() -> Color {
-    paint::colour(24, 29, 39)
+    paint::colour(34, 40, 42)
 }
 fn card_bottom() -> Color {
-    paint::colour(18, 22, 30)
+    paint::colour(27, 31, 32)
 }
 /// What is read.
 fn ink() -> Color {
-    paint::colour(245, 247, 250)
+    paint::colour(231, 234, 234)
 }
 /// What is read second.
 fn muted() -> Color {
-    paint::colour(152, 162, 179)
+    paint::colour(140, 149, 150)
 }
 /// What is only there when looked for.
 fn quiet() -> Color {
-    paint::colour(107, 114, 128)
+    paint::colour(109, 118, 119)
 }
 
 /// The colour of a kind of news.
 pub fn accent(tone: Tone) -> Color {
     match tone {
-        Tone::Ready => paint::colour(52, 211, 153),
-        Tone::Busy => paint::colour(251, 191, 36),
-        Tone::Done => paint::colour(45, 212, 191),
-        Tone::Problem => paint::colour(248, 113, 113),
-        Tone::Folder => paint::colour(96, 165, 250),
-        Tone::Bin => paint::colour(148, 163, 184),
+        // Petrol, kuverta's own: waiting for a page is the resting state.
+        Tone::Ready => paint::colour(42, 127, 124),
+        // Amber, which in the window also means "this wants dealing with".
+        Tone::Busy => paint::colour(234, 168, 67),
+        Tone::Done => paint::colour(92, 201, 138),
+        Tone::Problem => paint::colour(255, 107, 97),
+        // The answer to the question the rig is there to answer: petrol,
+        // bright enough to read across a room.
+        Tone::Folder => paint::colour(127, 196, 193),
+        Tone::Bin => paint::colour(140, 149, 150),
     }
 }
 
