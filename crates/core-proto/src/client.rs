@@ -480,6 +480,36 @@ impl ImapClient {
         Ok(sizes)
     }
 
+    /// The same, for a range with a top to it: UIDs from `lo` to `hi`.
+    ///
+    /// What the history a first sync has not come down to yet is asked for.
+    /// No `*`, so no quirk to work around, but the same filtering: a server
+    /// that answers generously is not worth trusting on the point.
+    pub async fn uid_sizes_range(
+        &mut self,
+        lo: u32,
+        hi: u32,
+    ) -> Result<Vec<(u32, u32)>, ProtoError> {
+        if lo > hi {
+            return Ok(Vec::new());
+        }
+        let mut stream = self
+            .session
+            .uid_fetch(format!("{lo}:{hi}"), "(UID RFC822.SIZE)")
+            .await?;
+
+        let mut sizes = Vec::new();
+        while let Some(fetch) = stream.try_next().await? {
+            if let Some(uid) = fetch.uid {
+                if uid >= lo && uid <= hi {
+                    sizes.push((uid, fetch.size.unwrap_or(0)));
+                }
+            }
+        }
+        sizes.sort_unstable();
+        Ok(sizes)
+    }
+
     /// Fetches the given messages in full, in one command.
     ///
     /// Callers are expected to have sized the batch with [`plan_batches`]; this
