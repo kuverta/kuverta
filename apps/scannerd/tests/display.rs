@@ -618,10 +618,50 @@ fn a_letter_just_finished_can_be_taken_back_between_letters() {
         stopped.buttons,
         vec![
             Action::StartScanning,
-            Action::LearnEmpty,
-            Action::ConfirmUndoLetter
+            Action::ConfirmUndoLetter,
+            Action::LearnEmpty
         ]
     );
+}
+
+#[test]
+fn learning_the_table_is_still_offered_with_a_letter_waiting_to_be_filed() {
+    // The bug this is here for: refiling took the row, so for the ten minutes
+    // after every letter there was no way to learn the table from the panel —
+    // which is exactly when the table has just been cleared and you want to.
+    let filings = filed(Outcome::Folders(vec![Folder::named("Car")]));
+    let screen = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: false,
+        filing: filings.latest(),
+        can_refile: true,
+        can_undo_letter: true,
+        ..facts("paused")
+    });
+    assert_eq!(
+        screen.buttons,
+        vec![
+            Action::StartScanning,
+            Action::FileNowhere,
+            Action::FileInBin,
+            Action::UndoLetter,
+            Action::LearnEmpty,
+        ]
+    );
+
+    // It stands down only when there is no row left: the card above the
+    // buttons needs the rest of the panel.
+    let busy = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: false,
+        filing: filings.latest(),
+        can_refile: true,
+        can_undo_letter: true,
+        queue: &waiting(&[(1, 0)]),
+        ..facts("paused")
+    });
+    assert_eq!(busy.buttons.len(), 5);
+    assert!(!busy.buttons.contains(&Action::LearnEmpty));
 }
 
 // -- what is waiting to be sent ----------------------------------------------------------

@@ -138,7 +138,10 @@ fn corners_decide_the_crop_and_the_page_decides_over_the_env_file() {
     let from_env = Settings::default()
         .effective_view(Some("0.2,0.2,0.6,0.6"), Some(corners), None)
         .unwrap();
-    assert_eq!(from_env.roi.as_deref(), Some("0.100,0.150,0.800,0.700"));
+    // The marks span 0.1–0.9 across and 0.15–0.85 down; the crop leaves 8% of
+    // that round them, so a letter lying a little off them is still in the
+    // photograph. See `Corners::crop`.
+    assert_eq!(from_env.roi.as_deref(), Some("0.036,0.094,0.928,0.812"));
     assert_eq!(from_env.corners.unwrap().to_setting(), corners);
 
     // The page saved a plain crop: the env file's corners no longer apply.
@@ -162,12 +165,15 @@ fn corners_decide_the_crop_and_the_page_decides_over_the_env_file() {
     };
     let view = angled.effective_view(Some("0,0,1,1"), None, None).unwrap();
     let inside = view.corners_in_crop().unwrap();
+    // Inside the photograph with room on every side rather than flush with
+    // its edges: the room is where a letter that overhangs the marks is kept.
+    let room = 0.08 / 1.16;
     assert!(
-        (inside.0[0].0 - 0.25).abs() < 1e-9 && inside.0[0].1.abs() < 1e-9,
+        (inside.0[0].1 - room).abs() < 1e-3 && (inside.0[3].0 - room).abs() < 1e-3,
         "{inside:?}"
     );
     assert!(
-        (inside.0[2].0 - 1.0).abs() < 1e-9 && (inside.0[2].1 - 1.0).abs() < 1e-9,
+        (inside.0[2].0 - (1.0 - room)).abs() < 1e-3 && (inside.0[2].1 - (1.0 - room)).abs() < 1e-3,
         "{inside:?}"
     );
 }

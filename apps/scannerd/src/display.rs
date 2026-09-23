@@ -200,6 +200,10 @@ pub struct Facts<'a> {
     pub confirming: Option<Confirming>,
 }
 
+/// How many bands fit under the card on the panel without squeezing it down
+/// to nothing. See [`crate::lcd::rows`].
+const MOST_BUTTONS: usize = 5;
+
 impl Screen {
     pub fn for_facts(facts: &Facts<'_>) -> Self {
         let mut screen = Self::words_for(facts);
@@ -297,16 +301,20 @@ impl Screen {
             if facts.can_refile {
                 screen.buttons.push(Action::FileNowhere);
                 screen.buttons.push(Action::FileInBin);
-            } else {
-                // Learning the table is a setup job, and gives up its place
-                // while there is a letter in a hand waiting to be filed.
-                screen.buttons.push(Action::LearnEmpty);
             }
             if facts.can_undo_letter {
                 screen.buttons.push(undo_letter(facts));
             }
             if !facts.queue.is_empty() {
                 screen.buttons.push(Action::OpenQueue(facts.queue.len()));
+            }
+            // Learning the table is a setup job and goes last, but it is not
+            // given up: the moment you most want it is just after a pile has
+            // gone through, which is also when the last letter can still be
+            // filed by hand and the screen is at its fullest. It only stands
+            // down when there is no row left that the card above can spare.
+            if screen.buttons.len() < MOST_BUTTONS {
+                screen.buttons.push(Action::LearnEmpty);
             }
         }
         screen
