@@ -244,8 +244,13 @@ impl Camera for Photographer {
     }
 
     fn capture(&self, path: &Path) -> Result<()> {
-        let picture =
-            image::RgbImage::from_pixel(self.width, self.height, image::Rgb([200, 200, 200]));
+        // With lines of "text" on it: a photograph with nothing on it is
+        // taken for the table and put aside rather than kept.
+        let picture = image::RgbImage::from_fn(self.width, self.height, |x, y| {
+            let printed = y % 10 < 4 && x % 8 < 5;
+            let value = if printed { 40 } else { 210 };
+            image::Rgb([value, value, value])
+        });
         picture.save_with_format(path, image::ImageFormat::Jpeg)?;
         Ok(())
     }
