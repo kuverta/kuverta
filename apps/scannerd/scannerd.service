@@ -16,8 +16,9 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=scannerd
-# `video` for the camera, `input` for the button; nothing else is needed.
-SupplementaryGroups=video input
+# `video` for the camera, `input` for the button, `spi` and `gpio` for the
+# e-paper display; nothing else is needed.
+SupplementaryGroups=video input spi gpio
 EnvironmentFile=/etc/scannerd.env
 # The URL, token, tags, button, crop and spool come from the environment;
 # anything else from SCANNERD_ARGS, which systemd splits on spaces. It used to

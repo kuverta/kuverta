@@ -26,6 +26,10 @@ use anyhow::{bail, Context, Result};
 /// atomic and a copy is not: without it, a crash mid-write leaves a truncated
 /// JPEG that looks exactly like a whole one.
 const PARTIAL: &str = "partial";
+/// Where pages and letters taken back go, instead of being deleted.
+const DISCARDED: &str = "discarded";
+/// How long they are kept there.
+const KEEP_DISCARDED_SECS: u64 = 7 * 24 * 3600;
 /// A single page, sent as it is.
 const READY: &str = "jpg";
 /// A letter of one or more pages.
@@ -176,6 +180,71 @@ impl Spool {
         }
     }
 
+    /// Moves the newest page of the open letter to `discarded/`, and returns
+    /// where it went — the display's "Undo last page".
+    pub fn discard_last_page(&self) -> Result<Option<PathBuf>> {
+        match self.open_pages()?.last() {
+            Some(page) => self.discard(page).map(Some),
+            None => Ok(None),
+        }
+    }
+
+    /// Moves every page of the open letter to `discarded/`, and says how many
+    /// there were — "Cancel letter".
+    pub fn discard_open_letter(&self) -> Result<usize> {
+        let pages = self.open_pages()?;
+        for page in &pages {
+            self.discard(page)?;
+        }
+        Ok(pages.len())
+    }
+
+    /// Takes a letter still waiting to be sent out of the queue, into
+    /// `discarded/` — "Undo last letter" before it has gone. False when it is
+    /// not waiting any more.
+    pub fn discard_queued(&self, name: &str) -> Result<bool> {
+        if name.contains('/') || name.contains("..") {
+            bail!("{name:?} is not a letter in the queue");
+        }
+        let letter = self.dir.join(name);
+        if !letter.exists() {
+            return Ok(false);
+        }
+        self.discard(&letter)?;
+        let _ = fs::remove_file(letter.with_extension("attempts"));
+        Ok(true)
+    }
+
+    /// Moves a page or a letter to `discarded/`, where nothing reads it, rather
+    /// than deleting it: a button pressed by mistake costs a trip to the Pi,
+    /// not a letter. What has been there a week is deleted on the way.
+    fn discard(&self, path: &Path) -> Result<PathBuf> {
+        let bin = self.dir.join(DISCARDED);
+        fs::create_dir_all(&bin).with_context(|| format!("could not make {}", bin.display()))?;
+        let name = path.file_name().context("nothing to discard")?;
+        let to = bin.join(name);
+        fs::rename(path, &to).with_context(|| format!("could not discard {}", path.display()))?;
+        // Renaming keeps a file's time; this is when it was thrown away.
+        let _ = fs::File::options()
+            .append(true)
+            .open(&to)
+            .and_then(|file| file.set_modified(std::time::SystemTime::now()));
+        if let Ok(entries) = fs::read_dir(&bin) {
+            let week_ago =
+                std::time::SystemTime::now() - std::time::Duration::from_secs(KEEP_DISCARDED_SECS);
+            for entry in entries.flatten() {
+                let old = entry
+                    .metadata()
+                    .and_then(|meta| meta.modified())
+                    .is_ok_and(|modified| modified < week_ago);
+                if old {
+                    let _ = fs::remove_file(entry.path());
+                }
+            }
+        }
+        Ok(to)
+    }
+
     /// When the newest page of the open letter was taken, if there is one.
     pub fn last_page_at(&self) -> Result<Option<u64>> {
         Ok(self.open_pages()?.last().and_then(|page| stamp_of(page)))
@@ -188,6 +257,21 @@ impl Spool {
     /// twice — as a PDF and as pages that make the same PDF again, byte for
     /// byte, which Paperless refuses by checksum. The other order could leave
     /// it nowhere.
+    /// Closes the open letter without `keep`, which stays open as the first
+    /// page of the next — the envelope that just told the letters apart.
+    pub fn close_letter_except(&self, keep: &Path) -> Result<Option<PathBuf>> {
+        let name = keep.file_name().context("a page with no name")?;
+        // Beside the spool under a name nothing reads, for as long as the
+        // letter takes to close.
+        let aside = self.dir.join(format!("{}.aside", name.to_string_lossy()));
+        fs::rename(keep, &aside)
+            .with_context(|| format!("could not set {} aside", keep.display()))?;
+        let closed = self.close_letter();
+        fs::rename(&aside, keep)
+            .with_context(|| format!("could not put {} back", keep.display()))?;
+        closed
+    }
+
     pub fn close_letter(&self) -> Result<Option<PathBuf>> {
         let mut jpegs = Vec::new();
         let mut used = Vec::new();

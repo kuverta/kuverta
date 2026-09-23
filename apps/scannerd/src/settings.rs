@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::folders::Folder;
 use crate::straighten::Corners;
 
 const FILE: &str = "settings.toml";
@@ -36,6 +37,16 @@ pub struct Settings {
     /// camera mounted so that letters do not read upright.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotate: Option<u16>,
+    /// The folders on the shelf, in the order the display prefers them. An
+    /// empty list means none — not following letters at all — which is
+    /// different from not set, where the env file's apply.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub folders: Option<Vec<Folder>>,
+    /// The exposure photographs are taken at, in stops from the camera's own
+    /// choice. Learnt from the photographs and kept here, so a restart does
+    /// not have to learn it again from the next page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ev: Option<f32>,
 }
 
 impl Settings {
@@ -108,6 +119,29 @@ impl Settings {
         if let Some(rotate) = newer.rotate {
             self.rotate = Some(rotate);
         }
+        if let Some(ev) = newer.ev {
+            self.ev = Some(ev);
+        }
+        if let Some(folders) = newer.folders {
+            self.folders = Some(
+                folders
+                    .into_iter()
+                    .map(|folder| Folder {
+                        name: folder.name.trim().to_string(),
+                        words: folder.words.trim().to_string(),
+                        discard: folder.discard,
+                    })
+                    .filter(|folder| !folder.name.is_empty())
+                    .collect(),
+            );
+        }
+    }
+
+    /// The folders in force: the page's, or the env file's.
+    pub fn effective_folders(&self, started_with: &[Folder]) -> Vec<Folder> {
+        self.folders
+            .clone()
+            .unwrap_or_else(|| started_with.to_vec())
     }
 
     /// Whether what came from the page can be used at all.
@@ -126,6 +160,18 @@ impl Settings {
         }
         if let Some(rotate) = self.rotate {
             valid_rotation(rotate)?;
+        }
+        if let Some(folders) = &self.folders {
+            valid_folders(folders)?;
+        }
+        if let Some(ev) = self.ev {
+            if !(crate::quality::EV_DARKEST..=crate::quality::EV_BRIGHTEST).contains(&ev) {
+                bail!(
+                    "the exposure is between {} and {} stops",
+                    crate::quality::EV_DARKEST,
+                    crate::quality::EV_BRIGHTEST
+                );
+            }
         }
         Ok(())
     }
@@ -206,6 +252,40 @@ impl Settings {
             }),
         }
     }
+}
+
+/// Folders a person can tell apart, and at most one bin. Each is a Paperless
+/// tag, and Paperless does not tell names apart by case.
+pub fn valid_folders(folders: &[Folder]) -> Result<()> {
+    if folders.len() > 20 {
+        bail!("twenty folders at most");
+    }
+    let mut seen = std::collections::HashSet::new();
+    for folder in folders {
+        let name = folder.name.trim();
+        if name.chars().count() > 60 {
+            bail!("the folder name {name:?} is too long for a tag");
+        }
+        if !name.is_empty() && !seen.insert(name.to_lowercase()) {
+            bail!("there are two folders called {name:?}");
+        }
+    }
+    // Paperless refuses more than this, and would refuse it when the folders
+    // are set up there — long after the words were saved here.
+    for folder in folders {
+        let length = folder.paperless_match().chars().count();
+        if length > crate::folders::MATCH_LIMIT {
+            bail!(
+                "the words for {:?} are {length} characters; Paperless takes {} — leave some out",
+                folder.name.trim(),
+                crate::folders::MATCH_LIMIT
+            );
+        }
+    }
+    if folders.iter().filter(|folder| folder.discard).count() > 1 {
+        bail!("only one folder can be the bin");
+    }
+    Ok(())
 }
 
 /// A quarter turn, a half or three quarters, or none.
