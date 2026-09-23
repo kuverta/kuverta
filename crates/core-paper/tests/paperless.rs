@@ -11,7 +11,7 @@ use std::net::TcpListener;
 use std::sync::mpsc;
 use std::thread;
 
-use core_paper::{Paperless, Selector};
+use core_paper::{Paperless, Selector, ShelfFolder};
 
 /// A loopback Paperless.
 ///
@@ -35,13 +35,26 @@ fn serve() -> (String, mpsc::Receiver<String>) {
 
             let mut request = String::new();
             reader.read_line(&mut request).ok();
+            let mut length = 0usize;
             loop {
                 let mut line = String::new();
                 if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
                     break;
                 }
+                if let Some(value) = line.to_ascii_lowercase().strip_prefix("content-length:") {
+                    length = value.trim().parse().unwrap_or(0);
+                }
             }
-            let request = request.trim().to_string();
+            let mut sent = vec![0u8; length];
+            if length > 0 {
+                std::io::Read::read_exact(&mut reader, &mut sent).ok();
+            }
+            // The request line and, for a write, what was written: a PATCH
+            // that sends the wrong fields is otherwise indistinguishable from
+            // one that sends the right ones.
+            let request = format!("{} {}", request.trim(), String::from_utf8_lossy(&sent))
+                .trim()
+                .to_string();
             let _ = tx.send(request.clone());
 
             let body = answer(&request);
@@ -58,6 +71,10 @@ fn serve() -> (String, mpsc::Receiver<String>) {
 }
 
 fn answer(request: &str) -> String {
+    // A write comes back as the row Paperless made; nothing here reads it.
+    if request.starts_with("POST") || request.starts_with("PATCH") {
+        return "{}".to_string();
+    }
     if request.contains("/api/correspondents/") {
         return CORRESPONDENTS.to_string();
     }
@@ -107,7 +124,14 @@ fn param(request: &str, key: &str) -> Option<String> {
 const CORRESPONDENTS: &str =
     r#"{"count":2,"results":[{"id":7,"name":"Stadtwerke München"},{"id":9,"name":"Finanzamt"}]}"#;
 
-const TAGS: &str = r#"{"count":2,"results":[{"id":1,"name":"home"},{"id":2,"name":"rechnung"}]}"#;
+/// `home` is a plain label and no folder: it matches nothing by itself, which
+/// is how a selector tag is set up. The other two are folders on a shelf, one
+/// with words and one Paperless learns.
+const TAGS: &str = r#"{"count":4,"results":[
+   {"id":1,"name":"home","matching_algorithm":0,"match":""},
+   {"id":2,"name":"rechnung","matching_algorithm":1,"match":"Rechnung Mahnung \"Offener Betrag\""},
+   {"id":3,"name":"Steuern","matching_algorithm":6,"match":""},
+   {"id":4,"name":"Person: Erika Mustermann","matching_algorithm":1,"match":"\"Erika Mustermann\""}]}"#;
 
 const DOC_41: &str = r#"{"id":41,"title":"Abschlagszahlung 2026","correspondent":7,
    "created":"2026-03-04T00:00:00+01:00","added":"2026-03-06T09:12:44.120000Z","tags":[1,2],
@@ -367,4 +391,104 @@ async fn a_document_with_no_correspondent_still_classifies() {
 
     let verdict = core_rules::Classifier::without_history().classify(&page.documents[1].facts());
     assert_eq!(verdict.category, core_rules::Category::Unknown);
+}
+
+#[tokio::test]
+async fn the_folders_on_the_shelf_are_the_tags_that_match_themselves() {
+    let (base, _requests) = serve();
+
+    let folders = client(&base).folders().await.unwrap();
+
+    // `home` is left out: a tag that matches nothing is a label someone puts
+    // on by hand, not a folder the post falls into.
+    assert_eq!(folders.len(), 3, "{folders:?}");
+    assert_eq!(folders[0].name, "rechnung");
+    // Back in the shape the window edits: commas between the words, and the
+    // quotes Paperless keeps around a phrase taken off again.
+    assert_eq!(folders[0].words, "Rechnung, Mahnung, Offener Betrag");
+    assert_eq!(folders[1].name, "Steuern");
+    assert_eq!(
+        folders[1].words, "",
+        "learnt, so it has no words of its own"
+    );
+    // Somebody in the household, with the mark taken off their name again.
+    assert_eq!(folders[2].name, "Erika Mustermann");
+    assert!(folders[2].person);
+    assert!(!folders[0].person);
+}
+
+#[tokio::test]
+async fn setting_the_folders_up_changes_what_is_there_and_makes_what_is_not() {
+    let (base, requests) = serve();
+
+    client(&base)
+        .set_folders(&[
+            ShelfFolder {
+                name: "Rechnung".into(),
+                words: "Rechnung, Mahnung, Offener Betrag".into(),
+                person: false,
+            },
+            ShelfFolder {
+                name: "Auto".into(),
+                words: String::new(),
+                person: false,
+            },
+            ShelfFolder {
+                name: "Erika Mustermann".into(),
+                words: String::new(),
+                person: true,
+            },
+            ShelfFolder {
+                name: "   ".into(),
+                words: "nothing".into(),
+                person: false,
+            },
+        ])
+        .await
+        .unwrap();
+
+    let asked: Vec<String> = requests.try_iter().collect();
+    assert_eq!(
+        asked.len(),
+        4,
+        "the tags read once, then three writes: {asked:?}"
+    );
+    assert!(asked[0].starts_with("GET /api/tags/"));
+
+    // `Rechnung` is the `rechnung` that is already there — a folder is not
+    // made twice because someone typed it with a capital.
+    let changed = &asked[1];
+    assert!(changed.starts_with("PATCH /api/tags/2/"), "{changed}");
+    assert!(
+        !changed.contains("\"name\""),
+        "an existing tag keeps its name"
+    );
+    assert!(changed.contains("\"matching_algorithm\":1"), "{changed}");
+    assert!(
+        changed.contains("Rechnung Mahnung \\\"Offener Betrag\\\""),
+        "a phrase is quoted for Paperless: {changed}"
+    );
+
+    // `Auto` is new, and has no words: Paperless learns it from what is filed
+    // in it by hand.
+    let made = &asked[2];
+    assert!(made.starts_with("POST /api/tags/"), "{made}");
+    assert!(made.contains("\"name\":\"Auto\""), "{made}");
+    assert!(made.contains("\"matching_algorithm\":6"), "{made}");
+
+    // Somebody in the household is a tag of their own, marked as a person so
+    // that a folder and a person of the same name stay two things, and looked
+    // for by their name when they have no other spelling.
+    // She is already there under her marked name, so she is brought up to
+    // date rather than made a second time.
+    let who = &asked[3];
+    assert!(who.starts_with("PATCH /api/tags/4/"), "{who}");
+    assert!(
+        who.contains("\\\"Erika Mustermann\\\""),
+        "looked for by name: {who}"
+    );
+    assert!(who.contains("\"matching_algorithm\":1"), "{who}");
+
+    // The blank row the window leaves behind is not a tag called nothing.
+    assert!(!asked.iter().any(|line| line.contains("\"nothing\"")));
 }

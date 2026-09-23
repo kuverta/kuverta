@@ -1845,3 +1845,12 @@ body.assistant-open { grid-template-columns: 236px minmax(280px, 360px) 1fr minm
 
 #task-sheet [data-for][hidden] { display: none; }
 .preview-head.plain { border: 0; padding: 0; font-weight: 400; color: var(--muted); }
+
+/* The folders on the shelf, in the setup assistant: a name, its words, and a
+   way to take the row away. */
+.shelf-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
+.shelf-row input { margin: 0; }
+@media (max-width: 620px) {
+  .shelf-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .shelf-row .shelf-words { grid-column: 1 / -1; grid-row: 2; }
+}

@@ -68,7 +68,13 @@ marks the bin) or under **Folders on the shelf** on the setup page. Each
 is a Paperless tag of the same name, which scannerd creates before the next
 letter is sent: with words, it matches any letter containing one of them; without, Paperless learns
 it from the documents tagged with it. scannerd then waits for Paperless to
-read the letter and shows the folder whose tag it got.
+read the letter and shows the folder whose tag it got. Told neither way, it
+takes the shelf from Paperless — the tags that match letters by themselves,
+which is what kuverta's setup assistant writes — with
+`SCANNERD_BIN_FOLDER=Werbung` naming which of them is the bin.
+`SCANNERD_PEOPLE=Erika Mustermann,Max Mustermann` adds the people in the
+household: each is a tag of its own (`Person: …`) matched on the name, and the
+display says who a letter is for as well as which folder it goes in.
 
 `SCANNERD_DISPLAY=/dev/fb0` draws the same in colour on a 3.5″ SPI LCD
 (`dtoverlay=piscreen`), and `SCANNERD_TOUCH=/dev/spidev0.1` makes its

@@ -41,6 +41,99 @@ pub enum PaperError {
 
 pub type Result<T> = std::result::Result<T, PaperError>;
 
+/// Paperless's matching algorithms, as its API numbers them.
+const MATCH_NONE: i64 = 0;
+const MATCH_ANY_WORD: i64 = 1;
+const MATCH_AUTO: i64 = 6;
+
+/// What a person's tag is called in Paperless: their name behind this. The
+/// scanner reads the mark the same way, so a household member and a folder of
+/// the same name stay two different tags.
+pub const PERSON_TAG_PREFIX: &str = "Person: ";
+
+/// A folder on the shelf the paper goes in, and the words that put a letter
+/// in it. The scanner shows the name on its display; both it and the window
+/// know the folder as a Paperless tag of that name.
+///
+/// Somebody in the household is one of these too, marked `person`: a letter
+/// that carries their name is *for* them, and the scanner says so beside the
+/// folder it goes in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShelfFolder {
+    pub name: String,
+    /// Words separated by commas — any one of them is enough. Empty: Paperless
+    /// learns the folder from the documents tagged with it. For a person,
+    /// their name is looked for when this is empty, and other spellings of it
+    /// go here.
+    #[serde(default)]
+    pub words: String,
+    /// Somebody who gets post here rather than somewhere it is filed.
+    #[serde(default)]
+    pub person: bool,
+}
+
+impl ShelfFolder {
+    /// The words as Paperless's "any word" matching takes them: a space
+    /// between them, and a phrase with a space in it quoted.
+    pub fn paperless_match(&self) -> String {
+        self.looked_for()
+            .split(',')
+            .map(str::trim)
+            .filter(|word| !word.is_empty())
+            .map(|word| {
+                if word.contains(' ') {
+                    format!("\"{}\"", word.replace('"', ""))
+                } else {
+                    word.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// The words to look for, which for a person falls back to their name.
+    pub fn looked_for(&self) -> String {
+        if self.person && self.words.trim().is_empty() {
+            return self.name.clone();
+        }
+        self.words.clone()
+    }
+
+    /// What the tag is called in Paperless.
+    pub fn tag_name(&self) -> String {
+        if self.person {
+            format!("{PERSON_TAG_PREFIX}{}", self.name.trim())
+        } else {
+            self.name.trim().to_string()
+        }
+    }
+}
+
+/// The other way round: a tag's match as Paperless keeps it, back into the
+/// comma-separated words the window and the scanner edit. A phrase is one
+/// word in quotes, so this cannot simply split on spaces — `"Offener Betrag"`
+/// is one thing to look for, not two.
+fn words_from_match(text: &str) -> String {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quoted = false;
+    for letter in text.chars() {
+        match letter {
+            '"' => quoted = !quoted,
+            letter if letter.is_whitespace() && !quoted => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            letter => word.push(letter),
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words.join(", ")
+}
+
 /// Where a physical address's post lives, and which of it is that address's.
 ///
 /// One Paperless instance usually holds the post of several addresses — a home
@@ -638,6 +731,105 @@ impl Paperless {
         })
     }
 
+    /// The folders on the shelf, as Paperless keeps them: the tags that match
+    /// documents themselves. The tag that says which address post came to
+    /// matches nothing and is not one.
+    pub async fn folders(&self) -> Result<Vec<ShelfFolder>> {
+        let body = self
+            .get(
+                "/api/tags/",
+                &[("page_size".to_string(), "500".to_string())],
+            )
+            .await?;
+        let listing: TagListing =
+            serde_json::from_value(body).map_err(|err| PaperError::Shape(err.to_string()))?;
+        Ok(listing
+            .results
+            .into_iter()
+            .filter(|tag| tag.matching_algorithm.is_some_and(|how| how != MATCH_NONE))
+            .map(|tag| {
+                let (name, person) = match tag.name.strip_prefix(PERSON_TAG_PREFIX) {
+                    Some(who) => (who.trim().to_string(), true),
+                    None => (tag.name, false),
+                };
+                ShelfFolder {
+                    name,
+                    words: words_from_match(&tag.r#match.unwrap_or_default()),
+                    person,
+                }
+            })
+            .filter(|folder| !folder.name.is_empty())
+            .collect())
+    }
+
+    /// Makes each folder a tag that matches itself: by its words when it has
+    /// some, and by what Paperless learns from the documents tagged with it
+    /// when it has none. Tags already there are brought up to date, and tags
+    /// this does not name are left alone.
+    ///
+    /// The one thing this crate writes. Paperless owns the documents and this
+    /// reads them; the folders on someone's shelf are theirs, and they are
+    /// told apart here and by the scanner by the same tags.
+    pub async fn set_folders(&self, folders: &[ShelfFolder]) -> Result<()> {
+        let existing = self.names("/api/tags/").await?;
+        for folder in folders {
+            if folder.name.trim().is_empty() {
+                continue;
+            }
+            let name = folder.tag_name();
+            let name = name.as_str();
+            let words = folder.paperless_match();
+            let mut fields = serde_json::json!({
+                "matching_algorithm": if words.is_empty() { MATCH_AUTO } else { MATCH_ANY_WORD },
+                "match": words,
+                "is_insensitive": true,
+            });
+            match existing
+                .iter()
+                .find(|(_, known)| known.eq_ignore_ascii_case(name))
+            {
+                Some((id, _)) => {
+                    self.write(reqwest::Method::PATCH, &format!("/api/tags/{id}/"), fields)
+                        .await?;
+                }
+                None => {
+                    fields["name"] = name.into();
+                    self.write(reqwest::Method::POST, "/api/tags/", fields)
+                        .await?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    async fn write(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        body: serde_json::Value,
+    ) -> Result<()> {
+        let response = self
+            .http
+            .request(method, format!("{}{path}", self.base))
+            .header("Authorization", format!("Token {}", self.token))
+            .header("Content-Type", "application/json")
+            .body(body.to_string())
+            .send()
+            .await
+            .map_err(|err| PaperError::Network(err.to_string()))?;
+        let status = response.status();
+        if status == reqwest::StatusCode::UNAUTHORIZED || status == reqwest::StatusCode::FORBIDDEN {
+            return Err(PaperError::Auth);
+        }
+        if !status.is_success() {
+            return Err(PaperError::Status {
+                status: status.as_u16(),
+                path: path.to_string(),
+            });
+        }
+        Ok(())
+    }
+
     async fn get(&self, path: &str, params: &[(String, String)]) -> Result<serde_json::Value> {
         self.send(path, params, "application/json")
             .await?
@@ -829,6 +1021,18 @@ fn list(names: &[String]) -> String {
 struct Listing {
     count: usize,
     results: Vec<RawDocument>,
+}
+
+#[derive(Deserialize)]
+struct TagListing {
+    results: Vec<TagRow>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TagRow {
+    name: String,
+    matching_algorithm: Option<i64>,
+    r#match: Option<String>,
 }
 
 #[derive(Deserialize)]
