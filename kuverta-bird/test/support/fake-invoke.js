@@ -477,6 +477,28 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     // Smart mailboxes, the outbox, cleanup and the log: the window calls these
     // as it opens, and a page that errors on them is a page with a bug.
     smart_mailboxes: async () => [],
+
+    // What the smart mailbox editor shows while rules are being written. Only
+    // the fields the window can write a rule about from the list are matched
+    // here — sender, subject, mailing list — and a rule about anything else
+    // matches nothing rather than quietly matching everything, which would
+    // make an editor that gathers the whole mailbox look like it works.
+    preview_smart: async ({ query }) => {
+      const of = (m, field) =>
+        ({ from: m.from, subject: m.subject, list_id: m.list_id ?? '' })[field] ?? null;
+      const holds = (m, rule) => {
+        const have = of(m, rule.field);
+        if (have === null) return false;
+        const want = String(rule.value ?? '').toLowerCase();
+        return rule.op === 'is' ? have.toLowerCase() === want : have.toLowerCase().includes(want);
+      };
+      const found = visible().filter((m) =>
+        query.match_all === false
+          ? query.rules.some((rule) => holds(m, rule))
+          : query.rules.every((rule) => holds(m, rule)),
+      );
+      return { total: found.length, rows: found.slice(0, 8).map(asRow) };
+    },
     outbox: async () => [],
     cleanup_counts: async () => ({
       bulk_in_inbox: [...messages.values()].filter(

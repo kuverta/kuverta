@@ -1339,7 +1339,11 @@ function keepInView() {
   }
 }
 
-function select(index) {
+/// Puts the cursor on one row, dropping whatever was picked.
+///
+/// `open` is how the right button differs from the left: a menu asks what can
+/// be done to a message, which is not the same as asking to read it.
+function select(index, { open = true } = {}) {
   if (state.total === 0) return;
   state.selection.clear();
   state.anchor = -1;
@@ -1349,7 +1353,7 @@ function select(index) {
   keepInView();
   render(true);
   renderScope();
-  if (!reading.hidden || !conversationPane.hidden) openSelected();
+  if (open && (!reading.hidden || !conversationPane.hidden)) openSelected();
 }
 
 // -- changes ---------------------------------------------------------------
@@ -1970,6 +1974,130 @@ content.addEventListener("click", (event) => {
     openSelected();
   }
 });
+
+/// The menu under the right button.
+///
+/// It acts on what is picked, the way every key does: right-clicking inside a
+/// block of picked messages keeps the block, right-clicking outside it takes
+/// the row under the pointer instead — which is what every list does, and the
+/// only behaviour that cannot lose a selection by accident.
+content.addEventListener("contextmenu", (event) => {
+  const index = state.pool.findIndex((node) => node.row === event.target.closest(".row"));
+  if (index < 0) return;
+  event.preventDefault();
+  const at = state.firstRendered + index;
+  if (!state.selection.has(at)) select(at, { open: false });
+  showMessageMenu(event);
+});
+
+function showMessageMenu(event) {
+  const rows = actingOn()
+    .map((index) => state.rows.get(index))
+    .filter(Boolean);
+  if (!rows.length) return;
+
+  // Post is read from Paperless and filed there; read or unread is the one
+  // thing this window owns about a letter.
+  if (state.postbox) {
+    showMenu(event, [[rows[0].unread ? t("Mark as read") : t("Mark as unread"), toggleRead]]);
+    return;
+  }
+  // People lists people, and none of this is about a person.
+  if (state.view === "people") return;
+
+  const items = [];
+  if (rows.length === 1) items.push([t("Open"), openSelected]);
+  items.push([rows[0].unread ? t("Mark as read") : t("Mark as unread"), toggleRead]);
+  items.push(null);
+  items.push([
+    t("Archive"),
+    archive,
+    { disabled: !state.archive, title: state.archive ? "" : t("this account has no Archive folder") },
+  ]);
+  items.push([t("Move to mailbox…"), () => showMoveMenu(event)]);
+  items.push([
+    t("Move to Trash"),
+    trash,
+    { danger: true, disabled: !state.trash, title: state.trash ? "" : t("this account has no Trash folder") },
+  ]);
+
+  // Several messages that are alike are a rule waiting to be written, and the
+  // moment they are all picked is the moment the rule is obvious.
+  const alike = whatTheyShare(rows);
+  if (alike) {
+    items.push(null);
+    items.push([
+      t("New smart mailbox from these {count}…", { count: rows.length }),
+      () => openSmartEditor(alike),
+      { title: describeQuery(alike.query) },
+    ]);
+  }
+  showMenu(event, items);
+}
+
+/// The second page of the same menu: which mailbox to move them to.
+///
+/// A page rather than a submenu — the menu has none — and the whole path
+/// rather than the leaf, because two accounts' worth of mailboxes called
+/// "2024" is a choice nobody can make from the label alone.
+function showMoveMenu(event) {
+  const items = [[t("← Back"), () => showMessageMenu(event)], null];
+  for (const folder of state.folders) {
+    const here = folder.id === state.filter.folder;
+    items.push([
+      folder.name,
+      () => act("move_to", { target: folder.name }, `moved to ${folder.label}`),
+      { disabled: here, title: here ? t("they are already here") : "" },
+    ]);
+  }
+  if (state.folders.length === 0) items.push([t("no mailboxes yet"), () => {}, { disabled: true }]);
+  showMenu(event, items);
+}
+
+/// What a picked block has in common, when it has anything: a smart mailbox
+/// that would gather it, ready for the editor.
+///
+/// The list, then the sender, then the subject, in that order because that is
+/// how durable each one is. A mailing list keeps its id while the sender
+/// rotates; a sender keeps its name while the subject carries an order
+/// number; the subject is what is left when the run comes from nowhere in
+/// particular. One message has nothing in common with anything, so it is not
+/// asked.
+function whatTheyShare(rows) {
+  if (rows.length < 2) return null;
+  const shared = (of) => {
+    const first = of(rows[0]);
+    return first && rows.every((row) => of(row) === first) ? first : null;
+  };
+  const suggest = (name, field, op, value) => ({
+    name,
+    query: { match_all: true, rules: [{ field, op, value }] },
+  });
+
+  const list = shared((row) => row.list_id);
+  if (list) return suggest(list, "list_id", "is", list);
+
+  // `contains` rather than `is`: the list holds the sender's name when it has
+  // one, and `is` on this field is matched against the address alone.
+  const from = shared((row) => row.from);
+  if (from) return suggest(from, "from", "contains", from);
+
+  const prefix = sharedPrefix(rows.map((row) => row.subject ?? ""));
+  return prefix.length >= 8 ? suggest(prefix, "subject", "contains", prefix) : null;
+}
+
+/// The opening the subjects share, cut back to a whole word: "Your order
+/// #1041" and "Your order #1052" share "Your order", which is a rule about
+/// orders once the number is off the end of it.
+function sharedPrefix(subjects) {
+  let prefix = subjects[0] ?? "";
+  for (const subject of subjects.slice(1)) {
+    let at = 0;
+    while (at < prefix.length && at < subject.length && prefix[at] === subject[at]) at += 1;
+    prefix = prefix.slice(0, at);
+  }
+  return prefix.replace(/[^\p{L}\p{N}]+$/u, "").trim();
+}
 
 /// Closes a dialog, saying so to whoever opened it: each dialog file listens
 /// for `close` to tidy up after itself.
