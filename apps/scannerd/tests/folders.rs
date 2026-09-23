@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use scannerd::camera::Camera;
 use scannerd::folders::{
-    folders_among, parse_env, parse_env_people, words_from_match, Filings, Folder, Outcome,
+    folders_among, guess, parse_env, parse_env_people, words_from_match, Filings, Folder, Outcome,
     Refiling, CHECK_EVERY_SECS, GIVE_UP_SECS,
 };
 use scannerd::run::Scanner;
@@ -267,6 +267,42 @@ fn a_tag_match_reads_back_as_words_with_phrases_kept_whole() {
         "Hyundai, Kfz, Allianz Versicherung"
     );
     assert_eq!(words_from_match(""), "");
+}
+
+#[test]
+fn the_preview_guesses_a_folder_from_the_words_on_the_page() {
+    let shelf = [
+        folder("Car", "Kfz, Kennzeichen, Grüne Karte", false),
+        folder("Taxes", "Finanzamt, Steuernummer", false),
+        // No words of its own: Paperless learns this one, and nothing here
+        // can copy what it learnt.
+        Folder::named("Sonstiges"),
+        Folder::person("Erika Mustermann"),
+    ];
+    let letter = "Finanzamt Hamburg-Mitte\nFrau Erika Mustermann\nIhre Steuernummer: 12/345";
+
+    let guessed: Vec<&str> = guess(letter, &shelf)
+        .into_iter()
+        .map(|f| f.name.as_str())
+        .collect();
+    assert_eq!(guessed, vec!["Taxes", "Erika Mustermann"]);
+
+    // Whatever the case, and phrases as one word.
+    assert_eq!(
+        guess("die grüne karte liegt bei", &shelf)
+            .into_iter()
+            .map(|f| f.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Car"]
+    );
+    // A word inside a longer one is not that word: "Kfz" is not in
+    // "Kfzversicherung".
+    assert!(guess("Kfzversicherungsvertrag", &shelf).is_empty());
+    assert!(
+        guess("Kfz-Versicherung", &shelf).len() == 1,
+        "a hyphen ends a word"
+    );
+    assert!(guess("", &shelf).is_empty());
 }
 
 #[test]
