@@ -621,6 +621,7 @@
           <li data-step="profiles">Profiles</li>
           <li data-step="models">Local models</li>
           <li data-step="paper">Paper mail</li>
+          <li data-step="folders">Folders</li>
           <li data-step="mail">Mail accounts</li>
           <li data-step="done">Finish</li>
         </ol>
@@ -702,6 +703,22 @@
                 <p class="setup-result" id="paper-install-result"></p>
               </form>
             </div>
+          </section>
+
+          <section data-page="folders" hidden>
+            <h2>Folders on the shelf</h2>
+            <p>The paper still has to go somewhere. Name the folders it goes in, and kuverta keeps them in Paperless — where the scanner reads them too, so it can say on its screen which folder a letter belongs in.</p>
+            <p class="hint">Give a folder words that only its letters contain, separated by commas — an insurer, a number plate, “Finanzamt”. A folder without words is learnt instead, from the letters you file in it by hand.</p>
+            <div id="shelf"></div>
+            <h3>Who gets post here</h3>
+            <p class="hint">More than one person in a household gets letters — a spouse, a child, someone whose papers you keep. Name them, and the scanner says who a letter is for as well as which folder it goes in. Add another spelling of a name — “E. Mustermann” — if letters come both ways.</p>
+            <div id="household"></div>
+            <div class="setup-actions">
+              <button type="button" id="shelf-add">Add a folder</button>
+              <button type="button" id="household-add">Add a person</button>
+              <button type="button" class="primary" id="shelf-save">Save folders</button>
+            </div>
+            <p class="setup-result" id="shelf-result"></p>
           </section>
 
           <section data-page="mail" hidden>

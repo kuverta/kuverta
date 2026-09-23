@@ -46,7 +46,7 @@ pub use cleanup::{
 };
 pub use conversations::{Bubble, ConversationPage, ConversationView, Thread};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};
-pub use core_paper::PaperReport;
+pub use core_paper::{PaperReport, ShelfFolder};
 pub use core_pgp::{
     ImportReport, ImportedKey, KeyView, Keyring, RecipientKey, RecipientKeys, SecurityView,
     SignatureState, SignatureView,

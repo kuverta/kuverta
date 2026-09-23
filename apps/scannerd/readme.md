@@ -224,6 +224,28 @@ in the env file, or **Folders on the shelf** on the setup page, which wins —
 the display says, for each letter, which one it goes in, or **Throw away** for
 the folder marked as the bin (a `-` in the env file).
 
+## Who the letter is for
+
+More than one person in a household gets post — a partner, a child, someone
+whose papers are being kept. `SCANNERD_PEOPLE=Erika Mustermann,Max Mustermann`
+(or **Person** on a row of the setup page) makes each of them a Paperless tag
+of their own, `Person: Erika Mustermann`, matched on their name — which is what
+stands on the letter. The display then says both: **Taxes**, and under it *For
+Erika Mustermann*, or *For Erika Mustermann and Max Mustermann* when a letter
+carries both names. Somebody written to in more than one way can be given the
+other spellings as words, like a folder.
+
+The mark on the tag is what keeps the two apart, so a folder and a person of
+the same name are two tags and neither is the other, and a shelf read back out
+of Paperless still knows which is which. Nobody can be the bin.
+
+Told neither way, scannerd takes the shelf from Paperless: every tag that
+matches letters by itself is a folder, with the words it matches on. That is
+what the kuverta app's setup assistant writes, so a shelf named there needs no
+second naming here; it is asked for again every five minutes until Paperless
+answers. Which of them is the bin is the one thing a tag cannot say —
+`SCANNERD_BIN_FOLDER=Werbung` names it.
+
 The Pi cannot read a letter; OCR on a Zero W takes minutes a page. Paperless
 reads every one, and deciding what a document is is what its tags already do.
 So each folder is a Paperless tag of the same name, which scannerd creates, or

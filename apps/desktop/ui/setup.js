@@ -11,7 +11,7 @@
 
 const setup = {
   sheet: el("setup"),
-  steps: ["profiles", "models", "paper", "mail", "done"],
+  steps: ["profiles", "models", "paper", "folders", "mail", "done"],
   step: 0,
   // What each page came to, for the summary.
   models: null,
@@ -68,16 +68,31 @@ function showStep(index) {
   if (name === "paper" || name === "mail") fillSetupProfileFields();
   if (name === "models") refreshModels();
   if (name === "paper") refreshPaper();
+  if (name === "folders") fillShelf();
   if (name === "mail" && !setup.found.length) scanAccounts();
   if (name === "mail") updateMailFoot();
   if (name === "done") showSummary();
 }
 
-el("setup-back").onclick = () => showStep(setup.step - 1);
+/// Without paper post there are no folders to sort it into, so that page is
+/// stepped over in both directions.
+function nextStep(from, by) {
+  let at = from + by;
+  while (setup.steps[at] === "folders" && !setup.paper) at += by;
+  return at;
+}
+
+el("setup-back").onclick = () => showStep(nextStep(setup.step, -1));
 el("setup-next").onclick = async () => {
   const name = setup.steps[setup.step];
   if (name === "profiles") {
     const ok = await saveSetupProfiles();
+    if (!ok) return;
+  }
+  if (name === "folders") {
+    // Continuing saves them too: nobody should lose a shelf they typed out
+    // because they took Continue for the button that keeps it.
+    const ok = await saveShelf();
     if (!ok) return;
   }
   if (name === "mail") {
@@ -88,7 +103,7 @@ el("setup-next").onclick = async () => {
     await leaveSetup();
     return;
   }
-  showStep(setup.step + 1);
+  showStep(nextStep(setup.step, 1));
 };
 
 // -- small pieces ----------------------------------------------------------------
@@ -264,7 +279,7 @@ function choosePaper(choice) {
   connectForm.hidden = choice !== "connect";
   el("paper-install").hidden = choice !== "install";
   if (choice === "install") refreshDocker();
-  if (choice === "skip") showStep(setup.step + 1);
+  if (choice === "skip") showStep(nextStep(setup.step, 1));
 }
 
 setup.sheet.querySelectorAll("[data-paper]").forEach((b) => {
@@ -306,7 +321,9 @@ async function refreshPaper() {
     lines.push(node("p", { className: "hint", textContent: t("Connect to one elsewhere on your network, or install one here with Docker.") }));
   }
   card.replaceChildren(...lines);
-  const connected = found.some((place) => place.configured);
+  const connected = found.find((place) => place.configured);
+  // Coming back to a Paperless set up earlier also leads to the folders.
+  if (connected && !setup.paper) setup.paper = connected.base_url;
   el("setup-next").textContent = connected ? t("Continue") : t("Skip for now");
 }
 
@@ -424,6 +441,186 @@ installForm.addEventListener("submit", async (event) => {
     submit.disabled = false;
   }
 });
+
+// -- folders on the shelf ------------------------------------------------------------
+
+/// What most households need, as somewhere to start. Each is a Paperless tag
+/// with words that only its letters carry; the words are deliberately narrow,
+/// because a word every official letter contains — "Datenschutz", say, which
+/// stands in the footer of all of them — would put every letter in that
+/// folder.
+const SHELF_SUGGESTIONS = [
+  { name: "Auto", words: "Kfz, Fahrzeug, Fahrzeughalter, Kennzeichen, TÜV, Hauptuntersuchung, Zulassungsstelle, Kfz-Versicherung, Bußgeldbescheid, Verwarnungsgeld" },
+  { name: "Rechnungen", words: "Rechnung, Rechnungsnummer, Rechnungsbetrag, Zahlungserinnerung, Mahnbescheid, Inkasso, Zahlungsziel, Ratenzahlung" },
+  { name: "Versicherungen", words: "Versicherungsschein, Versicherungsnummer, Beitragsrechnung, Haftpflicht, Hausratversicherung, Krankenversicherung, Schadenmeldung" },
+  { name: "Steuern", words: "Finanzamt, Steuernummer, Steuerbescheid, Einkommensteuer, Steuererklärung, Lohnsteuerbescheinigung, Grundsteuer, ELSTER" },
+  { name: "Wohnen", words: "Miete, Mietvertrag, Vermieter, Hausverwaltung, Nebenkostenabrechnung, Betriebskostenabrechnung, Stromrechnung, Zählerstand, Rundfunkbeitrag" },
+  { name: "Werbung", words: "Werbung, Gewinnspiel, Gutschein, Rabatt, Sonderangebot, Prospekt, Katalog, Newsletter" },
+];
+
+/// The address the folders belong to: the one just set up, or the only one.
+async function shelfAddress() {
+  const addresses = await invoke("paper_mailboxes").catch(() => []);
+  if (!addresses.length) return null;
+  const same = (a, b) =>
+    String(a).trim().replace(/\/$/, "").toLowerCase() === String(b).trim().replace(/\/$/, "").toLowerCase();
+  return addresses.find((box) => setup.paper && same(box.base_url, setup.paper)) ?? addresses[addresses.length - 1];
+}
+
+/// The rows on the page, as they are being edited.
+let shelf = null;
+
+async function fillShelf() {
+  const result = el("shelf-result");
+  result.className = "setup-result";
+  result.textContent = "";
+  const address = await shelfAddress();
+  el("shelf-add").disabled = !address;
+  el("shelf-save").disabled = !address;
+  if (!address) {
+    result.className = "setup-result bad";
+    result.textContent = t("No paper post connected yet — the page before this one.");
+    el("shelf").replaceChildren();
+    return;
+  }
+  if (shelf === null) {
+    // What Paperless already has, if anything: setting up again should not
+    // throw away folders that are in use.
+    const existing = await invoke("paper_folders", { id: address.id }).catch(() => []);
+    shelf = existing.length
+      ? existing.map((folder) => ({ ...folder }))
+      : SHELF_SUGGESTIONS.map((folder) => ({ ...folder, person: false }));
+  }
+  drawShelf();
+}
+
+/// Both lists are the same rows, told apart by `person`: a folder is somewhere
+/// paper goes, a person somebody it is for.
+function drawShelf() {
+  drawRows(el("shelf"), false);
+  drawRows(el("household"), true);
+}
+
+function drawRows(into, people) {
+  into.replaceChildren(
+    ...shelf
+      .map((folder, index) => ({ folder, index }))
+      .filter(({ folder }) => Boolean(folder.person) === people)
+      .map(({ folder, index }) => {
+        const name = node("input", {
+          value: folder.name,
+          placeholder: people ? t("Name") : t("Name of the folder"),
+          spellcheck: false,
+        });
+        const words = node("input", {
+          value: folder.words ?? "",
+          placeholder: people
+            ? t("Other spellings of the name (optional)")
+            : t("Words, separated by commas (optional)"),
+          spellcheck: false,
+          className: "shelf-words",
+        });
+        const remove = node("button", {
+          type: "button",
+          textContent: "✕",
+          title: people ? t("Remove this person") : t("Remove this folder"),
+        });
+        name.oninput = () => (folder.name = name.value);
+        words.oninput = () => (folder.words = words.value);
+        remove.onclick = () => {
+          shelf.splice(index, 1);
+          drawShelf();
+        };
+        return node("div", { className: "shelf-row" }, name, words, remove);
+      }),
+  );
+  if (people && !into.children.length) {
+    into.append(node("p", { className: "hint", textContent: t("Nobody yet — one person's post needs nobody named.") }));
+  }
+}
+
+function addShelfRow(person) {
+  shelf = shelf ?? [];
+  shelf.push({ name: "", words: "", person });
+  drawShelf();
+  const list = el(person ? "household" : "shelf");
+  list.lastElementChild?.querySelector("input")?.focus();
+}
+
+el("shelf-add").onclick = () => addShelfRow(false);
+el("household-add").onclick = () => addShelfRow(true);
+
+el("shelf-save").onclick = saveShelf;
+
+/// Writes the rows to Paperless. False when something was wrong with them, or
+/// Paperless would not take them — the page says what, and stays put.
+async function saveShelf() {
+  const address = await shelfAddress();
+  if (!address || shelf === null) return true;
+  const folders = (shelf ?? [])
+    .map((folder) => ({
+      name: folder.name.trim(),
+      words: (folder.words ?? "").trim(),
+      person: Boolean(folder.person),
+    }))
+    .filter((folder) => folder.name);
+  // A folder and a person may share a name — they are two tags — so each list
+  // is checked on its own.
+  const names = folders.map((folder) => `${folder.person}:${folder.name.toLowerCase()}`);
+  const twiceAt = names.findIndex((name, at) => names.indexOf(name) !== at);
+  const twice = twiceAt < 0 ? undefined : folders[twiceAt].name;
+  const result = el("shelf-result");
+  const complain = (text) => {
+    result.className = "setup-result bad";
+    result.textContent = text;
+  };
+  if (twice) {
+    complain(t("Two folders are called {name}.", { name: twice }));
+    return false;
+  }
+  // Paperless keeps at most 256 characters of a tag's words.
+  const tooLong = folders.find(
+    (folder) => wordsForPaperless(folder.words || (folder.person ? folder.name : "")).length > 256,
+  );
+  if (tooLong) {
+    complain(t("Too many words for {name} — leave some out.", { name: tooLong.name }));
+    return false;
+  }
+
+  el("shelf-save").disabled = true;
+  result.className = "setup-result";
+  result.textContent = t("Setting the folders up…");
+  let saved = true;
+  try {
+    await invoke("set_paper_folders", { id: address.id, folders });
+    result.className = "setup-result ok";
+    const people = folders.filter((folder) => folder.person).length;
+    result.textContent = people
+      ? t("{count} folders and {people} people are set up in Paperless. The scanner takes its list from there.", {
+          count: folders.length - people,
+          people,
+        })
+      : t("{count} folders are set up in Paperless. The scanner takes its list from there.", {
+          count: folders.length,
+        });
+  } catch (error) {
+    complain(String(error));
+    saved = false;
+  }
+  el("shelf-save").disabled = false;
+  return saved;
+}
+
+/// The words as Paperless stores them for a tag, which is what its 256
+/// characters are counted in: a space between them, a phrase quoted.
+function wordsForPaperless(words) {
+  return words
+    .split(",")
+    .map((word) => word.trim())
+    .filter(Boolean)
+    .map((word) => (word.includes(" ") ? `"${word.replaceAll('"', "")}"` : word))
+    .join(" ");
+}
 
 // -- mail --------------------------------------------------------------------------
 
@@ -830,6 +1027,19 @@ async function showSummary() {
   lines.push(postboxes.length
     ? checkLine("ok", t("Paper mail: {list}.", { list: postboxes.map((p) => p.label).join(", ") }))
     : checkLine("wait", t("No paper mail connected.")));
+  if (postboxes.length) {
+    const address = (await shelfAddress()) ?? postboxes[postboxes.length - 1];
+    const folders = await invoke("paper_folders", { id: address.id }).catch(() => []);
+    lines.push(folders.some((f) => !f.person)
+      ? checkLine("ok", t("Folders on the shelf: {list}.", {
+          list: folders.filter((f) => !f.person).map((f) => f.name).join(", "),
+        }))
+      : checkLine("wait", t("No folders on the shelf — the scanner cannot say where a letter goes.")));
+    const people = folders.filter((folder) => folder.person);
+    if (people.length) {
+      lines.push(checkLine("ok", t("Post here is for: {list}.", { list: people.map((f) => f.name).join(", ") })));
+    }
+  }
   const accounts = await invoke("accounts").catch(() => []);
   await loadProfiles();
   if (state.profiles.length) {

@@ -130,6 +130,7 @@ impl Settings {
                         name: folder.name.trim().to_string(),
                         words: folder.words.trim().to_string(),
                         discard: folder.discard,
+                        person: folder.person,
                     })
                     .filter(|folder| !folder.name.is_empty())
                     .collect(),
@@ -256,18 +257,28 @@ impl Settings {
 
 /// Folders a person can tell apart, and at most one bin. Each is a Paperless
 /// tag, and Paperless does not tell names apart by case.
+///
+/// People are counted apart from folders: a household of four with a folder
+/// called after one of them is two different tags, and neither is the other.
 pub fn valid_folders(folders: &[Folder]) -> Result<()> {
-    if folders.len() > 20 {
+    if folders.iter().filter(|folder| !folder.person).count() > 20 {
         bail!("twenty folders at most");
+    }
+    if folders.iter().filter(|folder| folder.person).count() > 10 {
+        bail!("ten people at most");
     }
     let mut seen = std::collections::HashSet::new();
     for folder in folders {
         let name = folder.name.trim();
+        let what = if folder.person { "person" } else { "folder" };
         if name.chars().count() > 60 {
-            bail!("the folder name {name:?} is too long for a tag");
+            bail!("the {what} name {name:?} is too long for a tag");
         }
-        if !name.is_empty() && !seen.insert(name.to_lowercase()) {
-            bail!("there are two folders called {name:?}");
+        if !name.is_empty() && !seen.insert((folder.person, name.to_lowercase())) {
+            bail!("there are two {what}s called {name:?}");
+        }
+        if folder.person && folder.discard {
+            bail!("{name:?} is a person, so they cannot be the bin");
         }
     }
     // Paperless refuses more than this, and would refuse it when the folders

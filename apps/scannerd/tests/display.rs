@@ -54,6 +54,7 @@ fn photographed(at: u64, problems: Vec<Problem>) -> Photographed {
         }),
         thumbnail: None,
         envelope: false,
+        kept: true,
     }
 }
 
@@ -118,6 +119,7 @@ fn a_photograph_that_could_not_be_judged_has_no_verdict() {
         quality: None,
         thumbnail: None,
         envelope: false,
+        kept: true,
     };
     let screen = Screen::for_facts(&Facts {
         last: Some(&last),
@@ -154,6 +156,44 @@ fn between_letters_the_screen_says_which_folder() {
     assert_eq!(screen.detail, "Put the letter in this folder");
     assert_eq!(screen.tone, scannerd::display::Tone::Folder);
     assert_eq!(screen.footer, "Ready for the next letter  ·  All sent");
+}
+
+#[test]
+fn the_screen_says_who_the_letter_is_for_as_well_as_where_it_goes() {
+    // A household where more than one person gets post: the folder alone does
+    // not say whose pile the letter joins.
+    let filings = filed(Outcome::Folders(vec![
+        Folder::named("Taxes"),
+        Folder::person("Erika Mustermann"),
+    ]));
+    let screen = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Taxes", "the folder, not the person");
+    assert_eq!(screen.detail, "For Erika Mustermann");
+
+    // Post for two — an estate, a couple's insurer — names both.
+    let both = filed(Outcome::Folders(vec![
+        Folder::named("Taxes"),
+        Folder::person("Erika Mustermann"),
+        Folder::person("Max Mustermann"),
+    ]));
+    let screen = Screen::for_facts(&Facts {
+        filing: both.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Taxes");
+    assert_eq!(screen.detail, "For Erika Mustermann and Max Mustermann");
+
+    // A letter for somebody that fits no folder still says whose it is.
+    let who_only = filed(Outcome::Folders(vec![Folder::person("Max Mustermann")]));
+    let screen = Screen::for_facts(&Facts {
+        filing: who_only.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Which folder?");
+    assert_eq!(screen.detail, "For Max Mustermann");
 }
 
 #[test]
@@ -674,5 +714,22 @@ fn the_list_says_the_time_of_day_where_the_pi_is() {
         screen.queue[0].starts_with(&expected),
         "{:?}",
         screen.queue[0]
+    );
+}
+
+#[test]
+fn a_photograph_of_the_table_says_it_was_not_kept() {
+    let mut last = photographed(990, vec![Problem::NoText]);
+    last.kept = false;
+    let screen = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        last: Some(&last),
+        ..facts("photographed")
+    });
+    assert_eq!(screen.headline, "That was the table - not kept");
+    assert_eq!(
+        screen.verdict,
+        Some((false, "Not kept: nothing on it".into()))
     );
 }

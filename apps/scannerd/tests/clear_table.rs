@@ -38,13 +38,27 @@ impl Camera for Script {
     }
 
     fn capture(&self, path: &Path) -> Result<()> {
-        // A real JPEG: a letter's PDF is made of its pages, and leaves out
-        // what it cannot read.
+        // A real JPEG with lines of "text" on it: a letter's PDF is made of
+        // its pages and leaves out what it cannot read, and a photograph with
+        // nothing on it is taken for the table.
+        let (w, h) = (160usize, 220usize);
+        let page: Vec<u8> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                let printed =
+                    (8..h - 8).contains(&y) && (8..w - 8).contains(&x) && y % 10 < 4 && x % 8 < 5;
+                if printed {
+                    40
+                } else {
+                    220
+                }
+            })
+            .collect();
         let mut jpeg = Vec::new();
-        jpeg_encoder::Encoder::new(&mut jpeg, 80).encode(
-            &[200u8; 64 * 64],
-            64,
-            64,
+        jpeg_encoder::Encoder::new(&mut jpeg, 85).encode(
+            &page,
+            w as u16,
+            h as u16,
             jpeg_encoder::ColorType::Luma,
         )?;
         std::fs::write(path, jpeg)?;
@@ -117,6 +131,8 @@ struct Photos {
     photos: Mutex<Vec<bool>>,
     /// Photographs too dark to be paper.
     dark: bool,
+    /// Paper with nothing printed on it.
+    blank: bool,
 }
 
 impl Camera for Photos {
@@ -147,10 +163,14 @@ impl Camera for Photos {
             (2, 198, 2, 278)
         };
         let paper = if self.dark { 110 } else { 235 };
+        let ink = if self.blank { paper } else { 40 };
         for y in y0..y1 {
             for x in x0..x1 {
+                // Lines of "text" on it, unless it is meant to be blank.
+                let printed = (y - y0) % 12 < 4 && (x - x0) % 9 < 6 && x > x0 + 8 && x < x1 - 8;
+                let value = if printed { ink } else { paper };
                 let i = (y * w + x) * 3;
-                rgb[i..i + 3].copy_from_slice(&[paper, paper, paper]);
+                rgb[i..i + 3].copy_from_slice(&[value, value, value]);
             }
         }
         let mut jpeg = Vec::new();
@@ -186,6 +206,7 @@ async fn page_then_envelope(name: &str) -> (u64, usize) {
         frames: Mutex::new(frames),
         photos: Mutex::new(vec![false, true]),
         dark: false,
+        blank: false,
     };
     let (_press, button) = Button::channel();
     let mut scanner = Scanner::new(3, Duration::from_secs(3_600)).collecting(Letters {
@@ -304,6 +325,7 @@ async fn a_dark_table_is_not_an_envelope() {
         // A sheet the size of an envelope, too dark to be paper.
         photos: Mutex::new(vec![true]),
         dark: true,
+        blank: false,
     };
     let (_press, button) = Button::channel();
     let mut scanner = Scanner::new(3, Duration::from_secs(3_600)).collecting(Letters {
@@ -320,4 +342,43 @@ async fn a_dark_table_is_not_an_envelope() {
     }
     let last = scanner.last_photographed().expect("photographed");
     assert!(!last.envelope, "the dark table is not an envelope");
+}
+
+#[tokio::test]
+async fn a_photograph_of_the_table_is_not_a_page_of_the_letter() {
+    // The page is taken away and the table, which no longer looks like the one
+    // that was learnt, is photographed: nothing on it.
+    let dir = TempDir(std::env::temp_dir().join(format!("scannerd-table-{}", std::process::id())));
+    let _ = std::fs::remove_dir_all(&dir.0);
+    let spool = Spool::open(&dir.0).unwrap();
+    let uploader = Uploader::new("http://127.0.0.1:9", "token", vec![], "Post ".into()).unwrap();
+    let mut frames = vec![desk(), page(), page(), page(), page()];
+    frames.extend(std::iter::repeat_n(desk(), 3));
+    let camera = Photos {
+        frames: Mutex::new(frames),
+        // A big sheet of nothing: bright, no text.
+        photos: Mutex::new(vec![false]),
+        dark: false,
+        blank: true,
+    };
+    let (_press, button) = Button::channel();
+    let mut scanner = Scanner::new(3, Duration::from_secs(3_600)).collecting(Letters {
+        button,
+        idle: Duration::from_secs(3_600),
+        when_clear: None,
+    });
+    scanner.straighten_with(Some(scannerd::straighten::Corners::WHOLE));
+    let start = 1_000;
+    for second in 0..8 {
+        scanner
+            .turn(&camera, &spool, &uploader, start + second)
+            .await;
+    }
+    assert!(
+        spool.open_pages().unwrap().is_empty(),
+        "nothing went into the letter"
+    );
+    assert_eq!(discarded(&dir), 1, "it is kept aside, not deleted");
+    let last = scanner.last_photographed().expect("photographed");
+    assert!(!last.kept);
 }

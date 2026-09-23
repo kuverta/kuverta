@@ -18,6 +18,9 @@ use anyhow::{bail, Context, Result};
 use crate::folders::Folder;
 
 /// Paperless's matching algorithms, as its API numbers them.
+/// A tag that matches nothing by itself: a label put on by hand, not a folder
+/// letters fall into.
+const MATCH_NONE: u64 = 0;
 const MATCH_ANY_WORD: u64 = 1;
 const MATCH_AUTO: u64 = 6;
 
@@ -175,6 +178,54 @@ impl Uploader {
         })
     }
 
+    /// The shelf Paperless already has: every tag that matches letters by
+    /// itself, with its words back in the shape the setup page edits.
+    ///
+    /// For a scanner nobody told which folders there are. The desktop app's
+    /// assistant sets the folders up as tags; this is the other end of that,
+    /// so the shelf is named in one place and not in two.
+    ///
+    /// Tags that match nothing are left out: those are the labels a person
+    /// puts on by hand — the one that says which address the post belongs to,
+    /// among them — and no letter would ever be told to go in them.
+    pub async fn folders_in_paperless(&self) -> Result<Vec<Folder>> {
+        let text = self.get("/api/tags/?page_size=500").await?;
+        let page: serde_json::Value = serde_json::from_str(&text)
+            .context("paperless answered the tag list with something other than JSON")?;
+        Ok(page["results"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|tag| {
+                tag["matching_algorithm"]
+                    .as_u64()
+                    .is_some_and(|how| how != MATCH_NONE)
+            })
+            .filter_map(|tag| {
+                let name = tag["name"].as_str()?.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                // A tag marked as a person is one; the rest are folders.
+                let (name, person) = match name.strip_prefix(crate::folders::PERSON_TAG_PREFIX) {
+                    Some(who) => (who.trim(), true),
+                    None => (name, false),
+                };
+                if name.is_empty() {
+                    return None;
+                }
+                Some(Folder {
+                    name: name.to_string(),
+                    words: crate::folders::words_from_match(
+                        tag["match"].as_str().unwrap_or_default(),
+                    ),
+                    discard: false,
+                    person,
+                })
+            })
+            .collect())
+    }
+
     /// Makes each folder's tag exist in Paperless and match as the folder
     /// says: its words, or Paperless's learning when it has none. Returns
     /// each folder with its tag's id.
@@ -191,7 +242,8 @@ impl Uploader {
                 "match": words,
                 "is_insensitive": true,
             });
-            let id = match self.find_tag(&folder.name).await? {
+            let tag_name = folder.tag_name();
+            let id = match self.find_tag(&tag_name).await? {
                 Some(id) => {
                     let response = self
                         .http
@@ -210,7 +262,7 @@ impl Uploader {
                 }
                 None => {
                     let mut tag = matching.clone();
-                    tag["name"] = folder.name.clone().into();
+                    tag["name"] = tag_name.clone().into();
                     let response = self
                         .http
                         .post(format!("{}/api/tags/", self.base))

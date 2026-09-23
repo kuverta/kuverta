@@ -31,7 +31,7 @@ use u8g2_fonts::fonts;
 use u8g2_fonts::types::{FontColor, HorizontalAlignment, VerticalPosition};
 use u8g2_fonts::FontRenderer;
 
-use crate::folders::{Filing, Outcome, GIVE_UP_SECS};
+use crate::folders::{Filing, Folder, Outcome, GIVE_UP_SECS};
 use crate::picture::Picture;
 use crate::run::Photographed;
 
@@ -212,6 +212,9 @@ impl Screen {
                 },
                 ("waiting", _) => "Put a page down".into(),
                 ("settling", _) => "Hold still...".into(),
+                ("photographed", _) if facts.last.is_some_and(|last| !last.kept) => {
+                    "That was the table - not kept".into()
+                }
                 ("photographed", _) if envelope => "Envelope - now the letter in it".into(),
                 ("photographed", _) => format!("{} - next page?", screen.headline),
                 (_, headline) => headline.to_string(),
@@ -338,7 +341,9 @@ impl Screen {
                     Some(page) => format!("Page {page}"),
                     None => "Scan".to_string(),
                 };
-                Some(if quality.ok() {
+                Some(if !last.kept {
+                    (false, "Not kept: nothing on it".to_string())
+                } else if quality.ok() {
                     (true, format!("{which}: good to read"))
                 } else {
                     (false, format!("{which}: {}", quality.summary()))
@@ -366,7 +371,7 @@ impl Screen {
             let (headline, detail) = where_it_goes(&filing.outcome);
             return Self {
                 headline,
-                detail: detail.to_string(),
+                detail,
                 verdict: None,
                 footer: footer(facts, &["Ready for the next letter".to_string()]),
                 tone: tone_of(&filing.outcome),
@@ -447,16 +452,25 @@ fn tone_of(outcome: &Outcome) -> Tone {
 }
 
 /// The folder in large letters, and a line saying what to do with it.
-fn where_it_goes(outcome: &Outcome) -> (String, &'static str) {
-    match outcome {
+fn where_it_goes(outcome: &Outcome) -> (String, String) {
+    // Who the letter is for is said as well as where it goes: in a household
+    // where more than one person gets post — a spouse, someone whose papers
+    // are being kept — the folder alone does not say whose pile it joins.
+    let (folders, people): (Vec<&Folder>, Vec<&Folder>) = match outcome {
+        Outcome::Folders(all) => all.iter().partition(|folder| !folder.person),
+        _ => (Vec::new(), Vec::new()),
+    };
+    let names: Vec<&str> = people.iter().map(|who| who.name.as_str()).collect();
+    let for_whom = (!names.is_empty()).then(|| format!("For {}", names.join(" and ")));
+    let (headline, detail) = match outcome {
         Outcome::Reading => ("Sorting...".into(), "Paperless is reading the letter"),
-        Outcome::Folders(folders) if folders.iter().any(|f| f.discard) => {
+        Outcome::Folders(_) if folders.iter().any(|f| f.discard) => {
             ("Throw away".into(), "Paperless keeps a copy")
         }
-        Outcome::Folders(folders) if folders.len() == 1 => {
+        Outcome::Folders(_) if folders.len() == 1 => {
             (folders[0].name.clone(), "Put the letter in this folder")
         }
-        Outcome::Folders(folders) if !folders.is_empty() => {
+        Outcome::Folders(_) if !folders.is_empty() => {
             let names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
             (names.join(" / "), "It fits more than one folder")
         }
@@ -465,7 +479,10 @@ fn where_it_goes(outcome: &Outcome) -> (String, &'static str) {
         Outcome::Failed(_) => ("Not filed".into(), "See the setup page"),
         Outcome::TimedOut => ("Which folder?".into(), "Paperless took too long"),
         Outcome::Deleted => ("Taken back".into(), "Deleted from Paperless"),
-    }
+    };
+    // Whose it is takes the line: which folder is already the headline, and
+    // "put the letter in this folder" is what the headline means anyway.
+    (headline, for_whom.unwrap_or_else(|| detail.to_string()))
 }
 
 /// `first`, then what is waiting to be sent.

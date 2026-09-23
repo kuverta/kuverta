@@ -180,6 +180,12 @@ impl Spool {
         }
     }
 
+    /// Moves one capture — a page of the open letter, or one queued on its
+    /// own — to `discarded/`.
+    pub fn discard_capture(&self, path: &Path) -> Result<PathBuf> {
+        self.discard(path)
+    }
+
     /// Moves the newest page of the open letter to `discarded/`, and returns
     /// where it went — the display's "Undo last page".
     pub fn discard_last_page(&self) -> Result<Option<PathBuf>> {

@@ -12,7 +12,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::Result;
 use scannerd::camera::Camera;
 use scannerd::folders::{
-    folders_among, parse_env, Filings, Folder, Outcome, CHECK_EVERY_SECS, GIVE_UP_SECS,
+    folders_among, parse_env, parse_env_people, words_from_match, Filings, Folder, Outcome,
+    CHECK_EVERY_SECS, GIVE_UP_SECS,
 };
 use scannerd::run::Scanner;
 use scannerd::settings::{valid_folders, Settings};
@@ -24,6 +25,7 @@ fn folder(name: &str, words: &str, discard: bool) -> Folder {
         name: name.into(),
         words: words.into(),
         discard,
+        person: false,
     }
 }
 
@@ -157,6 +159,15 @@ fn paperless(reading: usize) -> (String, Log) {
             let reply = match request.as_str() {
                 "GET /api/tags/?name__iexact=Car" => r#"{"results":[{"id":3,"name":"Car"}]}"#.into(),
                 "GET /api/tags/?name__iexact=House" => r#"{"results":[{"id":5,"name":"House"}]}"#.into(),
+                // The shelf as Paperless holds it: `home` matches nothing —
+                // a label put on by hand — and the other two are folders.
+                "GET /api/tags/?page_size=500" => r#"{"count":3,"results":[
+                     {"id":1,"name":"home","matching_algorithm":0,"match":""},
+                     {"id":3,"name":"Car","matching_algorithm":1,"match":"Kfz \"Grüne Karte\""},
+                     {"id":8,"name":"Werbung","matching_algorithm":6,"match":""},
+                     {"id":9,"name":"Person: Erika Mustermann","matching_algorithm":1,
+                      "match":"\"Erika Mustermann\""}]}"#
+                    .into(),
                 r if r.starts_with("GET /api/tags/") => r#"{"results":[]}"#.into(),
                 "POST /api/tags/" => r#"{"id":11}"#.into(),
                 r if r.starts_with("PATCH /api/tags/") => "{}".into(),
@@ -244,6 +255,79 @@ async fn folders_tags_are_made_or_brought_up_to_date_in_paperless() {
     assert!(requests
         .iter()
         .any(|(r, _)| r == "GET /api/tags/?name__iexact=Throw%20away"));
+}
+
+#[test]
+fn a_tag_match_reads_back_as_words_with_phrases_kept_whole() {
+    // The other direction of `paperless_match`, for folders that came from
+    // Paperless rather than from the setup page.
+    assert_eq!(
+        words_from_match("Hyundai Kfz \"Allianz Versicherung\""),
+        "Hyundai, Kfz, Allianz Versicherung"
+    );
+    assert_eq!(words_from_match(""), "");
+}
+
+#[test]
+fn a_person_is_a_tag_of_their_own_and_is_looked_for_by_name() {
+    let who = Folder::person("Erika Mustermann");
+    // Marked in Paperless, so a folder and a person of the same name are two
+    // tags and not one.
+    assert_eq!(who.tag_name(), "Person: Erika Mustermann");
+    assert_eq!(Folder::named("Taxes").tag_name(), "Taxes");
+    // With no words of their own, their name is what is looked for: it is
+    // what stands on the letter.
+    assert_eq!(who.paperless_match(), "\"Erika Mustermann\"");
+    // Somebody written to in more than one way can say so.
+    let also = Folder {
+        words: "Erika Mustermann, E. Mustermann".into(),
+        ..Folder::person("Erika Mustermann")
+    };
+    assert_eq!(
+        also.paperless_match(),
+        "\"Erika Mustermann\" \"E. Mustermann\""
+    );
+    assert_eq!(
+        parse_env_people(" Erika Mustermann , Max Mustermann ,"),
+        vec![
+            Folder::person("Erika Mustermann"),
+            Folder::person("Max Mustermann"),
+        ]
+    );
+}
+
+#[test]
+fn a_person_and_a_folder_may_share_a_name_but_nobody_is_the_bin() {
+    assert!(valid_folders(&[Folder::named("Taxes"), Folder::person("Taxes")]).is_ok());
+    assert!(valid_folders(&[Folder::person("Erika"), Folder::person("erika")]).is_err());
+    assert!(valid_folders(&[Folder {
+        discard: true,
+        ..Folder::person("Erika")
+    }])
+    .is_err());
+}
+
+#[tokio::test]
+async fn the_shelf_can_be_taken_from_paperless_when_nothing_here_names_one() {
+    let (base, _log) = paperless(0);
+
+    let folders = uploader(&base).folders_in_paperless().await.unwrap();
+
+    // `home` is left out: a tag that matches nothing is never given to a
+    // letter, so it is no folder to sort into.
+    assert_eq!(
+        folders,
+        vec![
+            folder("Car", "Kfz, Grüne Karte", false),
+            folder("Werbung", "", false),
+            // Marked as a person in Paperless, so it comes back as one — with
+            // the mark taken off the name again.
+            Folder {
+                words: "Erika Mustermann".into(),
+                ..Folder::person("Erika Mustermann")
+            },
+        ]
+    );
 }
 
 #[tokio::test]

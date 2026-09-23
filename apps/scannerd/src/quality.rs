@@ -110,11 +110,55 @@ const BLOCK_CONTRAST: i16 = 30;
 /// with no text in it, whose sharpness is not judged.
 const TEXT: f32 = 0.03;
 
-/// Looks at the middle three fifths of a greyscale picture, one byte per
-/// pixel, row-major.
+/// The paper in a greyscale picture, one byte per pixel, row-major — or its
+/// middle three fifths, when no paper is made out.
+fn where_the_paper_is(luma: &[u8], width: usize, height: usize) -> (usize, usize, usize, usize) {
+    let middle = (width / 5, height / 5, width * 4 / 5, height * 4 / 5);
+    // A small copy is enough to find a sheet of paper in.
+    let step = (width.max(height) / 400).max(1);
+    let (sw, sh) = (width / step, height / step);
+    if sw < 8 || sh < 8 {
+        return middle;
+    }
+    let small: Vec<u8> = (0..sh)
+        .flat_map(|y| (0..sw).map(move |x| luma[(y * step) * width + x * step]))
+        .collect();
+    let Some((corners, lit)) = crate::locate::page_corners(&small, sw, sh) else {
+        return middle;
+    };
+    // Not the paper, whatever it is: a reflection, a stamp, the window of an
+    // envelope.
+    if lit < 0.2 {
+        return middle;
+    }
+    let xs = corners.0.map(|(x, _)| x);
+    let ys = corners.0.map(|(_, y)| y);
+    let least = |values: [f64; 4]| values.into_iter().fold(1.0, f64::min).clamp(0.0, 1.0);
+    let most = |values: [f64; 4]| values.into_iter().fold(0.0, f64::max).clamp(0.0, 1.0);
+    // A little in from its edges, where a page curls and the table shows.
+    let inset = 0.025;
+    let (left, right) = (least(xs) + inset, most(xs) - inset);
+    let (top, bottom) = (least(ys) + inset, most(ys) - inset);
+    if right - left < 0.2 || bottom - top < 0.2 {
+        return middle;
+    }
+    (
+        (left * width as f64) as usize,
+        (top * height as f64) as usize,
+        ((right * width as f64) as usize).min(width),
+        ((bottom * height as f64) as usize).min(height),
+    )
+}
+
+/// Looks at the paper in a greyscale picture, one byte per pixel, row-major.
+///
+/// The paper rather than the middle of the picture: a photograph is trimmed to
+/// the page it shows before it is judged, and the middle of a page whose
+/// letter ends half way down is blank — which read as no text and as ink of
+/// 203 against paper of 217, and called a perfectly good second page
+/// unreadable.
 pub fn assess(luma: &[u8], width: usize, height: usize) -> Quality {
-    let (left, right) = (width / 5, width * 4 / 5);
-    let (top, bottom) = (height / 5, height * 4 / 5);
+    let (left, top, right, bottom) = where_the_paper_is(luma, width, height);
     let rows = || (top..bottom).map(move |y| &luma[y * width + left..y * width + right]);
 
     let mut histogram = [0u64; 256];

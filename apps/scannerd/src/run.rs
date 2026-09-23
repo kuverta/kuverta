@@ -57,6 +57,9 @@ pub struct Photographed {
     pub thumbnail: Option<Picture>,
     /// It was an envelope: the start of a new letter.
     pub envelope: bool,
+    /// Whether it went into the letter. A photograph with nothing on it is
+    /// the table, and is put aside instead.
+    pub kept: bool,
 }
 
 /// The largest a photograph's thumbnail is, either way.
@@ -644,8 +647,39 @@ impl Scanner {
                                 Some(page) => format!("photographed page {page} of this letter"),
                                 None => "photographed a page".to_string(),
                             };
-                            self.event(now, true, text);
-                            if let Some(quality) = quality.as_ref().filter(|q| !q.ok() && !envelope)
+                            // Nothing on it: the table, photographed because
+                            // it no longer looks like the one that was learnt
+                            // — a page taken away, the light changed, the
+                            // paper under the camera moved. It is not a page
+                            // of the letter, so it is not kept, and the view
+                            // is learnt as the table so the next one is not
+                            // taken either.
+                            let nothing_on_it = quality.as_ref().is_some_and(|quality| {
+                                quality.problems.iter().any(|problem| {
+                                    matches!(problem, Problem::NoText | Problem::NoPage)
+                                })
+                            });
+                            let kept = !nothing_on_it;
+                            if nothing_on_it {
+                                if let Err(err) = spool.discard_capture(&path) {
+                                    tracing::warn!(%err, "could not put the table's photograph aside");
+                                }
+                                if let Some(frame) = self.last_frame.clone() {
+                                    self.detector.learn_empty(&frame);
+                                    self.trusted_baseline = true;
+                                    self.save_baseline();
+                                }
+                                self.event(
+                                    now,
+                                    false,
+                                    "nothing on it: that was the table, not a page — not kept, and \
+                                     the table learnt again",
+                                );
+                            } else {
+                                self.event(now, true, text);
+                            }
+                            if let Some(quality) =
+                                quality.as_ref().filter(|q| !q.ok() && !envelope && kept)
                             {
                                 let which = match page {
                                     Some(page) => format!("page {page}"),
@@ -663,12 +697,14 @@ impl Scanner {
                                 quality,
                                 thumbnail,
                                 envelope,
+                                kept,
                             });
                             // A single page goes straight away: it is the
                             // letter someone is standing next to. A page of a
                             // letter waits for the rest — unless an envelope
-                            // just finished the one before.
-                            if !collecting || sent_before {
+                            // just finished the one before. Nothing is sent
+                            // for a photograph of the table.
+                            if (!collecting && kept) || sent_before {
                                 self.drain_now(spool, uploader, now).await;
                             }
                             return Turn::Captured(path);

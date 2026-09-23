@@ -163,6 +163,19 @@ struct Args {
     #[arg(long, env = "SCANNERD_FOLDERS")]
     folders: Option<String>,
 
+    /// The people in the household who get post, so the display can say who a
+    /// letter is for as well as which folder it goes in:
+    /// `Erika Mustermann,Max Mustermann`. Each is a Paperless tag marked as a
+    /// person, matched on their name; the setup page can give someone more
+    /// names than one.
+    #[arg(long, env = "SCANNERD_PEOPLE")]
+    people: Option<String>,
+
+    /// Which folder is the bin, when the folders come from Paperless rather
+    /// than from `--folders`: the name of one of them, e.g. `Werbung`.
+    #[arg(long, env = "SCANNERD_BIN_FOLDER")]
+    bin_folder: Option<String>,
+
     /// The exposure to start from, in stops from the camera's own choice —
     /// negative is darker. scannerd learns it from the photographs and keeps
     /// what it learnt, which wins over this.
@@ -213,6 +226,8 @@ async fn main() -> Result<()> {
 
     let started_folders = folders::parse_env(args.folders.as_deref().unwrap_or_default());
     scannerd::settings::valid_folders(&started_folders).context("SCANNERD_FOLDERS")?;
+    let started_people = folders::parse_env_people(args.people.as_deref().unwrap_or_default());
+    scannerd::settings::valid_folders(&started_people).context("SCANNERD_PEOPLE")?;
 
     let spool = Spool::open(&args.spool)?;
     let mut settings = Settings::load(spool.dir())?;
@@ -234,7 +249,19 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    scanner.file_into(folders_for(&args, &settings));
+    // Nobody may have said which folders there are — the desktop app's
+    // assistant sets them up in Paperless, and the scanner is the other thing
+    // that reads them.
+    let mut adopted = if nothing_says_which_folders(&args, &settings) {
+        adopt_folders(&args, &uploader).await
+    } else {
+        Vec::new()
+    };
+    let mut adopted_at = now();
+    if !adopted.is_empty() {
+        tracing::info!(count = adopted.len(), "folders taken from Paperless");
+    }
+    scanner.file_into(folders_for(&args, &settings, &adopted));
     scanner.expose_at(settings.ev.or(args.ev).unwrap_or(0.0));
 
     let mut view = view_for(&args, &settings)?;
@@ -328,6 +355,26 @@ async fn main() -> Result<()> {
     loop {
         tokio::time::sleep(interval).await;
         let now = now();
+
+        // Paperless may not have been up when the shelf was asked for — it
+        // often is not, a minute after a power cut that took both machines
+        // down. Asked for again now and then, until there is one.
+        if adopted.is_empty()
+            && nothing_says_which_folders(&args, &settings)
+            && now.saturating_sub(adopted_at) >= ADOPT_FOLDERS_EVERY_SECS
+        {
+            adopted_at = now;
+            adopted = adopt_folders(&args, &uploader).await;
+            if !adopted.is_empty() {
+                tracing::info!(count = adopted.len(), "folders taken from Paperless");
+                hub.event(
+                    now,
+                    true,
+                    format!("{} folders taken from Paperless", adopted.len()),
+                );
+                scanner.file_into(folders_for(&args, &settings, &adopted));
+            }
+        }
 
         // Between turns, never during one: the loop owns the camera.
         for command in hub.take_commands() {
@@ -462,7 +509,9 @@ async fn main() -> Result<()> {
                 }
                 Command::CheckPaperless => {
                     let (ok, text) = match uploader.check().await {
-                        Ok(text) if folders_for(&args, &settings).is_empty() => (true, text),
+                        Ok(text) if folders_for(&args, &settings, &adopted).is_empty() => {
+                            (true, text)
+                        }
                         // The folders' tags are made or brought up to date
                         // now, rather than when the next letter is sent.
                         Ok(text) => match scanner.sync_folders(&uploader).await {
@@ -489,8 +538,15 @@ async fn main() -> Result<()> {
                         Err(err) => hub.event(now, false, format!("{err:#}")),
                     }
                     // Set up again before the next letter: the words, or the
-                    // Paperless, may be new.
-                    scanner.file_into(folders_for(&args, &settings));
+                    // Paperless, may be new — including its shelf, when the
+                    // folders are the ones Paperless holds.
+                    if nothing_says_which_folders(&args, &settings) {
+                        adopted = adopt_folders(&args, &uploader).await;
+                        adopted_at = now;
+                    } else {
+                        adopted.clear();
+                    }
+                    scanner.file_into(folders_for(&args, &settings, &adopted));
                     let newer = match view_for(&args, &settings) {
                         Ok(newer) => newer,
                         Err(err) => {
@@ -588,7 +644,7 @@ async fn main() -> Result<()> {
                 rotate: view.rotate,
                 token_set: settings.token.is_some()
                     || args.token.as_deref().is_some_and(|t| !t.is_empty()),
-                folders: folders_for(&args, &settings),
+                folders: folders_for(&args, &settings, &adopted),
                 ev: scanner.exposure(),
             };
             publish(&hub, &mut scanner, &spool, view, &turn);
@@ -606,11 +662,56 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
         .context("the crop, corners or turn are not usable")
 }
 
-/// The folders in force: the page's, then the env file's.
-fn folders_for(args: &Args, settings: &Settings) -> Vec<Folder> {
-    settings.effective_folders(&folders::parse_env(
-        args.folders.as_deref().unwrap_or_default(),
-    ))
+/// How often a scanner with no folders of its own asks Paperless for the
+/// shelf again.
+const ADOPT_FOLDERS_EVERY_SECS: u64 = 300;
+
+/// The folders in force: the page's, then the env file's, then the shelf
+/// Paperless already has.
+///
+/// An empty list saved on the page is a choice — follow letters into no
+/// folder at all — and is not overruled by what Paperless holds; only a
+/// scanner that was never told anything adopts.
+fn folders_for(args: &Args, settings: &Settings, adopted: &[Folder]) -> Vec<Folder> {
+    let mut started = folders::parse_env(args.folders.as_deref().unwrap_or_default());
+    started.extend(folders::parse_env_people(
+        args.people.as_deref().unwrap_or_default(),
+    ));
+    let folders = settings.effective_folders(&started);
+    if folders.is_empty() && nothing_says_which_folders(args, settings) {
+        return adopted.to_vec();
+    }
+    folders
+}
+
+/// Whether neither the env file nor the setup page names any folder.
+fn nothing_says_which_folders(args: &Args, settings: &Settings) -> bool {
+    settings.folders.is_none()
+        && folders::parse_env(args.folders.as_deref().unwrap_or_default()).is_empty()
+        && folders::parse_env_people(args.people.as_deref().unwrap_or_default()).is_empty()
+}
+
+/// The shelf Paperless already has, for a scanner nobody told which folders
+/// there are — the desktop app's assistant sets them up there. Which of them
+/// is the bin is the one thing a tag cannot say, so `--bin-folder` names it.
+///
+/// A Paperless that cannot be reached is not an error worth stopping for:
+/// this is tried again, and until then letters are filed without a folder.
+async fn adopt_folders(args: &Args, uploader: &Uploader) -> Vec<Folder> {
+    let bin = args.bin_folder.as_deref().unwrap_or_default().trim();
+    match uploader.folders_in_paperless().await {
+        Ok(folders) => folders
+            .into_iter()
+            .map(|folder| Folder {
+                discard: !bin.is_empty() && folder.name.eq_ignore_ascii_case(bin),
+                ..folder
+            })
+            .collect(),
+        Err(err) => {
+            tracing::warn!(%err, "could not read the folders from Paperless");
+            Vec::new()
+        }
+    }
 }
 
 /// The uploader for the settings in force: the page's, then the env file's.
