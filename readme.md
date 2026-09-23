@@ -70,7 +70,8 @@ in its header.
   alike messages is picked in the list
 - **Cleanup** — a count of bulk mail in the Inbox, unsubscribing (RFC 8058 one
   click, by mail to the sender's own domain, or a page opened in the browser),
-  and an offer to delete a message's look-alikes with it
+  and an offer to delete a message's look-alikes with it; deleting a newsletter
+  offers to unsubscribe from it there and then
 - **OpenPGP** — sign, encrypt, decrypt and verify PGP/MIME and inline PGP
 - **Needs attention** — an urgency agent ranks the Inbox by how soon each
   message needs you: facts it checks (have you answered, do you write to them,

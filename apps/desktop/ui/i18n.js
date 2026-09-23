@@ -712,6 +712,39 @@ const GERMAN = {
   "won't ask again — it can be turned back on in Settings → General":
     "wird nicht wieder gefragt — in Einstellungen → Allgemein lässt es sich wieder einschalten",
 
+  // -- the offer to unsubscribe, after deleting a newsletter ----------------
+  // The sheet's own markup, before it is filled in.
+  "Stop mail from this sender?": "Keine Post mehr von diesem Absender?",
+  "Move their other messages to Trash too":
+    "Deren übrige Nachrichten auch in den Papierkorb",
+  "Only unsubscribe from senders you recognise. Real spam takes an unsubscribe as proof that somebody reads it — delete that instead.":
+    "Bestellen Sie nur bei Absendern ab, die Sie kennen. Echter Spam nimmt eine Abbestellung als Beweis, dass jemand mitliest — löschen Sie den lieber.",
+  "No, keep them": "Nein, behalten",
+  "After deleting a newsletter, offer to unsubscribe from it":
+    "Nach dem Löschen eines Newsletters anbieten, ihn abzubestellen",
+  "Deleting one is the moment you decided you did not want it. When the message says how to be taken off the list, kuverta offers to do it there and then — one click where the sender supports it, a mail where they do not, and their page opened where nothing else works.":
+    "Der Moment, in dem Sie ihn löschen, ist der Moment der Entscheidung. Wenn die Nachricht sagt, wie man von der Liste kommt, bietet kuverta es gleich dort an — ein Klick, wo der Absender das unterstützt, sonst eine Mail, und andernfalls deren Seite im Browser.",
+
+  "Stop mail from {sender}?": "Keine Post mehr von {sender}?",
+  "That one was a newsletter. {way}": "Das war ein Newsletter. {way}",
+  "kuverta tells them once, and that is all.": "kuverta sagt einmal Bescheid, mehr ist nicht nötig.",
+  "kuverta sends them a mail asking to be taken off.":
+    "kuverta schickt eine Mail mit der Bitte, Sie auszutragen.",
+  "It opens their page in the browser; the last step is yours.":
+    "Es öffnet deren Seite im Browser; den letzten Schritt machen Sie.",
+  "Move the one other message from them to Trash too":
+    "Die eine weitere Nachricht von ihnen auch in den Papierkorb",
+  "Move their other {count} messages to Trash too":
+    "Die {count} weiteren Nachrichten von ihnen auch in den Papierkorb",
+  "Open their page": "Deren Seite öffnen",
+  Unsubscribe: "Abbestellen",
+  "Unsubscribing from {sender}…": "{sender} wird abbestellt…",
+  "Their page is open in the browser.": "Deren Seite ist im Browser offen.",
+  "Unsubscribed from {sender}.": "{sender} abbestellt.",
+  "{sender} could not be unsubscribed from: {detail}":
+    "{sender} konnte nicht abbestellt werden: {detail}",
+  "{count} more moved to Trash.": "{count} weitere in den Papierkorb verschoben.",
+
   // -- attachments ----------------------------------------------------------
   "Choose a file…": "Datei wählen…",
   "{name} — {type}": "{name} — {type}",

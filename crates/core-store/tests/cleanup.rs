@@ -331,6 +331,37 @@ fn senders_to_unsubscribe_from_are_grouped_newest_link_first() {
 }
 
 #[test]
+fn one_message_says_what_there_is_to_unsubscribe_from_and_how_much_of_it() {
+    // What the offer made when a newsletter is deleted is built from: this
+    // message's own link, and how much of that sender's mail is here — so the
+    // offer can say what else goes with it.
+    let (store, account, _, _) = mailbox();
+    let senders = store.unsubscribe_senders(account).unwrap();
+    let newest = senders[0].latest_message;
+
+    let found = store
+        .unsubscribe_for_message(account, newest)
+        .unwrap()
+        .expect("a newsletter offers something");
+    assert_eq!(found.key, "news@shop.example");
+    assert_eq!(found.list_unsubscribe, "<https://shop.example/u/2>");
+    assert_eq!(found.messages, 2, "the sender's whole run, not this one");
+    assert_eq!(found.unread, 1);
+
+    // The message a person wrote offers nothing, which is what keeps the
+    // question from being asked over an ordinary delete.
+    let personal = store
+        .unsubscribe_senders(account)
+        .unwrap()
+        .iter()
+        .flat_map(|sender| store.messages_from_sender(account, &sender.key).unwrap())
+        .count();
+    assert_eq!(personal, 3, "the three that carry the header");
+    let none = store.unsubscribe_for_message(account, 999_999).unwrap();
+    assert!(none.is_none(), "a message that is not there offers nothing");
+}
+
+#[test]
 fn the_cleanup_count_is_bulk_mail_still_in_the_inbox() {
     let (store, account, _, _) = mailbox();
     // Two marketing mails in the Inbox; the newsletter is archived already,

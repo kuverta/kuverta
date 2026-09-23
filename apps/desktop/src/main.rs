@@ -1414,6 +1414,21 @@ fn unsubscribe_senders(
         .map_err(fail)
 }
 
+/// What one message offers to unsubscribe from, for the offer made when it is
+/// deleted. `None` for the ordinary message that is nobody's newsletter.
+#[tauri::command]
+fn unsubscribe_for_message(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+) -> Result<Option<core_rpc::UnsubscribeSenderView>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .unsubscribe_for_message(account, id)
+        .map_err(fail)
+}
+
 /// Reads headers back out of mail synced before they were kept; returns how
 /// many messages are left. Its own connection, so the list stays usable.
 #[tauri::command]
@@ -2000,6 +2015,7 @@ fn main() {
             import_smart_mailboxes,
             cleanup_counts,
             unsubscribe_senders,
+            unsubscribe_for_message,
             backfill_headers,
             unsubscribe,
             unsubscribe_opened,

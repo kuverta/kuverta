@@ -563,6 +563,8 @@
             </section>
             <section class="card">
               <h3>Deleting mail</h3>
+              <label class="check"><input type="checkbox" id="pref-unsubscribe"> After deleting a newsletter, offer to unsubscribe from it</label>
+              <p class="hint">Deleting one is the moment you decided you did not want it. When the message says how to be taken off the list, kuverta offers to do it there and then — one click where the sender supports it, a mail where they do not, and their page opened where nothing else works.</p>
               <label class="check"><input type="checkbox" id="pref-similar"> After deleting a message, offer to delete messages like it too</label>
               <p class="hint">Spam and bulk mail come in runs. When a message you delete has look-alikes — the same sender and subject pattern, the same list, or the same text from different senders — kuverta shows them and lets you delete them together or gather them in a smart mailbox.</p>
             </section>
@@ -772,6 +774,29 @@
     </div>
   </div>
 
+  <!--
+    After deleting a newsletter: the offer to be taken off the list it came
+    from. Filled by unsubscribe-offer.js.
+  -->
+  <div id="unsub-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel">
+      <div class="dialog-head">
+        <h2 id="unsub-title">Stop mail from this sender?</h2>
+        <p class="hint" id="unsub-sub"></p>
+      </div>
+      <div class="dialog-body">
+        <label class="check"><input type="checkbox" id="unsub-also"> <span id="unsub-also-label">Move their other messages to Trash too</span></label>
+        <p class="hint">Only unsubscribe from senders you recognise. Real spam takes an unsubscribe as proof that somebody reads it — delete that instead.</p>
+      </div>
+      <div class="dialog-foot">
+        <label class="check hint"><input type="checkbox" id="unsub-never"> Don't ask again</label>
+        <span class="spacer"></span>
+        <button type="button" id="unsub-keep">No, keep them</button>
+        <button type="button" id="unsub-go" class="primary">Unsubscribe</button>
+      </div>
+    </div>
+  </div>
+
   <!-- The smart mailbox editor: a name, rules, and what they select so far. -->
   <!-- One attachment, shown here when the window can — an image, a PDF, text —
        and otherwise described, with Save and Open either way. -->
@@ -924,6 +949,7 @@
   <script src="outbox.js"></script>
   <script src="smart.js"></script>
   <script src="similar.js"></script>
+  <script src="unsubscribe-offer.js"></script>
   <script src="diagnostics.js"></script>
   <script src="encryption.js"></script>
   <script src="attachments.js"></script>

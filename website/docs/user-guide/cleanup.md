@@ -94,3 +94,18 @@ still bring them back while they wait to be sent.
 The first time you open Unsubscribe, kuverta reads the unsubscribe headers of
 mail that was synced before it kept them. On a large mailbox that takes a moment
 and says how far it has got.
+
+### Unsubscribing where you decided to
+
+You do not have to come here for it. Deleting a single message that says how to
+be taken off its list — a newsletter, an advert — brings up the offer straight
+away: **Stop mail from Acme?**, with what it will do in one line (a click, a
+mail, or their page opened) and a tick to move the rest of that sender's mail to
+the Trash with it. Deleting one is the moment you decided you did not want it,
+and this is that moment.
+
+The offer is only made for a sender you have not unsubscribed from before, and
+never for a message that offers no way off a list — an ordinary delete is
+followed by the [look-alikes](similar.md) as before, and never by both. Turn it
+off in **Settings → General → Deleting mail**, or with **Don't ask again** on
+the sheet itself.
