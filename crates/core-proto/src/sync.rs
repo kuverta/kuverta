@@ -199,9 +199,14 @@ async fn sync_folder(
         }
     }
 
+    // How much of this folder's history an earlier pass never came down to.
+    // A folder that still owes some has work to do whether or not anything on
+    // the server has changed, so it is read before the skip below.
+    let owed = cached.as_ref().and_then(|f| f.backfill_uid);
+
     // Nothing in this folder has changed since the last pass. This is the
     // common case and the whole point of asking for CONDSTORE.
-    if !first_pass {
+    if !first_pass && owed.is_none() {
         if let (Some(known), Some(current)) = (known_modseq, state.highest_modseq) {
             if known == current {
                 tracing::debug!(folder = %remote.name, modseq = known, "unchanged, skipping");
@@ -211,7 +216,7 @@ async fn sync_folder(
         }
     }
 
-    fetch_new(client, ctx, folder_id, &state, report, at, progress).await?;
+    fetch_new(client, ctx, folder_id, &state, owed, report, at, progress).await?;
 
     // Flag and expunge reconciliation only make sense against something already
     // cached; on a first pass the fetch above has just recorded current state.
@@ -230,6 +235,10 @@ async fn sync_folder(
     Ok(())
 }
 
+// The folder, what the server says about it, what it owes, and the three
+// pieces of reporting every step here writes to. Splitting them into a struct
+// would only move the same list somewhere else.
+#[allow(clippy::too_many_arguments)]
 async fn fetch_new(
     client: &mut ImapClient,
     ctx: &Context<'_>,
@@ -237,40 +246,105 @@ async fn fetch_new(
     // Passed in rather than re-examined: the caller has already opened the
     // folder, and a second EXAMINE is a needless round trip.
     state: &crate::client::FolderState,
+    // UIDs 1 up to this one were left behind by an earlier pass down the
+    // folder. `None` when the folder owes nothing.
+    owed: Option<u32>,
     report: &mut SyncReport,
     at: &mut SyncProgress,
     progress: &mut dyn FnMut(SyncProgress),
 ) -> Result<(), ProtoError> {
     let store = ctx.store;
-    let after = store.max_uid(folder_id)?;
-    let start = after.map_or(1, |uid| uid.saturating_add(1));
+    let held = store.max_uid(folder_id)?;
+    let start = held.map_or(1, |uid| uid.saturating_add(1));
 
-    // Nothing new. Checked against UIDNEXT rather than by asking, so an
-    // unchanged folder costs no FETCH at all.
-    if let Some(uid_next) = state.uid_next {
-        if start >= uid_next {
-            return Ok(());
-        }
-    } else if state.exists == 0 {
+    // Nothing above what is held. Checked against UIDNEXT rather than by
+    // asking, so an unchanged folder costs no FETCH at all.
+    let nothing_new = match state.uid_next {
+        Some(uid_next) => start >= uid_next,
+        None => state.exists == 0,
+    };
+    if nothing_new && owed.is_none() {
         return Ok(());
     }
 
     // Sizes first, then bodies in batches. The extra round trip buys a bounded
     // memory profile: without it the first sync of a real mailbox holds every
     // message at once. See `plan_batches`.
-    let sizes = client.uid_sizes(start).await?;
-    at.messages_total = sizes.len();
+    let fresh = if nothing_new {
+        Vec::new()
+    } else {
+        client.uid_sizes(start).await?
+    };
+    let behind = match owed {
+        Some(hi) => client.uid_sizes_range(1, hi).await?,
+        None => Vec::new(),
+    };
+    at.messages_total = fresh.len() + behind.len();
     progress(at.clone());
-    for batch in crate::client::plan_batches(&sizes) {
-        for message in client.fetch_uids(&batch).await? {
-            store_message(ctx, folder_id, message, report)?;
-            at.messages_done += 1;
+
+    // A folder nothing is held for is the whole mailbox, and the order it
+    // arrives in is the difference between a window showing this morning's
+    // mail after a few seconds and one showing mail from years ago for an
+    // hour. So the first pass walks down from the newest, writing after every
+    // batch how far it has come — the hole underneath it is then known, and
+    // filled by the passes after it.
+    //
+    // Mail above a folder already held is fetched upwards, as it always was.
+    // There is rarely more than a batch of it, and a pass that only ever adds
+    // to the top can be interrupted anywhere without leaving a hole at all.
+    let walking_down = held.is_none();
+    let mut plan = crate::client::plan_batches(&fresh);
+    if walking_down {
+        plan.reverse();
+    }
+    for batch in plan {
+        fetch_batch(client, ctx, folder_id, &batch, report, at, progress).await?;
+        if walking_down {
+            store.set_folder_backfill(folder_id, still_owed(&batch))?;
         }
-        // Once per batch, not per message: a batch is up to 200 messages or
-        // 16 MB, which is often enough to watch and rare enough to be free.
-        progress(at.clone());
     }
 
+    // What an earlier pass did not reach, newest first for the same reason.
+    for batch in crate::client::plan_batches(&behind).into_iter().rev() {
+        fetch_batch(client, ctx, folder_id, &batch, report, at, progress).await?;
+        store.set_folder_backfill(folder_id, still_owed(&batch))?;
+    }
+
+    // The walk reached the bottom of the folder, so nothing is owed. Said
+    // again here for the batch that ended on UID 1 and for an owed range the
+    // server no longer has any of.
+    if walking_down || owed.is_some() {
+        store.set_folder_backfill(folder_id, None)?;
+    }
+
+    Ok(())
+}
+
+/// What is left underneath a batch that has just been fetched.
+fn still_owed(batch: &[u32]) -> Option<u32> {
+    batch
+        .first()
+        .and_then(|lowest| lowest.checked_sub(1))
+        .filter(|uid| *uid > 0)
+}
+
+/// One batch, fetched and filed.
+async fn fetch_batch(
+    client: &mut ImapClient,
+    ctx: &Context<'_>,
+    folder_id: FolderId,
+    batch: &[u32],
+    report: &mut SyncReport,
+    at: &mut SyncProgress,
+    progress: &mut dyn FnMut(SyncProgress),
+) -> Result<(), ProtoError> {
+    for message in client.fetch_uids(batch).await? {
+        store_message(ctx, folder_id, message, report)?;
+        at.messages_done += 1;
+    }
+    // Once per batch, not per message: a batch is up to 200 messages or
+    // 16 MB, which is often enough to watch and rare enough to be free.
+    progress(at.clone());
     Ok(())
 }
 

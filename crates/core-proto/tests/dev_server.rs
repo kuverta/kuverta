@@ -388,6 +388,131 @@ async fn an_unchanged_folder_is_skipped_entirely() {
 }
 
 #[tokio::test]
+async fn a_first_sync_fetches_the_newest_mail_first() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "newest-first@kuverta.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    // One more than a batch holds: the order a folder is fetched in only shows
+    // where there is more than one batch to put in order.
+    let count = core_proto::client::MAX_BATCH_MESSAGES + 1;
+    for i in 0..count {
+        mutate::append(
+            &mut writer,
+            &format!("order-{i}@example.com"),
+            &format!("mail {i}"),
+        )
+        .await;
+    }
+    let on_server = mutate::uids(&mut writer).await;
+    assert_eq!(on_server.len(), count);
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+
+    // What the folder held the first time a batch landed, which on a mailbox
+    // of any size is what someone stares at while the rest of it arrives.
+    let mut first_batch: Option<Vec<u32>> = None;
+    let report = {
+        let store = &store;
+        let mut watch = |at: core_proto::SyncProgress| {
+            if first_batch.is_some()
+                || at.messages_done == 0
+                || at.messages_done >= at.messages_total
+            {
+                return;
+            }
+            let inbox = inbox_of(store, account);
+            first_batch = Some(store.folder_uids(inbox).unwrap());
+        };
+        core_proto::sync_account_reporting(&mut client, store, &blobs, account, &mut watch)
+            .await
+            .unwrap()
+    };
+    assert_eq!(report.inserted, count, "{report:?}");
+
+    let landed = first_batch.expect("a batch landed before the sync finished");
+    let newest = *on_server.last().unwrap();
+    let oldest = *on_server.first().unwrap();
+    assert!(
+        landed.contains(&newest),
+        "the newest message was not in the first batch to land: {landed:?}"
+    );
+    assert!(
+        !landed.contains(&oldest),
+        "the oldest message was fetched first, which is the wait this avoids"
+    );
+
+    // And the walk reached the bottom, so the folder owes nothing.
+    let inbox = inbox_of(&store, account);
+    assert_eq!(store.folder_uids(inbox).unwrap().len(), count);
+    assert_eq!(store.folder(inbox).unwrap().unwrap().backfill_uid, None);
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+#[tokio::test]
+async fn a_sync_interrupted_on_the_way_down_fills_the_hole_it_left() {
+    if !dev_server_available() {
+        return;
+    }
+    let user = "backfill-test@kuverta.test";
+
+    let mut writer = mutate::login(user).await;
+    mutate::reset_inbox(&mut writer).await;
+    for i in 0..5 {
+        mutate::append(
+            &mut writer,
+            &format!("hole-{i}@example.com"),
+            &format!("mail {i}"),
+        )
+        .await;
+    }
+    let on_server = mutate::uids(&mut writer).await;
+
+    let (store, account, blobs, _dir, mut client) = isolated(user).await;
+    core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    let inbox = inbox_of(&store, account);
+    assert_eq!(store.folder_uids(inbox).unwrap(), on_server);
+
+    // What a closed laptop leaves behind: the newest held, the oldest not
+    // fetched yet, and the folder remembering how far down the walk came.
+    store.remove_locations(inbox, &on_server[..3]).unwrap();
+    store
+        .set_folder_backfill(inbox, Some(on_server[2]))
+        .unwrap();
+
+    // Nothing has changed on the server, so CONDSTORE would have this folder
+    // skipped — but it still owes three messages, and a skipped folder would
+    // owe them for ever.
+    let report = core_proto::sync_account(&mut client, &store, &blobs, account)
+        .await
+        .unwrap();
+    assert!(report.folders_synced >= 1, "{report:?}");
+    assert_eq!(store.folder_uids(inbox).unwrap(), on_server);
+    assert_eq!(store.folder(inbox).unwrap().unwrap().backfill_uid, None);
+
+    client.logout().await.unwrap();
+    writer.logout().await.ok();
+}
+
+/// The INBOX of an account, which every test here syncs into.
+fn inbox_of(store: &Store, account: i64) -> i64 {
+    store
+        .folders(account)
+        .unwrap()
+        .into_iter()
+        .find(|folder| folder.name.eq_ignore_ascii_case("INBOX"))
+        .expect("INBOX")
+        .id
+}
+
+#[tokio::test]
 async fn a_flag_set_on_the_server_reaches_the_store() {
     if !dev_server_available() {
         return;

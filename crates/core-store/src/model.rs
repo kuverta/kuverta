@@ -156,6 +156,14 @@ pub struct Folder {
     pub uid_validity: Option<u32>,
     pub uid_next: Option<u32>,
     pub highest_modseq: Option<u64>,
+    /// How far down the folder the walk has come: UIDs 1 to this one have not
+    /// been fetched yet. `None` when the folder owes nothing.
+    ///
+    /// A first sync goes newest first, so the mail that arrived this morning
+    /// is on screen while the rest of the history is still coming. That leaves
+    /// a hole underneath it, and this is what remembers it across a sync that
+    /// was interrupted.
+    pub backfill_uid: Option<u32>,
 }
 
 /// A message as handed to the store by the sync layer.

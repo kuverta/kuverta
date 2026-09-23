@@ -40,7 +40,9 @@ in its header.
 ## What works today
 
 - **Sync** — IMAP into SQLite + FTS5, incremental via `HIGHESTMODSEQ`, flag
-  changes via `CHANGEDSINCE`, server-side deletions reconciled
+  changes via `CHANGEDSINCE`, server-side deletions reconciled; a first pass
+  walks each folder newest first, so this morning's mail is on screen while the
+  history is still coming ([why](docs/decisions.md#27-the-first-sync-goes-newest-first))
 - **Message identity** — one message in several folders is stored once with
   several locations, which is what Gmail's labels-as-folders needs
 - **Send** — compose, reply, reply-all, forward, SMTP submission, and a copy

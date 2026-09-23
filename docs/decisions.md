@@ -1636,3 +1636,40 @@ post, then mail accounts, each skippable.
   errors (its disk was full) before the web server started.
 - **Downloading a model through the window.** Both default models were already
   present here.
+
+## 27. The first sync goes newest first
+
+A first sync fetched each folder from UID 1 upwards, which is the order the
+server hands them over in and the wrong order to read them in: on a mailbox of
+any size the window sat for an hour showing mail from years ago, and the mail
+that arrived this morning was the last thing to land. Reported as "it only
+shows messages up to Thursday" — which it did, because Thursday was as far up
+as it had got.
+
+- **Only a folder with nothing held is walked downwards.** Mail above what a
+  folder already holds is still fetched upwards: there is rarely more than a
+  batch of it, and a pass that only ever adds to the top can be interrupted
+  anywhere without leaving a hole.
+- **A walk downwards leaves a hole, so the hole is written down.** `folder.
+  backfill_uid` is the UID the walk has come down to; everything below it is
+  owed. It is written after every batch, not at the end of the folder, because
+  the case it exists for is a laptop closed mid-sync: the next pass has to
+  resume inside the hole, and `MAX(uid)` — which is what says where to fetch
+  from — would by then be pointing at the top of the mailbox, above it.
+- **A folder that owes history is never skipped.** CONDSTORE skips a folder
+  whose `HIGHESTMODSEQ` has not moved, which without this guard would be every
+  folder on the sync after an interrupted one: the backfill would be owed for
+  ever.
+- **Not: fetching the newest and leaving the rest.** A mail client that holds
+  the last month and says nothing about the rest is a worse thing to search
+  than one that is still filling. The whole folder is still fetched; only the
+  order changed.
+
+### Verified
+
+Against the dev Dovecot, in `crates/core-proto/tests/dev_server.rs`: a folder
+of 201 messages — one more than a batch holds — where the first batch to reach
+the store holds the newest message and not the oldest; and a store wound into
+the state an interrupted walk leaves, which the next sync fills without being
+asked, ending with nothing owed. Both fail if the walk is put back the way it
+was.
