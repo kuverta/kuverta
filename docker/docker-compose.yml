@@ -114,7 +114,15 @@ services:
       # depends on it: a photograph of a letter on a desk is never square, and
       # straightening it is ocrmypdf's job here rather than the Pi's. The
       # capture daemon crops and uploads; upstream does the rest.
-      PAPERLESS_OCR_DESKEW: "true"
+      # scannerd straightens every page before it is sent, so Paperless's own
+      # deskew and cleaning only cost time — and it writes a plain PDF, not
+      # a PDF/A. Timed on a two-page letter: 13.7–15.2 s to read before,
+      # 9.8–10.9 s after, which is most of the wait for the display to say
+      # which folder a letter goes in. Rotation stays: it saves a page
+      # photographed the wrong way up.
+      PAPERLESS_OCR_DESKEW: "false"
+      PAPERLESS_OCR_CLEAN: "none"
+      PAPERLESS_OCR_OUTPUT_TYPE: "pdf"
       PAPERLESS_OCR_ROTATE_PAGES: "true"
       PAPERLESS_TIME_ZONE: Europe/Berlin
       PAPERLESS_FILENAME_FORMAT: "{created_year}/{correspondent}/{title}"
