@@ -1429,7 +1429,11 @@ async function trash() {
   const moved = await act("move_to", { target: state.trash }, `moved to ${state.trash}`);
   // Only after a delete that happened: "more like the one you deleted" about
   // one that is still there would be a question about nothing.
-  if (gone.length === 1 && moved === 1) offerSimilar(gone[0]);
+  if (gone.length !== 1 || moved !== 1) return;
+  // A newsletter is asked about first, and instead: being taken off the list
+  // is the better answer to "I do not want this", and two sheets one after
+  // the other over one delete is one too many.
+  if (!(await offerUnsubscribe(gone[0]))) offerSimilar(gone[0]);
 }
 
 async function toggleRead() {
