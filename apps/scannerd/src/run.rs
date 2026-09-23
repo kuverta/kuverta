@@ -13,15 +13,21 @@ use anyhow::{Context, Result};
 use crate::button::Button;
 use crate::camera::Camera;
 use crate::detect::{Detector, State, Step, Thresholds};
+use crate::folders::{folders_among, Filing, Filings, Folder, Outcome};
 use crate::hub::Event;
+use crate::picture::Picture;
+use crate::quality::{assess, better, exposure, read_luma, Exposure, Problem, Quality};
 use crate::spool::Spool;
-use crate::straighten::{straighten, Corners};
-use crate::upload::Uploader;
+use crate::straighten::{straighten_trimmed, Corners};
+use crate::upload::{Task, Uploader};
 
 /// What one turn did.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Turn {
     Watching,
+    /// Not watching: scanning is stopped on the display. Letters still close
+    /// and the spool is still sent.
+    Paused,
     Captured(PathBuf),
     /// The camera gave no frame. The spool was still looked at.
     NoFrame,
@@ -33,7 +39,37 @@ pub struct Letters {
     /// A letter nobody closed is closed this long after its last page, so a
     /// forgotten press delays post rather than keeping it forever.
     pub idle: Duration,
+    /// A letter whose last page was taken away is finished once the table has
+    /// been empty this long: the next page is laid down sooner, or on top.
+    /// `None`: only the button, the page or `idle` finish one.
+    pub when_clear: Option<Duration>,
 }
+
+/// The last photograph taken, and what the check made of it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Photographed {
+    pub at: u64,
+    /// Its page in the open letter, when pages are collected.
+    pub page: Option<usize>,
+    /// `None` when the photograph could not be read to judge it.
+    pub quality: Option<Quality>,
+    /// The page small, for the LCD. From the same reading as the judgement.
+    pub thumbnail: Option<Picture>,
+    /// It was an envelope: the start of a new letter.
+    pub envelope: bool,
+}
+
+/// The largest a photograph's thumbnail is, either way.
+const THUMBNAIL: u32 = 240;
+
+/// How long after a letter is closed it can still be taken back from the
+/// display.
+pub const UNDO_LETTER_SECS: u64 = 600;
+
+/// Photographs of one page taken again for their exposure, at most. Each is
+/// a stop apart, so two go from the camera's choice to where the rig's white
+/// paper needed it.
+const RETAKES: u32 = 2;
 
 /// Activity lines kept for the page. Capped, because without a page nobody
 /// takes them.
@@ -66,6 +102,35 @@ pub struct Scanner {
     /// Where the page's corners are in a photograph, when the camera looks at
     /// the table at an angle.
     straighten: Option<Corners>,
+    last_photographed: Option<Photographed>,
+    /// The folders on the shelf. None: letters are not followed after they
+    /// are sent.
+    folders: Vec<Folder>,
+    /// Their tags' ids, once Paperless has them set up.
+    folder_tags: Option<Vec<(u64, Folder)>>,
+    /// Why the folders could not be set up last time, so the same failure is
+    /// said once and not every thirty seconds — where it buried everything
+    /// else on the page.
+    folders_failed: Option<String>,
+    filings: Filings,
+    /// Whether the camera is watched at all. Off while scanning is stopped
+    /// on the display, so nothing is photographed until someone asks.
+    watching: bool,
+    letters_closed: u64,
+    /// Since when the table has been seen empty with a letter open.
+    clear_since: Option<u64>,
+    /// The open letter is so far only its envelope: the table is empty while
+    /// the letter is taken out of it, which is not the letter being done.
+    envelope_only: bool,
+    /// The letter closed last, by file name, and when — what "Undo last
+    /// letter" takes back. `None` once it has been.
+    last_letter: Option<(String, u64)>,
+    /// How much of the corners' area a page covers, from the pages seen:
+    /// what an envelope is told apart by. Until the first, a page is taken
+    /// to fill them.
+    page_covers: Option<f64>,
+    /// Stops from the camera's own exposure, learnt from the photographs.
+    ev: f32,
     events: Vec<Event>,
 }
 
@@ -83,6 +148,18 @@ impl Scanner {
             saved_generation: 0,
             trusted_baseline: false,
             straighten: None,
+            last_photographed: None,
+            folders: Vec::new(),
+            folder_tags: None,
+            folders_failed: None,
+            filings: Filings::default(),
+            watching: true,
+            letters_closed: 0,
+            clear_since: None,
+            envelope_only: false,
+            page_covers: None,
+            last_letter: None,
+            ev: 0.0,
             events: Vec::new(),
         }
     }
@@ -132,6 +209,11 @@ impl Scanner {
         self.detector.state()
     }
 
+    /// How wide the camera's preview frames are.
+    pub fn frame_width(&mut self, width: u32) {
+        self.detector.frame_width(width as usize);
+    }
+
     pub fn settle_frames(&self) -> u8 {
         self.detector.settle_frames()
     }
@@ -139,6 +221,214 @@ impl Scanner {
     /// Whether the empty table has really been seen, as opposed to guessed.
     pub fn has_baseline(&self) -> bool {
         self.trusted_baseline && self.detector.has_baseline()
+    }
+
+    /// Says which of these folders each letter goes in, once Paperless has
+    /// read it. Their tags are set up in Paperless before the next letter is
+    /// sent — again, whenever this is called, because the words may have
+    /// changed or the Paperless may be a different one.
+    pub fn file_into(&mut self, folders: Vec<Folder>) {
+        self.folders = folders;
+        self.folder_tags = None;
+    }
+
+    /// Sets the folders' tags up in Paperless now, and says how many there
+    /// are.
+    pub async fn sync_folders(&mut self, uploader: &Uploader) -> Result<usize> {
+        let tags = uploader.sync_folders(&self.folders).await?;
+        let count = tags.len();
+        self.folder_tags = Some(tags);
+        Ok(count)
+    }
+
+    /// A letter was closed into `letter`.
+    fn closed(&mut self, letter: &std::path::Path, now: u64) {
+        self.letters_closed += 1;
+        self.envelope_only = false;
+        self.last_letter = letter
+            .file_name()
+            .map(|name| (name.to_string_lossy().into_owned(), now));
+    }
+
+    /// Whether "Undo last letter" has something to take back: a letter closed
+    /// in the last ten minutes, not taken back already.
+    pub fn can_undo_letter(&self, now: u64) -> bool {
+        self.last_letter
+            .as_ref()
+            .is_some_and(|(_, at)| now.saturating_sub(*at) < UNDO_LETTER_SECS)
+    }
+
+    /// "Undo last page": the newest page of the open letter goes to the
+    /// spool's `discarded/`. False when there is none.
+    pub fn undo_page(&mut self, spool: &Spool, now: u64) -> bool {
+        match spool.discard_last_page() {
+            Ok(Some(_)) => {
+                let left = spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
+                self.event(
+                    now,
+                    true,
+                    format!("took the last page back; {left} left in this letter"),
+                );
+                self.last_photographed = None;
+                if left == 0 {
+                    self.envelope_only = false;
+                }
+                true
+            }
+            Ok(None) => {
+                self.event(now, false, "no page to take back");
+                false
+            }
+            Err(err) => {
+                self.event(now, false, format!("could not take the page back: {err:#}"));
+                false
+            }
+        }
+    }
+
+    /// "Cancel letter": every page of the open letter goes to `discarded/`,
+    /// and says how many.
+    pub fn cancel_letter(&mut self, spool: &Spool, now: u64) -> usize {
+        match spool.discard_open_letter() {
+            Ok(pages) => {
+                let plural = if pages == 1 { "" } else { "s" };
+                self.event(
+                    now,
+                    true,
+                    format!("cancelled the letter: {pages} page{plural} thrown away"),
+                );
+                self.close_requested_at = None;
+                self.clear_since = None;
+                self.envelope_only = false;
+                self.last_photographed = None;
+                pages
+            }
+            Err(err) => {
+                self.event(now, false, format!("could not cancel the letter: {err:#}"));
+                0
+            }
+        }
+    }
+
+    /// Throws one letter waiting to be sent away, into `discarded/`.
+    pub fn discard_queued(&mut self, spool: &Spool, name: &str, now: u64) -> bool {
+        match spool.discard_queued(name) {
+            Ok(true) => {
+                self.event(now, true, format!("threw {name} away before it was sent"));
+                if self
+                    .last_letter
+                    .as_ref()
+                    .is_some_and(|(last, _)| last == name)
+                {
+                    self.last_letter = None;
+                }
+                true
+            }
+            Ok(false) => {
+                self.event(now, false, "that letter is not waiting any more");
+                false
+            }
+            Err(err) => {
+                self.event(now, false, format!("could not throw it away: {err:#}"));
+                false
+            }
+        }
+    }
+
+    /// "Undo last letter": out of the queue if it is still waiting there;
+    /// otherwise deleted from Paperless — into its trash — now, or as soon as
+    /// Paperless has read it.
+    pub async fn undo_letter(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
+        if !self.can_undo_letter(now) {
+            self.event(now, false, "no letter to take back");
+            return;
+        }
+        let Some((name, _)) = self.last_letter.take() else {
+            return;
+        };
+        match spool.discard_queued(&name) {
+            Ok(true) => {
+                self.event(now, true, "took the last letter back before it was sent");
+                return;
+            }
+            Ok(false) => {}
+            Err(err) => {
+                self.event(
+                    now,
+                    false,
+                    format!("could not take the letter back: {err:#}"),
+                );
+                return;
+            }
+        }
+        let Some(filing) = self.filings.named(&name) else {
+            self.event(
+                now,
+                false,
+                "the last letter was sent, but Paperless's answer is not known: delete it there",
+            );
+            return;
+        };
+        match filing.document {
+            Some(document) => {
+                let task = filing.task.clone();
+                match uploader.delete_document(document).await {
+                    Ok(()) => {
+                        self.filings.decide(&task, Outcome::Deleted, now);
+                        self.event(now, true, "took the last letter back: deleted from Paperless (its trash keeps it)");
+                    }
+                    Err(err) => self.event(
+                        now,
+                        false,
+                        format!("could not delete the last letter from Paperless: {err:#}"),
+                    ),
+                }
+            }
+            None => {
+                filing.undo = true;
+                self.event(
+                    now,
+                    true,
+                    "taking the last letter back: it is deleted as soon as Paperless has read it",
+                );
+            }
+        }
+    }
+
+    /// Starts or stops watching the camera. Stopped, a turn takes no frame at
+    /// all: the camera is left alone and nothing can be photographed.
+    pub fn watch(&mut self, watching: bool) {
+        self.watching = watching;
+    }
+
+    pub fn watching(&self) -> bool {
+        self.watching
+    }
+
+    /// The exposure the next page is taken at, in stops from the camera's own
+    /// choice. Learnt from each photograph; kept by `main` between runs.
+    pub fn exposure(&self) -> f32 {
+        self.ev
+    }
+
+    pub fn expose_at(&mut self, ev: f32) {
+        self.ev = ev.clamp(crate::quality::EV_DARKEST, crate::quality::EV_BRIGHTEST);
+    }
+
+    /// How many letters have been closed since start — by the button, the
+    /// page, or being left alone.
+    pub fn letters_closed(&self) -> u64 {
+        self.letters_closed
+    }
+
+    /// The letter sent last and where it goes, while it is worth showing.
+    pub fn filing(&self) -> Option<&Filing> {
+        self.filings.latest()
+    }
+
+    /// The last photograph and its verdict, for the display.
+    pub fn last_photographed(&self) -> Option<&Photographed> {
+        self.last_photographed.as_ref()
     }
 
     pub fn last_frame(&self) -> Option<&[u8]> {
@@ -162,6 +452,17 @@ impl Scanner {
             self.event(now, true, "finishing the letter");
         }
         true
+    }
+
+    /// Seconds until the open letter is finished for the table being clear,
+    /// while that is counting down — for the display to say so.
+    pub fn finishing_in(&self, now: u64) -> Option<u64> {
+        let after = self.letters.as_ref()?.when_clear?.as_secs();
+        let since = self.clear_since?;
+        if self.close_requested_at.is_some() || !self.watching {
+            return None;
+        }
+        Some(after.saturating_sub(now.saturating_sub(since)))
     }
 
     /// Whether finishing was asked for and the letter is not closed yet.
@@ -192,6 +493,25 @@ impl Scanner {
         true
     }
 
+    /// "The table is empty now", from a frame taken for the purpose: the last
+    /// one may be minutes old, or there may be none, when scanning is stopped.
+    pub fn learn_empty_now(&mut self, camera: &dyn Camera, now: u64) -> bool {
+        match camera.preview() {
+            Ok(frame) => {
+                self.last_frame = Some(frame);
+                self.learn_empty(now)
+            }
+            Err(err) => {
+                self.event(
+                    now,
+                    false,
+                    format!("could not see the table to learn it: {err:#}"),
+                );
+                false
+            }
+        }
+    }
+
     /// Forgets the empty table, as when the crop changes and the camera no
     /// longer shows the same part of it.
     pub fn forget_baseline(&mut self) {
@@ -218,7 +538,16 @@ impl Scanner {
         }
 
         let collecting = self.letters.is_some();
-        let turn = match camera.preview() {
+        let preview = if self.watching {
+            camera.preview()
+        } else {
+            if self.drain_due(now) {
+                self.drain_now(spool, uploader, now).await;
+            }
+            self.follow(uploader, now).await;
+            return Turn::Paused;
+        };
+        let turn = match preview {
             Ok(frame) => {
                 self.preview_failures = 0;
                 let before = (self.detector.state(), self.detector.baseline_generation());
@@ -233,23 +562,113 @@ impl Scanner {
                 self.last_frame = Some(frame);
 
                 if step == Step::Capture {
-                    match capture(camera, spool, collecting, self.straighten.as_ref()) {
-                        Ok((path, warning)) => {
+                    let taking =
+                        capture(camera, spool, collecting, self.straighten.as_ref(), self.ev);
+                    match taking {
+                        Ok(Taken {
+                            path,
+                            warning,
+                            quality,
+                            thumbnail,
+                            retakes,
+                            ev,
+                            next_ev,
+                            covered,
+                        }) => {
+                            // Paper first: on the rig a photograph of the
+                            // dark table covered 0.71 of the corners, which is
+                            // an envelope's share — but there was no paper in
+                            // it at all, and the check had already said so.
+                            let is_paper = quality
+                                .as_ref()
+                                .is_none_or(|quality| !quality.problems.contains(&Problem::NoPage));
+                            let envelope = is_paper
+                                && crate::straighten::is_envelope(
+                                    covered,
+                                    self.page_covers.unwrap_or(1.0),
+                                );
+                            if let (false, Some(covered)) = (envelope, covered) {
+                                // A page: learnt, a little at a time, so one
+                                // odd photograph does not move it far.
+                                self.page_covers = Some(match self.page_covers {
+                                    Some(known) => known * 0.7 + covered * 0.3,
+                                    None => covered,
+                                });
+                            }
                             if let Some(warning) = warning {
                                 self.event(now, false, warning);
                             }
-                            let text = if collecting {
-                                let pages =
-                                    spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
-                                format!("photographed page {pages} of this letter")
-                            } else {
-                                "photographed a page".to_string()
+                            // An envelope is a new letter: whatever was being
+                            // collected is finished — and sent now, so its
+                            // folder is known by the time this one's is asked —
+                            // and the envelope is its first page.
+                            let mut sent_before = false;
+                            if envelope && collecting {
+                                match spool.close_letter_except(&path) {
+                                    Ok(Some(letter)) => {
+                                        tracing::info!(letter = %letter.display(), "letter closed by the next envelope");
+                                        self.event(now, true, "an envelope: the letter before it is finished, sending");
+                                        self.close_requested_at = None;
+                                        self.closed(&letter, now);
+                                        sent_before = true;
+                                    }
+                                    Ok(None) => {}
+                                    Err(err) => {
+                                        tracing::error!(%err, "could not finish the letter before the envelope");
+                                        self.event(now, false, format!("could not finish the letter before the envelope: {err:#}"));
+                                    }
+                                }
+                            }
+                            self.envelope_only = envelope && collecting;
+                            if retakes > 0 {
+                                self.event(
+                                    now,
+                                    true,
+                                    format!(
+                                        "took the page {retakes} more time{} for its exposure, \
+                                         keeping the one at {ev:+.1} EV",
+                                        if retakes == 1 { "" } else { "s" }
+                                    ),
+                                );
+                            }
+                            if next_ev != self.ev {
+                                tracing::info!(from = self.ev, to = next_ev, "exposure");
+                            }
+                            self.ev = next_ev;
+                            let page = collecting
+                                .then(|| spool.open_pages().map(|pages| pages.len()).unwrap_or(0));
+                            let text = match page {
+                                _ if envelope => {
+                                    "photographed the envelope of a new letter".to_string()
+                                }
+                                Some(page) => format!("photographed page {page} of this letter"),
+                                None => "photographed a page".to_string(),
                             };
                             self.event(now, true, text);
+                            if let Some(quality) = quality.as_ref().filter(|q| !q.ok() && !envelope)
+                            {
+                                let which = match page {
+                                    Some(page) => format!("page {page}"),
+                                    None => "the page".to_string(),
+                                };
+                                self.event(
+                                    now,
+                                    false,
+                                    format!("{which} may not be readable: {}", quality.summary()),
+                                );
+                            }
+                            self.last_photographed = Some(Photographed {
+                                at: now,
+                                page,
+                                quality,
+                                thumbnail,
+                                envelope,
+                            });
                             // A single page goes straight away: it is the
                             // letter someone is standing next to. A page of a
-                            // letter waits for the rest.
-                            if !collecting {
+                            // letter waits for the rest — unless an envelope
+                            // just finished the one before.
+                            if !collecting || sent_before {
                                 self.drain_now(spool, uploader, now).await;
                             }
                             return Turn::Captured(path);
@@ -290,13 +709,16 @@ impl Scanner {
         if self.drain_due(now) {
             self.drain_now(spool, uploader, now).await;
         }
+        self.follow(uploader, now).await;
         turn
     }
 
     /// Sends everything that is due, now.
     pub async fn drain_now(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
         self.last_drain = Some(now);
-        drain(spool, uploader, now, false, &mut self.events).await;
+        self.prepare_folders(spool, uploader, now).await;
+        let filings = (!self.folders.is_empty()).then_some(&mut self.filings);
+        drain(spool, uploader, now, false, &mut self.events, filings).await;
         self.cap_events();
     }
 
@@ -305,8 +727,127 @@ impl Scanner {
     /// see whether it worked.
     pub async fn retry_all(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
         self.last_drain = Some(now);
-        drain(spool, uploader, now, true, &mut self.events).await;
+        self.prepare_folders(spool, uploader, now).await;
+        let filings = (!self.folders.is_empty()).then_some(&mut self.filings);
+        drain(spool, uploader, now, true, &mut self.events, filings).await;
         self.cap_events();
+    }
+
+    /// Before anything is sent: the folders' tags, so Paperless can give them
+    /// to the letter as it reads it. Only when there is something to send,
+    /// so an unreachable Paperless is not asked twice every thirty seconds.
+    /// A failure is said and the letter sent anyway — it is filed without a
+    /// folder, not kept back.
+    async fn prepare_folders(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
+        if self.folders.is_empty() || self.folder_tags.is_some() {
+            return;
+        }
+        if spool
+            .pending()
+            .map(|pending| pending.is_empty())
+            .unwrap_or(true)
+        {
+            return;
+        }
+        match self.sync_folders(uploader).await {
+            Ok(count) => {
+                tracing::info!(count, "folders set up in Paperless");
+                if self.folders_failed.take().is_some() {
+                    self.event(now, true, "the folders are set up in Paperless now");
+                }
+            }
+            Err(err) => {
+                let text = format!("could not set up the folders in Paperless: {err:#}");
+                if self.folders_failed.as_deref() != Some(text.as_str()) {
+                    tracing::warn!(%err, "could not set up the folders in Paperless");
+                    self.event(now, false, text.clone());
+                    self.folders_failed = Some(text);
+                }
+            }
+        }
+    }
+
+    /// Asks Paperless about one letter it is reading, if one is due a
+    /// question, and says where it goes once it knows.
+    async fn follow(&mut self, uploader: &Uploader, now: u64) {
+        let Some(filing) = self.filings.next_to_check(now) else {
+            return;
+        };
+        let outcome = match uploader.task(&filing.task).await {
+            Ok(Task::Working) => return,
+            Ok(Task::Done(document)) => {
+                if let Some(known) = self.filings.named(&filing.name) {
+                    known.document = Some(document);
+                }
+                // Taken back while Paperless was still reading it.
+                if filing.undo {
+                    match uploader.delete_document(document).await {
+                        Ok(()) => {
+                            self.event(
+                                now,
+                                true,
+                                format!(
+                                    "{} was taken back and deleted from Paperless",
+                                    filing.name
+                                ),
+                            );
+                            self.filings.decide(&filing.task, Outcome::Deleted, now);
+                        }
+                        Err(err) => {
+                            tracing::warn!(%err, document, "could not delete a letter taken back");
+                            self.event(
+                                now,
+                                false,
+                                format!("could not delete {} from Paperless: {err:#}", filing.name),
+                            );
+                        }
+                    }
+                    return;
+                }
+                if self.folder_tags.is_none() {
+                    if let Err(err) = self.sync_folders(uploader).await {
+                        tracing::warn!(%err, "could not look the folders up");
+                        return;
+                    }
+                }
+                match uploader.document_tags(document).await {
+                    Ok(tags) => Outcome::Folders(folders_among(
+                        &tags,
+                        self.folder_tags.as_deref().unwrap_or_default(),
+                    )),
+                    Err(err) => {
+                        tracing::warn!(%err, document, "could not read the document's tags");
+                        return;
+                    }
+                }
+            }
+            Ok(Task::Duplicate) => Outcome::Duplicate,
+            Ok(Task::Failed(why)) => Outcome::Failed(why),
+            Err(err) => {
+                tracing::debug!(%err, "could not ask Paperless about a letter");
+                return;
+            }
+        };
+        let (ok, text) = match &outcome {
+            Outcome::Folders(folders) if folders.iter().any(|f| f.discard) => {
+                (true, "can be thrown away".to_string())
+            }
+            Outcome::Folders(folders) if !folders.is_empty() => {
+                let names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
+                (true, format!("goes in {}", names.join(" or ")))
+            }
+            Outcome::Folders(_) => (false, "matched no folder".to_string()),
+            Outcome::Duplicate => (true, "was in Paperless already".to_string()),
+            Outcome::Failed(why) => (false, format!("was not filed: {why}")),
+            Outcome::Reading | Outcome::TimedOut => (false, "is still being read".to_string()),
+            Outcome::Deleted => (
+                true,
+                "was taken back and deleted from Paperless".to_string(),
+            ),
+        };
+        tracing::info!(letter = %filing.name, %text, "filed");
+        self.event(now, ok, format!("{} {text}", filing.name));
+        self.filings.decide(&filing.task, outcome, now);
     }
 
     fn drain_due(&self, now: u64) -> bool {
@@ -355,12 +896,31 @@ impl Scanner {
     /// Closes the open letter if finishing was asked for or it has been left
     /// alone, and says whether a letter was closed.
     fn close_if_due(&mut self, spool: &Spool, now: u64) -> bool {
-        let (pressed, idle) = match &self.letters {
-            Some(letters) => (letters.button.pressed(), letters.idle),
+        let (pressed, idle, when_clear) = match &self.letters {
+            Some(letters) => (letters.button.pressed(), letters.idle, letters.when_clear),
             None => return false,
         };
         if pressed && self.close_requested_at.is_none() {
             self.close_requested_at = Some(now);
+        }
+
+        // The last page taken away and nothing put down after it: the letter
+        // is done. Only while the camera is watched — stopped, the table is
+        // not looked at, and an empty-looking one means nothing.
+        let open = spool.last_page_at().ok().flatten().is_some();
+        if self.watching && open && !self.envelope_only && self.detector.state() == State::Waiting {
+            let since = *self.clear_since.get_or_insert(now);
+            if let Some(after) = when_clear {
+                if now.saturating_sub(since) >= after.as_secs() && self.close_requested_at.is_none()
+                {
+                    tracing::info!(
+                        "the table has been clear since the last page: finishing the letter"
+                    );
+                    self.close_requested_at = Some(now);
+                }
+            }
+        } else {
+            self.clear_since = None;
         }
 
         // Not while a page is settling. Putting the last page down and
@@ -400,6 +960,7 @@ impl Scanner {
         let pages = spool.open_pages().map(|pages| pages.len()).unwrap_or(0);
         match spool.close_letter() {
             Ok(Some(letter)) => {
+                self.closed(&letter, now);
                 let how = if requested { "finished" } else { "left alone" };
                 tracing::info!(letter = %letter.display(), how, "letter closed");
                 let plural = if pages == 1 { "" } else { "s" };
@@ -428,60 +989,208 @@ impl Scanner {
     }
 }
 
-/// Photographs the page, straightens it if the camera is at an angle, and
-/// puts it in the spool — in the open letter when collecting, or straight in
-/// the queue. Also says what went wrong short of losing the page.
+/// One photograph of a page, of those taken for its exposure: the best so far.
+struct Take {
+    quality: Option<Quality>,
+    thumbnail: Option<Picture>,
+    ev: f32,
+    /// How much of the corners' area the paper covered.
+    covered: Option<f64>,
+}
+
+/// A page photographed and in the spool.
+struct Taken {
+    path: PathBuf,
+    /// What went wrong short of losing the page.
+    warning: Option<String>,
+    quality: Option<Quality>,
+    thumbnail: Option<Picture>,
+    /// Photographs taken again for their exposure.
+    retakes: u32,
+    /// The exposure of the one kept.
+    ev: f32,
+    /// The exposure for the next page.
+    next_ev: f32,
+    /// How much of the corners' area the paper covered: an envelope covers
+    /// less than a page.
+    covered: Option<f64>,
+}
+
+/// Photographs the page at `ev`, straightens it if the camera is at an angle,
+/// judges it, and takes it again darker or lighter while the exposure is what
+/// makes it unreadable — keeping the best of them. Then puts it in the spool:
+/// in the open letter when collecting, or straight in the queue.
 fn capture(
     camera: &dyn Camera,
     spool: &Spool,
     collecting: bool,
     corners: Option<&Corners>,
-) -> Result<(PathBuf, Option<String>)> {
+    ev: f32,
+) -> Result<Taken> {
     let (partial, ready) = if collecting {
         spool.reserve_page()?
     } else {
         spool.reserve()
     };
+    // Retakes are written beside it under a name the spool never reads, and
+    // only replace it when they are better.
+    let retake = partial.with_extension("retake");
 
-    camera
-        .capture(&partial)
-        .with_context(|| "could not photograph the page")?;
-
-    // A page that cannot be straightened is still kept as it was taken: a
-    // slanted letter is better than none.
     let mut warning = None;
-    if let Some(corners) = corners {
-        let started = std::time::Instant::now();
-        match straighten_file(&partial, corners) {
-            Ok(()) => tracing::info!(ms = started.elapsed().as_millis() as u64, "straightened"),
-            Err(err) => {
-                tracing::warn!(%err, "could not straighten the page; keeping it as taken");
-                warning = Some(format!(
-                    "could not straighten the page, kept it as taken: {err:#}"
-                ));
+    let mut best: Option<Take> = None;
+    let (mut ev_now, mut retakes) = (ev, 0);
+    loop {
+        let shot = if best.is_none() { &partial } else { &retake };
+        if let Err(err) = camera.capture_at(shot, ev_now) {
+            if best.is_none() {
+                return Err(err).context("could not photograph the page");
+            }
+            // The first photograph is kept: a retake that failed is no reason
+            // to lose it.
+            tracing::warn!(%err, "could not take the page again");
+            let _ = std::fs::remove_file(&retake);
+            break;
+        }
+
+        // A page that cannot be straightened is still kept as it was taken:
+        // a slanted letter is better than none.
+        let mut covered = None;
+        if let Some(corners) = corners {
+            let started = std::time::Instant::now();
+            match straighten_file(shot, corners) {
+                Ok(paper) => {
+                    covered = paper;
+                    tracing::info!(
+                        ms = started.elapsed().as_millis() as u64,
+                        ?paper,
+                        "straightened"
+                    );
+                }
+                Err(err) => {
+                    tracing::warn!(%err, "could not straighten the page; keeping it as taken");
+                    warning = Some(format!(
+                        "could not straighten the page, kept it as taken: {err:#}"
+                    ));
+                }
             }
         }
+
+        let (quality, thumbnail) = judge(shot);
+        let keep = match (&best, &quality) {
+            (None, _) => true,
+            (
+                Some(Take {
+                    quality: Some(kept),
+                    ..
+                }),
+                Some(new),
+            ) => better(new, kept),
+            (Some(Take { quality: None, .. }), Some(_)) => true,
+            (Some(_), None) => false,
+        };
+        if best.is_some() {
+            if keep {
+                std::fs::rename(&retake, &partial)
+                    .context("could not keep the page taken again")?;
+            } else {
+                let _ = std::fs::remove_file(&retake);
+            }
+        }
+        if keep {
+            best = Some(Take {
+                quality: quality.clone(),
+                thumbnail,
+                ev: ev_now,
+                covered,
+            });
+        }
+
+        match quality.as_ref().map(|quality| exposure(ev_now, quality)) {
+            Some(Exposure::Retake(next)) if retakes < RETAKES => {
+                tracing::info!(from = ev_now, to = next, "taking the page again");
+                ev_now = next;
+                retakes += 1;
+            }
+            _ => break,
+        }
     }
+
+    let Take {
+        quality,
+        thumbnail,
+        ev: kept_ev,
+        covered,
+    } = best.expect("at least one photograph was taken");
+    let next_ev = match quality.as_ref().map(|quality| exposure(kept_ev, quality)) {
+        Some(Exposure::Keep(next) | Exposure::Retake(next)) => next,
+        None => kept_ev,
+    };
 
     // Only now is it a capture. Until the rename it is a file that may be
     // half-written, and nothing reads it.
     spool.commit(&partial, &ready)?;
-    tracing::info!(file = %ready.display(), "captured");
-    Ok((ready, warning))
+    tracing::info!(file = %ready.display(), ev = kept_ev, retakes, "captured");
+    Ok(Taken {
+        path: ready,
+        warning,
+        quality,
+        thumbnail,
+        retakes,
+        ev: kept_ev,
+        next_ev,
+        covered,
+    })
+}
+
+/// Whether a photograph is good enough to read. After straightening, so the
+/// page is judged as it will be sent — at the cost, on a Pi Zero, of reading
+/// it a second time. A photograph that cannot be read is not judged, and is
+/// sent all the same.
+fn judge(path: &std::path::Path) -> (Option<Quality>, Option<Picture>) {
+    let started = std::time::Instant::now();
+    match std::fs::read(path)
+        .map_err(anyhow::Error::from)
+        .and_then(|jpeg| read_luma(&jpeg))
+    {
+        Ok((luma, width, height)) => {
+            let quality = assess(&luma, width, height);
+            let thumbnail = Picture::scaled(&luma, width, height, THUMBNAIL, THUMBNAIL);
+            tracing::info!(
+                ms = started.elapsed().as_millis() as u64,
+                verdict = %quality.summary(),
+                ink = quality.ink,
+                paper = quality.paper,
+                sharpness = ?quality.sharpness,
+                "judged"
+            );
+            (Some(quality), Some(thumbnail))
+        }
+        Err(err) => {
+            tracing::warn!(%err, "could not judge the photograph");
+            (None, None)
+        }
+    }
 }
 
 /// Replaces a photograph with its straightened self — whole, by rename, so a
 /// crash leaves one or the other and never half of each.
-fn straighten_file(path: &std::path::Path, corners: &Corners) -> Result<()> {
-    let straight = straighten(&std::fs::read(path)?, corners)?;
+fn straighten_file(path: &std::path::Path, corners: &Corners) -> Result<Option<f64>> {
+    let straight = straighten_trimmed(&std::fs::read(path)?, corners)?;
     let next = path.with_extension("straight");
-    std::fs::write(&next, straight)?;
+    std::fs::write(&next, straight.jpeg)?;
     std::fs::rename(&next, path)?;
-    Ok(())
+    Ok(straight.covered)
 }
 
 /// Sends everything waiting — and due, unless `force` — oldest first.
-async fn drain(spool: &Spool, uploader: &Uploader, now: u64, force: bool, events: &mut Vec<Event>) {
+async fn drain(
+    spool: &Spool,
+    uploader: &Uploader,
+    now: u64,
+    force: bool,
+    events: &mut Vec<Event>,
+    mut filings: Option<&mut Filings>,
+) {
     let pending = match spool.pending() {
         Ok(pending) => pending,
         Err(err) => {
@@ -517,6 +1226,9 @@ async fn drain(spool: &Spool, uploader: &Uploader, now: u64, force: bool, events
         match uploader.send(&filename, bytes).await {
             Ok(task) => {
                 tracing::info!(file = %filename, %task, "uploaded");
+                if let Some(filings) = filings.as_deref_mut() {
+                    filings.sent(&filename, &task, now);
+                }
                 events.push(Event {
                     at: now,
                     ok: true,

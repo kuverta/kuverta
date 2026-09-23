@@ -1,14 +1,14 @@
 //! The button, from the bytes the kernel hands out.
 
-use scannerd::button::{presses, Button, EVENT_SIZE, KEY_ENTER};
+use scannerd::button::{presses, Button, EVENT_SIZE, KEY_ENTER, TIMEVAL};
 
 /// One `struct input_event` as 64-bit Linux writes it.
 fn event(kind: u16, code: u16, value: i32) -> [u8; EVENT_SIZE] {
     let mut bytes = [0u8; EVENT_SIZE];
     bytes[..8].copy_from_slice(&1_789_400_000u64.to_le_bytes());
-    bytes[16..18].copy_from_slice(&kind.to_le_bytes());
-    bytes[18..20].copy_from_slice(&code.to_le_bytes());
-    bytes[20..24].copy_from_slice(&value.to_le_bytes());
+    bytes[TIMEVAL..TIMEVAL + 2].copy_from_slice(&kind.to_le_bytes());
+    bytes[TIMEVAL + 2..TIMEVAL + 4].copy_from_slice(&code.to_le_bytes());
+    bytes[TIMEVAL + 4..TIMEVAL + 8].copy_from_slice(&value.to_le_bytes());
     bytes
 }
 
