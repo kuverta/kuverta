@@ -226,12 +226,43 @@ pub fn straighten(jpeg: &[u8], corners: &Corners) -> Result<Vec<u8>> {
 /// The same, then trimmed to the page: a letter never lies exactly where the
 /// corners were set, and the table it shows beside the page is cut away (see
 /// [`trim_to_page`]). What a capture keeps.
+///
+/// The page that comes out is warped **once** from the photograph, even
+/// though it takes two warps to find: the first is only looked at, and the
+/// page's corners found in it are carried back into the photograph's own
+/// pixels through the same homography. Resampling a resampling costs
+/// sharpness, and sharpness is what the OCR reads.
 pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened> {
-    let (straight, width, height) = straighten_rgb(jpeg, corners)?;
-    let trimmed = trim_and_measure(straight, width, height);
+    let source = decode(jpeg)?;
+    let quad = corners_in_pixels(corners, source.width(), source.height());
+    let (width, height) = warped_size(&quad)?;
+    let first = Homography::square_to(&quad);
+    let looking = warp(&source, &first, width, height);
+
+    let page = page_within(&looking, width, height);
+    let (rgb, width, height) = match page.corners {
+        // Worth a second look: the page is somewhere inside what the corners
+        // enclose, so the picture is warped onto the page itself — from the
+        // photograph, not from the picture just made of it.
+        Some(page) => {
+            let page = Corners(page.0.map(|(x, y)| first.apply(x, y)));
+            match warped_size(&page) {
+                Ok((out_w, out_h)) => {
+                    tracing::info!(from = ?(width, height), to = ?(out_w, out_h), "straightened onto the page itself");
+                    (
+                        warp(&source, &Homography::square_to(&page), out_w, out_h),
+                        out_w,
+                        out_h,
+                    )
+                }
+                Err(_) => (looking, width, height),
+            }
+        }
+        None => (looking, width, height),
+    };
     Ok(Straightened {
-        jpeg: encode(&trimmed.rgb, trimmed.width, trimmed.height, jpeg.len())?,
-        covered: trimmed.covered,
+        jpeg: encode(&rgb, width, height, jpeg.len())?,
+        covered: page.covered,
     })
 }
 
@@ -266,7 +297,6 @@ struct Trimmed {
     rgb: Vec<u8>,
     width: u32,
     height: u32,
-    covered: Option<f64>,
 }
 
 /// A bright area enclosing less than this share of the picture is not
@@ -294,16 +324,23 @@ pub fn trim_to_page(rgb: Vec<u8>, width: u32, height: u32) -> (Vec<u8>, u32, u32
     (trimmed.rgb, trimmed.width, trimmed.height)
 }
 
-fn trim_and_measure(rgb: Vec<u8>, width: u32, height: u32) -> Trimmed {
-    let untouched = |rgb: Vec<u8>, covered: Option<f64>| Trimmed {
-        rgb,
-        width,
-        height,
-        covered,
+/// Where the paper is inside a straightened picture, and how much of the
+/// picture it covers: the corners as fractions, for whoever warps onto them.
+/// `None` corners mean "leave the picture as it is" — no paper found, too
+/// little of it, or it already fills the picture.
+struct Page {
+    corners: Option<Corners>,
+    covered: Option<f64>,
+}
+
+fn page_within(rgb: &[u8], width: u32, height: u32) -> Page {
+    let nothing = Page {
+        corners: None,
+        covered: None,
     };
     let (w, h) = (width as usize, height as usize);
     if w < 16 || h < 16 || rgb.len() < w * h * 3 {
-        return untouched(rgb, None);
+        return nothing;
     }
     let step = (w.max(h) / TRIM_SAMPLE).max(1);
     let (sw, sh) = (w / step, h / step);
@@ -315,17 +352,17 @@ fn trim_and_measure(rgb: Vec<u8>, width: u32, height: u32) -> Trimmed {
         })
         .collect();
     let Some((page, lit)) = crate::locate::page_corners(&small, sw, sh) else {
-        return untouched(rgb, None);
+        return nothing;
     };
     let covered = page.area();
     if covered < TRIM_MIN_SHARE || lit < covered * TRIM_MIN_FILL {
-        return untouched(
-            rgb,
-            Some(covered).filter(|_| lit >= covered * TRIM_MIN_FILL),
-        );
+        return Page {
+            corners: None,
+            covered: Some(covered).filter(|_| lit >= covered * TRIM_MIN_FILL),
+        };
     }
     let page = page.with_margin(TRIM_EDGE);
-    // Already the page, near enough: not worth a second warp.
+    // Already the page, near enough: not worth warping again.
     let whole = Corners::WHOLE.0;
     let off = page
         .0
@@ -333,47 +370,73 @@ fn trim_and_measure(rgb: Vec<u8>, width: u32, height: u32) -> Trimmed {
         .zip(whole.iter())
         .map(|(a, b)| (a.0 - b.0).abs().max((a.1 - b.1).abs()))
         .fold(0.0, f64::max);
-    if off < 0.01 {
-        return untouched(rgb, Some(covered));
-    }
-    let Some(source) = RgbImage::from_raw(width, height, rgb.clone()) else {
-        return untouched(rgb, Some(covered));
-    };
-    let pixels = Corners(page.0.map(|(x, y)| (x * w as f64, y * h as f64)));
-    let length = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
-    let [tl, tr, br, bl] = pixels.0;
-    let out_w = ((length(tl, tr) + length(bl, br)) / 2.0).round() as u32;
-    let out_h = ((length(tl, bl) + length(tr, br)) / 2.0).round() as u32;
-    if out_w < 16 || out_h < 16 {
-        return untouched(rgb, Some(covered));
-    }
-    tracing::info!(from = ?(width, height), to = ?(out_w, out_h), "straightened onto the page itself");
-    Trimmed {
-        rgb: warp(&source, &Homography::square_to(&pixels), out_w, out_h),
-        width: out_w,
-        height: out_h,
+    Page {
+        corners: (off >= 0.01).then_some(page),
         covered: Some(covered),
     }
 }
 
-/// Warps a photograph so `corners` become its corners, as packed RGB.
-fn straighten_rgb(jpeg: &[u8], corners: &Corners) -> Result<(Vec<u8>, u32, u32)> {
-    let source = image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg)
-        .context("could not read the photograph")?
-        .into_rgb8();
-    let pixels = Corners(
+fn trim_and_measure(rgb: Vec<u8>, width: u32, height: u32) -> Trimmed {
+    let page = page_within(&rgb, width, height);
+    let untouched = Trimmed { rgb, width, height };
+    let Some(corners) = page.corners else {
+        return untouched;
+    };
+    let Some(source) = RgbImage::from_raw(width, height, untouched.rgb.clone()) else {
+        return untouched;
+    };
+    let quad = corners_in_pixels(&corners, width, height);
+    let Ok((out_w, out_h)) = warped_size(&quad) else {
+        return untouched;
+    };
+    tracing::info!(from = ?(width, height), to = ?(out_w, out_h), "straightened onto the page itself");
+    Trimmed {
+        rgb: warp(&source, &Homography::square_to(&quad), out_w, out_h),
+        width: out_w,
+        height: out_h,
+    }
+}
+
+fn decode(jpeg: &[u8]) -> Result<RgbImage> {
+    Ok(
+        image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg)
+            .context("could not read the photograph")?
+            .into_rgb8(),
+    )
+}
+
+/// Corners given as fractions, in a picture's own pixels.
+fn corners_in_pixels(corners: &Corners, width: u32, height: u32) -> Corners {
+    Corners(
         corners
             .0
-            .map(|(x, y)| (x * source.width() as f64, y * source.height() as f64)),
-    );
+            .map(|(x, y)| (x * width as f64, y * height as f64)),
+    )
+}
+
+/// How big the warped picture is: the **longest** of each pair of opposite
+/// edges, in the pixels it is warped from.
+///
+/// The longest rather than the average, because a page lying at an angle to
+/// the camera has its near edge resolved best of all. Averaging throws those
+/// pixels away for the sake of a tidier number; keeping them costs a little
+/// upsampling at the far edge, where there was nothing to keep.
+fn warped_size(quad: &Corners) -> Result<(u32, u32)> {
     let length = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
-    let [tl, tr, br, bl] = pixels.0;
-    let width = ((length(tl, tr) + length(bl, br)) / 2.0).round() as u32;
-    let height = ((length(tl, bl) + length(tr, br)) / 2.0).round() as u32;
+    let [tl, tr, br, bl] = quad.0;
+    let width = length(tl, tr).max(length(bl, br)).round() as u32;
+    let height = length(tl, bl).max(length(tr, br)).round() as u32;
     if width < 16 || height < 16 {
         bail!("the corners enclose too little of the photograph ({width}×{height})");
     }
+    Ok((width, height))
+}
 
+/// Warps a photograph so `corners` become its corners, as packed RGB.
+fn straighten_rgb(jpeg: &[u8], corners: &Corners) -> Result<(Vec<u8>, u32, u32)> {
+    let source = decode(jpeg)?;
+    let pixels = corners_in_pixels(corners, source.width(), source.height());
+    let (width, height) = warped_size(&pixels)?;
     let straight = warp(&source, &Homography::square_to(&pixels), width, height);
     Ok((straight, width, height))
 }

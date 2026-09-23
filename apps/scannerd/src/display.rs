@@ -94,6 +94,10 @@ pub enum Action {
     UndoLetter,
     /// The second tap: take the last letter back.
     ConfirmUndoLetter,
+    /// File the last letter in no folder at all; Paperless keeps it.
+    FileNowhere,
+    /// File the last letter in the bin: the paper can go, Paperless keeps it.
+    FileInBin,
     /// Open the list of what is waiting to be sent, with how many there are.
     OpenQueue(usize),
     /// One of them, by its place in the list.
@@ -126,6 +130,8 @@ impl Action {
             Action::ConfirmCancel(1) => "Tap again: throw 1 page away".into(),
             Action::ConfirmCancel(pages) => format!("Tap again: throw {pages} pages away"),
             Action::UndoLetter => "Undo last letter".into(),
+            Action::FileNowhere => "No folder".into(),
+            Action::FileInBin => "Throw away".into(),
             Action::ConfirmUndoLetter => "Tap again: take it back".into(),
             Action::OpenQueue(1) => "1 waiting to send".into(),
             Action::OpenQueue(waiting) => format!("{waiting} waiting to send"),
@@ -183,6 +189,9 @@ pub struct Facts<'a> {
     pub finishing_in: Option<u64>,
     /// Whether the last letter can still be taken back.
     pub can_undo_letter: bool,
+    /// Whether the last letter can still be filed by hand — in no folder, or
+    /// in the bin.
+    pub can_refile: bool,
     /// What is waiting to be sent, oldest first.
     pub queue: &'a [crate::hub::Queued],
     /// Whether the display is showing that list.
@@ -238,7 +247,13 @@ impl Screen {
                 if !facts.queue.is_empty() {
                     buttons.push(Action::OpenQueue(facts.queue.len()));
                 }
-                if facts.can_undo_letter {
+                // Where the last letter goes is the question in front of
+                // whoever is standing there; taking it back is a rarer one,
+                // and waits until scanning is stopped.
+                if facts.can_refile {
+                    buttons.push(Action::FileNowhere);
+                    buttons.push(Action::FileInBin);
+                } else if facts.can_undo_letter {
                     buttons.push(undo_letter(facts));
                 }
                 buttons.push(Action::StopScanning);
@@ -278,7 +293,15 @@ impl Screen {
             // Between scans the last verdict belongs to a letter already
             // finished.
             screen.verdict = None;
-            screen.buttons = vec![Action::StartScanning, Action::LearnEmpty];
+            screen.buttons = vec![Action::StartScanning];
+            if facts.can_refile {
+                screen.buttons.push(Action::FileNowhere);
+                screen.buttons.push(Action::FileInBin);
+            } else {
+                // Learning the table is a setup job, and gives up its place
+                // while there is a letter in a hand waiting to be filed.
+                screen.buttons.push(Action::LearnEmpty);
+            }
             if facts.can_undo_letter {
                 screen.buttons.push(undo_letter(facts));
             }
@@ -445,7 +468,7 @@ fn tone_of(outcome: &Outcome) -> Tone {
         Outcome::Reading => Tone::Busy,
         Outcome::Folders(folders) if folders.iter().any(|f| f.discard) => Tone::Bin,
         Outcome::Folders(folders) if !folders.is_empty() => Tone::Folder,
-        Outcome::Duplicate => Tone::Done,
+        Outcome::Duplicate | Outcome::Nowhere => Tone::Done,
         Outcome::Folders(_) | Outcome::Failed(_) | Outcome::TimedOut => Tone::Problem,
         Outcome::Deleted => Tone::Bin,
     }
@@ -479,6 +502,7 @@ fn where_it_goes(outcome: &Outcome) -> (String, String) {
         Outcome::Failed(_) => ("Not filed".into(), "See the setup page"),
         Outcome::TimedOut => ("Which folder?".into(), "Paperless took too long"),
         Outcome::Deleted => ("Taken back".into(), "Deleted from Paperless"),
+        Outcome::Nowhere => ("No folder".into(), "Kept in Paperless, on no shelf"),
     };
     // Whose it is takes the line: which folder is already the headline, and
     // "put the letter in this folder" is what the headline means anyway.

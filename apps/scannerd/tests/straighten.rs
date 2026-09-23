@@ -131,8 +131,10 @@ fn a_page_seen_at_an_angle_comes_out_square() {
     let picture = image::load_from_memory(&straight).unwrap().into_rgb8();
 
     // The top edge is 160 pixels, the bottom 320; the sides are each
-    // hypot(80, 210).
-    assert_eq!(picture.width(), 240);
+    // hypot(80, 210). The picture is as wide as the widest edge — the one
+    // nearest the camera, with the most pixels on it — rather than the
+    // average of the two, which would throw half of them away.
+    assert_eq!(picture.width(), 320);
     assert_eq!(picture.height(), (80f64.hypot(210.0)).round() as u32);
 
     let grey = |fx: f64, fy: f64| {

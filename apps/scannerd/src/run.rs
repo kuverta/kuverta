@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use crate::button::Button;
 use crate::camera::Camera;
 use crate::detect::{Detector, State, Step, Thresholds};
-use crate::folders::{folders_among, Filing, Filings, Folder, Outcome};
+use crate::folders::{folders_among, Filing, Filings, Folder, Outcome, Refiling};
 use crate::hub::Event;
 use crate::picture::Picture;
 use crate::quality::{assess, better, exposure, read_luma, Exposure, Problem, Quality};
@@ -336,6 +336,100 @@ impl Scanner {
                 false
             }
         }
+    }
+
+    /// Whether the last letter can still be filed by hand: it was sent, and
+    /// it is recent enough that the person standing there means this one.
+    pub fn can_refile(&self, now: u64) -> bool {
+        self.last_letter.as_ref().is_some_and(|(name, at)| {
+            now.saturating_sub(*at) < UNDO_LETTER_SECS
+                && self.filings.named_ref(name).is_some_and(|filing| {
+                    !matches!(filing.outcome, Outcome::Deleted | Outcome::Failed(_))
+                })
+        })
+    }
+
+    /// "No folder" and "Throw away" on the display: the letter stays in
+    /// Paperless, but where it belongs is said by the person holding the
+    /// paper rather than by what Paperless made of the words on it.
+    ///
+    /// Paperless may still be reading it, and the answer is wanted before
+    /// then — that is the point of the buttons. In that case the letter is
+    /// marked, and filed this way the moment it is read.
+    pub async fn refile_letter(&mut self, uploader: &Uploader, into: Refiling, now: u64) {
+        if !self.can_refile(now) {
+            self.event(now, false, "no letter to file");
+            return;
+        }
+        let Some((name, _)) = self.last_letter.clone() else {
+            return;
+        };
+        if into == Refiling::Bin && self.bin().is_none() {
+            self.event(
+                now,
+                false,
+                "no folder is marked as the bin: mark one on the setup page",
+            );
+            return;
+        }
+        let Some(filing) = self.filings.named(&name) else {
+            self.event(now, false, "that letter was not sent to Paperless");
+            return;
+        };
+        let (task, document) = (filing.task.clone(), filing.document);
+        let Some(document) = document else {
+            filing.refile = Some(into);
+            let words = words_for(into, true);
+            self.event(now, true, format!("the last letter {words}"));
+            return;
+        };
+        match self.refile_document(uploader, document, into).await {
+            Ok(()) => {
+                self.filings
+                    .decide(&task, outcome_for(into, self.bin()), now);
+                let words = words_for(into, false);
+                self.event(now, true, format!("the last letter {words}"));
+            }
+            Err(err) => self.event(now, false, format!("could not file the letter: {err:#}")),
+        }
+    }
+
+    /// The bin among the folders, if one is marked.
+    fn bin(&self) -> Option<Folder> {
+        self.folders.iter().find(|folder| folder.discard).cloned()
+    }
+
+    /// Takes the folders' tags off a document in Paperless, and puts the
+    /// bin's on when that is where it goes. Tags that are not folders — the
+    /// address, who the post is for — are left alone.
+    async fn refile_document(
+        &self,
+        uploader: &Uploader,
+        document: u64,
+        into: Refiling,
+    ) -> anyhow::Result<()> {
+        let known = self.folder_tags.as_deref().unwrap_or_default();
+        let folder_tags: Vec<u64> = known
+            .iter()
+            .filter(|(_, folder)| !folder.person)
+            .map(|(id, _)| *id)
+            .collect();
+        let bin_tag = known
+            .iter()
+            .find(|(_, folder)| folder.discard)
+            .map(|(id, _)| *id);
+        let mut tags: Vec<u64> = uploader
+            .document_tags(document)
+            .await?
+            .into_iter()
+            .filter(|tag| !folder_tags.contains(tag))
+            .collect();
+        if into == Refiling::Bin {
+            if let Some(bin) = bin_tag {
+                tags.push(bin);
+            }
+        }
+        uploader.set_document_tags(document, &tags).await
     }
 
     /// "Undo last letter": out of the queue if it is still waiting there;
@@ -846,6 +940,31 @@ impl Scanner {
                         return;
                     }
                 }
+                // Filed by hand from the display while Paperless was still
+                // reading it: where it goes was decided by whoever held the
+                // paper, and that wins over what the words say.
+                if let Some(into) = filing.refile {
+                    match self.refile_document(uploader, document, into).await {
+                        Ok(()) => {
+                            self.filings
+                                .decide(&filing.task, outcome_for(into, self.bin()), now);
+                            self.event(
+                                now,
+                                true,
+                                format!("{} {}", filing.name, words_for(into, false)),
+                            );
+                        }
+                        Err(err) => {
+                            tracing::warn!(%err, document, "could not file a letter by hand");
+                            self.event(
+                                now,
+                                false,
+                                format!("could not file {}: {err:#}", filing.name),
+                            );
+                        }
+                    }
+                    return;
+                }
                 match uploader.document_tags(document).await {
                     Ok(tags) => Outcome::Folders(folders_among(
                         &tags,
@@ -880,6 +999,7 @@ impl Scanner {
                 true,
                 "was taken back and deleted from Paperless".to_string(),
             ),
+            Outcome::Nowhere => (true, "is kept in no folder".to_string()),
         };
         tracing::info!(letter = %filing.name, %text, "filed");
         self.event(now, ok, format!("{} {text}", filing.name));
@@ -1287,5 +1407,24 @@ async fn drain(
                 });
             }
         }
+    }
+}
+
+/// What the activity list says about a letter filed by hand, after whatever
+/// the letter is called.
+fn words_for(into: Refiling, later: bool) -> &'static str {
+    match (into, later) {
+        (Refiling::Nowhere, false) => "is kept in no folder",
+        (Refiling::Nowhere, true) => "goes in no folder, as soon as Paperless has read it",
+        (Refiling::Bin, false) => "can be thrown away; Paperless keeps it",
+        (Refiling::Bin, true) => "goes in the bin, as soon as Paperless has read it",
+    }
+}
+
+/// What the letter's outcome becomes once it is filed by hand.
+fn outcome_for(into: Refiling, bin: Option<Folder>) -> Outcome {
+    match into {
+        Refiling::Nowhere => Outcome::Nowhere,
+        Refiling::Bin => Outcome::Folders(bin.into_iter().collect()),
     }
 }
