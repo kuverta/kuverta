@@ -56,8 +56,21 @@ fn near(
     xs: std::ops::Range<u32>,
     ys: std::ops::Range<u32>,
 ) -> usize {
+    within(canvas, colour, xs, ys, 60)
+}
+
+/// The same, as near as asked: kuverta's quiet grey is not far from a plain
+/// grey picture, so "is there a picture here" needs a tighter eye than "is
+/// this the right kind of news".
+fn within(
+    canvas: &Canvas,
+    colour: (u8, u8, u8),
+    xs: std::ops::Range<u32>,
+    ys: std::ops::Range<u32>,
+    tolerance: u32,
+) -> usize {
     ys.flat_map(|y| xs.clone().map(move |x| (x, y)))
-        .filter(|&(x, y)| apart(canvas.at(x, y), colour) < 60)
+        .filter(|&(x, y)| apart(canvas.at(x, y), colour) < tolerance)
         .count()
 }
 
@@ -168,10 +181,10 @@ fn the_one_thing_to_do_is_the_coloured_button() {
 #[test]
 fn scanning_shows_what_the_camera_sees_and_where_the_last_letter_goes() {
     let canvas = render(&scanning(1), W, H);
-    let grey = near(&canvas, (128, 128, 128), 20..230, 70..180);
+    let grey = within(&canvas, (128, 128, 128), 20..230, 70..180, 25);
     assert!(grey > 3_000, "the camera's picture: {grey}");
     assert!(
-        near(&canvas, (128, 128, 128), 250..460, 70..180) < 200,
+        within(&canvas, (128, 128, 128), 250..460, 70..180, 25) < 200,
         "nothing on the right yet"
     );
     // The last letter's folder, as a pill in its colour at the top right.

@@ -5,12 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>scannerd</title>
 <style>
+  /* kuverta's own colours (assets/brand/): petrol for the accent, paper for
+     surfaces, amber only where something is asking to be dealt with. The
+     window on the desk and the page on the Pi are one thing to look at. */
   :root {
-    --bg: #f6f5f2; --card: #fff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
-    --accent: #2f62c8; --ok: #2e8b57; --warn: #b86e00; --bad: #c0392b; --todo: #fff6e5;
+    --bg: #f3f2ef; --card: #ffffff; --ink: #1c2526; --muted: #7c8586; --line: #e2e0db;
+    --accent: #1d6b6f; --accent-soft: #dcebea; --ok: #2e8b57; --warn: #e9a23b;
+    --bad: #c2362c; --todo: #fdf3e2; --radius: 8px;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161616; --card: #212121; --ink: #ecebe8; --muted: #9a9893; --line: #343434; --accent: #6b9cff; --todo: #2c2518; }
+    :root {
+      --bg: #161a1b; --card: #22282a; --ink: #e7eaea; --muted: #8c9596; --line: #2d3436;
+      --accent: #2a7f7c; --accent-soft: #1f3a3a; --ok: #5cc98a; --warn: #eaa843;
+      --bad: #ff6b61; --todo: #2b2313;
+    }
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 12px 16px 40px; font: 16px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--ink); }
@@ -18,7 +26,7 @@
   h1 { font-size: 1.05rem; margin: 4px 0 0; color: var(--muted); font-weight: 600; }
   h2 { font-size: 1rem; margin: 0 0 6px; }
   h3 { font-size: .95rem; margin: 16px 0 4px; }
-  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
   #todo { background: var(--todo); }
   #todo ol { margin: 0; padding-left: 1.3em; display: grid; gap: 10px; }
   #todo li p { margin: 2px 0 6px; color: var(--muted); font-size: .92rem; }
@@ -47,7 +55,7 @@
   label.check { display: flex; gap: 8px; align-items: center; color: var(--ink); font-size: 1rem; margin-top: 12px; }
   label.check input { width: auto; margin: 0; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-  button { font: inherit; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+  button { font: inherit; padding: 9px 13px; border-radius: var(--radius); border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
   button.danger { background: var(--bad); border-color: var(--bad); color: #fff; font-weight: 600; }
   button:disabled { opacity: .45; cursor: default; }
@@ -74,21 +82,89 @@
   .folder label.check { margin: 0; font-size: .85rem; white-space: nowrap; }
   .folder button { padding: 8px 10px; }
   @media (max-width: 520px) { .folder { grid-template-columns: minmax(0, 1fr) auto auto auto; } .folder .words { grid-column: 1 / -1; grid-row: 2; } }
+
+  /* -- preview mode ------------------------------------------------------
+     A second way to look at the same status: the page large, what it says
+     beside it, and where it is going — for watching a pile of post go
+     through with a keyboard rather than a phone. */
+  body.preview main { max-width: 1180px; }
+  body.preview .only-page { display: none; }
+  .only-preview { display: none; }
+  body.preview .only-preview { display: initial; }
+  body.preview section.only-preview { display: block; }
+  #preview-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 860px) { #preview-grid { grid-template-columns: minmax(0, 1fr); } }
+  #preview-page { width: 100%; max-height: 62vh; object-fit: contain; background: #000; border-radius: var(--radius); border: 1px solid var(--line); display: block; }
+  #preview-sheets { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  #preview-sheets button { padding: 4px 10px; font-size: .85rem; }
+  #preview-sheets button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  #preview-text { margin: 0; white-space: pre-wrap; font: .82rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 34vh; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0 0; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--ink); font-size: .9rem; font-weight: 600; border: 1px solid transparent; }
+  .chip.bin { background: var(--todo); }
+  .chip.person { background: transparent; border-color: var(--line); font-weight: 500; }
+  .chip.guess { border-style: dashed; border-color: var(--accent); background: transparent; }
+  .chip .key { font-size: .75rem; color: var(--muted); font-weight: 600; }
+  .keys { display: flex; gap: 6px 14px; flex-wrap: wrap; margin: 10px 0 0; padding: 0; list-style: none; font-size: .85rem; color: var(--muted); }
+  .keys li { display: flex; gap: 6px; align-items: center; }
+  kbd { font: 600 .78rem/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; min-width: 1.6em; text-align: center; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 6px; background: var(--card); color: var(--ink); }
+  #preview-state { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 650; }
+  #preview-state .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--muted); flex: none; }
+  #preview-live { width: 128px; border-radius: 6px; border: 1px solid var(--line); background: #000; }
+  .side-by-side { display: flex; gap: 12px; align-items: flex-start; }
+  .grow { flex: 1 1 auto; min-width: 0; }
 </style>
 </head>
 <body>
 <main>
   <div>
-    <h1>scannerd</h1>
-    <p class="hint intro">Put the pages of a letter down one at a time and take your hand away — each is photographed once nothing moves. After the last page, press <b>Finish letter</b>.</p>
+    <div class="side-by-side">
+      <div class="grow">
+        <h1>scannerd</h1>
+        <p class="hint intro">Put the pages of a letter down one at a time and take your hand away — each is photographed once nothing moves. After the last page, press <b>Finish letter</b>.</p>
+      </div>
+      <button id="preview-toggle" type="button" title="A bigger view for working through a pile (p)">Preview</button>
+    </div>
   </div>
 
-  <section id="todo" hidden>
+  <!-- Preview mode: the page large, what the Pi read on it, where it is
+       going, and the keys that do the work. The same status as the rest of
+       the page, laid out for someone standing at the table with a keyboard. -->
+  <section class="only-preview" id="preview">
+    <div class="side-by-side">
+      <div class="grow">
+        <div id="preview-state"><span id="preview-dot" class="dot"></span><span id="preview-state-text">Connecting…</span></div>
+        <p class="hint" id="preview-hint"></p>
+      </div>
+      <img id="preview-live" alt="What the camera sees">
+    </div>
+    <div id="preview-grid">
+      <div>
+        <img id="preview-page" alt="The page just photographed">
+        <div id="preview-sheets"></div>
+      </div>
+      <div>
+        <h3 style="margin-top:0">Where it goes</h3>
+        <div class="chips" id="preview-folders"><span class="hint">Nothing read yet.</span></div>
+        <form id="preview-add" class="row" autocomplete="off">
+          <input id="preview-add-name" placeholder="New folder from this letter" aria-label="New folder">
+          <button type="submit">Add folder</button>
+        </form>
+        <p class="hint" id="preview-add-hint">The words on this page go in as the folder's words, so the next letter like it lands there by itself.</p>
+        <h3>What it says</h3>
+        <p class="hint" id="preview-text-hint"></p>
+        <pre id="preview-text"></pre>
+      </div>
+    </div>
+    <ul class="keys" id="preview-keys"></ul>
+  </section>
+
+  <section class="only-page" id="todo" hidden>
     <h2>Before the first letter</h2>
     <ol id="todo-list"></ol>
   </section>
 
-  <section>
+  <section class="only-page">
     <div id="state"><span id="dot"></span><span id="state-text">Connecting…</span></div>
     <p class="hint" id="state-hint"></p>
     <div class="view" id="live-view"><div class="turn" id="live-turn"><img id="live" alt="What the camera sees">
@@ -113,7 +189,7 @@
     </div>
   </section>
 
-  <section>
+  <section class="only-page">
     <h2>What happened</h2>
     <ul id="queue"></ul>
     <ul id="events"><li><span class="time"></span><span class="hint">Nothing yet.</span></li></ul>
@@ -695,6 +771,7 @@
       row.append(time, body, remove);
       return row;
     }));
+    drawPreview(s);
     if (s.events.length) fill($('events'), s.events.map((event) => [clock(event.at), event.text, !event.ok]));
     if (s.check) {
       $('check').textContent = `${clock(s.check.at)} — ${s.check.text}`;
@@ -751,6 +828,177 @@
       .then(() => { $('token').value = ''; $('check').textContent = 'Saved. Checking the connection…'; return post('/api/check'); })
       .catch(complain);
   };
+
+  // -- preview mode ------------------------------------------------------------
+  //
+  // The same status, laid out for someone standing at the table with a pile of
+  // post and a keyboard: the page large, what the Pi read on it, and where it
+  // is going — with every key that does anything written on the screen.
+
+  /// The keys, in the order they are shown. `act` is called with the status.
+  const KEYS = [
+    ['f', 'Finish letter', (s) => { if (!$('finish').disabled) $('finish').click(); }],
+    ['1…9', 'File in that folder', null],
+    ['0', 'No folder', (s) => s.can_refile && post('/api/file-nowhere').catch(complain)],
+    ['b', 'Throw away', (s) => s.can_refile && post('/api/file-in-bin').catch(complain)],
+    ['u', 'Undo last page', () => { if (!$('undo-page').disabled) $('undo-page').click(); }],
+    ['z', 'Undo last letter', () => { if (!$('undo-letter').hidden) $('undo-letter').click(); }],
+    ['x', 'Cancel letter', () => { if (!$('cancel-letter').disabled) $('cancel-letter').click(); }],
+    ['s', 'Start / stop scanning', () => $('scan-toggle').click()],
+    ['l', 'Learn empty table', () => $('learn').click()],
+    ['n', 'Name a new folder', () => $('preview-add-name').focus()],
+    ['←  →', 'Page before / after', null],
+    ['p', 'Leave preview', () => setPreview(false)],
+  ];
+
+  let sheet = null;          // which page of the letter the preview shows
+  const inPreview = () => document.body.classList.contains('preview');
+
+  function setPreview(on) {
+    document.body.classList.toggle('preview', on);
+    $('preview-toggle').textContent = on ? 'Ordinary view' : 'Preview';
+    try { localStorage.setItem('scannerd-preview', on ? 'yes' : 'no'); } catch { /* it is only a preference */ }
+    if (last) drawPreview(last);
+  }
+  $('preview-toggle').onclick = () => setPreview(!inPreview());
+  try { if (localStorage.getItem('scannerd-preview') === 'yes') setPreview(true); } catch { /* none */ }
+
+  $('preview-keys').replaceChildren(...KEYS.map(([key, what]) => {
+    const row = document.createElement('li');
+    for (const one of key.split('  ')) row.append(Object.assign(document.createElement('kbd'), { textContent: one }));
+    row.append(Object.assign(document.createElement('span'), { textContent: what }));
+    return row;
+  }));
+
+  /// The folders as the preview shows them: every folder on the shelf, the
+  /// guessed ones marked, each with the number that files this letter there.
+  function folderChips(s) {
+    const shelf = (s.settings.folders || []).filter((folder) => !folder.person);
+    const guessed = new Set((s.guess || []).filter((g) => !g.person).map((g) => g.name.toLowerCase()));
+    const people = (s.guess || []).filter((g) => g.person).map((g) => g.name);
+    // The ones the text looks like come first, so the number keys land on the
+    // likely answers when there are more folders than fingers.
+    const likely = shelf.filter((folder) => guessed.has(folder.name.toLowerCase()));
+    const rest = shelf.filter((folder) => !guessed.has(folder.name.toLowerCase()));
+    const chips = [...likely, ...rest].map((folder, index) => {
+      const marked = guessed.has(folder.name.toLowerCase());
+      const chip = Object.assign(document.createElement('button'), {
+        type: 'button',
+        className: `chip${folder.discard ? ' bin' : ''}${marked ? ' guess' : ''}`,
+        title: `File this letter in ${folder.name}`,
+      });
+      if (index < 9) {
+        chip.append(Object.assign(document.createElement('span'), { className: 'key', textContent: String(index + 1) }));
+      }
+      chip.append(document.createTextNode(folder.name));
+      chip.onclick = () => fileInto(folder.name);
+      return chip;
+    });
+    for (const who of people) {
+      chips.push(Object.assign(document.createElement('span'), { className: 'chip person', textContent: `for ${who}` }));
+    }
+    return chips;
+  }
+
+  const fileInto = (name) => post('/api/file-into', { name }).catch(complain);
+
+  function drawPreview(s) {
+    if (!inPreview()) return;
+    const [colour, text, hint] = describe(s);
+    $('preview-dot').style.background = colour;
+    $('preview-state-text').textContent = text;
+    $('preview-hint').textContent = s.notice ? s.notice.text : hint;
+    $('preview-hint').className = s.notice ? (s.notice.ok ? 'hint ok' : 'hint bad') : 'hint';
+    if (s.frame_at > 0) $('preview-live').src = `/frame.bmp?n=${s.frame_at}`;
+
+    // The pages of the letter in front of the camera, newest last.
+    const pages = s.open_pages.filter((name) => !deleting.has(name));
+    const read = s.read_pages || [];
+    const names = pages.length ? pages : read.map((page) => page.name);
+    if (!names.includes(sheet)) sheet = names[names.length - 1] || null;
+    $('preview-sheets').replaceChildren(...names.map((name, index) => {
+      const tab = Object.assign(document.createElement('button'), { type: 'button', textContent: `Page ${index + 1}` });
+      tab.setAttribute('aria-pressed', String(name === sheet));
+      tab.onclick = () => { sheet = name; drawPreview(last); };
+      return tab;
+    }));
+    const showing = sheet && pages.includes(sheet);
+    $('preview-page').src = showing ? `/page/${encodeURIComponent(sheet)}` : '';
+    $('preview-page').style.visibility = showing ? 'visible' : 'hidden';
+
+    const page = read.find((one) => one.name === sheet);
+    const words = page && page.text ? page.text.trim().split(/\s+/).length : 0;
+    $('preview-text').textContent = page ? page.text : '';
+    $('preview-text-hint').textContent = !names.length
+      ? 'Put a page down.'
+      : page
+        ? `${words} word${words === 1 ? '' : 's'} read here on the scanner — Paperless reads it properly when the letter is sent.`
+        : 'Reading this page…';
+
+    const chips = folderChips(s);
+    $('preview-folders').replaceChildren(...(chips.length ? chips
+      : [Object.assign(document.createElement('span'), { className: 'hint', textContent: 'No folders on the shelf yet — name one below.' })]));
+  }
+
+  /// A folder named here is added to the shelf and this letter goes in it.
+  /// Its words are the letter's own longest words, so the next one like it
+  /// lands there by itself — they can be edited under Setup afterwards.
+  $('preview-add').onsubmit = async (event) => {
+    event.preventDefault();
+    const name = $('preview-add-name').value.trim();
+    if (!name || !last) return;
+    const shelf = (last.settings.folders || []).map((folder) => ({ ...folder }));
+    if (!shelf.some((folder) => !folder.person && folder.name.toLowerCase() === name.toLowerCase())) {
+      shelf.push({ name, words: suggestedWords(last), discard: false, person: false });
+      try {
+        await post('/api/settings', { folders: shelf });
+      } catch (error) { complain(error); return; }
+    }
+    $('preview-add-name').value = '';
+    $('preview-add-name').blur();
+    // Paperless needs the tag before the letter can be given it.
+    await post('/api/check').catch(() => {});
+    if (last.can_refile) setTimeout(() => fileInto(name), 1200);
+  };
+
+  /// Words worth looking for in the next letter like this one: the longest
+  /// words the page has, which in German post are the telling ones —
+  /// "Beitragsrechnung", "Zulassungsbescheinigung" — with the obvious noise
+  /// left out.
+  function suggestedWords(s) {
+    const text = (s.read_pages || []).map((page) => page.text).join(' ');
+    const seenWords = new Set();
+    const words = text
+      .split(/[^\p{L}\p{N}-]+/u)
+      .map((word) => word.replace(/^-+|-+$/g, ''))
+      .filter((word) => word.length >= 9 && /\p{Lu}/u.test(word[0]))
+      .filter((word) => (seenWords.has(word.toLowerCase()) ? false : seenWords.add(word.toLowerCase())));
+    return words.slice(0, 6).join(', ');
+  }
+
+  document.addEventListener('keydown', (event) => {
+    const typing = event.target.matches('input, textarea, select') || event.target.isContentEditable;
+    if (event.metaKey || event.ctrlKey || event.altKey) return;
+    if (event.key === 'Escape' && typing) { event.target.blur(); return; }
+    if (typing) return;
+    if (event.key === 'p') { event.preventDefault(); setPreview(!inPreview()); return; }
+    if (!inPreview() || !last) return;
+
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      const tabs = [...$('preview-sheets').children];
+      const here = tabs.findIndex((tab) => tab.getAttribute('aria-pressed') === 'true');
+      const next = tabs[here + (event.key === 'ArrowRight' ? 1 : -1)];
+      if (next) { event.preventDefault(); next.click(); }
+      return;
+    }
+    if (/^[1-9]$/.test(event.key)) {
+      const chip = $('preview-folders').children[Number(event.key) - 1];
+      if (chip && chip.tagName === 'BUTTON') { event.preventDefault(); chip.click(); }
+      return;
+    }
+    const found = KEYS.find(([key]) => key === event.key);
+    if (found && found[2]) { event.preventDefault(); found[2](last); }
+  });
 
   refresh();
   setInterval(refresh, 1500);
