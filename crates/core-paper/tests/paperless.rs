@@ -172,8 +172,19 @@ async fn dates_come_back_as_timestamps_in_both_shapes() {
 
     // A full timestamp and a bare date. Both have to parse, or the list sorts
     // half the post to 1970.
-    assert_eq!(page.documents[0].created_utc, Some(1_772_582_400));
-    assert_eq!(page.documents[1].created_utc, Some(1_770_768_000));
+    //
+    // And the offset counts: Paperless answers in the time zone it is set to,
+    // so `2026-03-04T00:00:00+01:00` is 23:00 the day before in UTC. Read as
+    // if it were UTC, every scanned letter showed in the inbox an hour — in
+    // summer two — after it was scanned.
+    assert_eq!(page.documents[0].created_utc, Some(1_772_578_800));
+    assert_eq!(page.documents[0].added_utc, Some(1_772_788_364), "Z is UTC");
+    assert_eq!(
+        page.documents[1].created_utc,
+        Some(1_770_768_000),
+        "a bare date"
+    );
+    assert_eq!(page.documents[1].added_utc, Some(1_770_883_200));
     assert!(page.documents[0].added_utc.unwrap() > page.documents[0].created_utc.unwrap());
 }
 

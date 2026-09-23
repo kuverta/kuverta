@@ -17,7 +17,7 @@
 //! nobody has.
 
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -26,10 +26,15 @@ use clap::Parser;
 use scannerd::button::Button;
 use scannerd::camera::{Camera, RpiCamera};
 use scannerd::detect::State;
+use scannerd::display::{Confirming, Display, Facts, Screen};
+use scannerd::folders::{self, Folder};
 use scannerd::hub::{Command, Event, Hub, Queued, SettingsView};
+use scannerd::lcd::Bands;
 use scannerd::locate::{find_page, find_page_corners};
+use scannerd::picture::Picture;
 use scannerd::run::{Letters, Scanner, Turn};
 use scannerd::settings::{Settings, View};
+use scannerd::spool::Pending;
 use scannerd::spool::Spool;
 use scannerd::upload::Uploader;
 use scannerd::web::{self, Web};
@@ -99,12 +104,20 @@ struct Args {
     #[arg(long, env = "SCANNERD_SENSOR_HEIGHT", default_value_t = 1944)]
     sensor_height: u32,
 
-    /// How long between preview frames.
-    #[arg(long, default_value_t = 400)]
+    /// How long between turns of the loop. With the preview stream each turn
+    /// also waits for the stream's next frame.
+    #[arg(long, default_value_t = 50)]
     interval_ms: u64,
 
-    /// Consecutive still frames before a page is photographed.
-    #[arg(long, default_value_t = 3)]
+    /// Preview frames a second, from a stream kept running between
+    /// photographs (`rpicam-vid`). 0: a still for every frame, as before the
+    /// stream — half a second each.
+    #[arg(long, env = "SCANNERD_PREVIEW_FPS", default_value_t = 5)]
+    preview_fps: u32,
+
+    /// Consecutive still frames before a page is photographed: at five frames
+    /// a second, a second of stillness.
+    #[arg(long, default_value_t = 5)]
     settle_frames: u8,
 
     /// How often to retry uploads that are waiting, when nothing new is being
@@ -121,8 +134,14 @@ struct Args {
 
     /// The key the button sends. 28 is Enter, which the overlay line in the
     /// readme configures.
-    #[arg(long, default_value_t = scannerd::button::KEY_ENTER)]
+    #[arg(long, env = "SCANNERD_BUTTON_KEY", default_value_t = scannerd::button::KEY_ENTER)]
     button_key: u16,
+
+    /// Finish a letter once its last page has been taken away and the table
+    /// has stayed empty this long. 0: only the button, the display or the
+    /// page finish one.
+    #[arg(long, env = "SCANNERD_FINISH_WHEN_CLEAR_SECS", default_value_t = 8)]
+    finish_when_clear_secs: u64,
 
     /// Close a letter nobody closed this long after its last page.
     #[arg(long, default_value_t = 300)]
@@ -136,6 +155,44 @@ struct Args {
     /// The setup page's password (any user name).
     #[arg(long, env = "SCANNERD_UI_PASSWORD", hide_env_values = true)]
     ui_password: Option<String>,
+
+    /// The folders on the shelf, which the display says a letter goes in once
+    /// Paperless has read it — each a Paperless tag of the same name, which
+    /// scannerd creates. `-` before a name marks the bin:
+    /// `Car,House,Taxes,-Throw away`. The setup page sets words for each.
+    #[arg(long, env = "SCANNERD_FOLDERS")]
+    folders: Option<String>,
+
+    /// The exposure to start from, in stops from the camera's own choice —
+    /// negative is darker. scannerd learns it from the photographs and keeps
+    /// what it learnt, which wins over this.
+    #[arg(long, env = "SCANNERD_EV", allow_hyphen_values = true)]
+    ev: Option<f32>,
+
+    /// Show what to do, whether the last photograph can be read and which
+    /// folder a letter goes in: `epaper` for a Waveshare 2.13″ e-paper HAT
+    /// (V3/V4; needs `dtparam=spi=on` and the `spi` and `gpio` groups), or a
+    /// framebuffer such as `/dev/fb0` for an LCD the kernel drives (the 3.5″
+    /// SPI panel with `dtoverlay=piscreen`; needs the `video` group).
+    #[arg(long, env = "SCANNERD_DISPLAY")]
+    display: Option<String>,
+
+    /// The LCD's touchscreen, read directly: `/dev/spidev0.1` on the 3.5″
+    /// panel, with the kernel's ads7846 driver kept off it (see the readme).
+    /// With it, scanning is started and stopped on the display: the camera is
+    /// only watched between **Start scanning** and the end of a letter.
+    #[arg(long, env = "SCANNERD_TOUCH")]
+    touch: Option<String>,
+
+    /// Which touch channel follows the screen's rows, and what it reads at the
+    /// top and the bottom: `channel:top:bottom`. The rig's panel is x:204:4000.
+    #[arg(long, env = "SCANNERD_TOUCH_ROWS")]
+    touch_rows: Option<String>,
+
+    /// Turn the e-paper display's picture upside down, for a HAT mounted the
+    /// other way round.
+    #[arg(long, env = "SCANNERD_DISPLAY_FLIP")]
+    display_flip: bool,
 
     /// Drain the spool and exit, without watching for pages. For a cron job,
     /// and for checking the other half works before there is a camera.
@@ -153,6 +210,9 @@ async fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
+
+    let started_folders = folders::parse_env(args.folders.as_deref().unwrap_or_default());
+    scannerd::settings::valid_folders(&started_folders).context("SCANNERD_FOLDERS")?;
 
     let spool = Spool::open(&args.spool)?;
     let mut settings = Settings::load(spool.dir())?;
@@ -174,16 +234,58 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    scanner.file_into(folders_for(&args, &settings));
+    scanner.expose_at(settings.ev.or(args.ev).unwrap_or(0.0));
+
     let mut view = view_for(&args, &settings)?;
     scanner.straighten_with(view.warp());
-    let mut camera = RpiCamera {
-        program: args.camera.clone(),
-        roi: view.roi.clone(),
-        sensor_width: args.sensor_width,
-        sensor_height: args.sensor_height,
-        ..RpiCamera::default()
-    };
+    let mut camera = RpiCamera::default();
+    camera.program = args.camera.clone();
+    camera.roi = view.roi.clone();
+    camera.sensor_width = args.sensor_width;
+    camera.sensor_height = args.sensor_height;
+    // The stream is rpicam-vid's, beside rpicam-still. Another camera program
+    // — the ffmpeg stand-in on a laptop — takes a still for every frame.
+    if args.preview_fps > 0 && args.camera == "rpicam-still" {
+        camera.video_program = Some("rpicam-vid".to_string());
+        camera.stream_fps = args.preview_fps;
+    }
+    scanner.frame_width(camera.preview_width);
     let hub = Arc::new(Hub::new(camera.preview_width, camera.preview_height));
+    let (display, bands) = match args
+        .display
+        .as_deref()
+        .and_then(|kind| open_display(kind, args.display_flip))
+    {
+        Some((display, bands)) => (Some(display), bands),
+        None => (None, None),
+    };
+    // A display you can touch starts and stops scanning; without one the
+    // camera is always watched.
+    let touch = match (&args.touch, bands) {
+        (Some(device), Some((bands, height))) => open_touch(device, &args, bands, height, &hub),
+        (Some(_), None) => {
+            tracing::error!("no touchscreen: it needs the LCD (SCANNERD_DISPLAY=/dev/fb0)");
+            false
+        }
+        (None, _) => false,
+    };
+    // Watching from the start, touch or not: a page put down after a boot is
+    // photographed without anyone pressing anything. Stop scanning on the
+    // display, or the page, stops it.
+    scanner.watch(true);
+    // What the last button that works at once came to, and when.
+    let mut notice: Option<(u64, bool, &str)> = None;
+    // A button on the display waiting for its second tap, and since when.
+    let mut confirming: Option<(Confirming, u64)> = None;
+    // Whether the display is showing what is waiting to be sent.
+    let mut showing_queue = false;
+    if let Some(display) = &display {
+        display.show(Screen {
+            headline: "Starting".into(),
+            ..Screen::default()
+        });
+    }
 
     if let Some(address) = args.ui {
         let password = args
@@ -217,6 +319,8 @@ async fn main() -> Result<()> {
         scanner = scanner.collecting(Letters {
             button,
             idle: Duration::from_secs(args.letter_idle_secs),
+            when_clear: (args.finish_when_clear_secs > 0)
+                .then(|| Duration::from_secs(args.finish_when_clear_secs)),
         });
     }
 
@@ -234,7 +338,75 @@ async fn main() -> Result<()> {
                     }
                 }
                 Command::LearnEmpty => {
-                    scanner.learn_empty(now);
+                    // From a frame taken now: while scanning is stopped there
+                    // is no recent one.
+                    notice = Some(if scanner.learn_empty_now(&camera, now) {
+                        (now, true, "Learnt the empty table")
+                    } else {
+                        (now, false, "Could not see the table - no camera?")
+                    });
+                }
+                Command::ShowQueue(showing) => {
+                    showing_queue = showing;
+                    confirming = None;
+                }
+                Command::DiscardQueued { which, confirmed } => {
+                    let name = match &which {
+                        scannerd::hub::Which::Named(name) => Some(name.clone()),
+                        scannerd::hub::Which::At(index) => spool
+                            .pending()
+                            .ok()
+                            .and_then(|pending| pending.get(*index).cloned())
+                            .and_then(|item| {
+                                item.path
+                                    .file_name()
+                                    .map(|name| name.to_string_lossy().into_owned())
+                            }),
+                    };
+                    match (name, confirmed) {
+                        (Some(_), false) => {
+                            if let scannerd::hub::Which::At(index) = which {
+                                confirming = Some((Confirming::Queued(index), now));
+                            }
+                        }
+                        (Some(name), true) => {
+                            confirming = None;
+                            scanner.discard_queued(&spool, &name, now);
+                            if spool.pending().map(|left| left.is_empty()).unwrap_or(true) {
+                                showing_queue = false;
+                            }
+                        }
+                        (None, _) => hub.event(now, false, "that letter is not waiting any more"),
+                    }
+                }
+                Command::UndoPage => {
+                    scanner.undo_page(&spool, now);
+                }
+                Command::CancelLetter { confirmed: false } => {
+                    confirming = Some((Confirming::Cancel, now));
+                }
+                Command::CancelLetter { confirmed: true } => {
+                    confirming = None;
+                    scanner.cancel_letter(&spool, now);
+                }
+                Command::UndoLetter { confirmed: false } => {
+                    confirming = Some((Confirming::UndoLetter, now));
+                }
+                Command::UndoLetter { confirmed: true } => {
+                    confirming = None;
+                    scanner.undo_letter(&spool, &uploader, now).await;
+                }
+                Command::StartScanning => {
+                    if !scanner.watching() {
+                        scanner.watch(true);
+                        hub.event(now, true, "scanning started");
+                    }
+                }
+                Command::StopScanning => {
+                    if scanner.watching() {
+                        scanner.watch(false);
+                        hub.event(now, true, "scanning stopped");
+                    }
                 }
                 Command::DeletePage(name) => {
                     // Numbered as the page showed it, before it goes.
@@ -290,12 +462,21 @@ async fn main() -> Result<()> {
                 }
                 Command::CheckPaperless => {
                     let (ok, text) = match uploader.check().await {
-                        Ok(text) => (true, text),
+                        Ok(text) if folders_for(&args, &settings).is_empty() => (true, text),
+                        // The folders' tags are made or brought up to date
+                        // now, rather than when the next letter is sent.
+                        Ok(text) => match scanner.sync_folders(&uploader).await {
+                            Ok(count) => (true, format!("{text}; {count} folders set up")),
+                            Err(err) => (false, format!("{text}; but the folders: {err:#}")),
+                        },
                         Err(err) => (false, format!("{err:#}")),
                     };
                     hub.update(|status| status.check = Some(Event { at: now, ok, text }));
                 }
                 Command::Settings(newer) => {
+                    if let Some(ev) = newer.ev {
+                        scanner.expose_at(ev);
+                    }
                     settings.merge(newer);
                     match settings.save(spool.dir()) {
                         Ok(()) => hub.event(now, true, "settings saved"),
@@ -307,6 +488,9 @@ async fn main() -> Result<()> {
                         Ok(changed) => uploader = changed,
                         Err(err) => hub.event(now, false, format!("{err:#}")),
                     }
+                    // Set up again before the next letter: the words, or the
+                    // Paperless, may be new.
+                    scanner.file_into(folders_for(&args, &settings));
                     let newer = match view_for(&args, &settings) {
                         Ok(newer) => newer,
                         Err(err) => {
@@ -333,6 +517,68 @@ async fn main() -> Result<()> {
 
         let turn = scanner.turn(&camera, &spool, &uploader, now).await;
 
+        // What the photographs taught about the exposure, kept for the next
+        // run.
+        let ev = scanner.exposure();
+        if settings.ev.unwrap_or(0.0) != ev {
+            settings.ev = Some(ev);
+            if let Err(err) = settings.save(spool.dir()) {
+                tracing::warn!("could not keep the exposure: {err:#}");
+            }
+        }
+
+        // Stopped, the camera is left alone: no stream running for nobody.
+        if !scanner.watching() {
+            camera.stop_stream();
+        }
+
+        if let Some(display) = &display {
+            let live = scanner
+                .last_frame()
+                .filter(|_| scanner.watching() && turn != Turn::NoFrame)
+                .map(|frame| live_view(frame, &camera, &view));
+            let waiting: Vec<Queued> = spool
+                .pending()
+                .unwrap_or_default()
+                .iter()
+                .map(queued)
+                .collect();
+            display.show(Screen::for_facts(&Facts {
+                now,
+                state: state_name(&turn, scanner.state()),
+                finishing: scanner.finishing(),
+                collecting: scanner.collecting_letters(),
+                open_pages: spool.open_pages().map(|pages| pages.len()).unwrap_or(0),
+                waiting: spool.pending().map(|pending| pending.len()).unwrap_or(0),
+                last: scanner.last_photographed(),
+                filing: scanner.filing(),
+                touch,
+                scanning: scanner.watching(),
+                live,
+                notice: notice
+                    .filter(|(at, _, _)| now.saturating_sub(*at) < NOTICE_SECS)
+                    .map(|(_, ok, words)| (ok, words)),
+                finishing_in: scanner.finishing_in(now),
+                can_undo_letter: scanner.can_undo_letter(now),
+                queue: &waiting,
+                showing_queue,
+                confirming: confirming
+                    .filter(|(_, at)| now.saturating_sub(*at) < CONFIRM_SECS)
+                    .map(|(what, _)| what),
+            }));
+        }
+        // The page says it too, whichever of them the button was on.
+        {
+            let fresh = notice.filter(|(at, _, _)| now.saturating_sub(*at) < NOTICE_SECS);
+            hub.update(|status| {
+                status.notice = fresh.map(|(at, ok, words)| Event {
+                    at,
+                    ok,
+                    text: words.to_string(),
+                })
+            });
+        }
+
         if args.ui.is_some() {
             let view = SettingsView {
                 url: settings.url.clone().unwrap_or_else(|| args.url.clone()),
@@ -342,6 +588,8 @@ async fn main() -> Result<()> {
                 rotate: view.rotate,
                 token_set: settings.token.is_some()
                     || args.token.as_deref().is_some_and(|t| !t.is_empty()),
+                folders: folders_for(&args, &settings),
+                ev: scanner.exposure(),
             };
             publish(&hub, &mut scanner, &spool, view, &turn);
         } else {
@@ -356,6 +604,13 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
     settings
         .effective_view(args.roi.as_deref(), args.corners.as_deref(), args.rotate)
         .context("the crop, corners or turn are not usable")
+}
+
+/// The folders in force: the page's, then the env file's.
+fn folders_for(args: &Args, settings: &Settings) -> Vec<Folder> {
+    settings.effective_folders(&folders::parse_env(
+        args.folders.as_deref().unwrap_or_default(),
+    ))
 }
 
 /// The uploader for the settings in force: the page's, then the env file's.
@@ -396,16 +651,14 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
         .pending()
         .unwrap_or_default()
         .iter()
-        .map(|item| Queued {
-            name: name(&item.path),
-            attempts: item.attempts,
-        })
+        .map(queued)
         .collect();
-    let (state, frames_still) = match (turn, scanner.state()) {
-        (Turn::NoFrame, _) => ("no-camera", 0),
-        (_, State::Waiting) => ("waiting", 0),
-        (_, State::Settling { frames_still }) => ("settling", frames_still),
-        (_, State::Spent) => ("photographed", 0),
+    let state = state_name(turn, scanner.state());
+    let scanning = scanner.watching();
+    let can_undo_letter = scanner.can_undo_letter(now());
+    let frames_still = match scanner.state() {
+        State::Settling { frames_still } => frames_still,
+        _ => 0,
     };
 
     let settle_frames = scanner.settle_frames();
@@ -422,10 +675,193 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
         status.settle_frames = settle_frames;
         status.has_baseline = has_baseline;
         status.collecting = collecting;
+        status.scanning = scanning;
+        status.can_undo_letter = can_undo_letter;
         status.open_pages = open_pages;
         status.queue = queue;
         status.settings = settings;
     });
+}
+
+/// What the camera sees, as the photograph will show it: in the crop's own
+/// proportions, straightened by the page's corners when there are any, and
+/// turned — so the live view and the last photograph beside it are the same
+/// shape and the same way up.
+fn live_view(frame: &[u8], camera: &RpiCamera, view: &View) -> Picture {
+    let (width, height) = (
+        camera.preview_width as usize,
+        camera.preview_height as usize,
+    );
+    // The preview is 4:3 whatever the crop, so it is stretched; the crop's
+    // own shape is the photograph's. Without corners the whole crop is the
+    // page, which still puts it in shape and turns it.
+    let (crop_w, crop_h) = camera
+        .capture_size()
+        .unwrap_or((camera.sensor_width, camera.sensor_height));
+    let corners = view.warp().unwrap_or(scannerd::straighten::Corners::WHOLE);
+    scannerd::straighten::straighten_luma(
+        frame,
+        width,
+        height,
+        crop_w as f64 / crop_h as f64,
+        &corners,
+        camera.preview_width,
+        camera.preview_width,
+    )
+}
+
+/// How long a button waits for its second tap.
+const CONFIRM_SECS: u64 = 6;
+
+/// How long the display says what came of a button.
+const NOTICE_SECS: u64 = 10;
+
+/// A letter waiting to be sent, as the page and the display see it.
+fn queued(item: &Pending) -> Queued {
+    Queued {
+        name: item
+            .path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        attempts: item.attempts,
+        at: item.captured_at,
+    }
+}
+
+/// The loop's state as the page and the display name it.
+fn state_name(turn: &Turn, state: State) -> &'static str {
+    match (turn, state) {
+        (Turn::NoFrame, _) => "no-camera",
+        (Turn::Paused, _) => "paused",
+        (_, State::Waiting) => "waiting",
+        (_, State::Settling { .. }) => "settling",
+        (_, State::Spent) => "photographed",
+    }
+}
+
+/// The display, if it answers — and for an LCD, where its buttons are and how
+/// tall it is, for the touchscreen. A display that does not answer is logged
+/// and done without: it shows what the loop does, and is no reason to stop it.
+fn open_display(kind: &str, flip: bool) -> Option<(Display, Option<(Bands, u32)>)> {
+    let opened = match kind.trim() {
+        "" | "false" | "none" => return None,
+        // `true` is what the env file said when the e-paper was the only one.
+        "epaper" | "true" => open_epaper(flip).map(|display| (display, None)),
+        path if path.starts_with('/') => {
+            scannerd::lcd::Framebuffer::open(Path::new(path)).map(|framebuffer| {
+                let touch = (framebuffer.bands(), framebuffer.height());
+                (Display::spawn(Box::new(framebuffer)), Some(touch))
+            })
+        }
+        other => Err(anyhow::anyhow!(
+            "{other:?} is not a display: `epaper`, or a framebuffer such as /dev/fb0"
+        )),
+    };
+    match opened {
+        Ok(display) => {
+            tracing::info!(display = kind, "display");
+            Some(display)
+        }
+        Err(err) => {
+            tracing::error!("no display: {err:#}");
+            None
+        }
+    }
+}
+
+/// The touchscreen, each tap sent to the loop as whatever button it fell on.
+/// False, and logged, when it cannot be read: the display still shows, and
+/// the camera is watched all the time as without one.
+fn open_touch(device: &str, args: &Args, bands: Bands, height: u32, hub: &Arc<Hub>) -> bool {
+    let rows = match args.touch_rows.as_deref() {
+        Some(text) => match scannerd::touch::Rows::parse(text) {
+            Ok(rows) => rows,
+            Err(err) => {
+                tracing::error!("no touchscreen: SCANNERD_TOUCH_ROWS: {err:#}");
+                return false;
+            }
+        },
+        None => scannerd::touch::Rows::RIG,
+    };
+    let hub = hub.clone();
+    let tapped = move |row: i32| {
+        let action = scannerd::touch::hit(&bands.lock().unwrap(), row);
+        tracing::info!(row, ?action, "tap");
+        let command = match action {
+            Some(scannerd::display::Action::StartScanning) => Command::StartScanning,
+            Some(scannerd::display::Action::StopScanning) => Command::StopScanning,
+            Some(scannerd::display::Action::FinishLetter(_)) => Command::FinishLetter,
+            Some(scannerd::display::Action::LearnEmpty) => Command::LearnEmpty,
+            Some(scannerd::display::Action::UndoPage) => Command::UndoPage,
+            Some(scannerd::display::Action::CancelLetter(_)) => {
+                Command::CancelLetter { confirmed: false }
+            }
+            Some(scannerd::display::Action::ConfirmCancel(_)) => {
+                Command::CancelLetter { confirmed: true }
+            }
+            Some(scannerd::display::Action::UndoLetter) => Command::UndoLetter { confirmed: false },
+            Some(scannerd::display::Action::ConfirmUndoLetter) => {
+                Command::UndoLetter { confirmed: true }
+            }
+            Some(scannerd::display::Action::OpenQueue(_)) => Command::ShowQueue(true),
+            Some(scannerd::display::Action::Back) => Command::ShowQueue(false),
+            Some(scannerd::display::Action::QueuedLetter(index)) => Command::DiscardQueued {
+                which: scannerd::hub::Which::At(index),
+                confirmed: false,
+            },
+            Some(scannerd::display::Action::ConfirmQueued(index)) => Command::DiscardQueued {
+                which: scannerd::hub::Which::At(index),
+                confirmed: true,
+            },
+            None => return,
+        };
+        hub.send(command);
+    };
+    match watch_touch(device, rows, height, tapped) {
+        Ok(()) => {
+            tracing::info!(device, "touchscreen");
+            true
+        }
+        Err(err) => {
+            tracing::error!("no touchscreen: {err:#}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn watch_touch(
+    device: &str,
+    rows: scannerd::touch::Rows,
+    height: u32,
+    tapped: impl FnMut(i32) + Send + 'static,
+) -> Result<()> {
+    scannerd::touch::watch(device, rows, height, tapped)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn watch_touch(
+    _device: &str,
+    _rows: scannerd::touch::Rows,
+    _height: u32,
+    _tapped: impl FnMut(i32) + Send + 'static,
+) -> Result<()> {
+    bail!("the touchscreen is read on Linux only")
+}
+
+#[cfg(target_os = "linux")]
+fn open_epaper(flip: bool) -> Result<Display> {
+    let panel = scannerd::epaper::Ssd1680::open()?;
+    Ok(Display::spawn(Box::new(scannerd::display::Epaper::new(
+        Box::new(panel),
+        flip,
+    ))))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn open_epaper(_flip: bool) -> Result<Display> {
+    bail!("the e-paper HAT is driven on Linux only")
 }
 
 fn now() -> u64 {

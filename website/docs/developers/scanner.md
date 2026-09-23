@@ -40,16 +40,47 @@ to Paperless as one PDF with the photographs embedded as they are. A letter
 nobody closes is sent `--letter-idle-secs` (five minutes) after its last page.
 Without `--button`, every page is its own document.
 
-The button is a push button between GPIO 17 and ground (pins 11 and 9), made a
+The button is a push button between GPIO 27 and ground (pins 13 and 14), made a
 key by the kernel with one line in `/boot/firmware/config.txt`:
 
 ```text
-dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=28,label=scannerd
+dtoverlay=gpio-key,gpio=27,active_low=1,gpio_pull=up,keycode=28,label=scannerd
 ```
+
+GPIO 17 is the e-paper display's reset line, so the button no longer uses it.
 
 After a reboot it shows up under `/dev/input/by-path/`; point `SCANNERD_BUTTON`
 at it. A USB keypad works too (`--button-key` for a key other than Enter), and
 on a laptop `--button stdin` makes Enter the button.
+
+## The display
+
+`--display epaper` (or `SCANNERD_DISPLAY=epaper`) drives a Waveshare 2.13″ e-paper HAT
+(V3/V4, SSD1680) on the header: *Ready*, *Hold still*, *Scanned — take the page
+away*, and under that whether the photograph can be read — *Page 2: good to
+read*, or white on black *Page 2: too bright*, *blurry*, *no text found* or *no
+page / too dark*. The check runs on every photograph and shows up in the setup
+page's activity list too; a page that fails is still kept and sent.
+
+Between letters it says which folder on the shelf the last one goes in.
+Folders are set with `SCANNERD_FOLDERS=Car,House,Taxes,-Throw away` (the `-`
+marks the bin) or under **Folders on the shelf** on the setup page. Each
+is a Paperless tag of the same name, which scannerd creates before the next
+letter is sent: with words, it matches any letter containing one of them; without, Paperless learns
+it from the documents tagged with it. scannerd then waits for Paperless to
+read the letter and shows the folder whose tag it got.
+
+`SCANNERD_DISPLAY=/dev/fb0` draws the same in colour on a 3.5″ SPI LCD
+(`dtoverlay=piscreen`), and `SCANNERD_TOUCH=/dev/spidev0.1` makes its
+touchscreen the way scanning is started and stopped: **Start scanning** and
+**Learn empty table** between letters, and while scanning the live camera
+view beside the last page, with **Finish letter** and **Stop scanning**. The
+readme has the setup, including keeping the kernel's touch driver off the
+controller.
+
+It needs `dtparam=spi=on` in `/boot/firmware/config.txt` and the `spi` and
+`gpio` groups for the `scannerd` user. `SCANNERD_DISPLAY_FLIP=true` turns the
+picture upside down.
 
 ## The setup page
 
@@ -74,7 +105,8 @@ token) and win over the env file. Anything but a loopback address needs
 ## Hardware
 
 Tested on a **Raspberry Pi Zero W** (Rev 1.1) with the OV5647 camera, running
-32-bit Raspberry Pi OS bookworm. A preview frame takes 1.1–1.7 seconds there,
+32-bit Raspberry Pi OS bookworm, and a Waveshare 2.13″ e-paper HAT on the
+header. A preview frame takes 1.1–1.7 seconds there,
 because `rpicam-still` starts the camera each time, and a full capture about 3.7
 — so a page is photographed eight or nine seconds after it is put down. The
 `3dprints/stand/` folder of the repository has OpenSCAD sources and STL files

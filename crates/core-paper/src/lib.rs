@@ -898,13 +898,36 @@ impl RawDocument {
 /// Seconds since the epoch from what Paperless sends.
 ///
 /// It sends two shapes depending on the field and the version: a full RFC 3339
-/// timestamp, and a bare `YYYY-MM-DD` for dates that have no time. Parsed by
+/// timestamp — with the offset of the time zone Paperless is set to — and a
+/// bare `YYYY-MM-DD` for dates that have no time. Parsed by
 /// hand because the alternative is a date library in a crate that otherwise
 /// needs none, and the two shapes are both fixed-width.
 fn parse_timestamp(raw: &str) -> Option<i64> {
     let (date, time) = match raw.split_once(['T', ' ']) {
         Some((date, time)) => (date, Some(time)),
         None => (raw, None),
+    };
+
+    // The offset, if the shape carries one: "+02:00" after the time, or "Z".
+    // Paperless answers in the time zone it is set to, and a scan at 13:57 in
+    // Hamburg came back as `13:57:31+02:00` — read as UTC, that put every
+    // scanned letter in the inbox two hours late.
+    let (time, offset_seconds) = match time {
+        Some(time) => {
+            let time = time.trim_end_matches('Z');
+            match time.rfind(['+', '-']) {
+                Some(at) => {
+                    let (clock, offset) = time.split_at(at);
+                    let sign = if offset.starts_with('-') { -1 } else { 1 };
+                    let mut parts = offset[1..].split(':');
+                    let hours: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+                    let minutes: i64 = parts.next().unwrap_or("0").parse().unwrap_or(0);
+                    (Some(clock), sign * (hours * 3600 + minutes * 60))
+                }
+                None => (Some(time), 0),
+            }
+        }
+        None => (None, 0),
     };
 
     let mut parts = date.split('-');
@@ -915,7 +938,7 @@ fn parse_timestamp(raw: &str) -> Option<i64> {
     let days = days_from_civil(year, month, day);
     let seconds = match time {
         Some(time) => {
-            let mut hms = time.trim_end_matches('Z').split(':');
+            let mut hms = time.split(':');
             let hours: i64 = hms.next().unwrap_or("0").parse().unwrap_or(0);
             let minutes: i64 = hms.next().unwrap_or("0").parse().unwrap_or(0);
             // Seconds may carry a fraction or an offset; the whole part is all
@@ -923,7 +946,7 @@ fn parse_timestamp(raw: &str) -> Option<i64> {
             let secs: i64 = hms
                 .next()
                 .unwrap_or("0")
-                .split(['.', '+', '-'])
+                .split('.')
                 .next()
                 .unwrap_or("0")
                 .parse()
@@ -933,7 +956,7 @@ fn parse_timestamp(raw: &str) -> Option<i64> {
         None => 0,
     };
 
-    Some(days * 86_400 + seconds)
+    Some(days * 86_400 + seconds - offset_seconds)
 }
 
 /// Days since 1970-01-01. Howard Hinnant's civil-from-days, inverted.
