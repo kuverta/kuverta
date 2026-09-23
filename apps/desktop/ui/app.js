@@ -2439,6 +2439,22 @@ function fillPaper(address) {
     : "No token stored yet. The button below opens Paperless at its profile page, where the API token is; sign in there, copy it, and paste it above.";
 
   el("paper-delete").hidden = address.id === null;
+  // Asked each time the form is filled: whether there is a sign-in to show is
+  // the core's answer, not something the address row carries.
+  const signIn = el("paper-sign-in");
+  signIn.hidden = true;
+  signIn.replaceChildren();
+  const show = el("paper-show-sign-in");
+  show.hidden = true;
+  show.textContent = "Show Paperless sign-in";
+  if (address.id !== null) {
+    invoke("paper_sign_in", { id: address.id })
+      .then((found) => {
+        // Filled again meanwhile: that answer is about another address.
+        if (found && paper.editing === address.id) show.hidden = false;
+      })
+      .catch(() => {});
+  }
   hideSettingsForms();
   paper.form.hidden = false;
   setPageHead("paper", address.id === null ? "New postal address" : address.label || address.base_url);
@@ -2503,6 +2519,44 @@ el("paper-token-link").onclick = () => {
   // An address typed without one is http, as the placeholder shows it.
   const base = /^https?:\/\//i.test(typed) ? typed : `http://${typed}`;
   invoke("open_external", { url: `${base}/accounts/profile/` }).catch((err) => say(String(err), true));
+};
+
+/// The sign-in for the Paperless kuverta installed, shown on asking.
+///
+/// Kept out of sight until then: it is on screen for whoever walks past, and
+/// the only time it is wanted is the moment someone is signing in.
+el("paper-show-sign-in").onclick = async (event) => {
+  const box = el("paper-sign-in");
+  if (!box.hidden) {
+    box.hidden = true;
+    event.target.textContent = "Show Paperless sign-in";
+    return;
+  }
+  try {
+    const sign_in = await invoke("paper_sign_in", { id: paper.editing });
+    if (!sign_in) {
+      say("kuverta did not install this Paperless, so it has no sign-in for it", true);
+      return;
+    }
+    const line = (what, value) => [
+      node("span", { className: "what", textContent: what }),
+      node("span", { className: "value", textContent: value }),
+      button("Copy", () => navigator.clipboard.writeText(value).then(() => say(`${what} copied`))),
+    ];
+    box.replaceChildren(
+      ...line("User name", sign_in.username),
+      ...line("Password", sign_in.password),
+      node("p", {
+        className: "note",
+        textContent:
+          "This signs in to Paperless's own pages — where the API token is. It is kept in the keychain; kuverta reads post with the token, never with this.",
+      }),
+    );
+    box.hidden = false;
+    event.target.textContent = "Hide Paperless sign-in";
+  } catch (err) {
+    say(String(err), true);
+  }
 };
 
 el("settings-add-paper").onclick = () => fillPaper(NEW_ADDRESS);
