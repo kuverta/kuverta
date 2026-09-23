@@ -27,6 +27,8 @@
   .hint { color: var(--muted); font-size: .92rem; margin: 6px 0 0; }
   .intro { margin: 0; }
   .bad { color: var(--bad); }
+  .hint.ok { color: var(--ok); font-weight: 600; }
+  .hint.bad { font-weight: 600; }
   .view { position: relative; width: 100%; aspect-ratio: 4 / 3; margin-top: 10px; background: #000; border-radius: 8px; overflow: hidden; }
   .view img { display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
   .editor { touch-action: none; user-select: none; -webkit-user-select: none; cursor: crosshair; }
@@ -54,7 +56,8 @@
   .thumb { display: grid; gap: 2px; justify-items: center; font-size: .85rem; color: var(--muted); }
   .thumb button { padding: 2px 10px; font-size: .85rem; }
   ul { list-style: none; margin: 0; padding: 0; font-size: .92rem; }
-  ul li { display: flex; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); }
+  ul li { display: flex; gap: 10px; padding: 4px 0; border-top: 1px solid var(--line); align-items: center; }
+  ul li button { padding: 2px 10px; font-size: .85rem; }
   ul li:first-child { border-top: 0; }
   .time { flex: none; color: var(--muted); font-variant-numeric: tabular-nums; }
   label { display: block; margin-top: 10px; font-size: .9rem; color: var(--muted); }
@@ -65,6 +68,12 @@
   dialog::backdrop { background: rgba(0, 0, 0, .6); }
   dialog img { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
   dialog h2 { margin: 0 0 8px; }
+  #folder-list { display: grid; gap: 8px; margin-top: 8px; }
+  .folder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto; gap: 6px; align-items: center; }
+  .folder input { margin: 0; }
+  .folder label.check { margin: 0; font-size: .85rem; white-space: nowrap; }
+  .folder button { padding: 8px 10px; }
+  @media (max-width: 520px) { .folder { grid-template-columns: minmax(0, 1fr) auto auto; } .folder .words { grid-column: 1 / -1; grid-row: 2; } }
 </style>
 </head>
 <body>
@@ -94,6 +103,10 @@
     <div id="pages"></div>
     <div class="row">
       <button class="primary" id="finish" disabled>Finish letter</button>
+      <button id="scan-toggle" type="button">Stop scanning</button>
+      <button id="undo-page" type="button" disabled>Undo last page</button>
+      <button class="danger" id="cancel-letter" type="button" disabled>Cancel letter</button>
+      <button id="undo-letter" type="button" hidden>Undo last letter</button>
       <button id="learn">Learn empty table</button>
     </div>
   </section>
@@ -113,7 +126,7 @@
       <p class="hint">Put a page where letters will lie and press <b>Take a picture</b>. The scanner finds the page and puts a box around it. Drag inside the box to move it, drag a corner to resize it, or draw a new one — then save. Only the area in the box is watched and photographed.</p>
       <div class="row"><button class="primary" id="picture">Take a picture</button></div>
       <label class="check"><input type="checkbox" id="angled"> The camera looks at the table at an angle</label>
-      <p class="hint" id="angled-hint" hidden>The page looks like a trapezium rather than a rectangle. Drag each yellow corner onto a corner of the page — the dashed lines should run along its edges. Every photograph is then straightened so that page comes out square, with a little room around it. Drag anywhere else in the picture to move all four.</p>
+      <p class="hint" id="angled-hint" hidden>The page looks like a trapezium rather than a rectangle. Drag each yellow corner exactly onto a corner of the page — the dashed lines should run along its edges. Every photograph is then straightened so that page comes out square, and whatever table shows beside a letter that lies a little off is trimmed away. Drag anywhere else in the picture to move all four.</p>
       <p class="hint" id="crop-status"></p>
       <div class="view editor" id="editor" hidden>
         <img id="full-image" alt="The whole camera view">
@@ -139,6 +152,20 @@
         <button type="button" id="turn-right">Turn right ↻</button>
       </div>
       <p class="hint" id="turn-state"></p>
+
+      <h3>Exposure</h3>
+      <p class="hint">White paper fools a camera into making it pure white and the text pale. Every photograph is checked; one that is too bright is taken again darker while the page is still there, and the next page is taken at what worked.</p>
+      <p class="hint" id="exposure"></p>
+      <div class="row"><button type="button" id="reset-exposure">Start again from the camera’s own exposure</button></div>
+
+      <h3>Folders on the shelf</h3>
+      <p class="hint">Once Paperless has read a letter, the display says which of these folders it goes in. Each folder is a Paperless tag of the same name, which the scanner creates. Give a folder a few words that only its letters contain — a number plate, an insurer, “Finanzamt” — and it works from the first letter; leave the words empty and Paperless learns from the documents you tag with it. Mark one as the bin for post that needs no paper copy.</p>
+      <div id="folder-list"></div>
+      <div class="row">
+        <button type="button" id="add-folder">Add a folder</button>
+        <button class="primary" type="button" id="save-folders" disabled>Save folders</button>
+      </div>
+      <p class="hint" id="folder-status"></p>
 
       <h3>Paperless</h3>
       <form id="settings">
@@ -381,7 +408,7 @@
       area = found || parseRoi(s.settings.roi);
       quad = corners || parseCorners(s.settings.corners) || quad;
       $('crop-status').textContent = angled
-        ? (corners ? 'Found the page and marked its corners, with room around them. Check the dashed lines follow the page, then save.'
+        ? (corners ? 'Found the page and marked its corners. Check the dashed lines follow the page’s edges, then save.'
           : 'No page found in the picture. Drag the corners onto a page’s corners, then save.')
         : found ? 'Found the page and put a box around it. Adjust it if it is not right, then save.'
         : 'No page found in the picture. Drag a box where letters will lie, then save.';
@@ -447,6 +474,62 @@
     post('/api/delete-page', { name }).catch((error) => { deleting.delete(name); complain(error); });
   };
 
+  // -- folders on the shelf ------------------------------------------------------
+
+  let folders = null;       // what the list shows, once filled from the status
+  let checkBeforeSave = null; // the check shown when folders were saved; the next one reports on them
+  const folderKey = (list) => JSON.stringify((list || []).map((f) => [f.name.trim(), (f.words || '').trim(), Boolean(f.discard)]));
+
+  function drawFolders() {
+    $('folder-list').replaceChildren(...folders.map((folder, index) => {
+      const row = Object.assign(document.createElement('div'), { className: 'folder' });
+      const name = Object.assign(document.createElement('input'), { value: folder.name, placeholder: 'Folder', autocomplete: 'off' });
+      const words = Object.assign(document.createElement('input'), { value: folder.words || '', placeholder: 'Words, separated by commas (optional)', autocomplete: 'off', className: 'words' });
+      const bin = Object.assign(document.createElement('label'), { className: 'check' });
+      const box = Object.assign(document.createElement('input'), { type: 'radio', name: 'bin', checked: Boolean(folder.discard) });
+      bin.append(box, 'Bin');
+      const remove = Object.assign(document.createElement('button'), { type: 'button', textContent: '✕', title: 'Remove this folder' });
+      name.oninput = () => { folder.name = name.value; changedFolders(); };
+      words.oninput = () => { folder.words = words.value; changedFolders(); };
+      // A radio button cannot be unticked by tapping it again, so a second tap
+      // on the bin that is already ticked clears it.
+      box.onclick = () => {
+        const was = folder.discard;
+        folders.forEach((f) => { f.discard = false; });
+        folder.discard = !was;
+        box.checked = folder.discard;
+        changedFolders();
+      };
+      remove.onclick = () => { folders.splice(index, 1); drawFolders(); changedFolders(); };
+      row.append(name, words, bin, remove);
+      return row;
+    }));
+  }
+
+  function changedFolders() {
+    const names = folders.map((f) => f.name.trim().toLowerCase()).filter(Boolean);
+    const twice = names.find((name, i) => names.indexOf(name) !== i);
+    const saved = last ? folderKey(last.settings.folders) : '';
+    $('save-folders').disabled = Boolean(twice) || folderKey(folders.filter((f) => f.name.trim())) === saved;
+    $('folder-status').textContent = twice ? `Two folders are called “${twice}”.` : '';
+  }
+
+  $('add-folder').onclick = () => {
+    folders.push({ name: '', words: '', discard: false });
+    drawFolders();
+    changedFolders();
+    $('folder-list').lastElementChild.querySelector('input').focus();
+  };
+  $('save-folders').onclick = () => {
+    const list = folders.filter((f) => f.name.trim()).map((f) => ({ name: f.name.trim(), words: (f.words || '').trim(), discard: Boolean(f.discard) }));
+    $('save-folders').disabled = true;
+    $('folder-status').textContent = 'Saved. Setting the folders up in Paperless…';
+    checkBeforeSave = JSON.stringify(last && last.check);
+    post('/api/settings', { folders: list })
+      .then(() => post('/api/check'))
+      .catch((error) => { changedFolders(); complain(error); });
+  };
+
   // -- status -------------------------------------------------------------------
 
   function openSetup() {
@@ -462,6 +545,7 @@
     const cropped = Boolean(s.settings.roi);
     if (s.state === 'no-camera') return ['var(--bad)', 'The camera is not answering', 'Check its ribbon cable, then restart scannerd.'];
     if (s.state === 'starting') return ['var(--muted)', 'Starting the camera…', 'The first picture takes a few seconds.'];
+    if (s.state === 'paused') return ['var(--muted)', 'Scanning is stopped', 'Nothing is photographed until scanning is started — here or on the display.'];
     if (s.finishing) return ['var(--warn)', 'Finishing the letter…', 'As soon as nothing moves under the camera — at most 15 seconds.'];
     if (!s.has_baseline) return ['var(--warn)', 'Learn the empty table first', 'Clear the spot under the camera and press “Learn empty table”.'];
     if (s.state === 'settling') return ['var(--warn)', `Hold still… ${s.frames_still} of ${s.settle_frames}`,
@@ -473,7 +557,7 @@
       const lingering = s.movement < 0.01 && s.table_change >= 0.18;
       return ['var(--ok)', 'Photographed — take the page away',
         lingering ? 'If the spot is already empty, the table looks different from when it was learnt: press “Learn empty table”.'
-          : s.collecting ? 'Then put the next page down, or press Finish letter.' : 'Then put the next letter down.'];
+          : s.collecting ? 'Turn it over or lay the next page on top — it is noticed — or take it away; press Finish letter after the last page.' : 'Then put the next letter down.'];
     }
     return ['var(--ok)', 'Ready — put a page down', s.open_pages.length ? 'Next page, or Finish letter.' : ''];
   }
@@ -525,7 +609,9 @@
     const [colour, text, hint] = describe(s);
     $('dot').style.background = colour;
     $('state-text').textContent = text;
-    $('state-hint').textContent = hint;
+    // A button just pressed — here or on the display — says what came of it.
+    $('state-hint').textContent = s.notice ? s.notice.text : hint;
+    $('state-hint').className = s.notice ? (s.notice.ok ? 'hint ok' : 'hint bad') : 'hint';
     $('measure').textContent = s.frame_at > 0
       ? `Changed from the empty table: ${percent(s.table_change)} · moving: ${percent(s.movement)} (a page shows as 18% or more; still means under 1%)`
       : '';
@@ -562,15 +648,39 @@
       }));
     }
 
+    $('undo-page').disabled = !s.collecting || pages.length === 0;
+    $('cancel-letter').disabled = !s.collecting || pages.length === 0;
+    $('undo-letter').hidden = !s.can_undo_letter;
+    $('scan-toggle').textContent = s.scanning ? 'Stop scanning' : 'Start scanning';
+    $('scan-toggle').className = s.scanning ? '' : 'primary';
     const finishing = s.finishing || Date.now() - pressedFinishAt < 3000;
     $('finish').disabled = !s.collecting || pages.length === 0 || finishing;
     $('finish').textContent = finishing ? 'Finishing…' : 'Finish letter';
 
-    fill($('queue'), s.queue.map((item) => ['waiting', item.attempts ? `${item.name} — tried ${item.attempts}×` : item.name, item.attempts > 0]));
+    // Waiting to be sent, each with a way to throw it away.
+    $('queue').replaceChildren(...s.queue.map((item) => {
+      const row = document.createElement('li');
+      const time = Object.assign(document.createElement('span'), { className: 'time', textContent: clock(item.at) });
+      const tries = item.attempts === 0 ? 'not tried yet' : item.attempts === 1 ? 'tried once' : `tried ${item.attempts}×`;
+      const body = Object.assign(document.createElement('span'), { textContent: `waiting to send — ${tries}`, className: item.attempts > 2 ? 'bad' : '' });
+      const remove = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Remove' });
+      remove.style.marginLeft = 'auto';
+      remove.onclick = () => {
+        if (confirm(`Throw this letter away instead of sending it? It is kept on the scanner for a week.`)) {
+          post('/api/discard-queued', { name: item.name }).catch(complain);
+        }
+      };
+      row.append(time, body, remove);
+      return row;
+    }));
     if (s.events.length) fill($('events'), s.events.map((event) => [clock(event.at), event.text, !event.ok]));
     if (s.check) {
       $('check').textContent = `${clock(s.check.at)} — ${s.check.text}`;
       $('check').className = s.check.ok ? 'hint' : 'hint bad';
+      if (checkBeforeSave !== null && JSON.stringify(s.check) !== checkBeforeSave) {
+        checkBeforeSave = null;
+        $('folder-status').textContent = s.check.ok ? `${clock(s.check.at)} — ${s.check.text}` : `Saved, but Paperless: ${s.check.text}`;
+      }
     }
 
     if (!filled) {
@@ -579,6 +689,14 @@
       $('url').value = s.settings.url;
       $('tags').value = s.settings.tags.join(', ');
       $('token').placeholder = s.settings.token_set ? 'set — leave empty to keep it' : 'not set yet';
+    }
+    const ev = s.settings.ev || 0;
+    $('exposure').textContent = ev === 0 ? 'Photographs are taken at the camera’s own exposure.'
+      : `Photographs are taken ${Math.abs(ev).toFixed(1)} stops ${ev < 0 ? 'darker' : 'brighter'} than the camera would choose.`;
+    if (folders === null) {
+      folders = s.settings.folders.map((f) => ({ ...f }));
+      drawFolders();
+      changedFolders();
     }
   }
 
@@ -589,6 +707,16 @@
     post('/api/finish').catch((error) => { pressedFinishAt = 0; complain(error); });
   };
   $('retry').onclick = () => post('/api/retry').catch(complain);
+  $('undo-page').onclick = () => post('/api/undo-page').catch(complain);
+  $('cancel-letter').onclick = () => {
+    const n = last ? last.open_pages.length : 0;
+    if (confirm(`Throw this letter away — ${n} page${n === 1 ? '' : 's'}? They are kept on the scanner for a week.`)) post('/api/cancel-letter').catch(complain);
+  };
+  $('undo-letter').onclick = () => {
+    if (confirm('Take the last letter back? If it has reached Paperless it is deleted there (Paperless keeps it in its trash).')) post('/api/undo-letter').catch(complain);
+  };
+  $('reset-exposure').onclick = () => post('/api/settings', { ev: 0 }).catch(complain);
+  $('scan-toggle').onclick = () => post(last && last.scanning ? '/api/stop' : '/api/start').catch(complain);
   $('learn').onclick = learn;
   $('check-button').onclick = () => { $('check').textContent = 'Checking…'; post('/api/check').catch(complain); };
   $('settings').onsubmit = (event) => {

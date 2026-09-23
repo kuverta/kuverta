@@ -265,6 +265,7 @@ async fn a_page_is_straightened_before_it_is_kept() {
     let mut scanner = scanner().collecting(scannerd::run::Letters {
         button: scannerd::button::Button::channel().1,
         idle: Duration::from_secs(300),
+        when_clear: None,
     });
     let corners = "0.25,0,0.75,0,1,1,0,1";
     scanner.straighten_with(Some(scannerd::straighten::Corners::parse(corners).unwrap()));

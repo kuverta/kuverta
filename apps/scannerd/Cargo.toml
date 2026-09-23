@@ -33,6 +33,10 @@ serde_json.workspace = true
 # for a 5-megapixel page.
 image = { version = "0.25.10", default-features = false, features = ["jpeg"] }
 jpeg-encoder = "0.7.1"
+# Judging a photograph: its greyscale alone, which image's decoder cannot be
+# asked for. Both are already built for image.
+zune-core = "0.5.3"
+zune-jpeg = "0.5.15"
 # The setup page. hyper is already built for reqwest; these add its server half.
 http-body-util = "0.1.5"
 hyper = { version = "1.11.1", features = ["server", "http1"] }
@@ -41,5 +45,24 @@ hyper-util = { version = "0.1.20", features = ["tokio"] }
 # a single-core Pi Zero is most of the time.
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time", "net"] }
 toml.workspace = true
+# The one thing that needs a calendar: the clock on the display, which has to
+# be the Pi's local time and not UTC.
+chrono.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# The e-paper display: drawing and fonts into a one-bit frame, which is pure
+# arithmetic and tested on a laptop like the rest.
+embedded-graphics = "0.8.2"
+# The LCD's own drawing: paths with anti-aliasing, and Inter rasterised at any
+# size, so the panel does not look like a cash register. Both pure Rust.
+tiny-skia = "0.12.0"
+fontdue = "0.9.4"
+u8g2-fonts = { version = "0.8.0", features = ["embedded_graphics_textstyle"] }
+
+# Getting that frame onto the panel: SPI and four GPIO lines. Linux only, so the
+# rest still builds and tests on a Mac.
+[target.'cfg(target_os = "linux")'.dependencies]
+rppal = "0.22.1"
+
+[dev-dependencies]
+chrono.workspace = true
