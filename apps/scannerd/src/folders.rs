@@ -27,6 +27,11 @@ pub struct Folder {
     /// The bin: a letter here can be thrown away.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub discard: bool,
+    /// Somebody in the household rather than somewhere on the shelf: a letter
+    /// that matches is *for* this person. The display says both — the folder
+    /// it goes in, and who it is for.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub person: bool,
 }
 
 impl Folder {
@@ -35,13 +40,43 @@ impl Folder {
             name: name.trim().to_string(),
             words: String::new(),
             discard: false,
+            person: false,
+        }
+    }
+
+    /// Somebody in the household. With no words of their own, their name is
+    /// what is looked for — which is what stands on the letter.
+    pub fn person(name: &str) -> Self {
+        Self {
+            person: true,
+            ..Self::named(name)
+        }
+    }
+
+    /// The words to look for, which for a person falls back to their name.
+    pub fn looked_for(&self) -> String {
+        if self.person && self.words.trim().is_empty() {
+            return self.name.clone();
+        }
+        self.words.clone()
+    }
+
+    /// What the tag is called in Paperless. People are marked, so that a
+    /// shelf read back out of Paperless still knows who is a person and what
+    /// is a folder — and so that the two do not collide when somebody files
+    /// their post under their own name.
+    pub fn tag_name(&self) -> String {
+        if self.person {
+            format!("{PERSON_TAG_PREFIX}{}", self.name)
+        } else {
+            self.name.clone()
         }
     }
 
     /// The words, one each, as Paperless's "any word" matching takes them: a
     /// space between words, and a phrase with a space in it quoted.
     pub fn paperless_match(&self) -> String {
-        self.words
+        self.looked_for()
             .split(',')
             .map(str::trim)
             .filter(|word| !word.is_empty())
@@ -57,8 +92,48 @@ impl Folder {
     }
 }
 
+/// The other way round: a tag's match as Paperless keeps it, back into the
+/// comma-separated words the setup page shows. A phrase is one word in
+/// quotes, so this cannot simply split on spaces — `"Grüne Karte"` is one
+/// thing to look for, not two.
+pub fn words_from_match(text: &str) -> String {
+    let mut words = Vec::new();
+    let mut word = String::new();
+    let mut quoted = false;
+    for letter in text.chars() {
+        match letter {
+            '"' => quoted = !quoted,
+            letter if letter.is_whitespace() && !quoted => {
+                if !word.is_empty() {
+                    words.push(std::mem::take(&mut word));
+                }
+            }
+            letter => word.push(letter),
+        }
+    }
+    if !word.is_empty() {
+        words.push(word);
+    }
+    words.join(", ")
+}
+
+/// What a person's tag is called in Paperless: their name behind this. A tag
+/// named this way is read back as a person, and one that is not, as a folder.
+pub const PERSON_TAG_PREFIX: &str = "Person: ";
+
 /// The most Paperless keeps of a tag's match: its words, a space between them.
 pub const MATCH_LIMIT: usize = 256;
+
+/// The people the env file names: `Erika Mustermann,Max Mustermann`. Words
+/// are not given here — a person is looked for by their name — and can be set
+/// on the setup page for someone who is written to in more than one way.
+pub fn parse_env_people(text: &str) -> Vec<Folder> {
+    text.split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(Folder::person)
+        .collect()
+}
 
 /// Folders as the env file names them: `Car,House,Work`. A name starting with
 /// `-` is the bin — `-Throw away`.

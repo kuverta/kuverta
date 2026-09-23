@@ -173,6 +173,9 @@ const GERMAN = {
   "Local models": "Lokale Modelle",
   "Paper mail": "Papierpost",
   "Mail accounts": "E-Mail-Konten",
+  // The folders on a shelf are Aktenordner, to keep them apart from the
+  // Ordner that mail sits in.
+  Folders: "Aktenordner",
   "Add a profile": "Profil hinzufügen",
   "Looking for accounts in your other mail programs…":
     "Suche nach Konten in Ihren anderen E-Mail-Programmen…",
@@ -194,6 +197,38 @@ const GERMAN = {
   "already in kuverta": "schon in kuverta",
   "servers unknown — enter them below": "Server unbekannt — unten eintragen",
   "Looking for Paperless…": "Suche nach Paperless…",
+  "Folders on the shelf": "Aktenordner im Regal",
+  "The paper still has to go somewhere. Name the folders it goes in, and kuverta keeps them in Paperless — where the scanner reads them too, so it can say on its screen which folder a letter belongs in.":
+    "Das Papier muss trotzdem irgendwo hin. Benennen Sie die Aktenordner, in die es kommt; kuverta führt sie in Paperless — wo auch der Scanner sie liest und auf seinem Bildschirm sagen kann, in welchen Ordner ein Brief gehört.",
+  "Give a folder words that only its letters contain, separated by commas — an insurer, a number plate, “Finanzamt”. A folder without words is learnt instead, from the letters you file in it by hand.":
+    "Geben Sie einem Aktenordner Wörter mit, die nur in seinen Briefen vorkommen, durch Kommas getrennt — eine Versicherung, ein Kennzeichen, „Finanzamt“. Ein Ordner ohne Wörter wird stattdessen gelernt, aus den Briefen, die Sie von Hand hineinlegen.",
+  "Add a folder": "Aktenordner hinzufügen",
+  "Save folders": "Aktenordner speichern",
+  "Name of the folder": "Name des Aktenordners",
+  "Words, separated by commas (optional)": "Wörter, durch Kommas getrennt (optional)",
+  "Remove this folder": "Diesen Aktenordner entfernen",
+  "No paper post connected yet — the page before this one.":
+    "Noch keine Papierpost verbunden — auf der Seite davor.",
+  "Two folders are called {name}.": "Zwei Aktenordner heißen {name}.",
+  "Too many words for {name} — leave some out.":
+    "Zu viele Wörter für {name} — lassen Sie einige weg.",
+  "Setting the folders up…": "Aktenordner werden eingerichtet…",
+  "Folders on the shelf: {list}.": "Aktenordner im Regal: {list}.",
+  "No folders on the shelf — the scanner cannot say where a letter goes.":
+    "Keine Aktenordner im Regal — der Scanner kann nicht sagen, wohin ein Brief gehört.",
+  "Who gets post here": "Wer hier Post bekommt",
+  "More than one person in a household gets letters — a spouse, a child, someone whose papers you keep. Name them, and the scanner says who a letter is for as well as which folder it goes in. Add another spelling of a name — “E. Mustermann” — if letters come both ways.":
+    "In einem Haushalt bekommt oft mehr als eine Person Briefe — Partnerin oder Partner, Kind, jemand, dessen Unterlagen Sie verwahren. Tragen Sie sie ein, dann sagt der Scanner nicht nur, in welchen Ordner ein Brief gehört, sondern auch, für wen er ist. Schreiben Sie eine zweite Schreibweise dazu — „E. Mustermann“ —, wenn Briefe auf beide Arten kommen.",
+  "Add a person": "Person hinzufügen",
+  "Other spellings of the name (optional)": "Andere Schreibweisen des Namens (optional)",
+  "Remove this person": "Diese Person entfernen",
+  "Nobody yet — one person's post needs nobody named.":
+    "Noch niemand — für die Post einer einzelnen Person muss niemand eingetragen werden.",
+  "Post here is for: {list}.": "Post hier ist für: {list}.",
+  "{count} folders and {people} people are set up in Paperless. The scanner takes its list from there.":
+    "{count} Aktenordner und {people} Personen sind in Paperless eingerichtet. Der Scanner übernimmt seine Liste von dort.",
+  "{count} folders are set up in Paperless. The scanner takes its list from there.":
+    "{count} Aktenordner sind in Paperless eingerichtet. Der Scanner übernimmt seine Liste von dort.",
   "Install and start Paperless": "Paperless installieren und starten",
   "Paperless user name": "Paperless-Benutzername",
   "leave empty and kuverta makes one": "leer lassen, dann erzeugt kuverta eines",

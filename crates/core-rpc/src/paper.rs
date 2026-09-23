@@ -694,6 +694,18 @@ impl PaperSession {
         self.client.check(&self.selector).await.map_err(paper_error)
     }
 
+    /// The folders on the shelf this address's post is sorted into: the tags
+    /// in Paperless that match documents themselves.
+    pub async fn folders(&self) -> Result<Vec<core_paper::ShelfFolder>> {
+        self.client.folders().await.map_err(paper_error)
+    }
+
+    /// Sets them up there. Paperless is where the scanner reads them from as
+    /// well, so they are set up once and both know them.
+    pub async fn set_folders(&self, folders: &[core_paper::ShelfFolder]) -> Result<()> {
+        self.client.set_folders(folders).await.map_err(paper_error)
+    }
+
     /// The document's file — the scan itself, for when its OCR text is no use.
     pub async fn download(&self, document_id: i64) -> Result<core_paper::Download> {
         self.client.download(document_id).await.map_err(paper_error)

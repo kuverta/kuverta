@@ -1029,6 +1029,25 @@ fn paper_sign_in(app: State<'_, App>, id: i64) -> Result<Option<core_rpc::PaperS
     Ok(Some(core_rpc::PaperSignIn { username, password }))
 }
 
+/// The folders on the shelf an address's post is sorted into, as Paperless
+/// keeps them.
+#[tauri::command]
+async fn paper_folders(app: State<'_, App>, id: i64) -> Result<Vec<core_rpc::ShelfFolder>, String> {
+    let session = paper_session(&app, id)?;
+    session.folders().await.map_err(fail)
+}
+
+/// Sets them up there, which is also where the scanner reads them from.
+#[tauri::command]
+async fn set_paper_folders(
+    app: State<'_, App>,
+    id: i64,
+    folders: Vec<core_rpc::ShelfFolder>,
+) -> Result<(), String> {
+    let session = paper_session(&app, id)?;
+    session.set_folders(&folders).await.map_err(fail)
+}
+
 /// Whether each postal address's Paperless answers, and which kuverta can
 /// start.
 #[tauri::command]
@@ -1905,6 +1924,8 @@ fn main() {
             set_read,
             set_category,
             paper_mailboxes,
+            paper_folders,
+            set_paper_folders,
             save_paper_mailbox,
             delete_paper_mailbox,
             set_paper_token,
