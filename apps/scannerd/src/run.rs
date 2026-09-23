@@ -17,6 +17,7 @@ use crate::folders::{folders_among, Filing, Filings, Folder, Outcome, Refiling};
 use crate::hub::Event;
 use crate::picture::Picture;
 use crate::quality::{assess, better, exposure, read_luma, Exposure, Problem, Quality};
+use crate::read::{PageText, Reader};
 use crate::spool::Spool;
 use crate::straighten::{straighten_trimmed, Corners};
 use crate::upload::{Task, Uploader};
@@ -134,6 +135,14 @@ pub struct Scanner {
     page_covers: Option<f64>,
     /// Stops from the camera's own exposure, learnt from the photographs.
     ev: f32,
+    /// Reads each page here, for the preview, when there is something to read
+    /// it with.
+    reader: Option<Reader>,
+    /// What the pages of the open letter say, as the preview shows them.
+    page_texts: Vec<PageText>,
+    /// And of the letter sent last, kept until the next letter starts: the
+    /// preview still has something to show while Paperless reads it.
+    sent_texts: Vec<PageText>,
     events: Vec<Event>,
 }
 
@@ -163,7 +172,57 @@ impl Scanner {
             page_covers: None,
             last_letter: None,
             ev: 0.0,
+            reader: None,
+            page_texts: Vec::new(),
+            sent_texts: Vec::new(),
             events: Vec::new(),
+        }
+    }
+
+    /// Reads every page as it is photographed, for the preview.
+    pub fn reading_with(mut self, reader: Reader) -> Self {
+        self.reader = Some(reader);
+        self
+    }
+
+    /// What the pages of the letter in front of the camera say — the open
+    /// one, or the one just sent while Paperless is still reading it.
+    pub fn read_pages(&self) -> &[PageText] {
+        if self.page_texts.is_empty() {
+            &self.sent_texts
+        } else {
+            &self.page_texts
+        }
+    }
+
+    /// Which folders that text looks like, before Paperless has said.
+    pub fn guessed(&self) -> Vec<Folder> {
+        let text = self
+            .read_pages()
+            .iter()
+            .map(|page| page.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+        crate::folders::guess(&text, &self.folders)
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Takes in whatever the reader has finished since the last turn.
+    fn collect_texts(&mut self) {
+        let Some(reader) = &self.reader else {
+            return;
+        };
+        for page in reader.texts() {
+            match self
+                .page_texts
+                .iter_mut()
+                .find(|known| known.name == page.name)
+            {
+                Some(known) => *known = page,
+                None => self.page_texts.push(page),
+            }
         }
     }
 
@@ -246,6 +305,9 @@ impl Scanner {
 
     /// A letter was closed into `letter`.
     fn closed(&mut self, letter: &std::path::Path, now: u64) {
+        // What its pages said stays in front of whoever is standing there
+        // until the next letter starts.
+        self.sent_texts = std::mem::take(&mut self.page_texts);
         self.letters_closed += 1;
         self.envelope_only = false;
         self.last_letter = letter
@@ -372,22 +434,28 @@ impl Scanner {
             );
             return;
         }
+        if let Refiling::Into(name) = &into {
+            if self.named_folder(name).is_none() {
+                self.event(now, false, format!("there is no folder called {name:?}"));
+                return;
+            }
+        }
         let Some(filing) = self.filings.named(&name) else {
             self.event(now, false, "that letter was not sent to Paperless");
             return;
         };
         let (task, document) = (filing.task.clone(), filing.document);
         let Some(document) = document else {
-            filing.refile = Some(into);
-            let words = words_for(into, true);
+            filing.refile = Some(into.clone());
+            let words = words_for(&into, true);
             self.event(now, true, format!("the last letter {words}"));
             return;
         };
-        match self.refile_document(uploader, document, into).await {
+        match self.refile_document(uploader, document, into.clone()).await {
             Ok(()) => {
-                self.filings
-                    .decide(&task, outcome_for(into, self.bin()), now);
-                let words = words_for(into, false);
+                let outcome = self.outcome_for(&into);
+                self.filings.decide(&task, outcome, now);
+                let words = words_for(&into, false);
                 self.event(now, true, format!("the last letter {words}"));
             }
             Err(err) => self.event(now, false, format!("could not file the letter: {err:#}")),
@@ -397,6 +465,23 @@ impl Scanner {
     /// The bin among the folders, if one is marked.
     fn bin(&self) -> Option<Folder> {
         self.folders.iter().find(|folder| folder.discard).cloned()
+    }
+
+    /// A folder by name, whatever its case.
+    fn named_folder(&self, name: &str) -> Option<Folder> {
+        self.folders
+            .iter()
+            .find(|folder| !folder.person && folder.name.eq_ignore_ascii_case(name.trim()))
+            .cloned()
+    }
+
+    /// What a letter's outcome becomes once it is filed by hand.
+    fn outcome_for(&self, into: &Refiling) -> Outcome {
+        match into {
+            Refiling::Nowhere => Outcome::Nowhere,
+            Refiling::Bin => Outcome::Folders(self.bin().into_iter().collect()),
+            Refiling::Into(name) => Outcome::Folders(self.named_folder(name).into_iter().collect()),
+        }
     }
 
     /// Takes the folders' tags off a document in Paperless, and puts the
@@ -424,10 +509,16 @@ impl Scanner {
             .into_iter()
             .filter(|tag| !folder_tags.contains(tag))
             .collect();
-        if into == Refiling::Bin {
-            if let Some(bin) = bin_tag {
-                tags.push(bin);
-            }
+        let wanted = match &into {
+            Refiling::Nowhere => None,
+            Refiling::Bin => bin_tag,
+            Refiling::Into(name) => known
+                .iter()
+                .find(|(_, folder)| !folder.person && folder.name.eq_ignore_ascii_case(name.trim()))
+                .map(|(id, _)| *id),
+        };
+        if let Some(tag) = wanted {
+            tags.push(tag);
         }
         uploader.set_document_tags(document, &tags).await
     }
@@ -629,6 +720,8 @@ impl Scanner {
         uploader: &Uploader,
         now: u64,
     ) -> Turn {
+        // Whatever the reader finished while the last turn was taken.
+        self.collect_texts();
         if self.close_if_due(spool, now) {
             // The letter someone just finished goes now, not on the timer.
             self.drain_now(spool, uploader, now).await;
@@ -784,6 +877,19 @@ impl Scanner {
                                     false,
                                     format!("{which} may not be readable: {}", quality.summary()),
                                 );
+                            }
+                            // Read here, badly and at once, so the preview can
+                            // say what the page looks like before Paperless
+                            // has it. Paperless's answer replaces the guess.
+                            if kept {
+                                // A page of a new letter: what the last one
+                                // said is not this one's.
+                                if self.page_texts.is_empty() {
+                                    self.sent_texts.clear();
+                                }
+                                if let Some(reader) = &self.reader {
+                                    reader.start(&path);
+                                }
                             }
                             self.last_photographed = Some(Photographed {
                                 at: now,
@@ -943,15 +1049,15 @@ impl Scanner {
                 // Filed by hand from the display while Paperless was still
                 // reading it: where it goes was decided by whoever held the
                 // paper, and that wins over what the words say.
-                if let Some(into) = filing.refile {
-                    match self.refile_document(uploader, document, into).await {
+                if let Some(into) = filing.refile.clone() {
+                    match self.refile_document(uploader, document, into.clone()).await {
                         Ok(()) => {
-                            self.filings
-                                .decide(&filing.task, outcome_for(into, self.bin()), now);
+                            let outcome = self.outcome_for(&into);
+                            self.filings.decide(&filing.task, outcome, now);
                             self.event(
                                 now,
                                 true,
-                                format!("{} {}", filing.name, words_for(into, false)),
+                                format!("{} {}", filing.name, words_for(&into, false)),
                             );
                         }
                         Err(err) => {
@@ -1412,19 +1518,15 @@ async fn drain(
 
 /// What the activity list says about a letter filed by hand, after whatever
 /// the letter is called.
-fn words_for(into: Refiling, later: bool) -> &'static str {
+fn words_for(into: &Refiling, later: bool) -> String {
     match (into, later) {
-        (Refiling::Nowhere, false) => "is kept in no folder",
-        (Refiling::Nowhere, true) => "goes in no folder, as soon as Paperless has read it",
-        (Refiling::Bin, false) => "can be thrown away; Paperless keeps it",
-        (Refiling::Bin, true) => "goes in the bin, as soon as Paperless has read it",
-    }
-}
-
-/// What the letter's outcome becomes once it is filed by hand.
-fn outcome_for(into: Refiling, bin: Option<Folder>) -> Outcome {
-    match into {
-        Refiling::Nowhere => Outcome::Nowhere,
-        Refiling::Bin => Outcome::Folders(bin.into_iter().collect()),
+        (Refiling::Nowhere, false) => "is kept in no folder".into(),
+        (Refiling::Nowhere, true) => "goes in no folder, as soon as Paperless has read it".into(),
+        (Refiling::Bin, false) => "can be thrown away; Paperless keeps it".into(),
+        (Refiling::Bin, true) => "goes in the bin, as soon as Paperless has read it".into(),
+        (Refiling::Into(name), false) => format!("goes in {name}"),
+        (Refiling::Into(name), true) => {
+            format!("goes in {name}, as soon as Paperless has read it")
+        }
     }
 }

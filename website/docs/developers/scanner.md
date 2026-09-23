@@ -79,6 +79,12 @@ puts the bin's on, and either way the letter stays in Paperless.
 household: each is a tag of its own (`Person: …`) matched on the name, and the
 display says who a letter is for as well as which folder it goes in.
 
+The page has a **preview mode** (<kbd>p</kbd>) for working through a pile with
+a keyboard: the page large, what `tesseract` on the Pi read on it, every folder
+as a chip with a number key that files the letter there, and a field that adds
+a new folder from the letter in front of you. Both screens use kuverta's own
+colours, so the rig and the window look like one thing.
+
 `SCANNERD_DISPLAY=/dev/fb0` draws the same in colour on a 3.5″ SPI LCD
 (`dtoverlay=piscreen`), and `SCANNERD_TOUCH=/dev/spidev0.1` makes its
 touchscreen the way scanning is started and stopped: **Start scanning** and

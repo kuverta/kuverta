@@ -20,6 +20,7 @@ pub mod paint;
 pub mod pdf;
 pub mod picture;
 pub mod quality;
+pub mod read;
 pub mod run;
 pub mod settings;
 pub mod spool;

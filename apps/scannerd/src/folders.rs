@@ -152,9 +152,55 @@ pub fn parse_env(text: &str) -> Vec<Folder> {
         .collect()
 }
 
+/// Which folders a page's own text looks like, before Paperless has said —
+/// the preview's guess, made here from the same words Paperless is given.
+///
+/// Paperless's "any word" matching is what this copies: a folder matches when
+/// any one of its words stands in the text, whole and whatever its case. A
+/// phrase counts as one word. What Paperless learns for a folder with no
+/// words of its own cannot be copied, so those folders never show in a guess —
+/// the display says so when the letter is filed for real.
+pub fn guess<'a>(text: &str, folders: &'a [Folder]) -> Vec<&'a Folder> {
+    let text = text.to_lowercase();
+    folders
+        .iter()
+        .filter(|folder| {
+            folder
+                .looked_for()
+                .split(',')
+                .map(str::trim)
+                .filter(|word| !word.is_empty())
+                .any(|word| stands_in(&text, &word.to_lowercase()))
+        })
+        .collect()
+}
+
+/// Whether `word` stands in `text` as a word of its own, rather than inside a
+/// longer one: "Kfz" is not found in "Kfzversicherungsvertrag" by accident,
+/// and a word with a hyphen or a space in it is still one word.
+fn stands_in(text: &str, word: &str) -> bool {
+    let is_part = |c: char| c.is_alphanumeric();
+    let mut from = 0;
+    while let Some(at) = text[from..].find(word) {
+        let start = from + at;
+        let end = start + word.len();
+        let before = text[..start].chars().next_back();
+        let after = text[end..].chars().next();
+        if !before.is_some_and(is_part) && !after.is_some_and(is_part) {
+            return true;
+        }
+        // Past this one: the next occurrence may stand on its own.
+        from = start + word.chars().next().map(char::len_utf8).unwrap_or(1);
+        if from >= text.len() {
+            break;
+        }
+    }
+    false
+}
+
 /// Filing a letter by hand, from the display, instead of taking what
 /// Paperless made of it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Refiling {
     /// In no folder: the letter stays in Paperless, and its folder tags come
     /// off. For post that is worth keeping but belongs on no shelf.
@@ -162,6 +208,9 @@ pub enum Refiling {
     /// In the bin: the paper can be thrown away, and Paperless keeps the
     /// letter. The bin's tag goes on, the other folders' come off.
     Bin,
+    /// In this folder, whatever Paperless made of the words: the person
+    /// holding the paper knows where it goes.
+    Into(String),
 }
 
 /// What Paperless made of a letter.

@@ -284,6 +284,32 @@ Paperless had before. Paperless 2 and 3 are both understood; 3 reports its tasks
 moves to the bottom line; after fifteen minutes without an answer it is given
 up on. The setup page's activity list has the same, a line a letter.
 
+## Preview mode
+
+The setup page has a second layout, **Preview** (the button at the top right,
+or <kbd>p</kbd>), for working through a pile of post with a keyboard instead of
+a phone:
+
+- the page just photographed, large, with a tab for each page of the letter;
+- **what it says** — scannerd reads every page itself with `tesseract`, badly
+  and in a few seconds, so there is something to look at long before Paperless
+  has the letter. What Paperless makes of it is still what the letter is filed
+  under;
+- **where it goes** — every folder on the shelf as a chip, the ones the text
+  looks like marked, and who the letter is for. Press <kbd>1</kbd>…<kbd>9</kbd>
+  or tap a chip to file the letter there; <kbd>0</kbd> is no folder and
+  <kbd>b</kbd> the bin;
+- **a new folder**, named from here: it is added to the shelf with the longest
+  words of this letter as its words — the telling ones, in German post — and
+  the letter goes in it. The words can be edited under Setup afterwards;
+- every key that does anything, written along the bottom: finish, undo the
+  page, undo the letter, cancel, start and stop, learn the table.
+
+Reading is `SCANNERD_READER=tesseract` (`apt install tesseract-ocr
+tesseract-ocr-deu`) and `SCANNERD_READER_LANGUAGES=deu+eng`. Without it
+everything works as before, with no text in the preview and the folder known
+once Paperless has read the letter.
+
 ## The setup page
 
 `--ui 0.0.0.0:8080` (or `SCANNERD_UI`) serves a page from scannerd itself, so a

@@ -101,6 +101,10 @@ impl Web {
             "/api/undo-letter" => Command::UndoLetter { confirmed: true },
             "/api/file-nowhere" => Command::Refile(crate::folders::Refiling::Nowhere),
             "/api/file-in-bin" => Command::Refile(crate::folders::Refiling::Bin),
+            "/api/file-into" => match read_folder_name(body).await {
+                Ok(name) => Command::Refile(crate::folders::Refiling::Into(name)),
+                Err(message) => return text(StatusCode::BAD_REQUEST, &message),
+            },
             "/api/discard-queued" => match read_letter_name(body).await {
                 Ok(name) => Command::DiscardQueued {
                     which: crate::hub::Which::Named(name),
@@ -228,6 +232,26 @@ async fn read_letter_name(body: Incoming) -> Result<String, String> {
         return Err(format!("{:?} is not a letter", letter.name));
     }
     Ok(letter.name)
+}
+
+/// Which folder a letter is to go in, from the preview.
+async fn read_folder_name(body: Incoming) -> Result<String, String> {
+    #[derive(serde::Deserialize)]
+    struct Which {
+        name: String,
+    }
+    let bytes = Limited::new(body, 1024)
+        .collect()
+        .await
+        .map_err(|err| format!("could not read which folder: {err}"))?
+        .to_bytes();
+    let which: Which =
+        serde_json::from_slice(&bytes).map_err(|err| format!("which folder? {err}"))?;
+    let name = which.name.trim().to_string();
+    if name.is_empty() || name.chars().count() > 60 {
+        return Err(format!("{name:?} is not a folder"));
+    }
+    Ok(name)
 }
 
 async fn read_settings(body: Incoming) -> Result<Settings, String> {

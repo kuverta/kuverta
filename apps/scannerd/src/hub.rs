@@ -14,6 +14,26 @@ use serde::Serialize;
 use crate::folders::Folder;
 use crate::settings::Settings;
 
+/// A folder the preview thinks a letter goes in.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GuessedFolder {
+    pub name: String,
+    /// The bin: the paper can go.
+    pub discard: bool,
+    /// Somebody the letter is for, rather than somewhere it goes.
+    pub person: bool,
+}
+
+impl From<&crate::folders::Folder> for GuessedFolder {
+    fn from(folder: &crate::folders::Folder) -> Self {
+        Self {
+            name: folder.name.clone(),
+            discard: folder.discard,
+            person: folder.person,
+        }
+    }
+}
+
 /// Something the page asked for.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
@@ -117,6 +137,12 @@ pub struct Status {
     /// in the bin.
     pub can_refile: bool,
     pub open_pages: Vec<String>,
+    /// What those pages say, as the Pi read them for the preview — empty
+    /// where nothing could read them.
+    pub read_pages: Vec<crate::read::PageText>,
+    /// Which folders that text looks like, before Paperless has said. Each is
+    /// a name, with the bin marked.
+    pub guess: Vec<GuessedFolder>,
     pub queue: Vec<Queued>,
     /// Newest first.
     pub events: Vec<Event>,
@@ -155,6 +181,8 @@ impl Default for Status {
             can_undo_letter: false,
             can_refile: false,
             open_pages: Vec::new(),
+            read_pages: Vec::new(),
+            guess: Vec::new(),
             queue: Vec::new(),
             events: Vec::new(),
             settings: SettingsView::default(),

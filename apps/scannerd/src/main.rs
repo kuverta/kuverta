@@ -163,6 +163,17 @@ struct Args {
     #[arg(long, env = "SCANNERD_FOLDERS")]
     folders: Option<String>,
 
+    /// What reads a page on the Pi for the preview — `tesseract` by default,
+    /// where it is installed (`apt install tesseract-ocr tesseract-ocr-deu`).
+    /// Empty for none: the preview then shows the page without its text, and
+    /// the folder only once Paperless has said.
+    #[arg(long, env = "SCANNERD_READER", default_value = "tesseract")]
+    reader: String,
+
+    /// The languages that reader is given, as it names them.
+    #[arg(long, env = "SCANNERD_READER_LANGUAGES", default_value = "deu+eng")]
+    reader_languages: String,
+
     /// The people in the household who get post, so the display can say who a
     /// letter is for as well as which folder it goes in:
     /// `Erika Mustermann,Max Mustermann`. Each is a Paperless tag marked as a
@@ -237,6 +248,21 @@ async fn main() -> Result<()> {
         Duration::from_secs(args.drain_every_secs),
     )
     .keep_baseline_in(spool.dir().join("empty-table.gray"));
+
+    // Reading a page here is for the preview only: Paperless is what files a
+    // letter, and it reads the whole of it properly when the letter is sent.
+    if !args.reader.trim().is_empty() {
+        let reader = scannerd::read::Reader::new(args.reader.trim(), &args.reader_languages);
+        if reader.available() {
+            tracing::info!(program = %args.reader, languages = %args.reader_languages, "reading pages for the preview");
+            scanner = scanner.reading_with(reader);
+        } else {
+            tracing::info!(
+                program = %args.reader,
+                "no reader: the preview shows the page without its text (apt install tesseract-ocr)"
+            );
+        }
+    }
 
     tracing::info!(spool = %spool.dir().display(), "starting");
 
@@ -766,6 +792,12 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
         _ => 0,
     };
 
+    let read_pages = scanner.read_pages().to_vec();
+    let guess = scanner
+        .guessed()
+        .iter()
+        .map(scannerd::hub::GuessedFolder::from)
+        .collect();
     let settle_frames = scanner.settle_frames();
     let has_baseline = scanner.has_baseline();
     let collecting = scanner.collecting_letters();
@@ -777,6 +809,8 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
         status.movement = movement;
         status.state = state.to_string();
         status.frames_still = frames_still;
+        status.read_pages = read_pages;
+        status.guess = guess;
         status.settle_frames = settle_frames;
         status.has_baseline = has_baseline;
         status.collecting = collecting;
