@@ -544,6 +544,15 @@
               <div class="card-actions"><button type="button" id="settings-setup">Open the setup assistant</button></div>
             </section>
             <section class="card">
+              <h3>Language</h3>
+              <label>Language<select id="pref-language">
+                <option value="system">Follow the system</option>
+                <option value="en">English</option>
+                <option value="de">Deutsch</option>
+              </select></label>
+              <p class="hint">The language kuverta is shown in. What is not translated yet stays English.</p>
+            </section>
+            <section class="card">
               <h3>Deleting mail</h3>
               <label class="check"><input type="checkbox" id="pref-similar"> After deleting a message, offer to delete messages like it too</label>
               <p class="hint">Spam and bulk mail come in runs. When a message you delete has look-alikes — the same sender and subject pattern, the same list, or the same text from different senders — kuverta shows them and lets you delete them together or gather them in a smart mailbox.</p>
@@ -881,6 +890,7 @@
 
   <div id="toast" class="toast" hidden></div>
 
+  <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="setup.js"></script>
   <script src="update.js"></script>

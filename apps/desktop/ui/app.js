@@ -341,11 +341,11 @@ function syncButton(account) {
   const button = document.createElement("button");
   button.type = "button";
   button.className = "nav-action";
-  button.setAttribute("aria-label", `Sync ${account.email}`);
+  button.setAttribute("aria-label", t("Sync {account}", { account: account.email }));
   button.append(iconSvg("sync"));
   button.title = account.last_synced
-    ? `Last synced ${howLongAgo(account.last_synced)} — sync now`
-    : "Never synced — sync now";
+    ? t("Last synced {when} — sync now", { when: howLongAgo(account.last_synced) })
+    : t("Never synced — sync now");
   button.onclick = (event) => {
     // The row beneath it selects the account; syncing one is not asking to
     // go there.
@@ -421,7 +421,7 @@ async function refreshSidebar() {
   sidebar.folders.textContent = "";
   sidebar.folders.append(
     navItem({
-      label: "All mail",
+      label: t("All mail"),
       icon: "all",
       count: null,
       active: state.view === "mail" && state.filter.folder === null && state.filter.smart === null,
@@ -438,7 +438,7 @@ async function refreshSidebar() {
       icon: iconFor(folder),
       count: folder.total,
       unread: folder.unread,
-      title: `${folder.name} — ${folder.unread} unread of ${folder.total}`,
+      title: t("{folder} — {unread} unread of {total}", { folder: folder.name, unread: folder.unread, total: folder.total }),
       active: state.view === "mail" && state.filter.folder === folder.id && state.filter.smart === null,
       onClick: async () => {
         state.view = "mail";
@@ -470,11 +470,11 @@ async function refreshSidebar() {
 /// What the categories are counted over, so a count that changed with the
 /// folder is not read as mail going missing.
 function categoriesHeading() {
-  if (state.postbox) return "Categories";
+  if (state.postbox) return t("Categories");
   const smart = state.smartMailboxes.find((m) => m.id === state.filter.smart);
-  if (smart) return `Categories in ${smart.name}`;
+  if (smart) return t("Categories in {where}", { where: smart.name });
   const folder = state.folders.find((f) => f.id === state.filter.folder);
-  return folder ? `Categories in ${folder.label}` : "Categories";
+  return folder ? t("Categories in {where}", { where: folder.label }) : t("Categories");
 }
 
 /// The categories, with counts, as filters — for mail or for post.
@@ -487,7 +487,7 @@ function renderCategories(counts) {
   if (!state.postbox) {
     sidebar.categories.append(
       navItem({
-        label: "Unread only",
+        label: t("Unread only"),
         icon: "inbox",
         active: state.filter.unreadOnly,
         onClick: async () => {
@@ -501,7 +501,7 @@ function renderCategories(counts) {
   for (const [category, count] of counts) {
     sidebar.categories.append(
       navItem({
-        label: category,
+        label: t(category),
         icon: "tag",
         count,
         active: state.filter.category === category,
@@ -523,7 +523,7 @@ function renderCategories(counts) {
 function renderScope() {
   scopeBar.textContent = "";
   const parts = [];
-  if (state.searching) parts.push("search results");
+  if (state.searching) parts.push(t("search results"));
   if (state.filter.smart !== null) {
     const smart = state.smartMailboxes.find((m) => m.id === state.filter.smart);
     if (smart) parts.push(smart.name);
@@ -532,44 +532,49 @@ function renderScope() {
     const folder = state.folders.find((f) => f.id === state.filter.folder);
     if (folder) parts.push(folder.label);
   }
-  if (state.filter.category) parts.push(state.filter.category);
-  if (state.filter.unreadOnly) parts.push("unread");
+  if (state.filter.category) parts.push(t(state.filter.category));
+  if (state.filter.unreadOnly) parts.push(t("unread"));
 
   const picked = state.selection.size;
   if (picked > 1) {
     const many = document.createElement("span");
-    many.textContent = `${picked} picked`;
+    many.textContent = t("{count} picked", { count: picked });
     many.className = "picked-count";
     scopeBar.append(many);
     const drop = document.createElement("button");
-    drop.textContent = "unpick";
+    drop.textContent = t("unpick");
     drop.onclick = clearSelection;
     scopeBar.append(drop);
   }
 
   const label = document.createElement("span");
-  const letters = `letter${state.total === 1 ? "" : "s"}`;
   if (!state.postbox && state.view === "urgent") {
-    label.textContent = `${state.total} need${state.total === 1 ? "s" : ""} attention`;
+    label.textContent =
+      state.total === 1
+        ? t("one needs attention")
+        : t("{count} need attention", { count: state.total });
     label.className = "scope-name";
     scopeBar.append(label, ...viewTools());
     return;
   }
   if (!state.postbox && state.view === "people") {
-    label.textContent = `${state.total} ${state.total === 1 ? "person" : "people"}`;
+    label.textContent =
+      state.total === 1 ? t("one person") : t("{count} people", { count: state.total });
     scopeBar.append(label, ...viewTools(), viewToggle());
     return;
   }
   label.textContent = parts.length
-    ? `${state.total} in ${parts.join(" · ")}`
+    ? t("{count} in {where}", { count: state.total, where: parts.join(" · ") })
     : state.postbox
-      ? `${state.total} ${letters} to ${state.postbox.label}`
-      : `${state.total} messages`;
+      ? state.total === 1
+        ? t("one letter to {name}", { name: state.postbox.label })
+        : t("{count} letters to {name}", { count: state.total, name: state.postbox.label })
+      : t("{count} messages", { count: state.total });
   scopeBar.append(label);
 
   if (parts.length) {
     const clear = document.createElement("button");
-    clear.textContent = "clear";
+    clear.textContent = t("clear");
     clear.onclick = async () => {
       searchBox.value = "";
       state.filter = { ...NO_FILTER };
@@ -584,8 +589,8 @@ function renderScope() {
     const toggle = document.createElement("span");
     toggle.className = "order";
     for (const [value, text, title] of [
-      ["newest", "newest", "Newest mail at the top"],
-      ["oldest", "oldest", "Oldest mail at the top"],
+      ["newest", t("newest"), t("Newest mail at the top")],
+      ["oldest", t("oldest"), t("Oldest mail at the top")],
     ]) {
       const button = document.createElement("button");
       button.textContent = text;
@@ -607,8 +612,8 @@ function renderScope() {
     const toggle = document.createElement("span");
     toggle.className = "order";
     for (const [value, text, title] of [
-      ["created", "letter date", "Sort and date by the date on the letter"],
-      ["added", "scanned", "Sort and date by when it was scanned"],
+      ["created", t("letter date"), t("Sort and date by the date on the letter")],
+      ["added", t("scanned"), t("Sort and date by when it was scanned")],
     ]) {
       const button = document.createElement("button");
       button.textContent = text;
@@ -635,7 +640,7 @@ async function selectPostbox(postbox) {
   state.filter = { ...NO_FILTER };
   closeCompose();
   if (!postbox.has_token) {
-    say(`${postbox.label} has no Paperless token stored — add it in settings (,)`, true);
+    say(t("{name} has no Paperless token stored — add it in settings (,)", { name: postbox.label }), true);
   }
   await reload();
   autoTranscribe();
@@ -647,9 +652,9 @@ async function selectPostbox(postbox) {
 function mailOnly(action) {
   return () =>
     state.postbox
-      ? say(`${state.postbox.label} is post — that is done in Paperless`, true)
+      ? say(t("{name} is post — that is done in Paperless", { name: state.postbox.label }), true)
       : state.view === "people" && action !== openCompose
-        ? say("People lists people, not messages — open one, or switch to Messages", true)
+        ? say(t("People lists people, not messages — open one, or switch to Messages"), true)
         : action();
 }
 
@@ -700,31 +705,31 @@ function renderPaperStatus() {
   line.className = `paper-status ${down.length || rejected.length ? "down" : "up"}`;
   if (!down.length && rejected.length) {
     // Running, and refusing us: a wait will not help, so say what will.
-    text.textContent = "Paperless rejected kuverta's token";
-    text.title = `Sign in again for ${rejected.map((h) => h.base_url).join(", ")}`;
+    text.textContent = t("Paperless rejected kuverta's token");
+    text.title = t("Sign in again for {where}", { where: rejected.map((h) => h.base_url).join(", ") });
     const again = document.createElement("button");
     again.type = "button";
-    again.textContent = "Sign in again";
+    again.textContent = t("Sign in again");
     again.onclick = () => openPostboxSettings(rejected[0].id);
     line.append(again);
     return;
   }
   if (!down.length) {
-    text.textContent = "Paperless is running";
+    text.textContent = t("Paperless is running");
     text.title = shown.map((h) => h.base_url).join(", ");
     return;
   }
-  text.textContent = "Paperless is not running";
-  text.title = `Nothing answers at ${down.map((h) => h.base_url).join(", ")}`;
+  text.textContent = t("Paperless is not running");
+  text.title = t("Nothing answers at {where}", { where: down.map((h) => h.base_url).join(", ") });
   if (down.some((h) => h.startable)) {
     const start = document.createElement("button");
     start.type = "button";
-    start.textContent = "Start";
-    start.title = "Start Docker if need be, then Paperless";
+    start.textContent = t("Start");
+    start.title = t("Start Docker if need be, then Paperless");
     start.onclick = startPaperless;
     line.append(start);
   } else {
-    text.title += " — it runs elsewhere, so start it there";
+    text.title += t(" — it runs elsewhere, so start it there");
   }
 }
 
@@ -746,9 +751,9 @@ async function startPaperless() {
   };
   try {
     await invoke("start_paperless", { onOutput: channel });
-    say("Paperless is running");
+    say(t("Paperless is running"));
   } catch (err) {
-    say(`could not start Paperless: ${err}`, true);
+    say(t("could not start Paperless: {error}", { error: err }), true);
   } finally {
     paperStarting = null;
     await checkPaperless();
@@ -790,7 +795,7 @@ async function markPostRead(row, read) {
     state.postboxUnread.set(box.id, await invoke("paper_unread_count", { id: box.id }));
     await refreshSidebar();
   } catch (err) {
-    say(`could not mark it ${read ? "read" : "unread"}: ${err}`, true);
+    say(read ? t("could not mark it read: {error}", { error: err }) : t("could not mark it unread: {error}", { error: err }), true);
   }
 }
 
@@ -831,7 +836,7 @@ async function runTranscriptions() {
       transcribing.delete(job.key);
       visionFailed = String(err);
       transcribeQueue.length = 0;
-      say(`the vision model could not read the scan: ${err}`, true);
+      say(t("the vision model could not read the scan: {error}", { error: err }), true);
       refreshOpenLetter(job.key);
     }
   }
@@ -861,17 +866,20 @@ function showTranscriptNote(detail, row) {
   const key = `${state.postbox.id}:${row.id}`;
   button.onclick = () => transcribePost(state.postbox, row.id, { force: true });
   if (transcribing.has(key) || transcribeQueue.some((job) => job.key === key)) {
-    note.textContent = "Reading the scan with the vision model… it takes a little while a page.";
+    note.textContent = t("Reading the scan with the vision model… it takes a little while a page.");
     button.hidden = true;
   } else if (detail.transcript_model) {
-    note.textContent = `Read from the scan by ${detail.transcript_model}. Where the scan is unclear it can get a word wrong — the PDF tab has the page itself.`;
-    button.textContent = "Read again";
+    note.textContent = t(
+      "Read from the scan by {model}. Where the scan is unclear it can get a word wrong — the PDF tab has the page itself.",
+      { model: detail.transcript_model },
+    );
+    button.textContent = t("Read again");
     button.hidden = false;
   } else {
     note.textContent = visionFailed
       ? `This is Paperless's OCR. The vision model could not read the scan: ${visionFailed}`
       : "This is Paperless's OCR.";
-    button.textContent = "Read with the vision model";
+    button.textContent = t("Read with the vision model");
     button.hidden = false;
   }
 }
@@ -912,7 +920,13 @@ async function checkForPost() {
     await refreshPostbox();
     autoTranscribe();
     countPostboxes();
-    if (arrived > 0) say(`${arrived} new letter${arrived === 1 ? "" : "s"} to ${box.label}`);
+    if (arrived > 0) {
+      say(
+        arrived === 1
+          ? t("one new letter to {name}", { name: box.label })
+          : t("{count} new letters to {name}", { count: arrived, name: box.label }),
+      );
+    }
   } catch {
     // Paperless away or the Mac asleep: ask again next time, quietly.
   }
@@ -1082,7 +1096,7 @@ function render(force = false) {
     node.sender.textContent = row.from;
     node.subject.textContent = row.subject;
     node.snippet.textContent = row.snippet ?? "";
-    node.tag.textContent = [row.has_attachments ? "📎" : "", row.category]
+    node.tag.textContent = [row.has_attachments ? "📎" : "", row.category ? t(row.category) : ""]
       .filter(Boolean)
       .join(" ");
   }
@@ -1121,20 +1135,20 @@ async function openSelected() {
       el("reading-urgency").hidden = true;
       showSecurity(null);
       hideAttachments();
-      el("reading-subject").textContent = detail.row.subject || "(untitled)";
+      el("reading-subject").textContent = detail.row.subject || t("(untitled)");
       el("reading-meta").textContent = [
         detail.row.from,
         formatDate(detail.row.date_utc),
         state.postbox.label,
-        pages ? `${pages} page${pages === 1 ? "" : "s"}` : "",
-        `Paperless document ${detail.row.id}`,
+        pages ? (pages === 1 ? t("one page") : t("{count} pages", { count: pages })) : "",
+        t("Paperless document {id}", { id: detail.row.id }),
       ]
         .filter(Boolean)
         .join("  ·  ");
       // The OCR text is the body. It is missing while Paperless is still
       // reading a scan, which is not the same as a letter with nothing on it.
       el("reading-body").textContent =
-        detail.body_text ?? "(no text yet — Paperless may still be reading this scan)";
+        detail.body_text ?? t("(no text yet — Paperless may still be reading this scan)");
       if (scan.key !== scanKey(row)) clearScan();
       showReadingView();
       showTranscriptNote(detail, row);
@@ -1154,7 +1168,7 @@ async function openSelected() {
     el("reading-actions").hidden = false;
     showSecurity(detail);
     showUrgency(row.id);
-    el("reading-subject").textContent = detail.subject ?? "(no subject)";
+    el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     el("reading-meta").textContent = [
       detail.from,
       formatDate(detail.date_utc),
@@ -1168,7 +1182,7 @@ async function openSelected() {
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
     showAttachments(detail);
   } catch (err) {
-    say(`could not open: ${err}`, true);
+    say(t("could not open: {error}", { error: err }), true);
   }
 }
 
@@ -1224,7 +1238,7 @@ async function loadScan() {
 
   clearScan();
   scan.key = key;
-  el("reading-file-status").textContent = "Loading the scan from Paperless…";
+  el("reading-file-status").textContent = t("Loading the scan from Paperless…");
   const loading = invoke("paper_file", { id: state.postbox.id, documentId: row.id });
   scan.loading = loading;
   try {
@@ -1243,7 +1257,9 @@ async function loadScan() {
     }
     el("reading-file-status").textContent = "";
   } catch (err) {
-    if (scan.key === key) el("reading-file-status").textContent = `could not load the scan: ${err}`;
+    if (scan.key === key) {
+      el("reading-file-status").textContent = t("could not load the scan: {error}", { error: err });
+    }
   } finally {
     if (scan.loading === loading) scan.loading = null;
   }
@@ -1390,7 +1406,7 @@ async function act(command, args, describe) {
 
 async function archive() {
   if (!state.archive) {
-    say("this account has no Archive folder", true);
+    say(t("this account has no Archive folder"), true);
     return;
   }
   await act("move_to", { target: state.archive }, `archived`);
@@ -1398,7 +1414,7 @@ async function archive() {
 
 async function trash() {
   if (!state.trash) {
-    say("this account has no Trash folder", true);
+    say(t("this account has no Trash folder"), true);
     return;
   }
   // Which messages went, read before they leave the list: one of them is
@@ -1418,7 +1434,7 @@ async function toggleRead() {
   if (!state.postbox && state.view === "people") return;
   if (state.postbox) {
     await markPostRead(row, row.unread);
-    say(row.unread ? "marked unread" : "marked read");
+    say(row.unread ? t("marked unread") : t("marked read"));
     return;
   }
   await act("set_read", { read: row.unread }, row.unread ? "marked read" : "marked unread");
@@ -1427,7 +1443,7 @@ async function toggleRead() {
 async function undo() {
   try {
     const change = await invoke("undo", { account: state.account });
-    say(change ? `undone: ${change.what}` : "nothing to undo");
+    say(change ? t("undone: {what}", { what: change.what }) : t("nothing to undo"));
     if (change) await reload({ keepPosition: true });
   } catch (err) {
     say(String(err), true);
@@ -1500,12 +1516,12 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
 
   if (replyAll !== null || forward) {
     if (!row) {
-      say("select a message first", true);
+      say(t("select a message first"), true);
       return;
     }
     if (forward) {
       compose.forward = row.id;
-      compose.what.textContent = "Forward";
+      compose.what.textContent = t("Forward");
     } else {
       compose.replyTo = row.id;
       compose.replyAll = replyAll;
@@ -1527,7 +1543,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
       compose.subject.value = forward ? `Fwd: ${row.subject}` : `Re: ${row.subject}`;
     }
   } else {
-    compose.what.textContent = "New message";
+    compose.what.textContent = t("New message");
   }
 
   compose.pane.hidden = false;
@@ -1544,7 +1560,7 @@ async function openComposeWith(draft) {
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
-  compose.what.textContent = "Scheduled message";
+  compose.what.textContent = t("Scheduled message");
   compose.to.value = (draft.to ?? []).join(", ");
   compose.cc.value = (draft.cc ?? []).join(", ");
   compose.bcc.value = (draft.bcc ?? []).join(", ");
@@ -1583,13 +1599,13 @@ async function sendDraft() {
   if (compose.sending) return;
   compose.sending = true;
   compose.send.disabled = true;
-  compose.send.textContent = "Sending…";
+  compose.send.textContent = t("Sending…");
 
   try {
     const sent = await invoke("send", { email: state.email, draft: draftInput() });
     if (sent.filing_error) {
       // Sent is sent. Saying it failed would invite sending it twice.
-      say(`sent to ${sent.recipients.length} — but not filed: ${sent.filing_error}`, true);
+      say(t("sent to {count} — but not filed: {error}", { count: sent.recipients.length, error: sent.filing_error }), true);
     } else {
       const filed = sent.filed_in ? `, filed in ${sent.filed_in}` : "";
       say(`sent to ${sent.recipients.length} recipient(s)${filed}`);
@@ -1601,13 +1617,14 @@ async function sendDraft() {
   } finally {
     compose.sending = false;
     compose.send.disabled = false;
-    compose.send.textContent = "Send";
+    compose.send.textContent = t("Send");
   }
 }
 
 compose.send.onclick = sendDraft;
 compose.cancel.onclick = closeCompose;
-el("new-message").onclick = () => (state.postbox ? say("post cannot be answered from here", true) : openCompose());
+el("new-message").onclick = () =>
+  state.postbox ? say(t("post cannot be answered from here"), true) : openCompose();
 el("open-settings").onclick = () => openSettings();
 
 for (const button of el("reading-actions").querySelectorAll("[data-act]")) {
@@ -1634,9 +1651,10 @@ async function refreshCleanupCount() {
     const counts = await invoke("cleanup_counts", { account: state.account });
     badge.textContent = counts.bulk_in_inbox > 999 ? "999+" : String(counts.bulk_in_inbox);
     badge.hidden = counts.bulk_in_inbox === 0;
-    link.title =
-      `${counts.bulk_in_inbox} newsletter, marketing and notification message${counts.bulk_in_inbox === 1 ? "" : "s"} in the Inbox` +
-      ` · ${counts.unsubscribable} sender${counts.unsubscribable === 1 ? "" : "s"} you can unsubscribe from`;
+    link.title = t("{bulk} newsletter, marketing and notification messages in the Inbox · {senders} senders you can unsubscribe from", {
+      bulk: counts.bulk_in_inbox,
+      senders: counts.unsubscribable,
+    });
   } catch {
     badge.hidden = true;
   }
@@ -1660,12 +1678,16 @@ async function sync(account = null, { background = false } = {}) {
   if (account === null && state.postbox) {
     // Post is read from Paperless as it is shown, so syncing is asking again.
     await reload({ keepPosition: true });
-    say(`${state.postbox.label}: ${state.total} letter${state.total === 1 ? "" : "s"} in Paperless`);
+    say(
+      state.total === 1
+        ? t("{name}: one letter in Paperless", { name: state.postbox.label })
+        : t("{name}: {count} letters in Paperless", { name: state.postbox.label, count: state.total }),
+    );
     return;
   }
   if (state.syncing) return;
   state.syncing = true;
-  statusBar.textContent = `${email} — syncing…`;
+  statusBar.textContent = t("{account} — syncing…", { account: email });
   showSyncProgress(null);
 
   try {
@@ -1687,7 +1709,7 @@ async function sync(account = null, { background = false } = {}) {
     // status line stop being read.
     const what = parts.length ? parts.join(", ") : "nothing new";
     if (!background) say(mine ? what : `${email}: ${what}`);
-    else if (s.inserted) say(`${email}: ${s.inserted} new`);
+    else if (s.inserted) say(t("{account}: {count} new", { account: email, count: s.inserted }));
     failedSyncs.delete(email);
     // When mail last arrived has just changed, and that is what the row's
     // tooltip says — so the accounts are read again whichever one this was.
@@ -1704,7 +1726,9 @@ async function sync(account = null, { background = false } = {}) {
     // away from the network or behind a captive portal would otherwise put
     // the same red line up every few minutes, for something nobody asked for
     // and nothing anyone can do about from here.
-    if (!background || !failedSyncs.has(email)) say(`${email}: ${err}`, true);
+    if (!background || !failedSyncs.has(email)) {
+      say(t("{account}: {error}", { account: email, error: err }), true);
+    }
     if (background) failedSyncs.add(email);
   } finally {
     state.syncing = false;
@@ -1756,7 +1780,12 @@ function showSyncProgress(at) {
   const within = at.messages_total
     ? ` — ${at.messages_done} of ${at.messages_total}`
     : "";
-  statusBar.textContent = `${state.email} — syncing ${percent}%: ${at.folder}${within}`;
+  statusBar.textContent = t("{account} — syncing {percent}%: {folder}{within}", {
+    account: state.email,
+    percent,
+    folder: at.folder,
+    within,
+  });
 }
 
 // -- search ----------------------------------------------------------------
@@ -1956,7 +1985,7 @@ async function start() {
   const status = await invoke("setup_status").catch(() => null);
   if (status && status.first_run) {
     buildPool();
-    statusBar.textContent = "setting up";
+    statusBar.textContent = t("setting up");
     await openSetup();
     return;
   }
@@ -1973,7 +2002,7 @@ async function start() {
       return;
     }
     // Nothing to show and nowhere to go but settings, so go there.
-    statusBar.textContent = "no accounts yet";
+    statusBar.textContent = t("no accounts yet");
     await openSettings();
     return;
   }
@@ -1997,14 +2026,23 @@ async function start() {
   syncEverything();
 
   const pending = await invoke("queue", { account: state.account });
-  if (pending.length) say(`${pending.length} change(s) waiting for the next sync`);
+  if (pending.length) {
+    say(
+      pending.length === 1
+        ? t("one change waiting for the next sync")
+        : t("{count} changes waiting for the next sync", { count: pending.length }),
+    );
+  }
 }
 
 // Once every script is in: the setup assistant lives in its own file, and a
 // first run opens it before anything else.
 document.addEventListener("DOMContentLoaded", () => {
+  // Before the first paint of anything the window builds: the static text is
+  // already on the page, and what follows is built through `t`.
+  translateDom();
   start().catch((err) => {
-    statusBar.textContent = `failed to start: ${err}`;
+    statusBar.textContent = t("failed to start: {error}", { error: err });
   });
 });
 
@@ -2156,10 +2194,10 @@ function renderSettingsList() {
   const onAccounts = settings.mode === "account";
 
   settings.list.append(
-    navItem({ label: "Profiles", active: settings.mode === "profiles", onClick: () => showSettingsPage("profiles") }),
+    navItem({ label: t("Profiles"), active: settings.mode === "profiles", onClick: () => showSettingsPage("profiles") }),
   );
 
-  settings.list.append(settingsHeading("Accounts", ADD_BUTTONS.account, "+ Add"));
+  settings.list.append(settingsHeading(t("Accounts"), ADD_BUTTONS.account, t("+ Add")));
   for (const account of settings.accounts) {
     settings.list.append(
       navItem({
@@ -2171,14 +2209,14 @@ function renderSettingsList() {
   }
   if (onAccounts && settings.editing === null) {
     settings.list.append(
-      navItem({ label: "New account…", active: true, onClick: () => {} }),
+      navItem({ label: t("New account…"), active: true, onClick: () => {} }),
     );
   }
 
   // Addresses under their own heading: they are configured like accounts and
   // are not accounts, and a single list pretending otherwise would be a list
   // where "Home" sits between two email addresses with no explanation.
-  settings.list.append(settingsHeading("Postal addresses", ADD_BUTTONS.paper, "+ Add"));
+  settings.list.append(settingsHeading(t("Postal addresses"), ADD_BUTTONS.paper, t("+ Add")));
   for (const address of paper.addresses) {
     settings.list.append(
       navItem({
@@ -2193,18 +2231,18 @@ function renderSettingsList() {
   }
   if (settings.mode === "paper" && paper.editing === null) {
     settings.list.append(
-      navItem({ label: "New address…", active: true, onClick: () => {} }),
+      navItem({ label: t("New address…"), active: true, onClick: () => {} }),
     );
   }
 
   // Models: where they run is set up once and seldom visited.
-  settings.list.append(settingsHeading("Models", ADD_BUTTONS.provider, "+ Add"));
+  settings.list.append(settingsHeading(t("Models"), ADD_BUTTONS.provider, t("+ Add")));
   const jobs = ADD_BUTTONS.models;
   jobs.className = `nav-item${settings.mode === "models" ? " active" : ""}`;
   jobs.textContent = "";
   const jobsLabel = document.createElement("span");
   jobsLabel.className = "label";
-  jobsLabel.textContent = "Model for each job";
+  jobsLabel.textContent = t("Model for each job");
   jobs.append(jobsLabel);
   settings.list.append(jobs);
   for (const provider of models.providers) {
@@ -2222,20 +2260,20 @@ function renderSettingsList() {
   }
   if (settings.mode === "provider" && models.editing === null) {
     settings.list.append(
-      navItem({ label: "New provider…", active: true, onClick: () => {} }),
+      navItem({ label: t("New provider…"), active: true, onClick: () => {} }),
     );
   }
 
-  settings.list.append(settingsHeading("Mail"));
+  settings.list.append(settingsHeading(t("Mail")));
   settings.list.append(
-    navItem({ label: "Smart mailboxes", active: settings.mode === "smart", onClick: () => showSettingsPage("smart") }),
-    navItem({ label: "Encryption", active: settings.mode === "keys", onClick: () => showSettingsPage("keys") }),
+    navItem({ label: t("Smart mailboxes"), active: settings.mode === "smart", onClick: () => showSettingsPage("smart") }),
+    navItem({ label: t("Encryption"), active: settings.mode === "keys", onClick: () => showSettingsPage("keys") }),
   );
 
   settings.list.append(settingsHeading("kuverta"));
   settings.list.append(
-    navItem({ label: "General", active: settings.mode === "general", onClick: () => showSettingsPage("general") }),
-    navItem({ label: "Diagnostics", active: settings.mode === "diagnostics", onClick: () => showSettingsPage("diagnostics") }),
+    navItem({ label: t("General"), active: settings.mode === "general", onClick: () => showSettingsPage("general") }),
+    navItem({ label: t("Diagnostics"), active: settings.mode === "diagnostics", onClick: () => showSettingsPage("diagnostics") }),
   );
 }
 
@@ -2258,6 +2296,7 @@ async function openSettings(page = null) {
   models.providers = await invoke("ai_providers").catch(() => []);
   await loadProfiles();
   settings.sheet.hidden = false;
+  el("pref-language").value = languageChoice();
   if (page) showSettingsPage(page);
   else fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
 }
@@ -2285,7 +2324,7 @@ async function closeSettings() {
       await selectPostbox(state.postboxes[0]);
       return;
     }
-    statusBar.textContent = "no accounts — add one in settings";
+    statusBar.textContent = t("no accounts — add one in settings");
     return;
   }
   const still = visibleAccounts().find((a) => a.id === state.account);
@@ -2336,7 +2375,7 @@ settings.form.addEventListener("submit", async (event) => {
 
     settings.accounts = await invoke("account_settings");
     fillForm(settings.accounts.find((a) => a.id === id) ?? NEW_ACCOUNT);
-    say("saved");
+    say(t("saved"));
   } catch (err) {
     say(String(err), true);
   }
@@ -2351,13 +2390,13 @@ el("settings-delete").onclick = async () => {
   if (!account) return;
   // Removing an account throws away its mail as well as its settings, and
   // there is no undo for that, so it asks.
-  if (!confirm(`Remove ${account.email} and everything synced for it?`)) return;
+  if (!confirm(t("Remove {account} and everything synced for it?", { account: account.email }))) return;
 
   try {
     await invoke("delete_account", { id: account.id });
     settings.accounts = await invoke("account_settings");
     fillForm(settings.accounts[0] ?? NEW_ACCOUNT);
-    say(`removed ${account.email}`);
+    say(t("removed {what}", { what: account.email }));
   } catch (err) {
     say(String(err), true);
   }
@@ -2367,14 +2406,14 @@ el("settings-verify").onclick = async () => {
   const button = el("settings-verify");
   const input = accountInput();
   if (!input.email) {
-    say("enter an email address first", true);
+    say(t("enter an email address first"), true);
     return;
   }
 
   button.disabled = true;
-  button.textContent = "Verifying…";
+  button.textContent = t("Verifying…");
   settings.report.hidden = false;
-  settings.report.textContent = "Connecting…";
+  settings.report.textContent = t("Connecting…");
 
   try {
     // Saved first, because verifying asks the core to connect to an account —
@@ -2392,7 +2431,7 @@ el("settings-verify").onclick = async () => {
     settings.report.textContent = String(err);
   } finally {
     button.disabled = false;
-    button.textContent = "Verify";
+    button.textContent = t("Verify");
   }
 };
 
@@ -2488,7 +2527,7 @@ function fillPaper(address) {
   signIn.replaceChildren();
   const show = el("paper-show-sign-in");
   show.hidden = true;
-  show.textContent = "Show Paperless sign-in";
+  show.textContent = t("Show Paperless sign-in");
   if (address.id !== null) {
     invoke("paper_sign_in", { id: address.id })
       .then((found) => {
@@ -2541,7 +2580,7 @@ paper.form.addEventListener("submit", async (event) => {
   try {
     const id = await savePaper();
     fillPaper(paper.addresses.find((a) => a.id === id) ?? NEW_ADDRESS);
-    say("saved");
+    say(t("saved"));
   } catch (err) {
     say(String(err), true);
   }
@@ -2555,7 +2594,7 @@ paper.form.addEventListener("submit", async (event) => {
 el("paper-token-link").onclick = () => {
   const typed = paper.form.base_url.value.trim().replace(/\/+$/, "");
   if (!typed) {
-    say("fill in the Paperless address first", true);
+    say(t("fill in the Paperless address first"), true);
     return;
   }
   // An address typed without one is http, as the placeholder shows it.
@@ -2571,13 +2610,13 @@ el("paper-show-sign-in").onclick = async (event) => {
   const box = el("paper-sign-in");
   if (!box.hidden) {
     box.hidden = true;
-    event.target.textContent = "Show Paperless sign-in";
+    event.target.textContent = t("Show Paperless sign-in");
     return;
   }
   try {
     const sign_in = await invoke("paper_sign_in", { id: paper.editing });
     if (!sign_in) {
-      say("kuverta did not install this Paperless, so it has no sign-in for it", true);
+      say(t("kuverta did not install this Paperless, so it has no sign-in for it"), true);
       return;
     }
     const line = (what, value) => [
@@ -2595,10 +2634,21 @@ el("paper-show-sign-in").onclick = async (event) => {
       }),
     );
     box.hidden = false;
-    event.target.textContent = "Hide Paperless sign-in";
+    event.target.textContent = t("Hide Paperless sign-in");
   } catch (err) {
     say(String(err), true);
   }
+};
+
+/// Language, changed without reloading: the sidebar and the list are drawn
+/// again, and the static text is walked over where it stands.
+el("pref-language").onchange = async (event) => {
+  setLanguageChoice(event.target.value);
+  if (state.account !== null || state.postbox) {
+    await refreshSidebar();
+    render(true);
+  }
+  say(t("saved"));
 };
 
 el("settings-add-paper").onclick = () => fillPaper(NEW_ADDRESS);
@@ -2610,7 +2660,7 @@ el("paper-delete").onclick = async () => {
   // Says what is and is not lost: the documents are Paperless's and stay
   // there. Only this client's view of them, and the stored token, go.
   const name = address.label || address.base_url;
-  if (!confirm(`Remove ${name}? Its documents stay in Paperless; only the address and its stored token are forgotten here.`)) {
+  if (!confirm(t("Remove {name}? Its documents stay in Paperless; only the address and its stored token are forgotten here.", { name }))) {
     return;
   }
   try {
@@ -2618,7 +2668,7 @@ el("paper-delete").onclick = async () => {
     paper.addresses = await invoke("paper_mailboxes");
     if (settings.accounts.length) fillForm(settings.accounts[0]);
     else fillPaper(NEW_ADDRESS);
-    say(`removed ${name}`);
+    say(t("removed {what}", { what: name }));
   } catch (err) {
     say(String(err), true);
   }
@@ -2627,9 +2677,9 @@ el("paper-delete").onclick = async () => {
 el("paper-verify").onclick = async () => {
   const button = el("paper-verify");
   button.disabled = true;
-  button.textContent = "Verifying…";
+  button.textContent = t("Verifying…");
   settings.report.hidden = false;
-  settings.report.textContent = "Connecting…";
+  settings.report.textContent = t("Connecting…");
 
   try {
     // Saved first, as with accounts: the check runs against a stored address,
@@ -2643,7 +2693,7 @@ el("paper-verify").onclick = async () => {
     settings.report.textContent = String(err);
   } finally {
     button.disabled = false;
-    button.textContent = "Verify";
+    button.textContent = t("Verify");
   }
 };
 
@@ -2812,7 +2862,7 @@ models.form.addEventListener("submit", async (event) => {
         model: models.form[`${task}_model`].value.trim(),
       });
     }
-    say("saved");
+    say(t("saved"));
     await showModels();
   } catch (err) {
     say(String(err), true);
@@ -2824,9 +2874,9 @@ models.form.addEventListener("submit", async (event) => {
 el("ai-try").onclick = async () => {
   const button = el("ai-try");
   button.disabled = true;
-  button.textContent = "Trying…";
+  button.textContent = t("Trying…");
   settings.report.hidden = false;
-  settings.report.textContent = "Asking…";
+  settings.report.textContent = t("Asking…");
 
   const lines = [];
   for (const task of TASKS) {
@@ -2846,7 +2896,7 @@ el("ai-try").onclick = async () => {
     settings.report.textContent = lines.join("\n");
   }
   button.disabled = false;
-  button.textContent = "Try them";
+  button.textContent = t("Try them");
 };
 
 function fillProvider(provider) {
@@ -2886,7 +2936,7 @@ function syncProviderKind(provider) {
 async function listProviderModels(id) {
   const table = el("provider-models");
   const status = el("provider-models-status");
-  status.textContent = "Asking for its models…";
+  status.textContent = t("Asking for its models…");
   try {
     const offered = await offeredBy(id, { fresh: true });
     if (settings.mode !== "provider" || models.editing !== id) return;
@@ -2913,7 +2963,7 @@ async function listProviderModels(id) {
         : "The service lists no models for this key.";
   } catch (err) {
     if (settings.mode === "provider" && models.editing === id) {
-      status.textContent = `Could not list its models: ${err}`;
+      status.textContent = t("Could not list its models: {error}", { error: err });
     }
   }
 }
@@ -2941,7 +2991,7 @@ models.providerForm.addEventListener("submit", async (event) => {
   try {
     const id = await saveProvider();
     fillProvider(models.providers.find((p) => p.id === id));
-    say("saved");
+    say(t("saved"));
   } catch (err) {
     say(String(err), true);
   }
@@ -2965,7 +3015,7 @@ el("provider-delete").onclick = async () => {
     await invoke("delete_ai_provider", { id: provider.id });
     models.offered.delete(provider.id);
     await showModels();
-    say(`removed ${provider.label}`);
+    say(t("removed {what}", { what: provider.label }));
   } catch (err) {
     say(String(err), true);
   }

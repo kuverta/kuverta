@@ -25,7 +25,10 @@ function dismissedUpdate() {
 
 function showUpdate(info) {
   updateBanner.info = info;
-  updateBanner.text.textContent = `kuverta ${info.latest} is available (you have ${info.current})`;
+  updateBanner.text.textContent = t("kuverta {latest} is available (you have {current})", {
+    latest: info.latest,
+    current: info.current,
+  });
   el("update-download").hidden = !info.download_url;
   updateBanner.box.hidden = false;
 }
@@ -41,9 +44,13 @@ async function checkForUpdate({ manual = false } = {}) {
   if (!info) return;
   if (info.newer && (manual || dismissedUpdate() !== info.latest)) {
     showUpdate(info);
-    if (manual) say(`kuverta ${info.latest} is available`);
+    if (manual) say(t("kuverta {latest} is available", { latest: info.latest }));
   } else if (manual) {
-    say(info.newer ? `kuverta ${info.latest} is available` : `kuverta ${info.current} is the latest version`);
+    say(
+      info.newer
+        ? t("kuverta {latest} is available", { latest: info.latest })
+        : t("kuverta {current} is the latest version", { current: info.current }),
+    );
   }
 }
 

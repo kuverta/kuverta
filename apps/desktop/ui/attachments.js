@@ -15,9 +15,9 @@ const attachmentSheet = el("attachment-sheet");
 const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0 };
 
 function sizeText(bytes) {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024) return t("{count} bytes", { count: bytes });
+  if (bytes < 1024 * 1024) return t("{count} KB", { count: Math.round(bytes / 1024) });
+  return t("{count} MB", { count: (bytes / 1024 / 1024).toFixed(1) });
 }
 
 function attachmentIcon(attachment) {
@@ -37,8 +37,8 @@ function attachmentChip(account, messageId, attachment) {
   chip.type = "button";
   chip.className = `attachment-chip${attachment.risky ? " risky" : ""}`;
   chip.title = attachment.risky
-    ? `${attachment.name} — could run something when opened`
-    : `${attachment.name} — ${attachment.content_type}`;
+    ? t("{name} — could run something when opened", { name: attachment.name })
+    : t("{name} — {type}", { name: attachment.name, type: attachment.content_type });
   const icon = document.createElement("span");
   icon.className = "icon";
   icon.textContent = attachmentIcon(attachment);
@@ -70,7 +70,8 @@ function showAttachments(detail, account = state.account) {
     const more = document.createElement("button");
     more.type = "button";
     more.className = "link-button attachment-more";
-    more.textContent = `${inline.length} picture${inline.length === 1 ? "" : "s"} in the text`;
+    more.textContent =
+      inline.length === 1 ? t("one picture in the text") : t("{count} pictures in the text", { count: inline.length });
     more.onclick = () => {
       more.replaceWith(...inline.map((a) => attachmentChip(account, detail.id, a)));
     };
@@ -105,18 +106,18 @@ async function openAttachment(account, messageId, attachment) {
   el("attachment-sub").textContent = [
     attachment.content_type,
     sizeText(attachment.size),
-    attachment.risky ? "could run something when opened: save it only if you trust the sender" : "",
+    attachment.risky ? t("could run something when opened: save it only if you trust the sender") : "",
   ]
     .filter(Boolean)
     .join("  ·  ");
   const open = el("attachment-open");
   open.disabled = attachment.risky;
-  open.title = attachment.risky ? "Not opened from here: it could run something. Save it instead." : "";
+  open.title = attachment.risky ? t("Not opened from here: it could run something. Save it instead.") : "";
   const status = el("attachment-status");
   status.textContent =
     attachment.preview === "none"
-      ? "kuverta can't show this kind of file itself. Save it, or open it in the app your computer has for it."
-      : "Loading…";
+      ? t("kuverta can't show this kind of file itself. Save it, or open it in the app your computer has for it.")
+      : t("Loading…");
   attachmentSheet.hidden = false;
   el("attachment-close").focus();
   if (attachment.preview === "none") return;
@@ -138,7 +139,7 @@ async function openAttachment(account, messageId, attachment) {
     }
     status.textContent = "";
   } catch (err) {
-    if (generation === viewer.generation) status.textContent = `could not load it: ${err}`;
+    if (generation === viewer.generation) status.textContent = t("could not load it: {error}", { error: err });
   }
 }
 
@@ -152,9 +153,9 @@ el("attachment-save").onclick = async () => {
   const { account, messageId, attachment } = viewer;
   try {
     const path = await invoke("save_attachment", { account, id: messageId, index: attachment.index });
-    say(`saved to ${path}`);
+    say(t("saved to {path}", { path }));
   } catch (err) {
-    say(`could not save it: ${err}`, true);
+    say(t("could not save it: {error}", { error: err }), true);
   }
 };
 
@@ -163,6 +164,6 @@ el("attachment-open").onclick = async () => {
   try {
     await invoke("open_attachment", { account, id: messageId, index: attachment.index });
   } catch (err) {
-    say(`could not open it: ${err}`, true);
+    say(t("could not open it: {error}", { error: err }), true);
   }
 };

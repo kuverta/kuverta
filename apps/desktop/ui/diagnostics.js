@@ -8,7 +8,7 @@ async function fillDiagnostics() {
   try {
     const status = await invoke("log_status");
     el("log-detailed").checked = status.detailed;
-    el("log-where").textContent = `Kept in ${status.path} (${formatLogSize(status.size_bytes)}).`;
+    el("log-where").textContent = t("Kept in {path} ({size}).", { path: status.path, size: formatLogSize(status.size_bytes) });
   } catch (err) {
     el("log-where").textContent = String(err);
   }
@@ -16,14 +16,14 @@ async function fillDiagnostics() {
 }
 
 function formatLogSize(bytes) {
-  if (bytes < 1024) return `${bytes} bytes`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  if (bytes < 1024) return t("{count} bytes", { count: bytes });
+  if (bytes < 1024 * 1024) return t("{count} KB", { count: Math.round(bytes / 1024) });
+  return t("{count} MB", { count: (bytes / 1024 / 1024).toFixed(1) });
 }
 
 async function refreshLog() {
   try {
-    logView.textContent = (await invoke("log_tail", { lines: 400 })) || "(the log is empty)";
+    logView.textContent = (await invoke("log_tail", { lines: 400 })) || t("(the log is empty)");
     logView.scrollTop = logView.scrollHeight;
   } catch (err) {
     logView.textContent = String(err);
@@ -33,7 +33,7 @@ async function refreshLog() {
 el("log-detailed").addEventListener("change", async (event) => {
   try {
     await invoke("set_detailed_logging", { on: event.target.checked });
-    say(event.target.checked ? "detailed logging is on" : "detailed logging is off");
+    say(event.target.checked ? t("detailed logging is on") : t("detailed logging is off"));
     await fillDiagnostics();
   } catch (err) {
     event.target.checked = !event.target.checked;
@@ -46,7 +46,7 @@ el("log-refresh").onclick = refreshLog;
 el("log-copy").onclick = async () => {
   try {
     await navigator.clipboard.writeText(logView.textContent);
-    say("copied");
+    say(t("copied"));
   } catch {
     // No clipboard access: select it, so ⌘C does the rest.
     const range = document.createRange();
@@ -54,16 +54,16 @@ el("log-copy").onclick = async () => {
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
-    say("selected — press ⌘C (ctrl+C) to copy");
+    say(t("selected — press ⌘C (ctrl+C) to copy"));
   }
 };
 
 el("log-export").onclick = async () => {
   try {
     const path = await invoke("export_log");
-    say(`saved to ${path}`);
+    say(t("saved to {path}", { path }));
   } catch (err) {
-    say(`could not export the log: ${err}`, true);
+    say(t("could not export the log: {error}", { error: err }), true);
   }
 };
 
@@ -74,7 +74,7 @@ invoke("log_status")
   .then((status) => {
     if (!status.version) return;
     el("settings-version").textContent = `kuverta ${status.version}`;
-    el("settings-version-line").textContent = `This is kuverta ${status.version}.`;
+    el("settings-version-line").textContent = t("This is kuverta {version}.", { version: status.version });
   })
   .catch(() => {});
 

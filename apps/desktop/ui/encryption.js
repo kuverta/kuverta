@@ -27,27 +27,33 @@ function showSecurity(detail) {
   const security = detail.security;
   if (security) {
     if (security.encrypted) {
-      if (security.decrypted) lines.push("Encrypted — decrypted with your key.");
+      if (security.decrypted) lines.push(t("Encrypted — decrypted with your key."));
       else {
         bad = true;
-        lines.push(`Encrypted, and kuverta could not decrypt it: ${security.error ?? "no reason given"}.`);
+        lines.push(
+          t("Encrypted, and kuverta could not decrypt it: {error}.", { error: security.error ?? t("no reason given") }),
+        );
       }
     }
     const signature = security.signature;
     if (security.signed && signature) {
-      const who = signature.signer ?? (signature.key_id ? `key ${signature.key_id}` : "an unknown key");
+      const who = signature.signer ?? (signature.key_id ? t("key {id}", { id: signature.key_id }) : t("an unknown key"));
       if (signature.state === "valid") {
         lines.push(
           signature.signer_matches_sender === false
-            ? `Signed by ${who} — the signature is valid, but that is not who the message says it is from.`
-            : `Signed by ${who} — the signature is valid.`,
+            ? t("Signed by {who} — the signature is valid, but that is not who the message says it is from.", { who })
+            : t("Signed by {who} — the signature is valid.", { who }),
         );
         if (signature.signer_matches_sender === false) bad = true;
       } else if (signature.state === "invalid") {
         bad = true;
-        lines.push(`The signature from ${who} does not match: the message may have been changed on the way.`);
+        lines.push(t("The signature from {who} does not match: the message may have been changed on the way.", { who }));
       } else {
-        lines.push(`Signed with a key kuverta does not have (${signature.key_id ?? "unknown"}). Import the sender's key to check it.`);
+        lines.push(
+          t("Signed with a key kuverta does not have ({id}). Import the sender's key to check it.", {
+            id: signature.key_id ?? t("unknown"),
+          }),
+        );
       }
     } else if (security.error && security.decrypted) {
       lines.push(security.error);
@@ -56,13 +62,13 @@ function showSecurity(detail) {
 
   if (!lines.length && !detail.pgp_keys_attached) return;
   const text = document.createElement("span");
-  text.textContent = lines.join(" ") || "This message carries an OpenPGP key.";
+  text.textContent = lines.join(" ") || t("This message carries an OpenPGP key.");
   securityNote.append(text);
 
   if (detail.pgp_keys_attached) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Import the attached key";
+    button.textContent = t("Import the attached key");
     button.onclick = async () => {
       try {
         const report = await invoke("pgp_import_from_message", { account: state.account, id: detail.id });
@@ -76,7 +82,7 @@ function showSecurity(detail) {
   if (bad && security?.encrypted && !security.decrypted) {
     const button = document.createElement("button");
     button.type = "button";
-    button.textContent = "Encryption settings";
+    button.textContent = t("Encryption settings");
     button.onclick = () => openSettings("keys");
     securityNote.append(button);
   }
@@ -88,10 +94,18 @@ function describeImport(report) {
   const parts = [];
   for (const key of report.imported) {
     const who = key.user_ids[0] ?? key.fingerprint;
-    parts.push(`${key.updated ? "updated" : "imported"} ${key.secret ? "your key" : "the key of"} ${who}`);
+    parts.push(
+      key.updated
+        ? key.secret
+          ? t("updated your key {who}", { who })
+          : t("updated the key of {who}", { who })
+        : key.secret
+          ? t("imported your key {who}", { who })
+          : t("imported the key of {who}", { who }),
+    );
   }
-  if (report.errors.length) parts.push(`not imported: ${report.errors.join("; ")}`);
-  return parts.join(" · ") || "no keys found";
+  if (report.errors.length) parts.push(t("not imported: {errors}", { errors: report.errors.join("; ") }));
+  return parts.join(" · ") || t("no keys found");
 }
 
 // -- compose ------------------------------------------------------------------
@@ -127,7 +141,7 @@ async function refreshComposeSecurity() {
   if (!anyKeys) return;
 
   signBox.disabled = !keys.can_sign;
-  signBox.parentElement.title = keys.can_sign ? "Sign with your key, so recipients can tell it is from you" : keys.sign_problem ?? "";
+  signBox.parentElement.title = keys.can_sign ? t("Sign with your key, so recipients can tell it is from you") : keys.sign_problem ?? "";
   if (!keys.can_sign) signBox.checked = false;
 
   const hasBcc = addresses(compose.bcc).length > 0;
@@ -145,11 +159,11 @@ async function refreshComposeSecurity() {
   let hint = "";
   let warn = false;
   if (hasBcc && keys.can_encrypt) {
-    hint = "Encrypted mail cannot have Bcc: each recipient's key is visible in it.";
+    hint = t("Encrypted mail cannot have Bcc: each recipient's key is visible in it.");
   } else if (keys.missing.length && recipients.length) {
-    hint = `No key for ${keys.missing.join(", ")} — import it in Settings → Encryption to encrypt.`;
+    hint = t("No key for {who} — import it in Settings → Encryption to encrypt.", { who: keys.missing.join(", ") });
   } else if (encryptBox.checked) {
-    hint = "Only the recipients and you will be able to read it. The subject is not encrypted.";
+    hint = t("Only the recipients and you will be able to read it. The subject is not encrypted.");
   }
   if (encryptBox.checked && hasBcc) warn = true;
   securityHint.textContent = hint;
@@ -173,36 +187,36 @@ function groupFingerprint(fingerprint) {
 
 function keysLayout() {
   keysPage.innerHTML = `
-    <p class="lead">Sign mail so its recipients can tell it is really from you, and encrypt it so only they can read it. kuverta uses OpenPGP (PGP/MIME), which Thunderbird, GnuPG, Mailvelope and most other mail programs understand.</p>
+    <p class="lead">${t("Sign mail so its recipients can tell it is really from you, and encrypt it so only they can read it. kuverta uses OpenPGP (PGP/MIME), which Thunderbird, GnuPG, Mailvelope and most other mail programs understand.")}</p>
     <section class="card">
-      <h3>Your keys</h3>
-      <div class="item-list" data-list="own" data-empty="You have no key yet. Create one below, or import the one you already use elsewhere."></div>
+      <h3>${t("Your keys")}</h3>
+      <div class="item-list" data-list="own" data-empty="${t("You have no key yet. Create one below, or import the one you already use elsewhere.")}"></div>
     </section>
     <section class="card">
-      <h3>Other people's keys <span class="hint">what you encrypt to, and check signatures with</span></h3>
-      <div class="item-list" data-list="theirs" data-empty="None yet. Import them below, or from a message that carries one."></div>
+      <h3>${t("Other people's keys")} <span class="hint">${t("what you encrypt to, and check signatures with")}</span></h3>
+      <div class="item-list" data-list="theirs" data-empty="${t("None yet. Import them below, or from a message that carries one.")}"></div>
     </section>
     <section class="card">
-      <h3>Create a key</h3>
+      <h3>${t("Create a key")}</h3>
       <form data-form="generate" autocomplete="off">
         <div class="grid2">
-          <label>Name<input name="name" required placeholder="Erika Mustermann"></label>
-          <label>Email address<select name="email"></select></label>
+          <label>${t("Name")}<input name="name" required placeholder="Erika Mustermann"></label>
+          <label>${t("Email address")}<select name="email"></select></label>
         </div>
         <div class="grid2">
-          <label>Passphrase (optional)<input name="passphrase" type="password" autocomplete="new-password"></label>
-          <label>Passphrase again<input name="again" type="password" autocomplete="new-password"></label>
+          <label>${t("Passphrase (optional)")}<input name="passphrase" type="password" autocomplete="new-password"></label>
+          <label>${t("Passphrase again")}<input name="again" type="password" autocomplete="new-password"></label>
         </div>
-        <p class="hint">A modern Ed25519 key with an encryption subkey. The passphrase protects the key on disk and is kept in the system keychain; without one, kuverta makes one up and keeps that. Give the public half to the people who should write to you encrypted: “Copy public key” above.</p>
-        <div class="card-actions"><button type="submit" class="primary">Create key</button></div>
+        <p class="hint">${t("A modern Ed25519 key with an encryption subkey. The passphrase protects the key on disk and is kept in the system keychain; without one, kuverta makes one up and keeps that. Give the public half to the people who should write to you encrypted: “Copy public key” above.")}</p>
+        <div class="card-actions"><button type="submit" class="primary">${t("Create key")}</button></div>
       </form>
     </section>
     <section class="card">
-      <h3>Import keys <span class="hint">public or secret, one or several</span></h3>
+      <h3>${t("Import keys")} <span class="hint">${t("public or secret, one or several")}</span></h3>
       <textarea data-el="armored" rows="5" spellcheck="false" placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"></textarea>
       <div class="card-actions">
-        <button type="button" data-el="import" class="primary">Import</button>
-        <label class="file-button"><input type="file" data-el="file" accept=".asc,.gpg,.pgp,.txt,.key" hidden><span>Choose a file…</span></label>
+        <button type="button" data-el="import" class="primary">${t("Import")}</button>
+        <label class="file-button"><input type="file" data-el="file" accept=".asc,.gpg,.pgp,.txt,.key" hidden><span>${t("Choose a file…")}</span></label>
       </div>
       <p class="hint" data-el="import-result"></p>
     </section>
@@ -247,13 +261,14 @@ function keyItem(key) {
   title.textContent = key.user_ids[0] ?? key.emails[0] ?? key.key_id;
   const sub = document.createElement("div");
   sub.className = "sub";
-  sub.textContent = `${groupFingerprint(key.fingerprint)} · ${key.algorithm} · created ${dateOnly.format(new Date(key.created * 1000))}` +
-    (key.expires ? ` · expires ${dateOnly.format(new Date(key.expires * 1000))}` : "");
+  sub.textContent =
+    `${groupFingerprint(key.fingerprint)} · ${key.algorithm} · ${t("created {date}", { date: dateOnly.format(new Date(key.created * 1000)) })}` +
+    (key.expires ? ` · ${t("expires {date}", { date: dateOnly.format(new Date(key.expires * 1000)) })}` : "");
   text.append(title, sub);
   if (key.user_ids.length > 1) {
     const more = document.createElement("div");
     more.className = "sub";
-    more.textContent = `also ${key.user_ids.slice(1).join(", ")}`;
+    more.textContent = t("also {names}", { names: key.user_ids.slice(1).join(", ") });
     text.append(more);
   }
   item.append(text);
@@ -264,13 +279,13 @@ function keyItem(key) {
     span.textContent = label;
     item.append(span);
   };
-  if (key.revoked) chip("revoked", "bad");
-  else if (key.expired) chip("expired", "bad");
+  if (key.revoked) chip(t("revoked"), "bad");
+  else if (key.expired) chip(t("expired"), "bad");
   else {
-    if (key.can_sign && key.has_secret) chip("signs", "ok");
-    if (key.can_encrypt) chip("encrypts", "ok");
+    if (key.can_sign && key.has_secret) chip(t("signs"), "ok");
+    if (key.can_encrypt) chip(t("encrypts"), "ok");
   }
-  if (key.has_secret && !key.has_passphrase) chip("needs passphrase", "bad");
+  if (key.has_secret && !key.has_passphrase) chip(t("needs passphrase"), "bad");
 
   const button = (label, action, className = "") => {
     const b = document.createElement("button");
@@ -280,19 +295,19 @@ function keyItem(key) {
     b.onclick = action;
     item.append(b);
   };
-  button("Copy public key", async () => {
+  button(t("Copy public key"), async () => {
     try {
       const armored = await invoke("pgp_export_public", { fingerprint: key.fingerprint });
       await navigator.clipboard.writeText(armored);
-      say("the public key is on the clipboard — paste it into a message or onto a key server");
+      say(t("the public key is on the clipboard — paste it into a message or onto a key server"));
     } catch (err) {
       say(String(err), true);
     }
   });
   if (key.has_secret && !key.has_passphrase) {
-    button("Passphrase…", () => askPassphrase(key, item));
+    button(t("Passphrase…"), () => askPassphrase(key, item));
   }
-  button("Delete", () => deleteKey(key), "danger");
+  button(t("Delete"), () => deleteKey(key), "danger");
   return item;
 }
 
@@ -302,16 +317,16 @@ function askPassphrase(key, item) {
   if (item.querySelector("input[type=password]")) return;
   const field = document.createElement("input");
   field.type = "password";
-  field.placeholder = "passphrase";
+  field.placeholder = t("passphrase");
   field.autocomplete = "off";
   const save = document.createElement("button");
   save.type = "button";
   save.className = "primary";
-  save.textContent = "Keep";
+  save.textContent = t("Keep");
   const keep = async () => {
     try {
       await invoke("pgp_set_passphrase", { fingerprint: key.fingerprint, passphrase: field.value });
-      say("passphrase kept");
+      say(t("passphrase kept"));
       await fillKeys();
     } catch (err) {
       say(String(err), true);
@@ -329,12 +344,12 @@ function askPassphrase(key, item) {
 async function deleteKey(key) {
   const who = key.user_ids[0] ?? key.fingerprint;
   const warning = key.has_secret
-    ? `Delete your key ${who}? Mail encrypted to it can never be read again unless you have a copy elsewhere.`
-    : `Delete the key of ${who}? You can import it again later.`;
+    ? t("Delete your key {who}? Mail encrypted to it can never be read again unless you have a copy elsewhere.", { who })
+    : t("Delete the key of {who}? You can import it again later.", { who });
   if (!confirm(warning)) return;
   try {
     await invoke("pgp_delete", { fingerprint: key.fingerprint });
-    say("deleted");
+    say(t("deleted"));
     await fillKeys();
   } catch (err) {
     say(String(err), true);
@@ -346,7 +361,7 @@ async function importKeys() {
   const result = keysPage.querySelector("[data-el=import-result]");
   const armored = field.value.trim();
   if (!armored) {
-    result.textContent = "Paste a key, or choose a file.";
+    result.textContent = t("Paste a key, or choose a file.");
     return;
   }
   try {
@@ -364,26 +379,26 @@ async function generateKey(event) {
   const form = event.target;
   const passphrase = form.passphrase.value;
   if (passphrase !== form.again.value) {
-    say("the two passphrases are not the same", true);
+    say(t("the two passphrases are not the same"), true);
     return;
   }
   const button = form.querySelector("[type=submit]");
   button.disabled = true;
-  button.textContent = "Creating…";
+  button.textContent = t("Creating…");
   try {
     const key = await invoke("pgp_generate", {
       name: form.name.value.trim(),
       email: form.email.value,
       passphrase: passphrase || null,
     });
-    say(`created a key for ${key.emails[0] ?? form.email.value}`);
+    say(t("created a key for {email}", { email: key.emails[0] ?? form.email.value }));
     form.reset();
     await fillKeys();
   } catch (err) {
     say(String(err), true);
   } finally {
     button.disabled = false;
-    button.textContent = "Create key";
+    button.textContent = t("Create key");
   }
 }
 
