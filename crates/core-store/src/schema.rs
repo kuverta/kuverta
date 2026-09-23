@@ -454,6 +454,15 @@ CREATE INDEX task_proposal_pending ON task_proposal (account_id, state);
     r#"
 ALTER TABLE classification ADD COLUMN rules_version INTEGER NOT NULL DEFAULT 1;
 "#,
+    // v17 — how far down a folder the first pass has come. A first sync walks
+    // a folder newest first, so that this morning's mail is on screen in
+    // seconds rather than after the whole history; this is the UID it has
+    // reached, and everything from 1 up to it is still owed. NULL means the
+    // folder owes nothing, which is what every folder synced before this
+    // column existed was: those were walked upwards from UID 1.
+    r#"
+ALTER TABLE folder ADD COLUMN backfill_uid INTEGER;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

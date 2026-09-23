@@ -251,7 +251,8 @@ impl Store {
 
     pub fn folders(&self, account_id: AccountId) -> Result<Vec<Folder>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, account_id, name, special_use, uid_validity, uid_next, highest_modseq
+            "SELECT id, account_id, name, special_use, uid_validity, uid_next, highest_modseq,
+                    backfill_uid
              FROM folder WHERE account_id = ?1 ORDER BY name",
         )?;
         let rows = stmt.query_map(params![account_id], |row| {
@@ -263,6 +264,7 @@ impl Store {
                 uid_validity: row.get::<_, Option<i64>>(4)?.map(|v| v as u32),
                 uid_next: row.get::<_, Option<i64>>(5)?.map(|v| v as u32),
                 highest_modseq: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                backfill_uid: row.get::<_, Option<i64>>(7)?.map(|v| v as u32),
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -306,6 +308,20 @@ impl Store {
         Ok(())
     }
 
+    /// Records how far down a folder the walk has come, or that it owes
+    /// nothing.
+    ///
+    /// Written after every batch rather than at the end of the folder: a sync
+    /// stopped by a closed laptop must resume inside the hole it left, not
+    /// above it, or the mail in between is never fetched at all.
+    pub fn set_folder_backfill(&self, folder_id: FolderId, uid: Option<u32>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE folder SET backfill_uid = ?2 WHERE id = ?1",
+            params![folder_id, uid.map(|v| v as i64)],
+        )?;
+        Ok(())
+    }
+
     /// Drops every cached UID for a folder. Called when `UIDVALIDITY` changes,
     /// which means the server has renumbered and nothing cached can be trusted.
     ///
@@ -323,7 +339,9 @@ impl Store {
             [],
         )?;
         tx.execute(
-            "UPDATE folder SET uid_next = NULL, highest_modseq = NULL WHERE id = ?1",
+            "UPDATE folder
+             SET uid_next = NULL, highest_modseq = NULL, backfill_uid = NULL
+             WHERE id = ?1",
             params![folder_id],
         )?;
         tx.commit()?;
@@ -652,7 +670,8 @@ impl Store {
     pub fn folder(&self, folder_id: FolderId) -> Result<Option<Folder>> {
         self.conn
             .query_row(
-                "SELECT id, account_id, name, special_use, uid_validity, uid_next, highest_modseq
+                "SELECT id, account_id, name, special_use, uid_validity, uid_next, highest_modseq,
+                        backfill_uid
                  FROM folder WHERE id = ?1",
                 params![folder_id],
                 |row| {
@@ -664,6 +683,7 @@ impl Store {
                         uid_validity: row.get::<_, Option<i64>>(4)?.map(|v| v as u32),
                         uid_next: row.get::<_, Option<i64>>(5)?.map(|v| v as u32),
                         highest_modseq: row.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                        backfill_uid: row.get::<_, Option<i64>>(7)?.map(|v| v as u32),
                     })
                 },
             )
