@@ -1027,6 +1027,76 @@ fn a_message_window_pages_newest_first_and_reports_the_total() {
 }
 
 #[test]
+fn all_mail_leaves_out_what_you_wrote_and_what_you_threw_away() {
+    let (store, account) = store_with_account();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    // No attribute, as Dovecot serves it by default: the name is all there is.
+    let sent = store.upsert_folder(account, "Sent", None).unwrap();
+    let trash = store.upsert_folder(account, "Papierkorb", None).unwrap();
+
+    let put = |subject: &str, folder, uid| {
+        store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("{subject}@example.com")),
+                    subject: Some(subject.to_string()),
+                    date_utc: Some(1_700_000_000),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: folder,
+                    uid,
+                    flags: String::new(),
+                }),
+            )
+            .unwrap()
+    };
+    put("arrived", inbox, 1);
+    put("written", sent, 2);
+    put("binned", trash, 3);
+    // One message, two copies: sent to you and answered, as Gmail files it.
+    // The same message id is what collapses them into one row.
+    let (answered, _) = put("answered", inbox, 4);
+    assert_eq!(
+        put("answered", sent, 5).0,
+        answered,
+        "one message, two copies"
+    );
+
+    let all_mail = ListFilter {
+        incoming_only: true,
+        ..Default::default()
+    };
+    let window = store.message_window(account, 0, 10, &all_mail).unwrap();
+    let subjects: Vec<&str> = window
+        .messages
+        .iter()
+        .map(|m| m.summary.subject.as_deref().unwrap())
+        .collect();
+    assert_eq!(subjects, vec!["answered", "arrived"]);
+    assert_eq!(window.total, 2, "the total counts what the list shows");
+
+    // The folder itself still lists it: this is about one scope, not hiding.
+    let in_sent = ListFilter {
+        folder: Some(sent),
+        ..Default::default()
+    };
+    let window = store.message_window(account, 0, 10, &in_sent).unwrap();
+    assert_eq!(
+        window.total, 2,
+        "Sent holds what was written and the answer"
+    );
+
+    // And without the flag nothing is left out, which is what every other
+    // caller of the window still gets.
+    let everything = store
+        .message_window(account, 0, 10, &ListFilter::default())
+        .unwrap();
+    assert_eq!(everything.total, 4);
+}
+
+#[test]
 fn the_window_reports_unread_from_the_flags_of_every_copy() {
     let (store, account) = store_with_a_list();
     let window = store
@@ -1902,9 +1972,11 @@ fn categories_are_counted_in_the_folder_they_are_asked_about() {
             .unwrap();
     }
 
+    // Over no folder is All mail, which is what arrived: the message in Sent
+    // is not counted, exactly as the list does not show it.
     assert_eq!(
         store.category_counts(account, None).unwrap(),
-        vec![("transactional".to_string(), 3)]
+        vec![("transactional".to_string(), 2)]
     );
     assert_eq!(
         store.category_counts(account, Some(inbox)).unwrap(),

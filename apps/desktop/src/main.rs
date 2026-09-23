@@ -87,6 +87,12 @@ fn messages(
         unread_only: filter.unread_only,
         folder: filter.folder,
         oldest_first: filter.oldest_first,
+        // All mail — no folder, no smart mailbox — is mail that arrived: your
+        // own replies and what you threw away are in their folders, and in
+        // search, but not in the list you read top to bottom. A smart mailbox
+        // says for itself what it wants, and a folder listing is of that
+        // folder whatever is in it.
+        incoming_only: filter.folder.is_none() && smart.is_none(),
         smart,
     };
     core.messages(account, offset, limit, &filter).map_err(fail)
