@@ -77,7 +77,8 @@ impl Corners {
         Ok(())
     }
 
-    fn area(&self) -> f64 {
+    /// The share of the picture the corners enclose.
+    pub fn area(&self) -> f64 {
         let twice: f64 = (0..4)
             .map(|i| {
                 let (a, b) = (self.0[i], self.0[(i + 1) % 4]);
@@ -218,6 +219,145 @@ const QUALITY: u8 = 92;
 /// top and bottom edges and as tall as the average of the sides, so a page
 /// keeps roughly the proportions it has on the table.
 pub fn straighten(jpeg: &[u8], corners: &Corners) -> Result<Vec<u8>> {
+    let (straight, width, height) = straighten_rgb(jpeg, corners)?;
+    encode(&straight, width, height, jpeg.len())
+}
+
+/// The same, then trimmed to the page: a letter never lies exactly where the
+/// corners were set, and the table it shows beside the page is cut away (see
+/// [`trim_to_page`]). What a capture keeps.
+pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened> {
+    let (straight, width, height) = straighten_rgb(jpeg, corners)?;
+    let trimmed = trim_and_measure(straight, width, height);
+    Ok(Straightened {
+        jpeg: encode(&trimmed.rgb, trimmed.width, trimmed.height, jpeg.len())?,
+        covered: trimmed.covered,
+    })
+}
+
+/// A photograph straightened and trimmed, and how much of the corners'
+/// area the paper in it covered — which tells an envelope from a page.
+pub struct Straightened {
+    pub jpeg: Vec<u8>,
+    /// The share of the straightened picture the paper's own corners
+    /// enclose: 0.8–1 for an A4 page on setup's A4 corners, about 0.4 for a
+    /// DL envelope and 0.6 for a C5. `None` when no paper was found.
+    pub covered: Option<f64>,
+}
+
+/// Paper covering less than this share of what a page covers is an
+/// envelope: every envelope a page is folded into is smaller — DL about 0.4 of
+/// an A4 page, C5 about 0.6. C4, the size of an unfolded page, is not told
+/// apart.
+pub const ENVELOPE: f64 = 0.72;
+/// Less than this share of the corners' area is not believed to be paper.
+const PAPER_AT_LEAST: f64 = 0.1;
+
+/// Whether paper covering `covered` of the corners' area is an envelope,
+/// where a page covers `page` of it. Measured against a page rather than the
+/// corners, because the corners may be set generously round where letters
+/// land — a page then covers only some of them, and would otherwise be taken
+/// for an envelope.
+pub fn is_envelope(covered: Option<f64>, page: f64) -> bool {
+    covered.is_some_and(|covered| covered >= PAPER_AT_LEAST && covered < page * ENVELOPE)
+}
+
+struct Trimmed {
+    rgb: Vec<u8>,
+    width: u32,
+    height: u32,
+    covered: Option<f64>,
+}
+
+/// A bright area enclosing less than this share of the picture is not
+/// trusted to be the paper it is cut down to: better table in the photograph
+/// than text cut off.
+const TRIM_MIN_SHARE: f64 = 0.2;
+/// And it must fill this much of what its corners enclose: paper is one
+/// bright sheet, with only its text dark.
+const TRIM_MIN_FILL: f64 = 0.6;
+/// Left round the page when trimming, as a share of its size.
+const TRIM_EDGE: f64 = 0.015;
+/// The long side of the small copy the page is looked for in.
+const TRIM_SAMPLE: usize = 400;
+
+/// Packed RGB straightened once more, onto the page it shows: setup's corners
+/// mark where a page lay then, and the next letter lies a little off them —
+/// further along, or a few degrees round — so its photograph has strips and
+/// wedges of table beside it. The page's own corners are found in a small grey
+/// copy ([`crate::locate::page_corners`]) and the picture warped onto them,
+/// with a thin edge. Left as it is when no page is found, or when what is found
+/// covers less than half of the picture: better table in a photograph than
+/// text cut off.
+pub fn trim_to_page(rgb: Vec<u8>, width: u32, height: u32) -> (Vec<u8>, u32, u32) {
+    let trimmed = trim_and_measure(rgb, width, height);
+    (trimmed.rgb, trimmed.width, trimmed.height)
+}
+
+fn trim_and_measure(rgb: Vec<u8>, width: u32, height: u32) -> Trimmed {
+    let untouched = |rgb: Vec<u8>, covered: Option<f64>| Trimmed {
+        rgb,
+        width,
+        height,
+        covered,
+    };
+    let (w, h) = (width as usize, height as usize);
+    if w < 16 || h < 16 || rgb.len() < w * h * 3 {
+        return untouched(rgb, None);
+    }
+    let step = (w.max(h) / TRIM_SAMPLE).max(1);
+    let (sw, sh) = (w / step, h / step);
+    let small: Vec<u8> = (0..sh)
+        .flat_map(|y| (0..sw).map(move |x| (x, y)))
+        .map(|(x, y)| {
+            let i = ((y * step) * w + x * step) * 3;
+            ((77 * rgb[i] as u32 + 150 * rgb[i + 1] as u32 + 29 * rgb[i + 2] as u32) >> 8) as u8
+        })
+        .collect();
+    let Some((page, lit)) = crate::locate::page_corners(&small, sw, sh) else {
+        return untouched(rgb, None);
+    };
+    let covered = page.area();
+    if covered < TRIM_MIN_SHARE || lit < covered * TRIM_MIN_FILL {
+        return untouched(
+            rgb,
+            Some(covered).filter(|_| lit >= covered * TRIM_MIN_FILL),
+        );
+    }
+    let page = page.with_margin(TRIM_EDGE);
+    // Already the page, near enough: not worth a second warp.
+    let whole = Corners::WHOLE.0;
+    let off = page
+        .0
+        .iter()
+        .zip(whole.iter())
+        .map(|(a, b)| (a.0 - b.0).abs().max((a.1 - b.1).abs()))
+        .fold(0.0, f64::max);
+    if off < 0.01 {
+        return untouched(rgb, Some(covered));
+    }
+    let Some(source) = RgbImage::from_raw(width, height, rgb.clone()) else {
+        return untouched(rgb, Some(covered));
+    };
+    let pixels = Corners(page.0.map(|(x, y)| (x * w as f64, y * h as f64)));
+    let length = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
+    let [tl, tr, br, bl] = pixels.0;
+    let out_w = ((length(tl, tr) + length(bl, br)) / 2.0).round() as u32;
+    let out_h = ((length(tl, bl) + length(tr, br)) / 2.0).round() as u32;
+    if out_w < 16 || out_h < 16 {
+        return untouched(rgb, Some(covered));
+    }
+    tracing::info!(from = ?(width, height), to = ?(out_w, out_h), "straightened onto the page itself");
+    Trimmed {
+        rgb: warp(&source, &Homography::square_to(&pixels), out_w, out_h),
+        width: out_w,
+        height: out_h,
+        covered: Some(covered),
+    }
+}
+
+/// Warps a photograph so `corners` become its corners, as packed RGB.
+fn straighten_rgb(jpeg: &[u8], corners: &Corners) -> Result<(Vec<u8>, u32, u32)> {
     let source = image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg)
         .context("could not read the photograph")?
         .into_rgb8();
@@ -235,21 +375,81 @@ pub fn straighten(jpeg: &[u8], corners: &Corners) -> Result<Vec<u8>> {
     }
 
     let straight = warp(&source, &Homography::square_to(&pixels), width, height);
+    Ok((straight, width, height))
+}
 
+fn encode(straight: &[u8], width: u32, height: u32, size_hint: usize) -> Result<Vec<u8>> {
     let (w, h) = (
         u16::try_from(width).context("the straightened page is too wide")?,
         u16::try_from(height).context("the straightened page is too tall")?,
     );
-    let mut out = Vec::with_capacity(jpeg.len());
+    let mut out = Vec::with_capacity(size_hint);
     let mut encoder = Encoder::new(&mut out, QUALITY);
     // Colour at half resolution, as the camera wrote it: at this quality the
     // encoder would otherwise keep it whole, which on a Pi Zero doubles the
     // time and adds nothing the photograph had.
     encoder.set_sampling_factor(SamplingFactor::R_4_2_0);
     encoder
-        .encode(&straight, w, h, ColorType::Rgb)
+        .encode(straight, w, h, ColorType::Rgb)
         .context("could not write the straightened photograph")?;
     Ok(out)
+}
+
+/// A small greyscale frame straightened as a photograph would be, for the
+/// live view on the LCD — so it shows the page the corners mark, the way the
+/// photograph will show it, and not the crop around it.
+///
+/// `aspect` is the frame's true width over its height: a preview frame is
+/// 320×240 whatever the shape of the crop, so it arrives stretched, and the
+/// page's proportions are worked out in the crop's own. The result fits in
+/// `max_width`×`max_height`.
+pub fn straighten_luma(
+    luma: &[u8],
+    width: usize,
+    height: usize,
+    aspect: f64,
+    corners: &Corners,
+    max_width: u32,
+    max_height: u32,
+) -> crate::picture::Picture {
+    if width < 2 || height < 2 || luma.len() < width * height || aspect <= 0.0 {
+        return crate::picture::Picture::empty();
+    }
+    let true_size = |(x, y): (f64, f64)| (x * aspect, y);
+    let [tl, tr, br, bl] = corners.0.map(true_size);
+    let length = |a: (f64, f64), b: (f64, f64)| (a.0 - b.0).hypot(a.1 - b.1);
+    let page_width = (length(tl, tr) + length(bl, br)) / 2.0;
+    let page_height = (length(tl, bl) + length(tr, br)) / 2.0;
+    if page_width <= 0.0 || page_height <= 0.0 {
+        return crate::picture::Picture::empty();
+    }
+    let scale = (max_width as f64 / page_width).min(max_height as f64 / page_height);
+    let (out_w, out_h) = (
+        ((page_width * scale).round() as usize).max(1),
+        ((page_height * scale).round() as usize).max(1),
+    );
+    let pixels = Corners(
+        corners
+            .0
+            .map(|(x, y)| (x * width as f64, y * height as f64)),
+    );
+    let map = Homography::square_to(&pixels);
+    let (max_x, max_y) = ((width - 1) as f64, (height - 1) as f64);
+    let mut out = Vec::with_capacity(out_w * out_h);
+    for row in 0..out_h {
+        let v = (row as f64 + 0.5) / out_h as f64;
+        for column in 0..out_w {
+            let u = (column as f64 + 0.5) / out_w as f64;
+            let (x, y) = map.apply(u, v);
+            let (x, y) = ((x - 0.5).clamp(0.0, max_x), (y - 0.5).clamp(0.0, max_y));
+            out.push(luma[y.round() as usize * width + x.round() as usize]);
+        }
+    }
+    crate::picture::Picture {
+        width: out_w as u32,
+        height: out_h as u32,
+        luma: std::sync::Arc::new(out),
+    }
 }
 
 /// Samples `source` through `map` for every pixel of a `width`×`height`

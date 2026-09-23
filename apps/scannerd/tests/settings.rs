@@ -38,6 +38,19 @@ fn saved_settings_come_back_and_only_their_owner_can_read_them() {
         roi: Some("0.25,0.25,0.75,0.75".into()),
         corners: Some("0.1,0.1,0.9,0.1,0.9,0.9,0.1,0.9".into()),
         rotate: Some(90),
+        folders: Some(vec![
+            scannerd::folders::Folder {
+                name: "Car".into(),
+                words: "Hyundai, Kfz".into(),
+                discard: false,
+            },
+            scannerd::folders::Folder {
+                name: "Throw away".into(),
+                words: String::new(),
+                discard: true,
+            },
+        ]),
+        ev: Some(-2.0),
     };
     settings.save(&dir.0).unwrap();
 
@@ -69,6 +82,8 @@ fn a_blank_token_from_the_page_keeps_the_one_there_is() {
         roi: Some("0.1,0.1,0.5,0.5".into()),
         corners: None,
         rotate: None,
+        folders: None,
+        ev: None,
     });
 
     assert_eq!(settings.token.as_deref(), Some("secret"));

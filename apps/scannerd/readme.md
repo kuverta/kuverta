@@ -38,7 +38,14 @@ empty surface:
   and capturing then gets a photograph of a thumb.
 
 Then a third rule, which is the one that stops a letter becoming forty: after a
-capture it will not arm again until the surface has been seen empty. That also
+capture it will not arm again until the surface has been seen empty — or until
+a hand has been over the page and what lies there, once still, is another page.
+A letter's pages are often laid one on top of the other, or turned over where
+they lie, and the table is never clear between them. The page is compared with
+the one photographed in 8×8 blocks, allowing a shift of up to eight pixels, so
+a page nudged or turned a few degrees is the same page: on the rig a nudge
+changed at most 17% of the blocks, the blank back of a page 31%, another letter
+34%, and 22% is the line. That also
 re-learns the baseline, so daylight moving across a desk over an afternoon does
 not slowly read as a page.
 
@@ -53,16 +60,190 @@ settling waits for that page. A letter nobody closes is closed
 delays post but never keeps it. Without `--button`, every page is its own
 document.
 
-The button is a push button between GPIO 17 and ground (pins 11 and 9), made
+The button is a push button between GPIO 27 and ground (pins 13 and 14), made
 into a key by the kernel with one line in `/boot/firmware/config.txt`:
 
-    dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=28,label=scannerd
+    dtoverlay=gpio-key,gpio=27,active_low=1,gpio_pull=up,keycode=28,label=scannerd
+
+It used to be GPIO 17, which the e-paper display below needs for its reset
+line. With the display's board on the header, the button's wires are soldered
+to the underside of the Pi.
 
 After a reboot it is a keyboard with one key: `ls /dev/input/by-path/` shows
 the device, and `SCANNERD_BUTTON` points at it. The kernel debounces it and
 `scannerd` reads key events from the device, so there is no GPIO library, and a
 USB keypad works as well (`--button-key` for a key other than Enter). On a
 laptop, `--button stdin` makes Enter in the terminal the button.
+
+## The display
+
+`--display epaper` (or `SCANNERD_DISPLAY=epaper`) drives a Waveshare 2.13″ e-paper HAT
+(V3 or V4, 250×122, an SSD1680 controller) on the Pi's header, so the rig says
+what it is doing without a phone:
+
+- **Ready** — put a page down; **Hold still** while it settles; **Scanned** —
+  take the page away; **No camera**; **Sending letter** after the button.
+- Under that, whether the photograph can be read: a tick and *Page 2: good to
+  read*, or white on black *Page 2: too bright*. It stays up for ten minutes, so
+  it is still there when the next page goes down.
+- Along the bottom, the pages in the open letter and what is waiting to send.
+
+The check runs on every photograph, display or not, and a page that fails it
+is also in the setup page's activity list. It looks at the middle of the
+photograph, where the page lies: *no page / too dark* (the middle is not bright
+enough to be paper), *too bright* (the paper clipped to white and the text
+pale — every page of the first letters from the rig looked like this),
+*blurry*, and *no text found* (a blank page, or a pale ceiling). A page that
+fails is kept and sent all the same; delete it on the setup page and put it
+down again if it matters. On a Pi Zero W the check costs about half a second a
+page.
+
+Between letters, once Paperless has read the last one, it says which folder
+on the shelf that letter goes in — see below.
+
+The panel needs SPI, which is off by default, and the `spi` and `gpio` groups,
+which the unit file asks for:
+
+    dtparam=spi=on          # in /boot/firmware/config.txt, then reboot
+    sudo usermod -aG spi,gpio scannerd
+
+It is refreshed only when what it says changes, mostly with a partial refresh
+(about a third of a second, no flashing) and every twentieth time with a full
+one, which flashes for two seconds and clears the ghosts partial refreshes
+leave. `SCANNERD_DISPLAY_FLIP=true` turns the picture round for a HAT mounted
+upside down. A display that does not answer is logged and done without.
+
+### The 3.5″ LCD
+
+`SCANNERD_DISPLAY=/dev/fb0` draws the same words in colour on a framebuffer
+instead: on the rig, a 3.5″ SPI panel (ILI9486, 480×320, with an XPT2046
+resistive touch controller — the Waveshare 3.5″ (A) layout), which the kernel
+drives with one line in `/boot/firmware/config.txt`:
+
+    dtoverlay=piscreen,speed=24000000,rotate=90
+
+The screen is painted rather than drawn in blocks ([`paint`](src/paint.rs):
+`tiny-skia` for shapes, Inter — SIL Open Font License, in `assets/fonts` —
+rasterised by `fontdue`), because a panel of hard edges and a bitmap font looks
+like a cash register. A card holds the headline with an icon in the colour of
+the news: green ready, amber working, teal done, red look, blue a folder, grey
+the bin. The buttons are pills, the one thing to do in colour. The picture is
+dithered on its way into the panel's 16-bit colour, so gradients do not band. Add
+`fbcon=map:9` to `/boot/firmware/cmdline.txt` so the login console does not
+draw over it.
+
+With `SCANNERD_TOUCH=/dev/spidev0.1` the screen is also how scanning starts
+and stops. Between letters it shows the last letter's folder over two buttons,
+**Start scanning** and **Learn empty table**; the camera is not watched at all
+until Start, so nothing is photographed by accident. Scanning, it shows what
+the camera sees beside the page it photographed last, with that page's verdict,
+over **Finish letter** and **Stop scanning**. A finished letter ends the scan.
+The setup page has the same Start and Stop.
+
+The rig's touch film reports only how far down a finger is — its other axis
+reads the same everywhere — and its pen interrupt is not wired, so the kernel's
+driver never sees a touch. scannerd asks the controller itself thirty times a
+second, and every button is a band the width of the screen. The kernel's driver
+has to be kept off the controller:
+
+    # /etc/modprobe.d/scannerd-touch.conf
+    blacklist ads7846
+    # /etc/udev/rules.d/90-scannerd-touch.rules
+    ACTION=="add", SUBSYSTEM=="spi", KERNEL=="spi0.1", ATTR{driver_override}="spidev", RUN+="/sbin/modprobe spidev", RUN+="/bin/sh -c 'echo spi0.1 > /sys/bus/spi/drivers/spidev/bind || true'"
+
+`SCANNERD_TOUCH_ROWS` (`x:204:4000`, channel, reading at the top, reading at
+the bottom) is for a panel that differs — or one mounted the other way up: with
+`rotate=270` in the overlay line instead of `rotate=90`, the rig's is
+`x:4000:204`.
+
+### Envelopes
+
+An envelope put down is photographed like a page, and told from one by its
+size: paper covering less than about seven tenths of what a page covers (DL is
+about 0.4 of an A4 page, C5 about 0.6) is an envelope. The letter being
+collected is finished and sent at once, and the envelope is the first page of
+the next — which is not finished for the table being empty while it is opened.
+What a page covers is learnt from the pages, so corners set generously round
+where letters land still tell the two apart.
+
+### Taking pages and letters back
+
+While a letter is being scanned the display offers **Undo last page** — a
+hand, the table, a page twice — and **Cancel letter**, which asks for a second
+tap. For ten minutes after a letter is finished, **Undo last letter** takes it
+back: out of the queue if it has not gone, or deleted from Paperless (into its
+trash) if it has — as soon as Paperless has read it, if it has not yet. The
+setup page has the same three. Nothing taken back is deleted on the Pi: it goes
+to the spool's `discarded/`, and is deleted from there after a week.
+
+### What is waiting to be sent
+
+When letters are waiting — Paperless off, the network down — the display
+offers **n waiting to send** between letters. That opens a list, a letter a row
+with when it was photographed and how often sending has been tried; tapping one
+asks for a second tap and then throws it away, into `discarded/`. **Back**
+closes the list. The setup page lists the same with a **Remove** on each.
+
+### Scanning from the start
+
+The camera is watched from the moment scannerd starts: a page put down after a
+boot is photographed without a button. **Stop scanning** on the display or the
+page stops it; finishing a letter does not. While scanning, the display keeps
+the last letter's folder in a strip under the top line.
+
+The frames it watches come from a video stream (`rpicam-vid`, five a second,
+`SCANNERD_PREVIEW_FPS`) rather than a still each: on the Pi 4 a still took half
+a second to start the camera for every frame, and a page lay still for three or
+four seconds before it was photographed; with the stream, one. The stream stops
+for the photograph and starts again after it.
+
+### Finishing a letter by clearing the table
+
+A letter is also finished when its last page has been taken away and the table
+stays empty for eight seconds (`SCANNERD_FINISH_WHEN_CLEAR_SECS`, 0 turns it
+off) — the next page is laid down sooner than that, or on top of the last one,
+or the last one turned over. The display counts the seconds down.
+
+## Exposure
+
+White paper fools a camera: it exposes for a grey world, and the rig's OV5647
+made the paper pure white and the text pale grey — ink at 197 of 255 — until it
+was told two stops less, when the paper came out at 210 and the ink at 84. So
+the check above does not only report. A photograph that is too bright is taken
+again a stop darker while the page is still lying there, up to twice, and the
+best of them is kept; one too dark but with text in it, a stop brighter. The
+exposure that worked is where the next page starts, nudged half a stop when the
+paper comes out near clipping or dim, and is kept in `settings.toml` across
+restarts. `SCANNERD_EV` gives the first guess (the rig's is `-2`); the setup
+page shows the exposure in force and starts it again from the camera's own.
+
+## Which folder
+
+The paper still has to go somewhere. With folders set up — `SCANNERD_FOLDERS=Car,House,Work,Taxes,-Throw away`
+in the env file, or **Folders on the shelf** on the setup page, which wins —
+the display says, for each letter, which one it goes in, or **Throw away** for
+the folder marked as the bin (a `-` in the env file).
+
+The Pi cannot read a letter; OCR on a Zero W takes minutes a page. Paperless
+reads every one, and deciding what a document is is what its tags already do.
+So each folder is a Paperless tag of the same name, which scannerd creates, or
+updates, before the next letter is sent:
+
+- A folder with **words** — a number plate, an insurer, "Finanzamt" — matches
+  any letter with one of them in it (Paperless's "any word"). That works from
+  the first letter.
+- A folder without words uses Paperless's **auto** matching, which learns from
+  the documents tagged with it. Until some are, it matches nothing, and the
+  display asks *Which folder?* — tag the letter in Paperless, and the next one
+  like it is known.
+
+scannerd owns these tags' matching: the words set here replace whatever the
+tag had. After an upload it asks Paperless every five seconds whether the
+letter is done, then reads its tags: **Car** — *Put the letter in this folder*;
+*Car / House* when it fits more than one; *Already filed* for a letter
+Paperless had before. Paperless 2 and 3 are both understood; 3 reports its tasks differently. That stays up until the next letter is started, when it
+moves to the bottom line; after fifteen minutes without an answer it is given
+up on. The setup page's activity list has the same, a line a letter.
 
 ## The setup page
 
@@ -89,8 +270,12 @@ headless Pi needs no screen, no desktop and no second program: open
 - **The camera looks at the table at an angle**, for a camera that cannot be
   mounted straight above the table, where a page shows as a trapezium. Instead
   of a box there are four corners to drag onto the corners of a page lying
-  where letters go — **Take a picture** finds them, with room around the page
-  — and dashed lines show where the page's edges and middle will fall. Every
+  where letters go — **Take a picture** finds them, a hair outside the page's
+  edges — and dashed lines show where the page's edges and middle will fall.
+  A letter never lies exactly there, so after straightening each photograph
+  is straightened once more onto the page it actually shows, cutting away the
+  strips and wedges of table beside it; when no clear page covering at least
+  half the picture is found, the photograph is kept as it is. Every
   photograph is then warped so those corners become a rectangle's, before it
   joins the letter; the crop is the area the corners span. On a Pi Zero W this
   adds about five seconds a page (a 5-megapixel photograph: decoding, warping
@@ -217,10 +402,13 @@ device to answer.
 cargo test -p scannerd
 ```
 
-Fifty-five of them, none needing a camera: the detector against synthetic
+Over a hundred of them, none needing a camera or a display: the detector against synthetic
 frames, the spool against a real directory, the uploader against a server on
 loopback, the loop itself (`tests/run.rs`) turned by hand with a scripted
 camera and a Paperless that fails when told to, letters and the button
 (`tests/letters.rs`, `tests/button.rs`) the same way, and the PDF writer
-(`tests/pdf.rs`) read back through its own cross-reference table. What they cannot check is whether `rpicam-still` behaves as
+(`tests/pdf.rs`) read back through its own cross-reference table, the
+photograph check (`tests/quality.rs`) against synthetic pages and blurred copies
+of them, and the display (`tests/display.rs`) by what it draws and how often it
+touches the panel. What they cannot check is whether `rpicam-still` behaves as
 documented — that is what `--drain-only` and a first run on the device are for.

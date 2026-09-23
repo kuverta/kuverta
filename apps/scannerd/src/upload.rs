@@ -11,8 +11,31 @@
 //! `core-paper` for its query strings.
 
 use std::sync::Mutex;
+use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+
+use crate::folders::Folder;
+
+/// Paperless's matching algorithms, as its API numbers them.
+const MATCH_ANY_WORD: u64 = 1;
+const MATCH_AUTO: u64 = 6;
+
+/// A question about a letter already sent is quick or not worth waiting for:
+/// the loop asks again in a few seconds.
+const QUESTION: Duration = Duration::from_secs(10);
+
+/// Where Paperless is with a letter it was sent.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Task {
+    /// Queued or being read.
+    Working,
+    /// Filed, as this document.
+    Done(u64),
+    /// Refused: it has the same document already.
+    Duplicate,
+    Failed(String),
+}
 
 pub struct Uploader {
     base: String,
@@ -144,6 +167,176 @@ impl Uploader {
     }
 
     async fn tag_id(&self, name: &str) -> Result<u64> {
+        self.find_tag(name).await?.with_context(|| {
+            format!(
+                "paperless has no tag named {name:?}: create it there or correct --tag \
+                 (captures are kept until then)"
+            )
+        })
+    }
+
+    /// Makes each folder's tag exist in Paperless and match as the folder
+    /// says: its words, or Paperless's learning when it has none. Returns
+    /// each folder with its tag's id.
+    ///
+    /// Done before letters are sent, because Paperless decides a document's
+    /// tags as it reads it: a tag made afterwards is not given to a letter
+    /// already filed.
+    pub async fn sync_folders(&self, folders: &[Folder]) -> Result<Vec<(u64, Folder)>> {
+        let mut out = Vec::with_capacity(folders.len());
+        for folder in folders {
+            let words = folder.paperless_match();
+            let matching = serde_json::json!({
+                "matching_algorithm": if words.is_empty() { MATCH_AUTO } else { MATCH_ANY_WORD },
+                "match": words,
+                "is_insensitive": true,
+            });
+            let id = match self.find_tag(&folder.name).await? {
+                Some(id) => {
+                    let response = self
+                        .http
+                        .patch(format!("{}/api/tags/{id}/", self.base))
+                        .header("Authorization", format!("Token {}", self.token))
+                        .timeout(QUESTION)
+                        .header("Content-Type", "application/json")
+                        .body(matching.to_string())
+                        .send()
+                        .await
+                        .context("could not reach Paperless")?;
+                    successful(response)
+                        .await
+                        .with_context(|| format!("could not set up the tag {:?}", folder.name))?;
+                    id
+                }
+                None => {
+                    let mut tag = matching.clone();
+                    tag["name"] = folder.name.clone().into();
+                    let response = self
+                        .http
+                        .post(format!("{}/api/tags/", self.base))
+                        .header("Authorization", format!("Token {}", self.token))
+                        .timeout(QUESTION)
+                        .header("Content-Type", "application/json")
+                        .body(tag.to_string())
+                        .send()
+                        .await
+                        .context("could not reach Paperless")?;
+                    let text = successful(response)
+                        .await
+                        .with_context(|| format!("could not create the tag {:?}", folder.name))?;
+                    serde_json::from_str::<serde_json::Value>(&text)
+                        .ok()
+                        .and_then(|tag| tag["id"].as_u64())
+                        .with_context(|| {
+                            format!("paperless created the tag {:?} but gave no id", folder.name)
+                        })?
+                }
+            };
+            out.push((id, folder.clone()));
+        }
+        Ok(out)
+    }
+
+    /// Where Paperless is with the letter it answered `task` for.
+    pub async fn task(&self, task: &str) -> Result<Task> {
+        let text = self
+            .get(&format!("/api/tasks/?task_id={}", encode(task)))
+            .await?;
+        let answer: serde_json::Value = serde_json::from_str(&text)
+            .context("paperless answered the task question with something other than JSON")?;
+        // A list, or a page of one in some versions.
+        let tasks = answer
+            .as_array()
+            .or_else(|| answer["results"].as_array())
+            .cloned()
+            .unwrap_or_default();
+        let Some(found) = tasks
+            .into_iter()
+            .find(|t| t["task_id"].as_str() == Some(task))
+        else {
+            // Not listed yet: Paperless records a task once a worker has it.
+            return Ok(Task::Working);
+        };
+        // Paperless 2 says `result` and `related_document`, in capitals; 3
+        // says `result_data` and `related_document_ids`, in lower case. Both
+        // are read, so the Paperless can be either.
+        let result = match (&found["result"], &found["result_data"]) {
+            (serde_json::Value::String(text), _) => text.clone(),
+            (_, serde_json::Value::Null) => String::new(),
+            (_, data) => data
+                .get("error")
+                .and_then(|error| error.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| data.to_string()),
+        };
+        let document = {
+            let id = |value: &serde_json::Value| {
+                value
+                    .as_u64()
+                    .or_else(|| value.as_str().and_then(|id| id.parse().ok()))
+            };
+            id(&found["related_document"])
+                .or_else(|| id(&found["result_data"]["document_id"]))
+                .or_else(|| found["related_document_ids"].get(0).and_then(id))
+        };
+        let status = found["status"]
+            .as_str()
+            .unwrap_or_default()
+            .to_ascii_uppercase();
+        Ok(match status.as_str() {
+            "SUCCESS" => match document {
+                Some(id) => Task::Done(id),
+                None => Task::Failed(format!(
+                    "filed, but Paperless did not say as what: {result}"
+                )),
+            },
+            "FAILURE" if result.to_lowercase().contains("duplicate") => Task::Duplicate,
+            "FAILURE" | "REVOKED" => Task::Failed(result),
+            _ => Task::Working,
+        })
+    }
+
+    /// Deletes a document — into Paperless's trash, from which it can still
+    /// be restored there.
+    pub async fn delete_document(&self, document: u64) -> Result<()> {
+        let response = self
+            .http
+            .delete(format!("{}/api/documents/{document}/", self.base))
+            .header("Authorization", format!("Token {}", self.token))
+            .timeout(QUESTION)
+            .send()
+            .await
+            .context("could not reach Paperless")?;
+        successful(response).await.map(|_| ())
+    }
+
+    /// The tag ids of a document.
+    pub async fn document_tags(&self, document: u64) -> Result<Vec<u64>> {
+        let text = self.get(&format!("/api/documents/{document}/")).await?;
+        let answer: serde_json::Value = serde_json::from_str(&text)
+            .context("paperless answered the document question with something other than JSON")?;
+        Ok(answer["tags"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|tag| tag.as_u64())
+            .collect())
+    }
+
+    async fn get(&self, path: &str) -> Result<String> {
+        let response = self
+            .http
+            .get(format!("{}{path}", self.base))
+            .header("Authorization", format!("Token {}", self.token))
+            .timeout(QUESTION)
+            .send()
+            .await
+            .context("could not reach Paperless")?;
+        successful(response).await
+    }
+
+    /// The id of the tag called `name`, if Paperless has one.
+    async fn find_tag(&self, name: &str) -> Result<Option<u64>> {
         let response = self
             .http
             .get(format!(
@@ -163,18 +356,12 @@ impl Uploader {
         // `iexact` is a filter, not a guarantee of one result; take the tag
         // whose name actually matches rather than whichever came first.
         let wanted = name.to_lowercase();
-        page["results"]
+        Ok(page["results"]
             .as_array()
             .into_iter()
             .flatten()
             .find(|tag| tag["name"].as_str().map(str::to_lowercase) == Some(wanted.clone()))
-            .and_then(|tag| tag["id"].as_u64())
-            .with_context(|| {
-                format!(
-                    "paperless has no tag named {name:?}: create it there or correct --tag \
-                     (captures are kept until then)"
-                )
-            })
+            .and_then(|tag| tag["id"].as_u64()))
     }
 }
 
