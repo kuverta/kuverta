@@ -408,7 +408,13 @@
               <p class="hint" id="paper-token-state"></p>
               <!-- Straight to where Paperless keeps the token, on the address
                    above: it is several clicks in otherwise. -->
-              <div class="card-actions"><button type="button" id="paper-token-link">Open Paperless to get a token</button></div>
+              <div class="card-actions">
+                <button type="button" id="paper-token-link">Open Paperless to get a token</button>
+                <!-- Only for the Paperless kuverta installed, whose sign-in it
+                     made and keeps; shown on asking, not by default. -->
+                <button type="button" id="paper-show-sign-in" hidden>Show Paperless sign-in</button>
+              </div>
+              <div id="paper-sign-in" class="sign-in" hidden></div>
             </section>
 
             <div class="form-actions">
@@ -668,7 +674,7 @@
                 <p class="hint">Paperless runs in Docker. kuverta writes its settings to <code>paperless/</code> in its data folder and starts it; the first start downloads about a gigabyte and takes a few minutes.</p>
                 <div class="setup-row">
                   <label>Paperless user name<input name="username" value="admin" spellcheck="false" required></label>
-                  <label>Password <span class="hint">8 characters or more</span><input name="password" type="password" minlength="8" required></label>
+                  <label>Password <span class="hint">leave empty and kuverta makes one</span><input name="password" type="password" minlength="8" placeholder="made for you, kept in the keychain"></label>
                 </div>
                 <label class="setup-check"><input type="checkbox" name="on_network" checked> Reachable from other devices on this network — a scanner has to reach it to deliver post</label>
                 <label>Name in the sidebar<input name="label" value="Post"></label>

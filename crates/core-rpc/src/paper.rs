@@ -27,6 +27,13 @@ fn token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword 
     core_accounts::KeychainPassword::new(format!("paper:{}", mailbox.token_key))
 }
 
+/// Where the sign-in for a Paperless kuverta installed is filed. The token is
+/// what kuverta reads with; this is what the person signs in to Paperless's
+/// own pages with, to make another token or to look after the instance.
+fn admin_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword {
+    core_accounts::KeychainPassword::new(format!("paper-admin:{}", mailbox.token_key))
+}
+
 /// Where tokens were filed before store schema v9.
 fn legacy_token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword {
     core_accounts::KeychainPassword::new(format!("paper:{}", mailbox.id))
@@ -65,6 +72,14 @@ pub struct PaperMailboxView {
     pub has_token: bool,
     /// The profile it is in, when it is in one.
     pub profile_id: Option<i64>,
+}
+
+/// How to sign in to a Paperless kuverta installed, for the person who has to
+/// use its own pages. Only ever sent to the window when it is asked for.
+#[derive(Debug, Clone, Serialize)]
+pub struct PaperSignIn {
+    pub username: String,
+    pub password: String,
 }
 
 /// A physical address, as configured.
@@ -202,6 +217,32 @@ impl Core {
             let _ = legacy_token_entry(&mailbox).delete();
         }
         Ok(self.store.delete_paper_mailbox(id)?)
+    }
+
+    /// Files the sign-in for an address kuverta installed. Stored as
+    /// `user\npassword`, since the keychain holds one secret per entry and
+    /// the two are no use apart.
+    pub fn set_paper_sign_in(&self, id: i64, username: &str, password: &str) -> Result<()> {
+        let mailbox = self.mailbox(id)?;
+        admin_entry(&mailbox)
+            .store(&format!("{username}\n{password}"))
+            .map_err(|err| RpcError::Auth(err.to_string()))
+    }
+
+    /// The stored sign-in, or `None` for an address whose Paperless is
+    /// somebody else's to sign in to.
+    pub fn paper_sign_in(&self, id: i64) -> Result<Option<PaperSignIn>> {
+        let mailbox = self.mailbox(id)?;
+        let stored = admin_entry(&mailbox)
+            .peek()
+            .map_err(|err| RpcError::Auth(err.to_string()))?;
+        Ok(stored.and_then(|secret| {
+            let (username, password) = secret.split_once('\n')?;
+            Some(PaperSignIn {
+                username: username.to_string(),
+                password: password.to_string(),
+            })
+        }))
     }
 
     pub fn set_paper_token(&self, id: i64, token: &str) -> Result<()> {

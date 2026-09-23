@@ -932,6 +932,15 @@ async fn install_paperless(
     label: String,
     on_output: tauri::ipc::Channel<String>,
 ) -> Result<i64, String> {
+    // A password nobody chose is a password nobody has to think up, reuse or
+    // remember: it is kept in the keychain and shown on request in settings.
+    let install = core_rpc::setup::PaperlessInstall {
+        password: match install.password.trim().is_empty() {
+            true => core_rpc::setup::generated_password().map_err(fail)?,
+            false => install.password,
+        },
+        ..install
+    };
     let (base_url, dir) =
         core_rpc::setup::write_paperless(&app.data_dir, &install).map_err(fail)?;
     let _ = on_output.send(format!("Paperless goes in {}", dir.display()));
@@ -968,8 +977,50 @@ async fn install_paperless(
         selector_value: None,
     };
     let id = save_postbox(&app, &input, &token)?;
+    app.core
+        .lock()
+        .unwrap()
+        .set_paper_sign_in(id, install.username.trim(), &install.password)
+        .map_err(fail)?;
     let _ = on_output.send("Paperless is running and connected.".to_string());
     Ok(id)
+}
+
+/// The sign-in for a Paperless kuverta installed: what to type on its own
+/// pages, which is not the token kuverta reads with. `None` for an address
+/// whose Paperless belongs to somebody else.
+///
+/// An install made before kuverta kept this in the keychain has it only in
+/// the settings file it wrote, so the first ask moves it across.
+#[tauri::command]
+fn paper_sign_in(app: State<'_, App>, id: i64) -> Result<Option<core_rpc::PaperSignIn>, String> {
+    let core = app.core.lock().unwrap();
+    if let Some(sign_in) = core.paper_sign_in(id).map_err(fail)? {
+        return Ok(Some(sign_in));
+    }
+    // Only for the address that is this computer's install: another
+    // Paperless's sign-in is not in a file here.
+    let ours = core_rpc::setup::installed_paperless(&app.data_dir).map(|(url, _)| url);
+    let mine = core
+        .paper_mailboxes()
+        .map_err(fail)?
+        .into_iter()
+        .find(|mailbox| mailbox.id == id)
+        .ok_or_else(|| format!("no postal address {id}"))?;
+    let same = |a: &str, b: &str| {
+        a.trim()
+            .trim_end_matches('/')
+            .eq_ignore_ascii_case(b.trim().trim_end_matches('/'))
+    };
+    if !ours.is_some_and(|ours| same(&ours, &mine.base_url)) {
+        return Ok(None);
+    }
+    let Some((username, password)) = core_rpc::setup::installed_sign_in(&app.data_dir) else {
+        return Ok(None);
+    };
+    core.set_paper_sign_in(id, &username, &password)
+        .map_err(fail)?;
+    Ok(Some(core_rpc::PaperSignIn { username, password }))
 }
 
 /// Whether each postal address's Paperless answers, and which kuverta can
@@ -1899,6 +1950,7 @@ fn main() {
             connect_paperless,
             install_paperless,
             paperless_health,
+            paper_sign_in,
             start_paperless,
             import_accounts,
             save_account_with_found_password,

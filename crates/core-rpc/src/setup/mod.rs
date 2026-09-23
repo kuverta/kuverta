@@ -595,6 +595,40 @@ fn time_zone() -> String {
         .unwrap_or_else(|| "UTC".to_string())
 }
 
+/// A password for the Paperless kuverta installs, when whoever installed it
+/// would rather not think one up. Letters and digits only, with the letters
+/// and digits that are read for one another left out, because this is a
+/// password people will copy by eye as well as by clipboard.
+pub fn generated_password() -> Result<String> {
+    const ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let mut bytes = [0u8; 24];
+    getrandom::fill(&mut bytes)
+        .map_err(|err| RpcError::Rejected(format!("no randomness for a password: {err}")))?;
+    Ok(bytes
+        .iter()
+        // The alphabet's length does not divide 256, so the first few
+        // characters are very slightly likelier than the last few. Over 24
+        // characters of this alphabet that leaves far more work than guessing
+        // anything a person would have typed instead.
+        .map(|byte| ALPHABET[*byte as usize % ALPHABET.len()] as char)
+        .collect())
+}
+
+/// The user name and password the installed Paperless was set up with, read
+/// back from its settings file. For an install made before kuverta kept them
+/// in the keychain, which is the only other place they were ever written.
+pub fn installed_sign_in(data_dir: &Path) -> Option<(String, String)> {
+    let env = std::fs::read_to_string(paperless_dir(data_dir).join("paperless.env")).ok()?;
+    let value = |key: &str| {
+        env.lines()
+            .find_map(|line| line.strip_prefix(key))
+            .map(str::to_string)
+    };
+    let user = value("PAPERLESS_ADMIN_USER=")?;
+    let password = value("PAPERLESS_ADMIN_PASSWORD=")?;
+    (!user.is_empty() && !password.is_empty()).then_some((user, password))
+}
+
 fn secret_key() -> Result<String> {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes)
@@ -1347,6 +1381,36 @@ mod tests {
         };
         assert!(write_paperless(&dir, &short).is_err());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_made_password_is_long_and_free_of_letters_read_for_one_another() {
+        let password = generated_password().unwrap();
+        assert_eq!(password.chars().count(), 24);
+        assert!(!password.contains(['l', 'I', 'O', 'o', 'B', '0', '1', '=', '\n']));
+        assert!(password.chars().all(|c| c.is_ascii_alphanumeric()));
+        // Two in a row the same would be a broken generator, not luck.
+        assert_ne!(password, generated_password().unwrap());
+    }
+
+    #[test]
+    fn the_installs_sign_in_is_read_back_from_its_settings_file() {
+        let dir = std::env::temp_dir().join(format!("kuverta-signin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(installed_sign_in(&dir).is_none());
+
+        let install = PaperlessInstall {
+            username: "erika".into(),
+            password: generated_password().unwrap(),
+            on_network: false,
+        };
+        write_paperless(&dir, &install).unwrap();
+
+        let (user, password) = installed_sign_in(&dir).unwrap();
+        assert_eq!(user, "erika");
+        assert_eq!(password, install.password);
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

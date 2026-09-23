@@ -407,7 +407,12 @@ installForm.addEventListener("submit", async (event) => {
       onOutput: channel,
     });
     result.className = "setup-result ok";
-    result.textContent = `Paperless is running and connected. Its web page is where you upload and manage documents; sign in as ${f.username.trim()}.`;
+    const made = !f.password.trim();
+    result.textContent =
+      `Paperless is running and connected. Its web page is where you upload and manage documents; sign in as ${f.username.trim()}.` +
+      (made
+        ? " kuverta made the password and put it in the keychain: Settings → the address → Show Paperless sign-in."
+        : "");
     installForm.password.value = "";
     setup.paper = "installed";
     await invoke("set_postbox_profile", { postbox, profile: selectedProfile(installForm.profile) }).catch(() => {});

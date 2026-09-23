@@ -56,6 +56,7 @@ pub use mailboxes::CreatedFolder;
 pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
+    PaperSignIn,
 };
 pub use profiles::ProfileView;
 pub use session::{
