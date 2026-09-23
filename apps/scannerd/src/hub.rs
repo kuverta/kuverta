@@ -34,6 +34,10 @@ pub enum Command {
     UndoLetter {
         confirmed: bool,
     },
+    /// File the last letter by hand rather than by what Paperless made of
+    /// it: in no folder at all, or in the bin. The letter stays in Paperless
+    /// either way.
+    Refile(crate::folders::Refiling),
     /// Show what is waiting to be sent, on the display, or stop showing it.
     ShowQueue(bool),
     /// Throw a letter waiting to be sent away: the display knows where it is
@@ -109,6 +113,9 @@ pub struct Status {
     pub scanning: bool,
     /// Whether the last letter can still be taken back.
     pub can_undo_letter: bool,
+    /// Whether the last letter can still be filed by hand: in no folder, or
+    /// in the bin.
+    pub can_refile: bool,
     pub open_pages: Vec<String>,
     pub queue: Vec<Queued>,
     /// Newest first.
@@ -146,6 +153,7 @@ impl Default for Status {
             collecting: false,
             scanning: true,
             can_undo_letter: false,
+            can_refile: false,
             open_pages: Vec::new(),
             queue: Vec::new(),
             events: Vec::new(),

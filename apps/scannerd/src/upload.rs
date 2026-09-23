@@ -362,6 +362,23 @@ impl Uploader {
         successful(response).await.map(|_| ())
     }
 
+    /// Sets a document's tags to exactly these, for filing a letter by hand
+    /// from the display: the folder Paperless chose comes off, or the bin's
+    /// goes on. Everything else the document has keeps whatever it was given.
+    pub async fn set_document_tags(&self, document: u64, tags: &[u64]) -> Result<()> {
+        let response = self
+            .http
+            .patch(format!("{}/api/documents/{document}/", self.base))
+            .header("Authorization", format!("Token {}", self.token))
+            .header("Content-Type", "application/json")
+            .timeout(QUESTION)
+            .body(serde_json::json!({ "tags": tags }).to_string())
+            .send()
+            .await
+            .context("could not reach Paperless")?;
+        successful(response).await.map(|_| ())
+    }
+
     /// The tag ids of a document.
     pub async fn document_tags(&self, document: u64) -> Result<Vec<u64>> {
         let text = self.get(&format!("/api/documents/{document}/")).await?;
