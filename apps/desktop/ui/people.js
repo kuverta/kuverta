@@ -49,10 +49,10 @@ async function renderAttentionNav() {
   }
   nav.append(
     navItem({
-      label: "Needs attention",
+      label: t("Needs attention"),
       icon: "attention",
       unread: count || 0,
-      title: "Inbox mail ranked by how soon it needs you, with the reason",
+      title: t("Inbox mail ranked by how soon it needs you, with the reason"),
       active: state.view === "urgent",
       onClick: () => showView(state.view === "urgent" ? "mail" : "urgent"),
     }),
@@ -80,7 +80,7 @@ async function viewPage(offset, limit) {
       // The reason is the line worth reading here, and the level and action
       // go where the category usually is.
       snippet: urgency.reason,
-      category: [LEVELS[urgency.score], ACTIONS[urgency.action], urgency.deadline ? `by ${shortDay(urgency.deadline)}` : ""]
+      category: [t(LEVELS[urgency.score]), t(ACTIONS[urgency.action]), urgency.deadline ? t("by {day}", { day: shortDay(urgency.deadline) }) : ""]
         .filter(Boolean)
         .join(" · "),
     }));
@@ -101,11 +101,11 @@ async function viewPage(offset, limit) {
       key: c.key,
       from: c.name,
       subject: c.last_subject ?? "",
-      snippet: `${c.last_from_me ? "You: " : ""}${c.last_snippet ?? ""}`,
+      snippet: c.last_from_me ? t("You: {text}", { text: c.last_snippet ?? "" }) : c.last_snippet ?? "",
       date_utc: c.last_utc,
       unread: c.unread > 0,
       has_attachments: false,
-      category: c.unread ? `${c.unread} new · ${c.messages}` : String(c.messages),
+      category: c.unread ? t("{unread} new · {total}", { unread: c.unread, total: c.messages }) : String(c.messages),
     })),
   };
 }
@@ -134,8 +134,8 @@ function viewToggle() {
     ["people", "People", "One row per person; open one to see your exchange as a conversation"],
   ]) {
     const button = document.createElement("button");
-    button.textContent = text;
-    button.title = title;
+    button.textContent = t(text);
+    button.title = t(title);
     if ((state.view === "people") === (value === "people")) button.className = "active";
     button.onclick = () => {
       if ((state.view === "people") !== (value === "people")) showView(value);
@@ -151,16 +151,16 @@ function viewTools() {
   const tools = [];
   if (state.view === "urgent") {
     const run = document.createElement("button");
-    run.textContent = judging ? "Asking…" : "Ask the model";
-    run.title = "Let the model chosen for sorting mail judge the mail the rules have judged so far";
+    run.textContent = judging ? t("Asking…") : t("Ask the model");
+    run.title = t("Let the model chosen for sorting mail judge the mail the rules have judged so far");
     run.disabled = judging;
     run.onclick = () => judgeUrgency({ useModel: true, loud: true });
     tools.push(run);
   }
   if (state.view === "people") {
     const bulk = document.createElement("button");
-    bulk.textContent = showBulkPeople() ? "hide bulk senders" : "show bulk senders";
-    bulk.title = "Newsletters, marketing and notifications are left out unless shown";
+    bulk.textContent = showBulkPeople() ? t("hide bulk senders") : t("show bulk senders");
+    bulk.title = t("Newsletters, marketing and notifications are left out unless shown");
     bulk.onclick = async () => {
       try {
         localStorage.setItem("peopleBulk", showBulkPeople() ? "no" : "yes");
@@ -187,15 +187,24 @@ async function judgeUrgency({ useModel = askModelForUrgency(), loud = false } = 
     const channel = new window.__TAURI__.core.Channel();
     channel.onmessage = (at) => {
       if (state.account !== account || !at.total || at.done >= at.total) return;
-      statusBar.textContent = `${state.email} — judging urgency ${at.done + 1} of ${at.total}`;
+      statusBar.textContent = t("{email} — judging urgency {done} of {total}", {
+        email: state.email,
+        done: at.done + 1,
+        total: at.total,
+      });
     };
     const pass = await invoke("find_urgent", { account, useModel, onProgress: channel });
     if (loud || pass.stopped) {
       const parts = [];
-      if (pass.by_model) parts.push(`${pass.model} judged ${pass.by_model}`);
-      if (pass.by_rules) parts.push(`the rules judged ${pass.by_rules}`);
-      if (!parts.length) parts.push("nothing new to judge");
-      say(pass.stopped ? `${parts.join(", ")}; the model stopped: ${pass.stopped}` : parts.join(", "), Boolean(pass.stopped));
+      if (pass.by_model) parts.push(t("{model} judged {count}", { model: pass.model, count: pass.by_model }));
+      if (pass.by_rules) parts.push(t("the rules judged {count}", { count: pass.by_rules }));
+      if (!parts.length) parts.push(t("nothing new to judge"));
+      say(
+        pass.stopped
+          ? t("{what}; the model stopped: {why}", { what: parts.join(", "), why: pass.stopped })
+          : parts.join(", "),
+        Boolean(pass.stopped),
+      );
     }
   } catch (err) {
     if (loud) say(String(err), true);
@@ -224,10 +233,16 @@ async function showUrgency(id) {
     return;
   }
   if (!verdict || verdict.score < 2) return;
-  const who = verdict.source === "model" ? `judged by ${verdict.model}` : "judged by the rules";
-  const due = verdict.deadline ? ` · by ${shortDay(verdict.deadline)}` : "";
-  const action = ACTIONS[verdict.action] ? ` · ${verdict.action}` : "";
-  note.textContent = `Needs you ${LEVELS[verdict.score]}${action}${due}: ${verdict.reason} (${who})`;
+  const who = verdict.source === "model" ? t("judged by {model}", { model: verdict.model }) : t("judged by the rules");
+  const due = verdict.deadline ? ` · ${t("by {day}", { day: shortDay(verdict.deadline) })}` : "";
+  const action = ACTIONS[verdict.action] ? ` · ${t(verdict.action)}` : "";
+  note.textContent = t("Needs you {when}{action}{due}: {reason} ({who})", {
+    when: t(LEVELS[verdict.score]),
+    action,
+    due,
+    reason: verdict.reason,
+    who,
+  });
   note.hidden = false;
 }
 
@@ -251,7 +266,7 @@ async function openConversation(row) {
   try {
     data = await invoke("conversation", { account: state.account, key: row.key });
   } catch (err) {
-    say(`could not open the conversation: ${err}`, true);
+    say(t("could not open the conversation: {error}", { error: err }), true);
     return;
   }
   const keepDraft = thread.key === row.key;
@@ -288,7 +303,7 @@ async function openConversation(row) {
   if (!data.bubbles.length) {
     const none = document.createElement("div");
     none.className = "bubble-day";
-    none.textContent = "No messages to show.";
+    none.textContent = t("No messages to show.");
     bubbles.append(none);
   }
   bubbles.scrollTop = bubbles.scrollHeight;
@@ -308,14 +323,14 @@ function makeBubble(bubble, subject, when) {
   const text = document.createElement("div");
   text.className = "bubble-text";
   // textContent, never innerHTML: this was written by whoever sent it.
-  text.textContent = bubble.text || "(nothing but an attachment)";
+  text.textContent = bubble.text || t("(nothing but an attachment)");
   body.append(text);
   const time = document.createElement("div");
   time.className = "bubble-time";
   time.textContent = when ? bubbleTime.format(when) : "";
   body.append(time);
   // Double-click opens the whole message, quotes and all, in the ordinary view.
-  body.title = "Double-click for the whole message";
+  body.title = t("Double-click for the whole message");
   body.addEventListener("dblclick", () => openWholeMessage(bubble.id));
   wrap.append(body);
   return wrap;
@@ -329,9 +344,9 @@ async function openWholeMessage(id) {
     reading.hidden = false;
     emptyPane.hidden = true;
     el("reading-actions").hidden = true;
-    el("reading-subject").textContent = detail.subject ?? "(no subject)";
+    el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     el("reading-meta").textContent = [detail.from, formatDate(detail.date_utc)].filter(Boolean).join("  ·  ");
-    el("reading-body").textContent = detail.body_text ?? "(no readable body)";
+    el("reading-body").textContent = detail.body_text ?? t("(no readable body)");
     el("reading-urgency").hidden = true;
     showSecurity(detail);
     showAttachments(detail);
@@ -354,7 +369,7 @@ async function sendInConversation() {
         to: [thread.key],
         cc: [],
         bcc: [],
-        subject: thread.replyTo ? "" : thread.subject || "Hello",
+        subject: thread.replyTo ? "" : thread.subject || t("Hello"),
         body: `${text}\n`,
         reply_to: thread.replyTo,
         reply_all: false,
@@ -367,7 +382,7 @@ async function sendInConversation() {
     // Shown now; the copy filed in Sent takes its place at the next sync.
     bubbles.append(makeBubble({ id: null, from_me: true, text, unread: false }, null, new Date()));
     bubbles.scrollTop = bubbles.scrollHeight;
-    say(sent.filing_error ? `sent — but not filed: ${sent.filing_error}` : "sent");
+    say(sent.filing_error ? t("sent — but not filed: {error}", { error: sent.filing_error }) : t("sent"));
   } catch (err) {
     say(String(err), true);
   } finally {

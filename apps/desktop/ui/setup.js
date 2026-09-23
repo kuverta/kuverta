@@ -61,7 +61,7 @@ function showStep(index) {
   });
   el("setup-back").hidden = setup.step === 0;
   el("setup-next").textContent =
-    name === "profiles" ? "Continue" : name === "done" ? "Open kuverta" : "Continue";
+    name === "profiles" ? t("Continue") : name === "done" ? t("Open kuverta") : t("Continue");
   el("setup-foot-note").textContent = "";
 
   if (name === "profiles") showSetupProfiles();
@@ -131,9 +131,9 @@ const openLink = (url) => invoke("open_external", { url }).catch((err) => say(St
 /// A command to copy, for those who would rather type than download.
 function commandLine(command) {
   const code = node("code", { textContent: command });
-  const copy = button("Copy", async () => {
+  const copy = button(t("Copy"), async () => {
     await navigator.clipboard.writeText(command);
-    say("copied");
+    say(t("copied"));
   });
   return node("div", { className: "setup-command" }, code, copy);
 }
@@ -141,9 +141,9 @@ function commandLine(command) {
 function installHelp(help, what) {
   const parts = [];
   if (help.note) parts.push(node("p", { className: "hint", textContent: help.note }));
-  parts.push(node("div", { className: "setup-actions" }, button(`Download ${what}`, () => openLink(help.url), { primary: true })));
+  parts.push(node("div", { className: "setup-actions" }, button(t("Download {what}", { what }), () => openLink(help.url), { primary: true })));
   if (help.command) {
-    parts.push(node("p", { className: "hint", textContent: "Or in a terminal:" }));
+    parts.push(node("p", { className: "hint", textContent: t("Or in a terminal:") }));
     parts.push(commandLine(help.command));
   }
   return parts;
@@ -152,7 +152,7 @@ function installHelp(help, what) {
 function formatBytes(bytes) {
   if (!bytes) return "";
   const gb = bytes / 1e9;
-  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
+  return gb >= 1 ? t("{size} GB", { size: gb.toFixed(1) }) : t("{size} MB", { size: Math.round(bytes / 1e6) });
 }
 
 // -- models ------------------------------------------------------------------------
@@ -175,22 +175,22 @@ async function refreshModels() {
 
   if (!status.local) {
     lines.push(checkLine(status.running ? "ok" : "bad",
-      status.running ? `Ollama at ${status.base_url} answers (version ${status.version})`
-        : `Ollama at ${status.base_url} is not answering. It is on another computer; start it there.`));
+      status.running ? t("Ollama at {url} answers (version {version})", { url: status.base_url, version: status.version })
+        : t("Ollama at {url} is not answering. It is on another computer; start it there.", { url: status.base_url })));
   } else if (!status.installed) {
-    lines.push(checkLine("bad", "Ollama is not installed on this computer."));
+    lines.push(checkLine("bad", t("Ollama is not installed on this computer.")));
     lines.push(...installHelp(status.install, "Ollama"));
-    lines.push(node("div", { className: "setup-actions" }, button("Check again", refreshModels)));
+    lines.push(node("div", { className: "setup-actions" }, button(t("Check again"), refreshModels)));
   } else if (!status.running) {
-    lines.push(checkLine("ok", "Ollama is installed."));
-    lines.push(checkLine("bad", "It is not running.",
-      button("Start Ollama", async (b) => {
-        b.textContent = "Starting…";
+    lines.push(checkLine("ok", t("Ollama is installed.")));
+    lines.push(checkLine("bad", t("It is not running."),
+      button(t("Start Ollama"), async (b) => {
+        b.textContent = t("Starting…");
         await invoke("start_ollama");
         await refreshModels();
       }, { primary: true })));
   } else {
-    lines.push(checkLine("ok", `Ollama is running (version ${status.version}).`));
+    lines.push(checkLine("ok", t("Ollama is running (version {version}).", { version: status.version })));
   }
 
   if (status.running) {
@@ -200,35 +200,35 @@ async function refreshModels() {
     const missing = status.needed.filter((need) => !need.present && !pulling.has(need.model));
     if (missing.length > 1) {
       lines.push(node("div", { className: "setup-actions" },
-        button("Download all", () => Promise.all(missing.map((need) => pullModel(need.model))), { primary: true })));
+        button(t("Download all"), () => Promise.all(missing.map((need) => pullModel(need.model))), { primary: true })));
     }
   }
   card.replaceChildren(...lines);
 
   const ready = status.running && status.needed.every((need) => need.present);
-  el("setup-foot-note").textContent = ready ? "" : "You can continue and come back to this later.";
-  el("setup-next").textContent = ready ? "Continue" : "Skip for now";
+  el("setup-foot-note").textContent = ready ? "" : t("You can continue and come back to this later.");
+  el("setup-next").textContent = ready ? t("Continue") : t("Skip for now");
 }
 
 function modelLine(need) {
-  const purpose = MODEL_PURPOSES[need.task] ?? need.task;
-  if (need.present) return checkLine("ok", `${need.model} for ${purpose} is ready.`);
+  const purpose = t(MODEL_PURPOSES[need.task] ?? need.task);
+  if (need.present) return checkLine("ok", t("{model} for {purpose} is ready.", { model: need.model, purpose }));
 
   const progress = pulling.get(need.model);
   if (progress) {
     const bar = node("progress", { max: 1, value: progress.fraction ?? 0 });
     progress.bar = bar;
     progress.label = node("span", { className: "hint", textContent: progress.text ?? "" });
-    return checkLine("wait", `Downloading ${need.model} for ${purpose}`, bar, progress.label);
+    return checkLine("wait", t("Downloading {model} for {purpose}", { model: need.model, purpose }), bar, progress.label);
   }
-  const size = need.size ? ` (${need.size})` : "";
-  return checkLine("bad", `${need.model} for ${purpose} is not downloaded yet.`,
-    button(`Download${size}`, () => pullModel(need.model), { primary: true }));
+  const download = need.size ? t("Download ({size})", { size: need.size }) : t("Download");
+  return checkLine("bad", t("{model} for {purpose} is not downloaded yet.", { model: need.model, purpose }),
+    button(download, () => pullModel(need.model), { primary: true }));
 }
 
 async function pullModel(model) {
   if (pulling.has(model)) return;
-  const progress = { fraction: 0, text: "starting…" };
+  const progress = { fraction: 0, text: t("starting…") };
   pulling.set(model, progress);
   await refreshModels();
 
@@ -236,7 +236,7 @@ async function pullModel(model) {
   channel.onmessage = (update) => {
     if (update.total) {
       progress.fraction = (update.completed ?? 0) / update.total;
-      progress.text = `${formatBytes(update.completed)} of ${formatBytes(update.total)}`;
+      progress.text = t("{done} of {total}", { done: formatBytes(update.completed), total: formatBytes(update.total) });
     } else {
       progress.text = update.status;
     }
@@ -245,7 +245,7 @@ async function pullModel(model) {
   };
   try {
     await invoke("pull_model", { model, onProgress: channel });
-    say(`${model} is ready`);
+    say(t("{model} is ready", { model }));
   } catch (err) {
     say(`${model}: ${err}`, true);
   } finally {
@@ -273,7 +273,7 @@ setup.sheet.querySelectorAll("[data-paper]").forEach((b) => {
 
 async function refreshPaper() {
   const card = el("paper-found");
-  card.replaceChildren(node("p", { className: "hint", textContent: "Looking for Paperless…" }));
+  card.replaceChildren(node("p", { className: "hint", textContent: t("Looking for Paperless…") }));
   let found = [];
   try {
     found = await invoke("find_paperless");
@@ -285,28 +285,29 @@ async function refreshPaper() {
   for (const place of found) {
     if (place.configured) {
       lines.push(checkLine(place.answering ? "ok" : "bad",
-        place.answering ? `${place.base_url} is connected.` : `${place.base_url} is connected but not answering.`));
+        place.answering ? t("{url} is connected.", { url: place.base_url })
+          : t("{url} is connected but not answering.", { url: place.base_url })));
     } else if (place.answering) {
-      lines.push(checkLine("ok", `Paperless answers at ${place.base_url}.`,
-        button("Use this one", () => {
+      lines.push(checkLine("ok", t("Paperless answers at {url}.", { url: place.base_url }),
+        button(t("Use this one"), () => {
           choosePaper("connect");
           connectForm.base_url.value = place.base_url;
           connectForm.username.focus();
         }, { primary: true })));
     } else if (place.installed_by_kuverta) {
-      lines.push(checkLine("bad", `The Paperless kuverta installed (${place.base_url}) is not running.`,
-        button("Start it", () => {
+      lines.push(checkLine("bad", t("The Paperless kuverta installed ({url}) is not running.", { url: place.base_url }),
+        button(t("Start it"), () => {
           choosePaper("install");
         })));
     }
   }
   if (!lines.length) {
-    lines.push(checkLine("bad", "No Paperless found on this computer or at paperless.local."));
-    lines.push(node("p", { className: "hint", textContent: "Connect to one elsewhere on your network, or install one here with Docker." }));
+    lines.push(checkLine("bad", t("No Paperless found on this computer or at paperless.local.")));
+    lines.push(node("p", { className: "hint", textContent: t("Connect to one elsewhere on your network, or install one here with Docker.") }));
   }
   card.replaceChildren(...lines);
   const connected = found.some((place) => place.configured);
-  el("setup-next").textContent = connected ? "Continue" : "Skip for now";
+  el("setup-next").textContent = connected ? t("Continue") : t("Skip for now");
 }
 
 function syncSetupSelector() {
@@ -329,7 +330,7 @@ connectForm.addEventListener("submit", async (event) => {
   };
   submit.disabled = true;
   result.className = "setup-result";
-  result.textContent = "Connecting…";
+  result.textContent = t("Connecting…");
   try {
     const report = await invoke("connect_paperless", {
       input,
@@ -341,7 +342,8 @@ connectForm.addEventListener("submit", async (event) => {
     connectForm.token.value = "";
     const notes = report.notes.length ? ` ${report.notes.join(" ")}` : "";
     result.className = "setup-result ok";
-    result.textContent = `Connected: ${report.documents_matching} of ${report.documents_total} documents belong here.${notes}`;
+    result.textContent = t("Connected: {matching} of {total} documents belong here.",
+      { matching: report.documents_matching, total: report.documents_total }) + notes;
     setup.paper = input.base_url;
     await placePostbox(input.base_url, connectForm.profile);
     await refreshPaper();
@@ -355,26 +357,26 @@ connectForm.addEventListener("submit", async (event) => {
 
 async function refreshDocker() {
   const card = el("docker-card");
-  card.replaceChildren(node("p", { className: "hint", textContent: "Looking for Docker…" }));
+  card.replaceChildren(node("p", { className: "hint", textContent: t("Looking for Docker…") }));
   const status = await invoke("docker_status").catch((err) => ({ error: String(err) }));
   const lines = [];
   if (status.error) {
     lines.push(checkLine("bad", status.error));
   } else if (!status.installed) {
-    lines.push(checkLine("bad", "Docker is not installed. Paperless runs in it."));
+    lines.push(checkLine("bad", t("Docker is not installed. Paperless runs in it.")));
     lines.push(...installHelp(status.install, "Docker"));
-    lines.push(node("div", { className: "setup-actions" }, button("Check again", refreshDocker)));
+    lines.push(node("div", { className: "setup-actions" }, button(t("Check again"), refreshDocker)));
   } else if (!status.running) {
-    lines.push(checkLine("ok", "Docker is installed."));
-    lines.push(checkLine("bad", status.problem ? `It is not running: ${status.problem}` : "It is not running."));
+    lines.push(checkLine("ok", t("Docker is installed.")));
+    lines.push(checkLine("bad", status.problem ? t("It is not running: {problem}", { problem: status.problem }) : t("It is not running.")));
     lines.push(node("div", { className: "setup-actions" },
-      button("Start Docker", async () => {
+      button(t("Start Docker"), async () => {
         await invoke("start_docker");
-        say("Docker is starting; check again in a moment");
+        say(t("Docker is starting; check again in a moment"));
       }, { primary: true }),
-      button("Check again", refreshDocker)));
+      button(t("Check again"), refreshDocker)));
   } else {
-    lines.push(checkLine("ok", `Docker is running (version ${status.version}).`));
+    lines.push(checkLine("ok", t("Docker is running (version {version}).", { version: status.version })));
   }
   card.replaceChildren(...lines);
   installForm.hidden = !status.running;
@@ -390,7 +392,7 @@ installForm.addEventListener("submit", async (event) => {
   log.hidden = false;
   log.textContent = "";
   result.className = "setup-result";
-  result.textContent = "Installing — this takes a few minutes the first time.";
+  result.textContent = t("Installing — this takes a few minutes the first time.");
 
   const lines = [];
   const channel = new window.__TAURI__.core.Channel();
@@ -408,11 +410,9 @@ installForm.addEventListener("submit", async (event) => {
     });
     result.className = "setup-result ok";
     const made = !f.password.trim();
-    result.textContent =
-      `Paperless is running and connected. Its web page is where you upload and manage documents; sign in as ${f.username.trim()}.` +
-      (made
-        ? " kuverta made the password and put it in the keychain: Settings → the address → Show Paperless sign-in."
-        : "");
+    result.textContent = made
+      ? t("Paperless is running and connected. Its web page is where you upload and manage documents; sign in as {user}. kuverta made the password and put it in the keychain: Settings → the address → Show Paperless sign-in.", { user: f.username.trim() })
+      : t("Paperless is running and connected. Its web page is where you upload and manage documents; sign in as {user}.", { user: f.username.trim() });
     installForm.password.value = "";
     setup.paper = "installed";
     await invoke("set_postbox_profile", { postbox, profile: selectedProfile(installForm.profile) }).catch(() => {});
@@ -429,7 +429,7 @@ installForm.addEventListener("submit", async (event) => {
 
 async function scanAccounts() {
   const sources = el("import-sources");
-  sources.replaceChildren(node("p", { className: "hint", textContent: "Looking for accounts in your other mail programs…" }));
+  sources.replaceChildren(node("p", { className: "hint", textContent: t("Looking for accounts in your other mail programs…") }));
   let scan;
   try {
     scan = await invoke("import_accounts", { primaryPassword: setup.primaryPassword || null });
@@ -440,27 +440,27 @@ async function scanAccounts() {
   const lines = scan.sources.map((source) => {
     const state = source.state === "found" ? "ok" : source.state === "not_permitted" || source.state === "failed" ? "bad" : "wait";
     const extra = [];
-    if (source.action_url) extra.push(button("Open System Settings", () => openLink(source.action_url)));
-    if (source.state === "not_permitted") extra.push(button("Look again", scanAccounts));
-    const line = checkLine(state, `${source.name}: ${source.state === "not_permitted" ? "not allowed to look" : source.detail}`, ...extra);
+    if (source.action_url) extra.push(button(t("Open System Settings"), () => openLink(source.action_url)));
+    if (source.state === "not_permitted") extra.push(button(t("Look again"), scanAccounts));
+    const line = checkLine(state, `${source.name}: ${source.state === "not_permitted" ? t("not allowed to look") : source.detail}`, ...extra);
     if (source.state === "not_permitted") {
       return node("div", {}, line, node("p", { className: "hint", textContent: source.detail }));
     }
     return line;
   });
-  if (!scan.sources.length) lines.push(checkLine("wait", "No other mail programs found."));
+  if (!scan.sources.length) lines.push(checkLine("wait", t("No other mail programs found.")));
 
   // Thunderbird's saved passwords are behind its primary password: with it,
   // nothing has to be typed here at all.
   if (scan.passwords_locked) {
-    const field = node("input", { type: "password", autocomplete: "off", placeholder: "Thunderbird's primary password" });
-    const unlock = button("Use it", async () => {
+    const field = node("input", { type: "password", autocomplete: "off", placeholder: t("Thunderbird's primary password") });
+    const unlock = button(t("Use it"), async () => {
       setup.primaryPassword = field.value;
       await scanAccounts();
       renderFound();
     }, { primary: true });
     lines.push(node("div", { className: "setup-actions" }, field, unlock));
-    lines.push(node("p", { className: "hint", textContent: "Thunderbird keeps its saved passwords behind a primary password. Enter it and kuverta can take them over; otherwise enter each password below." }));
+    lines.push(node("p", { className: "hint", textContent: t("Thunderbird keeps its saved passwords behind a primary password. Enter it and kuverta can take them over; otherwise enter each password below.") }));
   }
   sources.replaceChildren(...lines);
 
@@ -492,7 +492,7 @@ el("lookup-form").addEventListener("submit", async (event) => {
   const email = form.email.value.trim();
   const submit = form.querySelector("button");
   submit.disabled = true;
-  submit.textContent = "Looking…";
+  submit.textContent = t("Looking…");
   try {
     const account = await invoke("lookup_account", { email });
     const entry = addFound(account, { checked: true });
@@ -503,14 +503,16 @@ el("lookup-form").addEventListener("submit", async (event) => {
     say(String(err), true);
   } finally {
     submit.disabled = false;
-    submit.textContent = "Find settings";
+    submit.textContent = t("Find settings");
   }
 });
 
 function describeServers(input) {
-  if (!input.imap_host) return "servers unknown — enter them below";
-  const smtp = input.smtp_host ? `, sends via ${input.smtp_host}:${input.smtp_port}` : ", cannot send (no outgoing server)";
-  return `${input.imap_host}:${input.imap_port} (${input.imap_security})${smtp}`;
+  if (!input.imap_host) return t("servers unknown — enter them below");
+  const imap = `${input.imap_host}:${input.imap_port} (${input.imap_security})`;
+  return input.smtp_host
+    ? t("{imap}, sends via {host}:{port}", { imap, host: input.smtp_host, port: input.smtp_port })
+    : t("{imap}, cannot send (no outgoing server)", { imap });
 }
 
 function field(label, name, value, props = {}) {
@@ -523,7 +525,7 @@ function securitySelect(name, value) {
   for (const [v, text] of [["tls", "TLS"], ["starttls", "STARTTLS"]]) {
     select.append(node("option", { value: v, textContent: text, selected: v === value }));
   }
-  return node("label", {}, "Security", select);
+  return node("label", {}, t("Security"), select);
 }
 
 function renderFound() {
@@ -545,7 +547,7 @@ function accountCard(entry) {
     updateMailFoot();
   };
   const who = account.full_name ? `${account.full_name} <${input.email}>` : input.email;
-  const from = account.already_added ? "already in kuverta" : `from ${account.source}`;
+  const from = account.already_added ? t("already in kuverta") : t("from {source}", { source: account.source });
   card.append(node("label", { className: "import-head" }, check,
     node("span", { className: "who", textContent: who }),
     node("span", { className: "from", textContent: from })));
@@ -563,46 +565,46 @@ function accountCard(entry) {
     use.onchange = () => {
       typed.hidden = use.checked;
     };
-    fields.append(node("label", { className: "setup-check" }, use, `Use the password saved in ${account.source}`));
+    fields.append(node("label", { className: "setup-check" }, use, t("Use the password saved in {source}", { source: account.source })));
   }
   typed = node("div", {});
   typed.hidden = account.password_known;
-  typed.append(field(input.auth_method === "oauth2" ? "Password (only if you switch to a password below)" : "Password", "password", "", { type: "password", autocomplete: "off" }));
+  typed.append(field(input.auth_method === "oauth2" ? t("Password (only if you switch to a password below)") : t("Password"), "password", "", { type: "password", autocomplete: "off" }));
   fields.append(typed);
   if (account.password_help) {
     fields.append(node("p", { className: "hint" },
       account.password_help.text, " ",
-      button("Open", () => openLink(account.password_help.url))));
+      button(t("Open"), () => openLink(account.password_help.url))));
   }
 
   // The servers and sign-in, for when what was found is not quite right.
   const details = node("details", { open: !account.complete });
-  details.append(node("summary", { textContent: "Servers and sign-in" }));
+  details.append(node("summary", { textContent: t("Servers and sign-in") }));
   details.append(node("div", { className: "setup-row3" },
-    field("IMAP server", "imap_host", input.imap_host),
-    field("Port", "imap_port", input.imap_port, { type: "number" }),
+    field(t("IMAP server"), "imap_host", input.imap_host),
+    field(t("Port"), "imap_port", input.imap_port, { type: "number" }),
     securitySelect("imap_security", input.imap_security)));
   details.append(node("div", { className: "setup-row3" },
-    field("SMTP server", "smtp_host", input.smtp_host),
-    field("Port", "smtp_port", input.smtp_port ?? 465, { type: "number" }),
+    field(t("SMTP server"), "smtp_host", input.smtp_host),
+    field(t("Port"), "smtp_port", input.smtp_port ?? 465, { type: "number" }),
     securitySelect("smtp_security", input.smtp_security ?? "tls")));
   details.append(node("div", { className: "setup-row" },
-    field("User name", "username", input.username ?? "", { placeholder: "same as the address" }),
-    field("Name in the sidebar", "label", input.label)));
+    field(t("User name"), "username", input.username ?? "", { placeholder: t("same as the address") }),
+    field(t("Name in the sidebar"), "label", input.label)));
   const method = node("select", { name: "auth_method" });
-  method.append(node("option", { value: "app_password", textContent: "Password or app password", selected: input.auth_method !== "oauth2" }));
-  method.append(node("option", { value: "oauth2", textContent: "OAuth2 (sign in with kuverta login)", selected: input.auth_method === "oauth2" }));
-  const clientId = field("OAuth2 client id", "oauth_client_id", input.oauth_client_id ?? "");
+  method.append(node("option", { value: "app_password", textContent: t("Password or app password"), selected: input.auth_method !== "oauth2" }));
+  method.append(node("option", { value: "oauth2", textContent: t("OAuth2 (sign in with kuverta login)"), selected: input.auth_method === "oauth2" }));
+  const clientId = field(t("OAuth2 client id"), "oauth_client_id", input.oauth_client_id ?? "");
   clientId.hidden = input.auth_method !== "oauth2";
   method.onchange = () => {
     clientId.hidden = method.value !== "oauth2";
   };
-  details.append(node("div", { className: "setup-row" }, node("label", {}, "Sign in with", method), clientId));
+  details.append(node("div", { className: "setup-row" }, node("label", {}, t("Sign in with"), method), clientId));
   if (state.profiles.length) {
     const profile = node("select", { name: "profile" });
     fillProfileSelect(profile, entry.profile ?? activeProfile() ?? state.profiles[0].id);
     profile.onchange = () => (entry.profile = selectedProfile(profile));
-    fields.append(node("label", {}, "Profile", profile));
+    fields.append(node("label", {}, t("Profile"), profile));
   }
   fields.append(details);
   card.append(fields);
@@ -649,7 +651,9 @@ function chosen() {
 function updateMailFoot() {
   if (setup.steps[setup.step] !== "mail") return;
   const count = chosen().length;
-  el("setup-next").textContent = count ? `Add ${count} account${count === 1 ? "" : "s"}` : setup.added.length ? "Continue" : "Skip for now";
+  el("setup-next").textContent = count
+    ? count === 1 ? t("Add one account") : t("Add {count} accounts", { count })
+    : setup.added.length ? t("Continue") : t("Skip for now");
 }
 
 /// Saves, stores the password for, and checks each chosen account. True when
@@ -675,12 +679,12 @@ async function addChosenAccounts() {
     };
 
     if (input.auth_method === "app_password" && !password && !useFound) {
-      show("Enter the password first.", false);
+      show(t("Enter the password first."), false);
       allOk = false;
       continue;
     }
     status.className = "status";
-    status.textContent = "Checking…";
+    status.textContent = t("Checking…");
     let saved = false;
     try {
       const settingsNow = await invoke("account_settings");
@@ -700,7 +704,7 @@ async function addChosenAccounts() {
         saved = true;
         await placeAccount(id, entry);
         if (input.auth_method === "oauth2") {
-          show(`Added. Sign in once in a terminal: kuverta login --email ${input.email}`, true);
+          show(t("Added. Sign in once in a terminal: kuverta login --email {email}", { email: input.email }), true);
           setup.added.push(input.email);
           continue;
         }
@@ -708,24 +712,24 @@ async function addChosenAccounts() {
       }
       const report = await invoke("verify_account", { email: input.email });
       if (!report.imap_ok) {
-        show(`Could not sign in: ${report.imap_error}`, false);
+        show(t("Could not sign in: {error}", { error: report.imap_error }), false);
         allOk = false;
         continue;
       }
       const sending = report.smtp_target
-        ? report.smtp_ok ? " Sending works." : ` Sending did not work: ${report.smtp_error}`
+        ? report.smtp_ok ? ` ${t("Sending works.")}` : ` ${t("Sending did not work: {error}", { error: report.smtp_error })}`
         : "";
-      show(`Signed in — ${report.total_messages} messages.${sending}`, true);
+      show(t("Signed in — {count} messages.", { count: report.total_messages }) + sending, true);
       entry.card.querySelector("[name=password]").value = "";
       setup.added.push(input.email);
     } catch (err) {
-      show(saved ? `Saved, but: ${err}` : String(err), false);
+      show(saved ? t("Saved, but: {error}", { error: err }) : String(err), false);
       allOk = false;
     }
   }
   next.disabled = false;
   updateMailFoot();
-  if (!allOk) el("setup-foot-note").textContent = "Fix the accounts marked in red, untick them, or continue without them.";
+  if (!allOk) el("setup-foot-note").textContent = t("Fix the accounts marked in red, untick them, or continue without them.");
   return allOk;
 }
 
@@ -743,11 +747,11 @@ async function showSetupProfiles() {
 
 function addSetupProfileRow(name = "", id = null) {
   const list = el("setup-profiles");
-  const input = node("input", { value: name, placeholder: "Name, e.g. Private", spellcheck: false });
+  const input = node("input", { value: name, placeholder: t("Name, e.g. Private"), spellcheck: false });
   input.dataset.id = id ?? "";
   const row = node("div", { className: "setup-profile" }, input);
   if (id === null) {
-    const remove = node("button", { type: "button", textContent: "Remove" });
+    const remove = node("button", { type: "button", textContent: t("Remove") });
     remove.onclick = () => row.remove();
     row.append(remove);
   }
@@ -818,22 +822,22 @@ async function showSummary() {
   const lines = [];
   const models = setup.models ?? (await invoke("ollama_status").catch(() => null));
   if (models && models.running && models.needed.every((need) => need.present)) {
-    lines.push(checkLine("ok", "Models are ready on this computer."));
+    lines.push(checkLine("ok", t("Models are ready on this computer.")));
   } else {
-    lines.push(checkLine("bad", "Models are not ready — scanned letters cannot be read yet. Settings → Setup assistant."));
+    lines.push(checkLine("bad", t("Models are not ready — scanned letters cannot be read yet. Settings → Setup assistant.")));
   }
   const postboxes = await invoke("paper_mailboxes").catch(() => []);
   lines.push(postboxes.length
-    ? checkLine("ok", `Paper mail: ${postboxes.map((p) => p.label).join(", ")}.`)
-    : checkLine("wait", "No paper mail connected."));
+    ? checkLine("ok", t("Paper mail: {list}.", { list: postboxes.map((p) => p.label).join(", ") }))
+    : checkLine("wait", t("No paper mail connected.")));
   const accounts = await invoke("accounts").catch(() => []);
   await loadProfiles();
   if (state.profiles.length) {
-    lines.push(checkLine("ok", `Profiles: ${state.profiles.map((p) => `${p.name} (${p.accounts.length + p.postboxes.length})`).join(", ")}.`));
+    lines.push(checkLine("ok", t("Profiles: {list}.", { list: state.profiles.map((p) => `${p.name} (${p.accounts.length + p.postboxes.length})`).join(", ") })));
   }
   lines.push(accounts.length
-    ? checkLine("ok", `${accounts.length} mail account${accounts.length === 1 ? "" : "s"}.`)
-    : checkLine("wait", "No mail accounts yet — add them in settings."));
+    ? checkLine("ok", accounts.length === 1 ? t("one mail account.") : t("{count} mail accounts.", { count: accounts.length }))
+    : checkLine("wait", t("No mail accounts yet — add them in settings.")));
   list.replaceChildren(...lines);
 
   // New accounts start downloading now. A first sync can take a while, so it
@@ -844,7 +848,9 @@ async function showSummary() {
     note.textContent = "";
     return;
   }
-  note.textContent = `Downloading mail for ${fresh.length} account${fresh.length === 1 ? "" : "s"} — you can start using kuverta meanwhile.`;
+  note.textContent = fresh.length === 1
+    ? t("Downloading mail for one account — you can start using kuverta meanwhile.")
+    : t("Downloading mail for {count} accounts — you can start using kuverta meanwhile.", { count: fresh.length });
   setup.added = [];
   syncInTurn(fresh);
 }
@@ -863,24 +869,38 @@ async function syncInTurn(emails) {
 
   let done = 0;
   for (const email of emails) {
-    const which = emails.length > 1 ? ` (${done + 1} of ${emails.length})` : "";
-    label.textContent = `Downloading mail for ${email}${which} — starting…`;
+    const many = emails.length > 1;
+    const nth = done + 1;
+    label.textContent = many
+      ? t("Downloading mail for {email} ({nth} of {total}) — starting…", { email, nth, total: emails.length })
+      : t("Downloading mail for {email} — starting…", { email });
     const channel = new window.__TAURI__.core.Channel();
     channel.onmessage = (at) => {
       if (at.fraction === null || at.fraction === undefined) return;
       bar.value = at.fraction;
-      const within = at.messages_total ? `, ${at.messages_done} of ${at.messages_total}` : "";
-      label.textContent =
-        `Downloading mail for ${email}${which} — ${Math.round(at.fraction * 100)}%: ${at.folder}${within} `;
+      const vars = {
+        email, nth, total: emails.length,
+        percent: Math.round(at.fraction * 100),
+        folder: at.folder, done: at.messages_done, messages: at.messages_total,
+      };
+      label.textContent = at.messages_total
+        ? many
+          ? t("Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder}, {done} of {messages} ", vars)
+          : t("Downloading mail for {email} — {percent}%: {folder}, {done} of {messages} ", vars)
+        : many
+          ? t("Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder} ", vars)
+          : t("Downloading mail for {email} — {percent}%: {folder} ", vars);
     };
     try {
       const summary = await invoke("sync", { email, onProgress: channel });
-      say(`${email}: ${summary?.inserted ?? 0} messages downloaded`);
+      say(t("{email}: {count} messages downloaded", { email, count: summary?.inserted ?? 0 }));
     } catch (err) {
       say(`${email}: ${err}`, true);
     }
     done += 1;
   }
 
-  note.textContent = `Mail for ${done} account${done === 1 ? "" : "s"} is downloaded.`;
+  note.textContent = done === 1
+    ? t("Mail for one account is downloaded.")
+    : t("Mail for {count} accounts is downloaded.", { count: done });
 }

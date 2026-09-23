@@ -269,7 +269,9 @@ test('a letter scanned while the postbox is open appears on its own, and the let
   const subjects = await page.locator('#content .row:not([hidden]) .subject').allInnerTexts();
   assert.equal(subjects[0], 'Ankündigung Treppenhausreinigung', 'new post on top');
   await page.waitForSelector('#toast:not([hidden])');
-  assert.match(await page.locator('#toast').innerText(), /1 new letter to Home/);
+  // "one new letter", not "1 new letter": the sentence is one string now, so
+  // that it can be a German sentence too.
+  assert.match(await page.locator('#toast').innerText(), /one new letter to Home/);
 
   // The letter being read was not pulled out from under the reader.
   assert.equal(await page.locator('#reading').isVisible(), true);

@@ -59,11 +59,16 @@ function renderProfileBar() {
     button.type = "button";
     button.className = `profile-pill${active === id ? " active" : ""}`;
     button.textContent = label;
-    button.title = id === null ? "Every account and address" : `${count} account${count === 1 ? "" : "s"} and address${count === 1 ? "" : "es"}`;
+    button.title =
+      id === null
+        ? t("Every account and address")
+        : count === 1
+          ? t("one account and address")
+          : t("{count} accounts and addresses", { count });
     button.onclick = () => switchProfile(id);
     bar.append(button);
   };
-  pill("All", null);
+  pill(t("All"), null);
   for (const profile of state.profiles) {
     pill(profile.name, profile.id, profile.accounts.length + profile.postboxes.length);
   }
@@ -86,7 +91,7 @@ async function switchProfile(id) {
   else if (postboxes.length) await selectPostbox(postboxes[0]);
   else {
     await refreshSidebar();
-    say("nothing is in this profile yet — add accounts to it in Settings → Profiles");
+    say(t("nothing is in this profile yet — add accounts to it in Settings → Profiles"));
   }
 }
 
@@ -95,7 +100,7 @@ async function switchProfile(id) {
 /// Fills a Profile select, and hides its label when there are no profiles to pick.
 function fillProfileSelect(select, current) {
   select.textContent = "";
-  select.append(new Option("No profile", ""));
+  select.append(new Option(t("No profile"), ""));
   for (const profile of state.profiles) select.append(new Option(profile.name, String(profile.id)));
   select.value = current ? String(current) : "";
   select.closest("label").hidden = state.profiles.length === 0;
@@ -115,19 +120,20 @@ async function fillProfilesPage() {
 
   const lead = document.createElement("p");
   lead.className = "lead";
-  lead.textContent =
-    "Keep private mail and each company's mail apart. The switcher above the sidebar shows one profile at a time, or all of them. An account or address in no profile shows under All only.";
+  lead.textContent = t(
+    "Keep private mail and each company's mail apart. The switcher above the sidebar shows one profile at a time, or all of them. An account or address in no profile shows under All only.",
+  );
   profilesPage.append(lead);
 
   const list = document.createElement("section");
   list.className = "card";
-  list.innerHTML = '<h3>Profiles</h3><div class="item-list" data-empty="No profiles yet. Add one below."></div>';
+  list.innerHTML = `<h3>${t("Profiles")}</h3><div class="item-list" data-empty="${t("No profiles yet. Add one below.")}"></div>`;
   const items = list.querySelector(".item-list");
   state.profiles.forEach((profile, at) => items.append(profileItem(profile, at)));
 
   const add = document.createElement("form");
   add.className = "card-actions";
-  add.innerHTML = '<input name="name" placeholder="e.g. Private, Company 1" spellcheck="false"><button type="submit" class="primary">Add profile</button>';
+  add.innerHTML = `<input name="name" placeholder="${t("e.g. Private, Company 1")}" spellcheck="false"><button type="submit" class="primary">${t("Add profile")}</button>`;
   add.addEventListener("submit", async (event) => {
     event.preventDefault();
     try {
@@ -146,7 +152,7 @@ async function fillProfilesPage() {
   // Who is in which, in one place.
   const members = document.createElement("section");
   members.className = "card";
-  members.innerHTML = "<h3>What is in each</h3>";
+  members.innerHTML = `<h3>${t("What is in each")}</h3>`;
   const table = document.createElement("div");
   table.className = "item-list";
   const row = (label, sub, current, save) => {
@@ -162,7 +168,7 @@ async function fillProfilesPage() {
     hint.textContent = sub;
     text.append(title, hint);
     const select = document.createElement("select");
-    select.append(new Option("No profile", ""));
+    select.append(new Option(t("No profile"), ""));
     for (const profile of state.profiles) select.append(new Option(profile.name, String(profile.id)));
     select.value = current ? String(current) : "";
     select.addEventListener("change", async () => {
@@ -178,12 +184,12 @@ async function fillProfilesPage() {
     table.append(item);
   };
   for (const account of accounts) {
-    row(account.email, "mail account", account.profile_id, (profile) =>
+    row(account.email, t("mail account"), account.profile_id, (profile) =>
       invoke("set_account_profile", { account: account.id, profile }),
     );
   }
   for (const postbox of postboxes) {
-    row(postbox.label, `postal address · ${postbox.base_url}`, postbox.profile_id, (profile) =>
+    row(postbox.label, t("postal address · {url}", { url: postbox.base_url }), postbox.profile_id, (profile) =>
       invoke("set_postbox_profile", { postbox: postbox.id, profile }),
     );
   }
@@ -198,7 +204,7 @@ function profileItem(profile, at) {
   name.value = profile.name;
   name.className = "grow";
   name.spellcheck = false;
-  name.title = "Rename by typing; it is saved when you leave the field";
+  name.title = t("Rename by typing; it is saved when you leave the field");
   name.addEventListener("change", async () => {
     try {
       await invoke("save_profile", { id: profile.id, name: name.value });
@@ -212,13 +218,13 @@ function profileItem(profile, at) {
   const count = document.createElement("span");
   count.className = "chip";
   const n = profile.accounts.length + profile.postboxes.length;
-  count.textContent = `${n} in it`;
+  count.textContent = t("{count} in it", { count: n });
   const move = (label, delta, disabled) => {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = label;
     b.disabled = disabled;
-    b.title = delta < 0 ? "Move up" : "Move down";
+    b.title = delta < 0 ? t("Move up") : t("Move down");
     b.onclick = async () => {
       const ids = state.profiles.map((p) => p.id);
       [ids[at], ids[at + delta]] = [ids[at + delta], ids[at]];
@@ -231,9 +237,10 @@ function profileItem(profile, at) {
   const remove = document.createElement("button");
   remove.type = "button";
   remove.className = "danger";
-  remove.textContent = "Delete";
+  remove.textContent = t("Delete");
   remove.onclick = async () => {
-    if (!confirm(`Delete the profile “${profile.name}”? Its accounts and addresses stay, in no profile.`)) return;
+    if (!confirm(t("Delete the profile “{name}”? Its accounts and addresses stay, in no profile.", { name: profile.name })))
+      return;
     await invoke("delete_profile", { id: profile.id });
     if (activeProfile() === profile.id) setActiveProfile(null);
     await fillProfilesPage();

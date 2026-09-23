@@ -195,12 +195,12 @@ function presets(now = new Date()) {
   const at = (days, hour, minute = 0) =>
     new Date(now.getFullYear(), now.getMonth(), now.getDate() + days, hour, minute);
   const list = [];
-  if (now.getHours() < 16) list.push(["This evening", at(0, 18)]);
-  else list.push(["In an hour", new Date(now.getTime() + 3600e3)]);
-  list.push(["Tomorrow morning", at(1, 8)]);
-  list.push(["Tomorrow evening", at(1, 20)]);
+  if (now.getHours() < 16) list.push([t("This evening"), at(0, 18)]);
+  else list.push([t("In an hour"), new Date(now.getTime() + 3600e3)]);
+  list.push([t("Tomorrow morning"), at(1, 8)]);
+  list.push([t("Tomorrow evening"), at(1, 20)]);
   const toMonday = ((1 - now.getDay() + 7) % 7) || 7;
-  list.push(["Monday morning", at(toMonday, 8)]);
+  list.push([t("Monday morning"), at(toMonday, 8)]);
   return list;
 }
 
@@ -212,18 +212,18 @@ function toLocalInput(date) {
 function offer(date, { fromText = false } = {}) {
   scheduleWhen = date;
   if (!date) {
-    scheduleRead.textContent = scheduleText.value.trim() ? "Not sure when that is — try “tomorrow 8pm”." : "";
+    scheduleRead.textContent = scheduleText.value.trim() ? t("Not sure when that is — try “tomorrow 8pm”.") : "";
     scheduleRead.className = "hint";
     scheduleConfirm.disabled = true;
     return;
   }
   if (date <= new Date()) {
-    scheduleRead.textContent = `${whenFormat.format(date)} has passed.`;
+    scheduleRead.textContent = t("{when} has passed.", { when: whenFormat.format(date) });
     scheduleRead.className = "hint warn";
     scheduleConfirm.disabled = true;
     return;
   }
-  scheduleRead.textContent = `Sends ${whenFormat.format(date)}`;
+  scheduleRead.textContent = t("Sends {when}", { when: whenFormat.format(date) });
   scheduleRead.className = "hint";
   scheduleConfirm.disabled = false;
   if (fromText) scheduleAt.value = toLocalInput(date);
@@ -269,7 +269,7 @@ async function scheduleDraft(date) {
       sendAt: Math.floor(date.getTime() / 1000),
     });
     scheduleMenu.hidden = true;
-    say(`scheduled for ${whenFormat.format(date)}`);
+    say(t("scheduled for {when}", { when: whenFormat.format(date) }));
     closeCompose();
     await renderOutboxNav();
   } catch (err) {
@@ -313,10 +313,10 @@ async function renderOutboxNav() {
   const failed = outboxEntries.filter((entry) => entry.state === "failed").length;
   nav.append(
     navItem({
-      label: failed ? `Scheduled — ${failed} not sent` : "Scheduled",
+      label: failed ? t("Scheduled — {count} not sent", { count: failed }) : t("Scheduled"),
       icon: "sent",
       count: outboxEntries.length,
-      title: "Mail waiting to be sent later",
+      title: t("Mail waiting to be sent later"),
       onClick: openOutbox,
     }),
   );
@@ -325,15 +325,15 @@ async function renderOutboxNav() {
 function relativeWhen(seconds) {
   const when = new Date(seconds * 1000);
   const minutes = Math.round((when - new Date()) / 60000);
-  if (minutes < 0) return `was due ${shortWhen.format(when)}`;
-  if (minutes < 60) return `in ${minutes} min`;
+  if (minutes < 0) return t("was due {when}", { when: shortWhen.format(when) });
+  if (minutes < 60) return t("in {minutes} min", { minutes });
   return shortWhen.format(when);
 }
 
 async function openOutbox() {
   await renderOutboxNav();
   const list = el("outbox-list");
-  list.dataset.empty = "Nothing is waiting to be sent.";
+  list.dataset.empty = t("Nothing is waiting to be sent.");
   list.textContent = "";
   for (const entry of outboxEntries) list.append(outboxItem(entry));
   outboxSheet.hidden = false;
@@ -347,18 +347,20 @@ function outboxItem(entry) {
   text.className = "grow";
   const title = document.createElement("div");
   title.className = "title";
-  title.textContent = entry.subject || "(no subject)";
+  title.textContent = entry.subject || t("(no subject)");
   const sub = document.createElement("div");
   sub.className = entry.state === "failed" ? "sub bad" : "sub";
   sub.textContent =
     entry.state === "failed"
-      ? `Not sent: ${entry.last_error ?? "unknown reason"}. It may have gone anyway — check Sent before sending it again.`
-      : `To ${entry.recipients} · from ${entry.account_email}`;
+      ? t("Not sent: {error}. It may have gone anyway — check Sent before sending it again.", {
+          error: entry.last_error ?? t("unknown reason"),
+        })
+      : t("To {recipients} · from {account}", { recipients: entry.recipients, account: entry.account_email });
   text.append(title, sub);
 
   const when = document.createElement("span");
   when.className = entry.state === "failed" ? "chip bad" : entry.state === "sending" ? "chip accent" : "chip";
-  when.textContent = entry.state === "sending" ? "sending…" : relativeWhen(entry.send_at);
+  when.textContent = entry.state === "sending" ? t("sending…") : relativeWhen(entry.send_at);
 
   const picker = document.createElement("input");
   picker.type = "datetime-local";
@@ -377,7 +379,7 @@ function outboxItem(entry) {
   };
 
   if (entry.state !== "sending") {
-    button("Send now", async () => {
+    button(t("Send now"), async () => {
       try {
         await invoke("reschedule", { id: entry.id, sendAt: Math.floor(Date.now() / 1000) });
         const sent = await invoke("send_due");
@@ -387,32 +389,33 @@ function outboxItem(entry) {
       }
       await openOutbox();
     });
-    button("Edit", () => editScheduled(entry));
-    const move = button(entry.state === "failed" ? "Retry at…" : "Move…", async () => {
+    button(t("Edit"), () => editScheduled(entry));
+    const move = button(entry.state === "failed" ? t("Retry at…") : t("Move…"), async () => {
       if (picker.hidden) {
         picker.hidden = false;
-        move.textContent = "Save";
+        move.textContent = t("Save");
         picker.focus();
         return;
       }
       const date = new Date(picker.value);
       if (!(date > new Date())) {
-        say("choose a time still to come", true);
+        say(t("choose a time still to come"), true);
         return;
       }
       try {
         await invoke("reschedule", { id: entry.id, sendAt: Math.floor(date.getTime() / 1000) });
-        say(`moved to ${whenFormat.format(date)}`);
+        say(t("moved to {when}", { when: whenFormat.format(date) }));
       } catch (err) {
         say(String(err), true);
       }
       await openOutbox();
     });
-    button("Cancel", async () => {
-      if (!confirm(`Cancel “${entry.subject || "(no subject)"}”? It will not be sent.`)) return;
+    button(t("Cancel"), async () => {
+      const subject = entry.subject || t("(no subject)");
+      if (!confirm(t("Cancel “{subject}”? It will not be sent.", { subject }))) return;
       try {
         await invoke("cancel_scheduled", { id: entry.id });
-        say("cancelled");
+        say(t("cancelled"));
       } catch (err) {
         say(String(err), true);
       }
@@ -435,7 +438,7 @@ async function editScheduled(entry) {
     if (account && account.id !== state.account) await selectAccount(account);
     await openComposeWith(draft);
     await renderOutboxNav();
-    say("taken out of the outbox — send it, or schedule it again");
+    say(t("taken out of the outbox — send it, or schedule it again"));
   } catch (err) {
     say(String(err), true);
   }
@@ -443,8 +446,8 @@ async function editScheduled(entry) {
 
 function reportSent(results) {
   for (const result of results) {
-    if (result.error) say(`“${result.subject}” was not sent: ${result.error}`, true);
-    else say(`sent “${result.subject}”`);
+    if (result.error) say(t("“{subject}” was not sent: {error}", { subject: result.subject, error: result.error }), true);
+    else say(t("sent “{subject}”", { subject: result.subject }));
   }
 }
 
