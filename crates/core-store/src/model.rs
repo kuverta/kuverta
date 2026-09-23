@@ -414,6 +414,9 @@ pub struct ListFilter {
     pub oldest_first: bool,
     /// A smart mailbox's rules, combined with the rest like any filter.
     pub smart: Option<crate::smart::SmartQuery>,
+    /// Leave out mail you wrote or threw away — see [`holds_incoming`]. What
+    /// "All mail" means; a folder listing is of that folder either way.
+    pub incoming_only: bool,
 }
 
 /// Names a client might have given the folder behind each RFC 6154 attribute.
@@ -466,6 +469,23 @@ fn named_like(name: &str, known: &[&str]) -> bool {
     // The leaf, so Gmail's `[Gmail]/Sent Mail` matches on `Sent Mail`.
     let leaf = name.rsplit('/').next().unwrap_or(name);
     known.iter().any(|k| leaf.eq_ignore_ascii_case(k))
+}
+
+/// Whether a folder holds mail that arrived, as against mail you wrote
+/// (Sent, Drafts) or mail that has been thrown away (Trash, Junk).
+///
+/// "All mail" is the list of what has been sent *to* you: a reply of your own
+/// sitting between two letters is the thread showing up twice, and nothing in
+/// Trash is waiting for anybody. Each folder is still there in the sidebar,
+/// and search looks everywhere, so nothing is hidden — only kept out of the
+/// one list that is read top to bottom.
+pub fn holds_incoming(name: &str, special_use: Option<&str>) -> bool {
+    !matches!(
+        special_use,
+        Some("\\Sent" | "\\Drafts" | "\\Trash" | "\\Junk")
+    ) && ![SENT_NAMES, DRAFTS_NAMES, TRASH_NAMES, JUNK_NAMES]
+        .iter()
+        .any(|known| named_like(name, known))
 }
 
 /// A folder and what is in it, for the sidebar.
