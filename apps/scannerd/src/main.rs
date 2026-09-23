@@ -481,6 +481,9 @@ async fn main() -> Result<()> {
                         }
                     }
                 }
+                Command::Refile(into) => {
+                    scanner.refile_letter(&uploader, into, now).await;
+                }
                 Command::RetryNow => scanner.retry_all(&spool, &uploader, now).await,
                 Command::FullView => {
                     // Found in a greyscale frame of the same view: there is no
@@ -616,6 +619,7 @@ async fn main() -> Result<()> {
                     .map(|(_, ok, words)| (ok, words)),
                 finishing_in: scanner.finishing_in(now),
                 can_undo_letter: scanner.can_undo_letter(now),
+                can_refile: scanner.can_refile(now),
                 queue: &waiting,
                 showing_queue,
                 confirming: confirming
@@ -904,6 +908,12 @@ fn open_touch(device: &str, args: &Args, bands: Bands, height: u32, hub: &Arc<Hu
             Some(scannerd::display::Action::UndoLetter) => Command::UndoLetter { confirmed: false },
             Some(scannerd::display::Action::ConfirmUndoLetter) => {
                 Command::UndoLetter { confirmed: true }
+            }
+            Some(scannerd::display::Action::FileNowhere) => {
+                Command::Refile(scannerd::folders::Refiling::Nowhere)
+            }
+            Some(scannerd::display::Action::FileInBin) => {
+                Command::Refile(scannerd::folders::Refiling::Bin)
             }
             Some(scannerd::display::Action::OpenQueue(_)) => Command::ShowQueue(true),
             Some(scannerd::display::Action::Back) => Command::ShowQueue(false),

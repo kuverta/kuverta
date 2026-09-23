@@ -224,6 +224,23 @@ in the env file, or **Folders on the shelf** on the setup page, which wins —
 the display says, for each letter, which one it goes in, or **Throw away** for
 the folder marked as the bin (a `-` in the env file).
 
+### Filing it yourself
+
+Paperless reads the words; it cannot know that a letter is worth keeping but
+belongs on no shelf, or that the paper can go in the bin. While the display
+shows where the last letter goes — and on the setup page — two buttons say so
+instead:
+
+- **No folder** takes the folders' tags off it. The letter stays in Paperless;
+  the display says *No folder*.
+- **Throw away** puts the bin's tag on it instead. The letter stays in
+  Paperless too; only the paper goes.
+
+Either works the moment the letter is sent, before Paperless has read it: the
+answer is remembered and applied as soon as it has. Tags that are not folders —
+the address, who the post is for — are left alone, and "Undo last letter" still
+deletes the whole thing for ten minutes.
+
 ## Who the letter is for
 
 More than one person in a household gets post — a partner, a child, someone

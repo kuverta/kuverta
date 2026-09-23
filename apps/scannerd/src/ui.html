@@ -106,6 +106,8 @@
       <button id="scan-toggle" type="button">Stop scanning</button>
       <button id="undo-page" type="button" disabled>Undo last page</button>
       <button class="danger" id="cancel-letter" type="button" disabled>Cancel letter</button>
+      <button id="file-nowhere" type="button" hidden title="Keep it in Paperless, in no folder">No folder</button>
+      <button id="file-in-bin" type="button" hidden title="The paper can go; Paperless keeps the letter">Throw away</button>
       <button id="undo-letter" type="button" hidden>Undo last letter</button>
       <button id="learn">Learn empty table</button>
     </div>
@@ -669,6 +671,8 @@
     $('undo-page').disabled = !s.collecting || pages.length === 0;
     $('cancel-letter').disabled = !s.collecting || pages.length === 0;
     $('undo-letter').hidden = !s.can_undo_letter;
+    $('file-nowhere').hidden = !s.can_refile;
+    $('file-in-bin').hidden = !s.can_refile;
     $('scan-toggle').textContent = s.scanning ? 'Stop scanning' : 'Start scanning';
     $('scan-toggle').className = s.scanning ? '' : 'primary';
     const finishing = s.finishing || Date.now() - pressedFinishAt < 3000;
@@ -730,6 +734,8 @@
     const n = last ? last.open_pages.length : 0;
     if (confirm(`Throw this letter away — ${n} page${n === 1 ? '' : 's'}? They are kept on the scanner for a week.`)) post('/api/cancel-letter').catch(complain);
   };
+  $('file-nowhere').onclick = () => post('/api/file-nowhere').catch(complain);
+  $('file-in-bin').onclick = () => post('/api/file-in-bin').catch(complain);
   $('undo-letter').onclick = () => {
     if (confirm('Take the last letter back? If it has reached Paperless it is deleted there (Paperless keeps it in its trash).')) post('/api/undo-letter').catch(complain);
   };

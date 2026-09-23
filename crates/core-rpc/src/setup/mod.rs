@@ -708,7 +708,8 @@ pub fn write_paperless(data_dir: &Path, install: &PaperlessInstall) -> Result<(S
          PAPERLESS_TIME_ZONE={}\n\
          PAPERLESS_OCR_LANGUAGE=deu+eng\n\
          PAPERLESS_OCR_DESKEW=true\n\
-         PAPERLESS_OCR_ROTATE_PAGES=true\n",
+         PAPERLESS_OCR_ROTATE_PAGES=true\n\
+         PAPERLESS_OCR_USER_ARGS={{\"oversample\": 300}}\n",
         install.username.trim(),
         install.password,
         time_zone(),

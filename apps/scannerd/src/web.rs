@@ -99,6 +99,8 @@ impl Web {
             "/api/undo-page" => Command::UndoPage,
             "/api/cancel-letter" => Command::CancelLetter { confirmed: true },
             "/api/undo-letter" => Command::UndoLetter { confirmed: true },
+            "/api/file-nowhere" => Command::Refile(crate::folders::Refiling::Nowhere),
+            "/api/file-in-bin" => Command::Refile(crate::folders::Refiling::Bin),
             "/api/discard-queued" => match read_letter_name(body).await {
                 Ok(name) => Command::DiscardQueued {
                     which: crate::hub::Which::Named(name),

@@ -26,6 +26,7 @@ fn facts(state: &str) -> Facts<'_> {
         notice: None,
         finishing_in: None,
         can_undo_letter: false,
+        can_refile: false,
         confirming: None,
         queue: &[],
         showing_queue: false,
@@ -194,6 +195,54 @@ fn the_screen_says_who_the_letter_is_for_as_well_as_where_it_goes() {
     });
     assert_eq!(screen.headline, "Which folder?");
     assert_eq!(screen.detail, "For Max Mustermann");
+}
+
+#[test]
+fn a_letter_just_sent_can_be_filed_by_hand_from_the_display() {
+    // Paperless cannot know that a letter is worth keeping but belongs on no
+    // shelf, or that the paper can go: whoever is holding it does.
+    let filings = filed(Outcome::Folders(vec![Folder::named("Car")]));
+    let screen = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        can_refile: true,
+        touch: true,
+        scanning: false,
+        ..facts("waiting")
+    });
+    let labels: Vec<String> = screen.buttons.iter().map(|b| b.label()).collect();
+    assert!(labels.contains(&"No folder".to_string()), "{labels:?}");
+    assert!(labels.contains(&"Throw away".to_string()), "{labels:?}");
+
+    // While scanning, the two answers are there instead of "undo": the
+    // question in front of whoever is standing there is where this one goes.
+    let scanning = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        can_refile: true,
+        can_undo_letter: true,
+        scanning: true,
+        touch: true,
+        ..facts("waiting")
+    });
+    let labels: Vec<String> = scanning.buttons.iter().map(|b| b.label()).collect();
+    assert!(labels.contains(&"No folder".to_string()), "{labels:?}");
+    assert!(
+        !labels.contains(&"Undo last letter".to_string()),
+        "{labels:?}"
+    );
+    // Five at most, or they do not fit above the picture.
+    assert!(scanning.buttons.len() <= 5, "{labels:?}");
+}
+
+#[test]
+fn a_letter_filed_in_no_folder_says_so_rather_than_asking_which() {
+    let filings = filed(Outcome::Nowhere);
+    let screen = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "No folder");
+    assert_eq!(screen.detail, "Kept in Paperless, on no shelf");
+    assert_eq!(screen.tone, scannerd::display::Tone::Done);
 }
 
 #[test]

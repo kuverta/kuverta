@@ -124,6 +124,12 @@ services:
       PAPERLESS_OCR_CLEAN: "none"
       PAPERLESS_OCR_OUTPUT_TYPE: "pdf"
       PAPERLESS_OCR_ROTATE_PAGES: "true"
+      # A page photographed on the rig lands at about 170 dpi — the page is
+      # only so many sensor pixels wide. Tesseract is trained at 300, and
+      # small print (footers, account numbers) is what it loses first, so
+      # ocrmypdf renders the page at 300 before reading it.
+      PAPERLESS_OCR_USER_ARGS: '{"oversample": 300}'
+
       PAPERLESS_TIME_ZONE: Europe/Berlin
       PAPERLESS_FILENAME_FORMAT: "{created_year}/{correspondent}/{title}"
     volumes:

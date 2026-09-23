@@ -72,6 +72,9 @@ read the letter and shows the folder whose tag it got. Told neither way, it
 takes the shelf from Paperless — the tags that match letters by themselves,
 which is what kuverta's setup assistant writes — with
 `SCANNERD_BIN_FOLDER=Werbung` naming which of them is the bin.
+Two buttons on the display file a letter by hand when Paperless's answer is
+not the right one: **No folder** takes the folder tags off it, **Throw away**
+puts the bin's on, and either way the letter stays in Paperless.
 `SCANNERD_PEOPLE=Erika Mustermann,Max Mustermann` adds the people in the
 household: each is a tag of its own (`Person: …`) matched on the name, and the
 display says who a letter is for as well as which folder it goes in.

@@ -176,6 +176,8 @@ fn action_icon(action: Action) -> Icon {
         Action::UndoPage | Action::UndoLetter => Icon::Undo,
         Action::CancelLetter(_) | Action::ConfirmCancel(_) => Icon::Bin,
         Action::ConfirmUndoLetter => Icon::Undo,
+        Action::FileNowhere => Icon::Folder,
+        Action::FileInBin => Icon::Bin,
         Action::OpenQueue(_) => Icon::Clock,
         Action::QueuedLetter(_) => Icon::Envelope,
         Action::ConfirmQueued(_) => Icon::Bin,
@@ -196,7 +198,13 @@ pub fn rows(screen: &Screen, height: u32) -> Vec<(i32, i32, Action)> {
     if count == 0 {
         return Vec::new();
     }
-    let each = if count >= 3 { h * 0.135 } else { h * 0.15 };
+    let each = match count {
+        0..=2 => h * 0.15,
+        3..=4 => h * 0.135,
+        // Five and more only happen with a letter to file by hand on top of
+        // everything else; they still have to fit above the card.
+        _ => h * 0.115,
+    };
     let top = h - MARGIN - count as f32 * each - (count - 1) as f32 * GAP;
     screen
         .buttons

@@ -287,8 +287,11 @@ async fn a_page_is_straightened_before_it_is_kept() {
         panic!("no capture: {last:?}");
     };
     let (width, height) = image::image_dimensions(&path).unwrap();
-    // Top 200 and bottom 400 wide; sides hypot(100, 300) long.
-    assert_eq!((width, height), (300, 100f64.hypot(300.0).round() as u32));
+    // Top 200 and bottom 400 wide; sides hypot(100, 300) long. The picture
+    // is as wide as the *widest* edge: the bottom of the page is nearest the
+    // camera and has the most pixels on it, and those are the ones the OCR
+    // reads.
+    assert_eq!((width, height), (400, 100f64.hypot(300.0).round() as u32));
     assert!(
         std::fs::read_dir(path.parent().unwrap())
             .unwrap()

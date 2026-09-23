@@ -13,7 +13,7 @@ use anyhow::Result;
 use scannerd::camera::Camera;
 use scannerd::folders::{
     folders_among, parse_env, parse_env_people, words_from_match, Filings, Folder, Outcome,
-    CHECK_EVERY_SECS, GIVE_UP_SECS,
+    Refiling, CHECK_EVERY_SECS, GIVE_UP_SECS,
 };
 use scannerd::run::Scanner;
 use scannerd::settings::{valid_folders, Settings};
@@ -190,6 +190,7 @@ fn paperless(reading: usize) -> (String, Log) {
                     r#"{"count":1,"results":[{"task_id":"task-3-dup","status":"failure","result_data":{"error":"It is a duplicate of Post 1 (#7)."},"related_document_ids":[]}]}"#.into()
                 }
                 "GET /api/documents/42/" => r#"{"id":42,"tags":[9,3]}"#.to_string(),
+                r if r.starts_with("PATCH /api/documents/") => "{}".into(),
                 _ => String::new(),
             };
             let status = if reply.is_empty() {
@@ -375,7 +376,29 @@ impl Camera for Script {
     }
 
     fn capture(&self, path: &Path) -> Result<()> {
-        std::fs::write(path, b"\xff\xd8a photograph of a letter")?;
+        // A real JPEG with lines of "text" on it: the pages of a letter go
+        // into a PDF, which needs a JPEG that can be read.
+        let (w, h) = (160usize, 220usize);
+        let page: Vec<u8> = (0..w * h)
+            .map(|i| {
+                let (x, y) = (i % w, i / w);
+                let printed =
+                    (8..h - 8).contains(&y) && (8..w - 8).contains(&x) && y % 10 < 4 && x % 8 < 5;
+                if printed {
+                    40
+                } else {
+                    220
+                }
+            })
+            .collect();
+        let mut jpeg = Vec::new();
+        jpeg_encoder::Encoder::new(&mut jpeg, 85).encode(
+            &page,
+            w as u16,
+            h as u16,
+            jpeg_encoder::ColorType::Luma,
+        )?;
+        std::fs::write(path, jpeg)?;
         Ok(())
     }
 }
@@ -444,6 +467,91 @@ async fn a_page_sent_to_paperless_is_followed_until_its_folder_is_known() {
         .take_events()
         .iter()
         .any(|event| event.ok && event.text.ends_with("goes in Car")));
+}
+
+#[tokio::test]
+async fn a_letter_can_be_filed_by_hand_in_no_folder_or_in_the_bin() {
+    // Paperless cannot tell that a letter is worth keeping but belongs on no
+    // shelf, or that the paper can go. The buttons on the display say so, and
+    // the letter stays in Paperless either way.
+    let dir = TempDir(std::env::temp_dir().join(format!("scannerd-refile-{}", std::process::id())));
+    let _ = std::fs::remove_dir_all(&dir.0);
+    let spool = Spool::open(&dir.0).unwrap();
+    let (base, log) = paperless(0);
+    let uploader = uploader(&base);
+    let mut frames = vec![desk(), page(), page(), page(), page(), page()];
+    frames.extend((0..40).map(|_| desk()));
+    let camera = Script(Mutex::new(frames));
+    // Pages collect into letters, as they do on the rig: a letter has to be
+    // finished before there is one to file by hand.
+    let (_press, button) = scannerd::button::Button::channel();
+    let mut scanner = Scanner::new(3, Duration::from_secs(30)).collecting(scannerd::run::Letters {
+        button,
+        idle: Duration::from_secs(3_600),
+        when_clear: Some(Duration::from_secs(3)),
+    });
+    scanner.file_into(vec![
+        Folder::named("Car"),
+        folder("Throw away", "", true),
+        Folder::person("Erika Mustermann"),
+    ]);
+    let start = now();
+
+    // Second by second, as the loop runs: the page goes down, the table is
+    // clear again, the letter closes itself and Paperless reads it.
+    for second in 0..40 {
+        scanner
+            .turn(&camera, &spool, &uploader, start + second)
+            .await;
+    }
+    let now = start + 40;
+    let events: Vec<String> = scanner
+        .take_events()
+        .iter()
+        .map(|event| event.text.clone())
+        .collect();
+    assert!(
+        scanner.can_refile(now),
+        "a letter was finished and sent: {events:?}"
+    );
+
+    scanner
+        .refile_letter(&uploader, Refiling::Nowhere, now)
+        .await;
+    assert_eq!(
+        scanner.filing().map(|f| &f.outcome),
+        Some(&Outcome::Nowhere)
+    );
+
+    // The folders' tags come off; what is not a folder — the address, who the
+    // post is for — stays.
+    let patch = requests(&log)
+        .into_iter()
+        .filter(|(request, _)| request.starts_with("PATCH /api/documents/"))
+        .next_back()
+        .expect("the document was changed");
+    let sent: serde_json::Value = serde_json::from_str(&patch.1).unwrap();
+    assert_eq!(sent["tags"], serde_json::json!([9]), "9 is not a folder");
+
+    // And into the bin: the bin's tag goes on instead.
+    scanner
+        .refile_letter(&uploader, Refiling::Bin, now + 1)
+        .await;
+    let patch = requests(&log)
+        .into_iter()
+        .filter(|(request, _)| request.starts_with("PATCH /api/documents/"))
+        .next_back()
+        .unwrap();
+    let sent: serde_json::Value = serde_json::from_str(&patch.1).unwrap();
+    assert_eq!(
+        sent["tags"],
+        serde_json::json!([9, 11]),
+        "11 is the bin's tag"
+    );
+    assert_eq!(
+        scanner.filing().map(|f| &f.outcome),
+        Some(&Outcome::Folders(vec![folder("Throw away", "", true)]))
+    );
 }
 
 #[tokio::test]

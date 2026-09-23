@@ -152,6 +152,18 @@ pub fn parse_env(text: &str) -> Vec<Folder> {
         .collect()
 }
 
+/// Filing a letter by hand, from the display, instead of taking what
+/// Paperless made of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refiling {
+    /// In no folder: the letter stays in Paperless, and its folder tags come
+    /// off. For post that is worth keeping but belongs on no shelf.
+    Nowhere,
+    /// In the bin: the paper can be thrown away, and Paperless keeps the
+    /// letter. The bin's tag goes on, the other folders' come off.
+    Bin,
+}
+
 /// What Paperless made of a letter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -167,6 +179,8 @@ pub enum Outcome {
     TimedOut,
     /// Taken back with "Undo last letter": deleted from Paperless.
     Deleted,
+    /// Filed by hand in no folder: kept in Paperless, on no shelf.
+    Nowhere,
 }
 
 /// A letter handed to Paperless, followed until it is filed.
@@ -183,6 +197,9 @@ pub struct Filing {
     /// To be deleted from Paperless as soon as it is filed: taken back while
     /// it was still being read.
     pub undo: bool,
+    /// To be filed by hand as soon as Paperless has read it: the display was
+    /// told where it goes before Paperless had an answer.
+    pub refile: Option<Refiling>,
     checked_at: Option<u64>,
 }
 
@@ -211,6 +228,7 @@ impl Filings {
             decided_at: None,
             document: None,
             undo: false,
+            refile: None,
             checked_at: None,
         });
         if self.filings.len() > KEEP {
@@ -255,6 +273,11 @@ impl Filings {
     }
 
     /// The letter sent as `name`, to change.
+    /// The same, to look at rather than to change.
+    pub fn named_ref(&self, name: &str) -> Option<&Filing> {
+        self.filings.iter().rev().find(|filing| filing.name == name)
+    }
+
     pub fn named(&mut self, name: &str) -> Option<&mut Filing> {
         self.filings
             .iter_mut()

@@ -342,6 +342,11 @@ impl Camera for RpiCamera {
             .arg("--nopreview")
             // Autofocus where the sensor has it; harmless where it does not.
             .args(["--autofocus-mode", "auto"])
+            // The camera's colour denoising smooths exactly what the OCR
+            // needs: the thin strokes of 8-point print. A photograph of paper
+            // is not a photograph of a dim room, and there is little noise to
+            // remove.
+            .args(["--denoise", "cdn_off"])
             // Long enough for the exposure to settle after the camera starts;
             // 800 was a third of a second more than the rig's needed.
             .args(["--timeout", "500"])
