@@ -275,14 +275,9 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
-    // Nobody may have said which folders there are — the desktop app's
-    // assistant sets them up in Paperless, and the scanner is the other thing
-    // that reads them.
-    let mut adopted = if nothing_says_which_folders(&args, &settings) {
-        adopt_folders(&args, &uploader).await
-    } else {
-        Vec::new()
-    };
+    // The shelf is Paperless's: the desktop app's assistant sets the folders
+    // up there, and the scanner reads them. See `folders_for`.
+    let mut adopted = adopt_folders(&args, &settings, &uploader).await;
     let mut adopted_at = now();
     if !adopted.is_empty() {
         tracing::info!(count = adopted.len(), "folders taken from Paperless");
@@ -382,16 +377,18 @@ async fn main() -> Result<()> {
         tokio::time::sleep(interval).await;
         let now = now();
 
-        // Paperless may not have been up when the shelf was asked for — it
-        // often is not, a minute after a power cut that took both machines
-        // down. Asked for again now and then, until there is one.
-        if adopted.is_empty()
-            && nothing_says_which_folders(&args, &settings)
-            && now.saturating_sub(adopted_at) >= ADOPT_FOLDERS_EVERY_SECS
-        {
+        // The shelf is Paperless's, and is asked for again on a timer rather
+        // than once: a folder added or reworded in the desktop app's
+        // assistant has to reach the rig, and Paperless is often not up a
+        // minute after a power cut that took both machines down.
+        if now.saturating_sub(adopted_at) >= ADOPT_FOLDERS_EVERY_SECS {
             adopted_at = now;
-            adopted = adopt_folders(&args, &uploader).await;
-            if !adopted.is_empty() {
+            let fresh = adopt_folders(&args, &settings, &uploader).await;
+            let changed = !fresh.is_empty() && fresh != adopted;
+            if !fresh.is_empty() {
+                adopted = fresh;
+            }
+            if changed {
                 tracing::info!(count = adopted.len(), "folders taken from Paperless");
                 hub.event(
                     now,
@@ -567,14 +564,10 @@ async fn main() -> Result<()> {
                         Err(err) => hub.event(now, false, format!("{err:#}")),
                     }
                     // Set up again before the next letter: the words, or the
-                    // Paperless, may be new — including its shelf, when the
-                    // folders are the ones Paperless holds.
-                    if nothing_says_which_folders(&args, &settings) {
-                        adopted = adopt_folders(&args, &uploader).await;
-                        adopted_at = now;
-                    } else {
-                        adopted.clear();
-                    }
+                    // Paperless, may be new — and the shelf is Paperless's,
+                    // so a saved change of address means a different shelf.
+                    adopted = adopt_folders(&args, &settings, &uploader).await;
+                    adopted_at = now;
                     scanner.file_into(folders_for(&args, &settings, &adopted));
                     let newer = match view_for(&args, &settings) {
                         Ok(newer) => newer,
@@ -706,44 +699,52 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
 /// shelf again.
 const ADOPT_FOLDERS_EVERY_SECS: u64 = 300;
 
-/// The folders in force: the page's, then the env file's, then the shelf
-/// Paperless already has.
+/// The folders in force: Paperless's shelf, and only failing that what the
+/// rig was started with.
 ///
-/// An empty list saved on the page is a choice — follow letters into no
-/// folder at all — and is not overruled by what Paperless holds; only a
-/// scanner that was never told anything adopts.
+/// Paperless is the one that actually files a letter — its tags match the
+/// text and put it in a folder — so its shelf is the only one worth showing
+/// on the rig. A second list kept here could only ever disagree with it, and
+/// did: the panel said one folder while Paperless used another, because the
+/// two lists of words had drifted a long way apart. The words are edited in
+/// one place, the desktop app's assistant, and reach the rig from Paperless.
+///
+/// The env file still names folders, for a rig standing in front of a
+/// Paperless that has no shelf yet — the first run, or one that has just been
+/// reinstalled — and the setup page's own list is kept for the same reason.
+/// Whichever of those is in force, Paperless replaces it as soon as it has
+/// tags of its own.
 fn folders_for(args: &Args, settings: &Settings, adopted: &[Folder]) -> Vec<Folder> {
+    if !adopted.is_empty() {
+        return adopted.to_vec();
+    }
     let mut started = folders::parse_env(args.folders.as_deref().unwrap_or_default());
     started.extend(folders::parse_env_people(
         args.people.as_deref().unwrap_or_default(),
     ));
-    let folders = settings.effective_folders(&started);
-    if folders.is_empty() && nothing_says_which_folders(args, settings) {
-        return adopted.to_vec();
-    }
-    folders
+    settings.effective_folders(&started)
 }
 
-/// Whether neither the env file nor the setup page names any folder.
-fn nothing_says_which_folders(args: &Args, settings: &Settings) -> bool {
-    settings.folders.is_none()
-        && folders::parse_env(args.folders.as_deref().unwrap_or_default()).is_empty()
-        && folders::parse_env_people(args.people.as_deref().unwrap_or_default()).is_empty()
-}
-
-/// The shelf Paperless already has, for a scanner nobody told which folders
-/// there are — the desktop app's assistant sets them up there. Which of them
-/// is the bin is the one thing a tag cannot say, so `--bin-folder` names it.
+/// The shelf Paperless has — the desktop app's assistant sets the folders up
+/// there, and this is the other end of it.
+///
+/// Which of them is the bin is the one thing a Paperless tag cannot say, so
+/// it stays the rig's own: `--bin-folder`, the `-Name` in the env file's
+/// folder list, or whichever folder was marked as the bin on the setup page.
+/// That is the one part of the shelf the rig still decides, and it survives
+/// the words being replaced by Paperless's.
 ///
 /// A Paperless that cannot be reached is not an error worth stopping for:
-/// this is tried again, and until then letters are filed without a folder.
-async fn adopt_folders(args: &Args, uploader: &Uploader) -> Vec<Folder> {
-    let bin = args.bin_folder.as_deref().unwrap_or_default().trim();
+/// this is tried again, and until then the rig keeps the shelf it had.
+async fn adopt_folders(args: &Args, settings: &Settings, uploader: &Uploader) -> Vec<Folder> {
+    let bin = bin_folder(args, settings);
     match uploader.folders_in_paperless().await {
         Ok(folders) => folders
             .into_iter()
             .map(|folder| Folder {
-                discard: !bin.is_empty() && folder.name.eq_ignore_ascii_case(bin),
+                discard: bin
+                    .as_deref()
+                    .is_some_and(|bin| folder.name.eq_ignore_ascii_case(bin)),
                 ..folder
             })
             .collect(),
@@ -752,6 +753,32 @@ async fn adopt_folders(args: &Args, uploader: &Uploader) -> Vec<Folder> {
             Vec::new()
         }
     }
+}
+
+/// Which folder the post that needs no paper copy goes in.
+fn bin_folder(args: &Args, settings: &Settings) -> Option<String> {
+    let named = args
+        .bin_folder
+        .as_deref()
+        .map(str::trim)
+        .filter(|bin| !bin.is_empty())
+        .map(str::to_string);
+    named
+        .or_else(|| {
+            folders::parse_env(args.folders.as_deref().unwrap_or_default())
+                .into_iter()
+                .find(|folder| folder.discard)
+                .map(|folder| folder.name)
+        })
+        .or_else(|| {
+            settings
+                .folders
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .find(|folder| folder.discard)
+                .map(|folder| folder.name.clone())
+        })
 }
 
 /// The uploader for the settings in force: the page's, then the env file's.

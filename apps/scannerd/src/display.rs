@@ -512,9 +512,12 @@ fn where_it_goes(outcome: &Outcome) -> (String, String) {
         Outcome::Folders(_) if folders.len() == 1 => {
             (folders[0].name.clone(), "Put the letter in this folder")
         }
+        // It fits more than one, but it is a piece of paper and goes in one
+        // of them. The best fit is named — `Scanner::best_first` has already
+        // put it at the front — and the others are said underneath, where
+        // they are a remark rather than a decision to make standing there.
         Outcome::Folders(_) if !folders.is_empty() => {
-            let names: Vec<&str> = folders.iter().map(|f| f.name.as_str()).collect();
-            (names.join(" / "), "It fits more than one folder")
+            (folders[0].name.clone(), "Put it here; it fits others too")
         }
         Outcome::Folders(_) => ("Which folder?".into(), "Paperless could not tell"),
         Outcome::Duplicate => ("Already filed".into(), "Paperless had this letter"),

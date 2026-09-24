@@ -1955,3 +1955,69 @@ reads as `Lawstuff` on the rig, on Staatsanwaltschaft, Strafbefehlsverfahren,
 StPO and Beschuldigten — four of the sixteen words, which is what a list of
 sixteen is for. The same shelf leaves the Finanzamt letter in Taxes and
 Inkasso/Rechnungen and out of the law folder.
+
+## 33. One shelf, in one place, and one folder per letter
+
+**2026-09-24.**
+
+Asked whether the folders were kept in step between the rig, Paperless and
+kuverta. They were not, and measuring it was unpleasant: the `Lawstuff` on the
+rig and the `Lawstuff` in Paperless had **three of sixteen words in common**,
+and `House` and `Work` existed only in Paperless, so the rig could not guess
+them at all.
+
+The wiring was the cause. kuverta's assistant wrote folders to Paperless as
+tags. The rig adopted them — but only once, and only if nobody had ever told
+it any folders, which `nothing_says_which_folders` tested by asking whether
+the setup page had ever saved a list. Save one folder on the rig's page and it
+never looked at Paperless again. And it never wrote back.
+
+What made that worse than untidy is which list actually files a letter.
+Paperless's tags do: they match the text and put the document in a folder. The
+rig's list only drives its own guess and the number keys in preview. So the
+panel could say one folder with complete confidence while Paperless used
+another — and the further the lists drifted, the more often it did.
+
+**Paperless is the shelf now.** The rig reads its tags every five minutes and
+keeps no list of its own; the env file and the page's old list survive only as
+what a rig falls back on in front of a Paperless with no tags yet — a first
+run, or a reinstall — and are replaced the moment Paperless has any. The rig's
+page shows the shelf read-only and says where to change it. The one thing it
+still decides is which folder is the bin, because a Paperless tag cannot say
+that; adopting keeps it.
+
+### And a letter is one piece of paper
+
+The same look found `guess` returning *every* folder a letter matched, which
+the panel and the preview then both showed. A document can carry two tags and
+Paperless is right to give it two. The shelf cannot: the paper goes in one
+place, so naming two is handing back the decision the rig exists to make.
+
+`folders::rank` counts how many of each folder's words stand in the text and
+orders by it. A letter carrying five of Taxes' words and one of Rechnungen's
+is a tax letter. Ties keep shelf order, so the answer does not move about
+between readings of the same page. Paperless's own answer is put through the
+same ranking, so when it tags a document twice the display names the best fit
+and mentions the rest underneath.
+
+### Merging the two shelves
+
+The drift had to be undone before the new rule could take over, and the union
+of the two lists did not fit: Paperless keeps 256 characters of a tag's match,
+and `Lawstuff` wanted 29 words. What made it fit was noticing the lists were
+arguing. Four debt-enforcement words — Mahnbescheid, Inkasso,
+Gerichtsvollzieher, Vollstreckungsbescheid — were in both `Lawstuff` and
+`Inkasso/Rechnungen`, and five employment words in both `Personal` and `Work`.
+Putting each where it belongs freed exactly the room `Lawstuff` needed for
+both of its subjects, criminal procedure and lawyers/courts/inheritance, at
+nineteen words.
+
+### Verified
+
+`apps/scannerd/tests/folders.rs` ranks a tax letter that is also a Mahnung
+above Rechnungen on word count, and holds ties to shelf order. The scanner's
+own suite covers the rest.
+
+Against the real shelf: the Wasserschutzpolizei letter reads as `Lawstuff`,
+the Finanzamt letter as `Taxes` first and `Inkasso/Rechnungen` second — which
+is what it is. Both sides now hold the same twelve lists.
