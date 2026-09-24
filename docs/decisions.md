@@ -1887,3 +1887,71 @@ clicking the sender opens it, it then keeps up with the cursor, the × shuts it
 for good, the reading pane is what gives up the width, the seams drag and stop
 at the limits and are remembered, and a message binned from the card leaves
 both the card and the list with the card still open on the same person.
+
+## 32. Saying where a letter goes while it is still in your hand
+
+**2026-09-24.**
+
+Four things the rig got wrong about the letter in front of you, from one
+session of working a pile through.
+
+**The panel said nothing about it.** The Pi has read each page since §28 and
+the setup page shows the guessed folder, but the panel — the thing you are
+looking at, with the paper in your hand — showed only where the *previous*
+letter had gone, and only once Paperless had answered. The guess is on the
+panel now, as an outline pill in the top right, from the first page read. An
+outline rather than a filled one because it is a guess; the last letter's
+folder, which is settled, keeps the filled pill and gets the corner back when
+there is no guess to show.
+
+**A letter from the police had nowhere to go.** The shelf had no law folder,
+so a Strafbefehl notice was filed under nobody. The deeper problem was the
+word lists: they were written for a scanner and are matched against what a
+camera on a stalk and tesseract make of a page, which is bad text. That letter
+came out with "Strafprozessordnung" as "Sraiomzessorsnung", "Swatprozessordnung"
+and "Stra prazessortrugg" — three wrong spellings of the one word that would
+have caught it. It was filed in the end by "Staatsanwaltschaft", which happened
+to survive on page two.
+
+So the lists the setup assistant offers are longer than they look as though
+they need to be: every extra spelling of the same idea is another chance that
+one lands. There is a **Recht & Behörden** folder now, with the broadest list
+of the lot, because a letter from a prosecutor is the one kind of post where
+finding it a fortnight later is not good enough. "Anzeige" and "Ladung" are
+deliberately not in it — one is also an advertisement and the other a lorry's
+load. There is a **Gesundheit** folder too, and the other five lists are about
+half as long again.
+
+Each list has to fit the 256 characters Paperless keeps of a tag's match.
+Three of the new ones did not, and the rig refused them — which is the good
+outcome, but only because the rig checked. `desktop-shelf.test.js` now checks
+it where the lists are written, along with two things no length check would
+catch: that no suggestion matches on a word every letter carries, and that no
+word appears in two folders.
+
+**The preview showed the text without the page.** A letter's pages are read
+into text that stays on screen until the next letter starts — but the pages
+themselves were deleted the moment the letter was closed into its PDF. So
+after every letter the setup page showed what the letter said beside an empty
+frame. The pages go to `spool/sent/` now instead of being deleted, are served
+from there, and are cleared at exactly the moment their text is: one letter on
+screen, whole, or none.
+
+**And the folders were chips.** In preview mode they are what you act on, one
+key press each, from across a table. They are the biggest thing in the column
+now rather than set at the size of the running text beside them.
+
+### Verified
+
+`apps/scannerd/tests/display.rs` has the panel naming the folder from a single
+open page, joining two of them, and saying nothing when there is no letter
+open. `apps/scannerd/tests/letters.rs` closes a letter and finds its pages
+still readable in `sent/`, then gone once the next letter starts.
+`kuverta-bird/test/desktop-shelf.test.js` holds the word lists to the match
+limit and to being distinctive.
+
+Against the real letter: the Wasserschutzpolizei notice that started this now
+reads as `Lawstuff` on the rig, on Staatsanwaltschaft, Strafbefehlsverfahren,
+StPO and Beschuldigten — four of the sixteen words, which is what a list of
+sixteen is for. The same shelf leaves the Finanzamt letter in Taxes and
+Inkasso/Rechnungen and out of the law folder.

@@ -372,22 +372,39 @@ fn paint_scanning(pixmap: &mut Pixmap, screen: &Screen, panes: &Panes, bottom: f
     let tone = accent(screen.tone);
     let bar_height = 36.0;
 
-    // Where the letter before goes: a pill in its folder's colour.
+    // Where a letter goes: a pill, top right. The letter in your hand comes
+    // first — that is the live question, and it is answered from the first
+    // page read rather than after Paperless has the letter — and it is drawn
+    // as an outline, because it is still only a guess. Where the letter
+    // before went is filled in, and gives up the corner while there is a
+    // guess to show.
     let mut room = width - 2.0 * MARGIN;
-    if let Some((folder_tone, words)) = &screen.last_letter {
-        let folder = words
-            .split_once(": ")
-            .map(|(_, folder)| folder)
-            .unwrap_or(words.as_str());
-        let colour = accent(*folder_tone);
+    let pill = match (&screen.guess, &screen.last_letter) {
+        (Some(guess), _) => Some((accent(Tone::Folder), guess.as_str(), true)),
+        (None, Some((folder_tone, words))) => Some((
+            accent(*folder_tone),
+            words
+                .split_once(": ")
+                .map(|(_, folder)| folder)
+                .unwrap_or(words.as_str()),
+            false,
+        )),
+        (None, None) => None,
+    };
+    if let Some((colour, folder, guessed)) = pill {
         let (label, size) = paint::fitted(folder, Weight::Semibold, &[16.0, 14.0], width * 0.34);
         let pill_width = paint::measure(&label, Weight::Semibold, size).0 + 52.0;
         let pill = (width - MARGIN - pill_width, MARGIN, pill_width, bar_height);
-        paint::rounded(pixmap, pill, bar_height / 2.0, paint::flat(colour));
-        let ink = if is_light(colour) {
-            card_bottom()
+        let ink = if guessed {
+            paint::rounded_edge(pixmap, pill, bar_height / 2.0, colour);
+            colour
         } else {
-            ink()
+            paint::rounded(pixmap, pill, bar_height / 2.0, paint::flat(colour));
+            if is_light(colour) {
+                card_bottom()
+            } else {
+                ink()
+            }
         };
         paint::icon(
             pixmap,
