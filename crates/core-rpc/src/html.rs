@@ -148,8 +148,21 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
             "a" if !ending => link = Some((attribute(tag, "href").unwrap_or_default(), out.len())),
             "a" if ending => {
                 if let Some((href, from)) = link.take() {
-                    if out[from..].trim().is_empty() && !href.trim().is_empty() {
-                        push_text(&mut out, href.trim());
+                    // `get`, not a slice. The text is not only ever appended
+                    // to: a block element inside the link runs `newline`,
+                    // which pops the trailing spaces — so by the `</a>` the
+                    // text can be *shorter* than it was at the `<a>`, and
+                    // `out[from..]` panics. `<p><a ,href=…</h2><p></a` did
+                    // it, from a fuzzer, with index 104 into 101 bytes.
+                    //
+                    // Nothing there to read means the link had nothing but
+                    // the whitespace that has since been trimmed, which is
+                    // an empty link — the same answer the slice would have
+                    // given if it had lived to give one.
+                    if out.get(from..).unwrap_or("").trim().is_empty() {
+                        if let Some(address) = worth_showing(&href) {
+                            push_text(&mut out, address);
+                        }
                     }
                 }
             }
@@ -320,6 +333,34 @@ fn push_text(out: &mut String, raw: &str) {
 /// `&hellip;` needs and shorter than a sentence: past this, an `&` is just an
 /// `&` and the text after it is text.
 const MOST_ENTITY: usize = 12;
+
+/// Addresses a person could act on, and the only ones ever written into a
+/// message as text.
+const SCHEMES: [&str; 4] = ["http://", "https://", "mailto:", "tel:"];
+
+/// A link's address, if it is one worth putting in front of somebody.
+///
+/// Only an empty link reaches here — an icon, a bare button — where showing
+/// the address is better than showing nothing. "Better than nothing" is the
+/// whole justification, and it does not hold for every address: a fuzzer
+/// found `<a href="javascript:alert(1)"></a>`, which was printed into the
+/// message verbatim. Nothing ran, because this produces text and the window
+/// renders text, but it is a line that reads like a link and means nothing
+/// to a person — and it would become a real hazard the day anything turns
+/// the addresses in a message back into links.
+///
+/// So an address is shown when it is one somebody could follow or ring, and
+/// otherwise the link is simply not there, which is what it was anyway.
+/// Leading control characters and spaces go first: `\0java\tscript:` is not a
+/// scheme this list has to know about, but `  https://x` is.
+fn worth_showing(href: &str) -> Option<&str> {
+    let href = href.trim_matches(|c: char| c.is_whitespace() || c.is_control());
+    let lowered = href.to_lowercase();
+    SCHEMES
+        .iter()
+        .any(|scheme| lowered.starts_with(scheme))
+        .then_some(href)
+}
 
 /// The entities mail actually uses, and numeric ones. An entity this does not
 /// know is left as it was written: in text, `&frac12;` is not dangerous, it
