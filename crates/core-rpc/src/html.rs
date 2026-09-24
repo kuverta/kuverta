@@ -229,6 +229,12 @@ fn tag_end(bytes: &[u8], from: usize) -> Option<usize> {
 }
 
 fn memchr(bytes: &[u8], looking_for: u8, from: usize) -> Option<usize> {
+    // Past the end is "not found", not a panic. `find` below has had this
+    // guard all along and this did not, which is the sort of difference
+    // between two neighbouring four-line functions that nobody reads twice.
+    if from >= bytes.len() {
+        return None;
+    }
     bytes[from..]
         .iter()
         .position(|byte| *byte == looking_for)
