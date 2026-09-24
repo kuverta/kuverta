@@ -79,6 +79,7 @@ fn main() -> Result<()> {
         "the page covers {:?} of what the marks enclose",
         kept.covered
     );
+    border(&kept.jpeg)?;
     Ok(())
 }
 
@@ -114,4 +115,38 @@ fn crop_to_roi(jpeg: &[u8], roi: &str) -> Result<Vec<u8>> {
     let mut out = std::io::Cursor::new(Vec::new());
     cropped.write_to(&mut out, image::ImageFormat::Jpeg)?;
     Ok(out.into_inner())
+}
+
+/// How much of each edge of a finished page is table rather than paper, as a
+/// share of that side: what is left over after the trim.
+fn border(jpeg: &[u8]) -> Result<()> {
+    let page = image::load_from_memory(jpeg)?.into_luma8();
+    let (w, h) = (page.width(), page.height());
+    let bright = |x: u32, y: u32| page.get_pixel(x, y).0[0];
+    // The paper's own brightness, taken from the middle, where it is paper.
+    let paper: u32 = (3..8)
+        .flat_map(|i| (3..8).map(move |j| (i, j)))
+        .map(|(i, j)| bright(w * i / 10, h * j / 10) as u32)
+        .sum::<u32>()
+        / 25;
+    let floor = (paper as f64 * 0.72) as u8;
+    let (mx, my) = (w / 2, h / 2);
+    let run = |steps: &mut dyn Iterator<Item = (u32, u32)>, of: u32| {
+        let mut n = 0u32;
+        for (x, y) in steps {
+            if bright(x, y) >= floor {
+                break;
+            }
+            n += 1;
+        }
+        n as f64 / of as f64
+    };
+    println!(
+        "border left {:.3} right {:.3} top {:.3} bottom {:.3} (of each side)",
+        run(&mut (0..w).map(|x| (x, my)), w),
+        run(&mut (0..w).rev().map(|x| (x, my)), w),
+        run(&mut (0..h).map(|y| (mx, y)), h),
+        run(&mut (0..h).rev().map(|y| (mx, y)), h),
+    );
+    Ok(())
 }

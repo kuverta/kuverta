@@ -12,6 +12,7 @@ pub mod detect;
 pub mod display;
 #[cfg(target_os = "linux")]
 pub mod epaper;
+pub mod flatten;
 pub mod folders;
 pub mod hub;
 pub mod lcd;

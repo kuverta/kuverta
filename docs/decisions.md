@@ -2075,3 +2075,139 @@ browser and finds one folder pill and the person it is for, read apart.
 On the rig: the twelve tags were switched to no matching and it still took all
 twelve — `folders taken from Paperless count=12` — because it now knows a
 folder by its words. The bin and both people came through.
+
+## 35. A parcel notice, and whose fault the mess was
+
+**2026-09-24.**
+
+A DHL parcel notice read as four hundred lines of `<table border="0"
+cellpadding="0">`, Outlook conditional comments and a page of tracking URLs
+with a sentence of German scattered through it. The obvious reading is that
+kuverta's HTML rendering is bad.
+
+It is not. The message was pulled out of the store and looked at: **that is
+DHL's own `text/plain` part**, markup and all. Their converter gave up halfway
+and kuverta was showing faithfully what arrived. Nothing in the client was
+wrong; it was just too trusting.
+
+So the rule is now: a plain part wins, unless it is visibly the wreckage of a
+converter — two or more of `<table`, `<td`, `<!--[if`, `<div`, `style="`,
+`cellpadding` — and then the HTML is read here instead. Deliberately narrow:
+a plain part is usually written on purpose and taking the HTML over it is a
+step down far more often than up. On the real notice: 605 lines to 33.
+
+### What the reader is, and is not
+
+It is not a browser and must never become one. It takes a string and returns a
+string. `<script>`, `<style>`, `<noscript>` and `<head>` are skipped unread;
+`src` and `href` are text and are never opened; no input can make it reach the
+network or the disk. There is a test that a tracking pixel, an `onclick`, a
+`javascript:` href and an iframe all leave no trace in the output.
+
+Every limit is a **refusal**, not a truncation. Too big, too deep, an
+unterminated comment, script or tag: `to_text` returns `Refused` and the
+caller keeps the sender's own text. A half-parsed body is the one outcome
+worth avoiding, because it is indistinguishable from a well-parsed one to
+whoever is reading it — a message that can silently drop the second half of a
+sentence is worse than one that admits it could not be read. There is no
+recursion, so no input can exhaust the stack; depth is counted and refused at
+a hundred.
+
+Two things it got wrong before the real message was put through it, both of
+the kind worth writing down:
+
+- **A tag does not end at the next `>`.** DHL writes `alt="Ablageort<br>
+  buchen"`, and stopping there ended the tag inside a quoted value and spilled
+  the rest of the attribute — style declarations included — into the message
+  as words. Quotes are tracked now.
+- **An attribute's value is text, so markup in it is taken out**, and a
+  picture whose words repeat the words beside it is read once. Every button in
+  the notice is an icon and a label inside one link with the same words in
+  both, so it came out as "[Ablageort buchen] Ablageort buchen" — over two
+  lines, because the label is written with a break through the middle of it.
+
+### The scanner's own reading
+
+Measured rather than guessed, on two of the rig's real pages: tesseract's
+default page segmentation against `--psm 4` (a column of text, which is what a
+letter is) and `--psm 6` (one uniform block). `--psm 4` won both — fifteen
+recognised German words against thirteen, with a quarter less of the
+punctuation-soup that marks a misread line, and nine against eight on the
+second page. `--psm 6` finds many more "words" and no more real ones: it is
+reading the noise between the columns. Upscaling the page first made it worse,
+which is worth knowing — tesseract already does its own.
+
+So `--psm 4` is the default, and **Read it again** in the preview tries the
+other one. That button is worth having only because it does something
+different: tesseract is deterministic, and running the same reading twice
+gives the same text.
+
+### The border
+
+The trim left seven per cent of one side as table. `keep_paper` was
+all-or-nothing — it either cut to the edge it had found or kept everything out
+to the frame — so a side whose found edge was short kept the lot. It walks
+outward now, a step at a time, and stops at the first strip that is not paper.
+
+What a strip is judged by matters: its **brightest quarter**, not its average.
+A strip across a column of dense text is mostly ink and averages dark, and
+judging by the average cut the right-hand column off a letter. What says a
+strip is still paper is that the paper between its letters is as bright as the
+page. The table has no bright quarter. That side is now half a per cent.
+
+## 36. The paper is told it is white
+
+A page on the rig's table comes out grey. Not badly: readable, in focus at
+1:1, plainly a letter. But the paper photographs at about 186 of 255 with a
+warm cast from the room, the ink at 54, and a fold across one corner where a
+lamp leaves a gradient the camera cannot see past. It looks like a photograph
+of a letter rather than a scan of one, which is what it is.
+
+Tesseract reads it worse for the same reason a person does: there is less
+between the ink and the paper than there should be. On the two most recent
+pages off the rig — a baggage inspection form, creased, filled in by hand —
+it found 97 and 74 German words of four letters or more. After the paper is
+put at white it finds 214 and 211.
+
+So `flatten` finds the paper and tells it it is white. In tiles about eighty
+pixels across, because the light over an A4 sheet is never even and one white
+point cannot take out a gradient; at the 92nd percentile of each tile rather
+than its brightest pixel, which is a glint off a staple; and per channel,
+because paper is neutral and the difference between its channels *is* the
+colour of the light. Correcting each channel by its own paper level is a white
+balance measured off the one thing in the frame whose colour is known. A blue
+signature stays blue, and there is a test that says so.
+
+It is a tone curve and nothing else. Nothing moves, nothing is sharpened,
+nothing is denoised — every filter that would smooth the sensor's noise would
+smooth the thin strokes of 8-point print too, which is the same reason the
+camera is run with `--denoise cdn_off`. And every doubt leaves the picture
+alone: a tile too dark to hold paper borrows the page's own level instead of
+being multiplied by whatever its darkness suggests, a page with no ink on it
+is not stretched (its darkest half percent is grain, and stretching against
+that turns a clean sheet into static), and a picture too small to tile, or
+whose claimed size does not match its pixels, comes back exactly as it went
+in.
+
+The field is smoothed, and past the grid's edges it is continued along its own
+slope rather than repeated. Repeating averages the dim end of the page with
+the brighter tiles inside it, so the field there reads brighter than the paper
+is and the correction undershoots: a lamp at one side of a sheet still left
+twenty levels between the two edges after it had supposedly been taken out.
+
+### What it costs, and who has to be told
+
+Flattening destroys the two numbers the rig steers its exposure by. That is
+the point of it — every page that comes out has paper at white — and it would
+have been the end of the rig ever correcting itself. `quality::exposure` reads
+`paper` to decide whether the next page should be taken half a stop darker; a
+rig judging its own flattened pages would see a perfect exposure every time,
+walk the camera down to −4 EV one page at a time, and never learn otherwise.
+
+So `Straightened` carries a `Tone`: what the page looked like before, and only
+that. `Quality::exposed_as` puts it back and decides the two exposure problems
+again — is there paper here, is it washed out — while leaving sharpness and
+"is there any text" measured on the picture that will actually be sent, which
+is the right picture to measure them on. A photograph with no paper in it is
+still no paper whatever was done to it afterwards, so that verdict throws the
+rest away rather than reporting on a stretched table.

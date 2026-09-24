@@ -24,6 +24,7 @@ pub mod assistant;
 pub mod attachments;
 pub mod cleanup;
 pub mod conversations;
+pub mod html;
 pub mod mailboxes;
 pub mod outbox;
 pub mod paper;
@@ -453,6 +454,33 @@ impl Core {
         Ok(search_rows(self.store.search_terms(account, terms, limit)?))
     }
 
+    /// The sender's plain text, unless the sender's own converter made a
+    /// mess of it — then the HTML it was made from, read here instead.
+    ///
+    /// A plain part is usually written on purpose and is usually better than
+    /// anything a converter would make of the HTML, so it wins by default.
+    /// What it does not win is the case it was never written for: a plain
+    /// part that is half markup, which is what a DHL parcel notice arrives
+    /// as. See [`html::looks_converted_badly`], and note that the HTML is
+    /// only ever turned into text — nothing in it is run, fetched or
+    /// followed, and a conversion that cannot be trusted is refused rather
+    /// than half-made.
+    fn better_than(plain: String, parsed: Option<&mail_parser::Message<'_>>) -> String {
+        if !html::looks_converted_badly(&plain) {
+            return plain;
+        }
+        let Some(html) = parsed.and_then(|message| message.body_html(0)) else {
+            return plain;
+        };
+        match html::to_text(&html) {
+            Ok(text) => text,
+            Err(why) => {
+                tracing::debug!(?why, "kept the sender's own text");
+                plain
+            }
+        }
+    }
+
     pub fn message(&self, account: AccountId, id: MessageId) -> Result<MessageDetail> {
         let stored = self
             .store
@@ -528,12 +556,15 @@ impl Core {
             // An encrypted message's own text is the "this is an encrypted
             // message" preamble at best; what it holds, or nothing.
             Some(security) if security.encrypted => opened.body_text,
-            _ => opened.body_text.or_else(|| {
-                parsed
-                    .as_ref()
-                    .and_then(|p| p.body_text(0))
-                    .map(|text| text.into_owned())
-            }),
+            _ => opened
+                .body_text
+                .or_else(|| {
+                    parsed
+                        .as_ref()
+                        .and_then(|p| p.body_text(0))
+                        .map(|text| text.into_owned())
+                })
+                .map(|plain| Self::better_than(plain, parsed.as_ref())),
         };
 
         Ok(MessageDetail {

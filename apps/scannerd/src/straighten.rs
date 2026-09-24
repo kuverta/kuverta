@@ -357,8 +357,11 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
         }
         None => (looking, width, height),
     };
+    let mut rgb = rgb;
+    let tone = crate::flatten::flatten(&mut rgb, width, height);
     Ok(Straightened {
         jpeg: encode(&rgb, width, height, jpeg.len())?,
+        tone,
         // Always against the marks, never against whatever was warped onto.
         // `covered` is how an envelope is told from a page, and the widening
         // above would otherwise shrink it for a page that overhangs — which
@@ -373,6 +376,10 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
 /// area the paper in it covered — which tells an envelope from a page.
 pub struct Straightened {
     pub jpeg: Vec<u8>,
+    /// What the page looked like **before** its light was flattened — the
+    /// paper and the ink the exposure is steered by. `None` when it was left
+    /// as it was. See [`crate::flatten::Tone`] for why it has to travel.
+    pub tone: Option<crate::flatten::Tone>,
     /// The share of **the marked corners' area** the paper's own corners
     /// enclose: 0.8–1 for an A4 page on setup's A4 corners, about 0.4 for a
     /// DL envelope and 0.6 for a C5. `None` when no paper was found.
@@ -509,10 +516,13 @@ fn paper_overhanging(source: &RgbImage, marked: &Corners) -> Option<Corners> {
 /// How much darker than the page a strip has to be before it counts as the
 /// table the page is lying on.
 const TABLE_SHARE: f64 = 0.82;
-/// How far beyond a side to look for that table, as a share of the picture.
-/// Close, because the question is whether this side is the sheet's edge, not
-/// what lies over by the frame.
-const TABLE_STEP: f64 = 0.02;
+/// How far beyond a side to look for that table each step, as a share of the
+/// picture. Small, because the answer wanted is where the paper stops, and a
+/// stride overshoots it into the table.
+const TABLE_STEP: f64 = 0.006;
+/// How many of those steps before giving up and keeping the picture's edge.
+/// Enough to cross a quarter of it, which is more than any trim should want.
+const MOST_STEPS: usize = 40;
 
 /// Sides of a found page that still have paper beyond them, put back where
 /// the picture ends.
@@ -540,10 +550,16 @@ fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
     let (left, right) = (tl.0.min(bl.0), tr.0.max(br.0));
     let (top, bottom) = (tl.1.min(tr.1), bl.1.max(br.1));
 
-    let mean = |points: &[(f64, f64)]| -> f64 {
-        points.iter().map(|&(x, y)| at(x, y)).sum::<f64>() / points.len().max(1) as f64
+    // The paper between the letters, not the average of paper and ink. A
+    // strip across a column of text is mostly ink and averages dark; what
+    // says it is still paper is how bright its brightest quarter is. The
+    // table has no bright quarter.
+    let lightest = |points: &[(f64, f64)]| -> f64 {
+        let mut seen: Vec<f64> = points.iter().map(|&(x, y)| at(x, y)).collect();
+        seen.sort_by(|a, b| a.total_cmp(b));
+        seen.get(seen.len() * 3 / 4).copied().unwrap_or(0.0)
     };
-    let inside = mean(
+    let inside = lightest(
         &(1..10)
             .flat_map(|i| (1..10).map(move |j| (i, j)))
             .map(|(i, j)| {
@@ -555,46 +571,67 @@ fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
             .collect::<Vec<_>>(),
     );
 
-    /// Just outside a side — not halfway to the picture's edge, which only
-    /// ever samples the table near the frame and says nothing about whether
-    /// the side itself is inside the sheet.
-    fn beyond(side: f64, edge: f64) -> Option<f64> {
-        let room = edge - side;
-        (room.abs() > 0.01).then(|| side + room.signum() * TABLE_STEP.min(room.abs() * 0.8))
-    }
     let along = |from: f64, to: f64| {
         (1..10)
             .map(move |i| from + (to - from) * i as f64 / 10.0)
             .collect::<Vec<_>>()
     };
-    let still_paper =
-        |strip: Vec<(f64, f64)>| !strip.is_empty() && mean(&strip) > inside * TABLE_SHARE;
+    let paper = |strip: Vec<(f64, f64)>| lightest(&strip) > inside * TABLE_SHARE;
 
-    let down = |x: f64| {
-        along(top, bottom)
-            .into_iter()
-            .map(|y| (x, y))
-            .collect::<Vec<_>>()
-    };
-    let across = |y: f64| {
-        along(left, right)
-            .into_iter()
-            .map(|x| (x, y))
-            .collect::<Vec<_>>()
-    };
-    let keep_left = beyond(left, 0.0).map(down).is_some_and(&still_paper);
-    let keep_right = beyond(right, 1.0).map(down).is_some_and(&still_paper);
-    let keep_top = beyond(top, 0.0).map(across).is_some_and(&still_paper);
-    let keep_bottom = beyond(bottom, 1.0).map(across).is_some_and(&still_paper);
+    /// Where the paper really stops, walking out from a side towards the edge
+    /// of the picture.
+    ///
+    /// The side found by the corner-finder is a guess made on a small grey
+    /// copy, and it comes in short wherever the light falls off — which is
+    /// the far edge of a sheet under a camera on a stalk. Cutting to it takes
+    /// page with it. Jumping to the edge of the picture instead, which is
+    /// what this used to do, keeps whatever table lies there: on the rig,
+    /// seven per cent of one side.
+    ///
+    /// So the strip beyond the side is looked at, then the strip beyond that,
+    /// a step at a time. While it is still as bright as the page it is more
+    /// page and the side moves out. The first strip that is darker is the
+    /// table, and the side stops just inside it. Running all the way to the
+    /// edge without finding table means the sheet goes off the picture, and
+    /// the edge is where it stops.
+    fn walk(side: f64, edge: f64, paper: &dyn Fn(f64) -> bool) -> f64 {
+        let mut at = side;
+        let mut steps = 0;
+        while (edge - at).abs() > TABLE_STEP && steps < MOST_STEPS {
+            let next = at + (edge - at).signum() * TABLE_STEP;
+            if !paper(next) {
+                return at;
+            }
+            at = next;
+            steps += 1;
+        }
+        edge
+    }
 
-    // Only the sides with paper beyond them move; the rest of the quad — and
-    // with it the turn of a letter lying a few degrees off — stays as found.
-    let x = |keep: bool, edge: f64, found: f64| if keep { edge } else { found };
+    let down = |x: f64| paper(along(top, bottom).into_iter().map(|y| (x, y)).collect());
+    let across = |y: f64| paper(along(left, right).into_iter().map(|x| (x, y)).collect());
+    let walked = [
+        walk(left, 0.0, &down),
+        walk(right, 1.0, &down),
+        walk(top, 0.0, &across),
+        walk(bottom, 1.0, &across),
+    ];
+    let [out_left, out_right, out_top, out_bottom] = walked;
+
+    // Only the sides that moved move. A side that did not is left exactly as
+    // it was found, corner by corner — which is what keeps the turn of a
+    // letter lying a few degrees off. Whether a side moved is asked of the
+    // walk, not of the corner: a corner of a crooked page is not on the side
+    // it belongs to.
+    let moved = |after: f64, before: f64| (after - before).abs() > 1e-9;
+    let pick = |did: bool, after: f64, found: f64| if did { after } else { found };
+    let (ml, mr) = (moved(out_left, left), moved(out_right, right));
+    let (mt, mb) = (moved(out_top, top), moved(out_bottom, bottom));
     Corners([
-        (x(keep_left, 0.0, tl.0), x(keep_top, 0.0, tl.1)),
-        (x(keep_right, 1.0, tr.0), x(keep_top, 0.0, tr.1)),
-        (x(keep_right, 1.0, br.0), x(keep_bottom, 1.0, br.1)),
-        (x(keep_left, 0.0, bl.0), x(keep_bottom, 1.0, bl.1)),
+        (pick(ml, out_left, tl.0), pick(mt, out_top, tl.1)),
+        (pick(mr, out_right, tr.0), pick(mt, out_top, tr.1)),
+        (pick(mr, out_right, br.0), pick(mb, out_bottom, br.1)),
+        (pick(ml, out_left, bl.0), pick(mb, out_bottom, bl.1)),
     ])
 }
 

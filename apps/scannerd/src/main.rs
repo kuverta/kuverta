@@ -478,6 +478,16 @@ async fn main() -> Result<()> {
                         hub.event(now, true, "scanning stopped");
                     }
                 }
+                Command::ReadAgain(name) => {
+                    // The other way of cutting a page up. Running the same
+                    // reading again would give the same text; this gives a
+                    // different one, which is the only reason the button is
+                    // worth having.
+                    match scanner.read_again(&spool, &name) {
+                        true => hub.event(now, true, "reading the page again"),
+                        false => hub.event(now, false, "that page is not here any more"),
+                    }
+                }
                 Command::DeletePage(name) => {
                     // Numbered as the page showed it, before it goes.
                     let number = spool.open_pages().ok().and_then(|pages| {
