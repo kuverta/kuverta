@@ -21,26 +21,37 @@
 //! design: a truncated conversion reads exactly like a good one, so there is
 //! no such thing as a partial answer here.
 //!
-//! **Nothing executable survives** — but only where that can be said about
-//! any input at all, which is narrower than it first looks. `&lt;script&gt;`
-//! unescapes to the characters `<script>`, correctly: that is what the sender
-//! wrote, as text, and the window renders it as text. So a message quoting
-//! HTML puts `<script` in the output with nothing wrong having happened, and
-//! an assertion that simply forbids the substring fails on ordinary mail —
-//! which is how this target failed in CI the first time it ran against the
-//! seed corpus. The check therefore applies to inputs with no character
-//! reference in them, and only where the sender did not write those bytes
-//! either — what is left is the reader having assembled them, which is the
-//! only case that says anything about this code.
+//! **Nothing about executable content is asserted here**, and getting to
+//! that took three wrong answers, each narrower than the last.
 //!
-//! What that leaves out is most of the interesting claim, and deliberately.
-//! Whether a script's *content* is dropped, whether an event handler goes
-//! with it, and whether an empty link shows an address worth showing are all
-//! claims about particular documents, where it is known what the sender
-//! wrote and what the reader did. They are made about particular documents
-//! in `crates/core-rpc/tests/html.rs`. A fuzzer cannot tell provenance, and
-//! an assertion that pretends otherwise fails on ordinary mail — this one
-//! did, twice, before it said what it actually knows.
+//! Forbidding `<script` outright failed on the first real mail it saw:
+//! `&lt;script&gt;` unescapes to the characters `<script>`, correctly, and a
+//! message quoting HTML is not a message carrying it. Excluding inputs with
+//! a character reference in them failed next, on `javascript:` in an href.
+//! Excluding bytes the sender wrote as well failed on this:
+//!
+//! ```text
+//! From: Tom Fisher!vbscript<>:m
+//! ```
+//!
+//! `<>` is an empty tag. Dropping it leaves `vbscript` next to `:m`, and the
+//! text says `vbscript:` where the sender's bytes never did. That is not a
+//! defect — it is the whole job. `<b>java</b>script:` has to read as
+//! `javascript:`, because the words either side of markup are one word.
+//!
+//! So there is no form of this an input-only check can take. Joining text
+//! across removed markup can produce any bytes at all, and a fuzzer cannot
+//! see the difference between that and a parser carrying something through.
+//! Whether a script's content is dropped, whether an event handler goes with
+//! it, and whether an empty link shows an address worth showing are claims
+//! about particular documents, where what the sender wrote and what the
+//! reader did are both known. They are made, and kept, in
+//! `crates/core-rpc/tests/html.rs`.
+//!
+//! One thing follows for callers rather than for this file: the text that
+//! comes out is text, and it can hold `javascript:` whatever the markup was.
+//! Anything that ever turns it back into links or markup has to say so for
+//! itself. `to_text` promises text, not safe markup.
 #![no_main]
 
 use core_rpc::html::{self, Refused};
@@ -50,23 +61,6 @@ use libfuzzer_sys::fuzz_target;
 /// own limit is raised without meaning to, this fails rather than following
 /// it quietly.
 const MOST_TEXT: usize = 1 << 19;
-
-/// Bytes that can only have come from the reader carrying markup through,
-/// rather than from a sender writing about it.
-const NOT_FROM_A_READER: [&str; 12] = [
-    "<script",
-    "</script",
-    "javascript:",
-    "vbscript:",
-    "onerror=",
-    "onclick=",
-    "onload=",
-    "<iframe",
-    "<object",
-    "<embed",
-    "srcdoc=",
-    "data:text/html",
-];
 
 fuzz_target!(|html: &str| {
     // Cheap and total: it must never disagree with itself about the same
@@ -92,25 +86,6 @@ fuzz_target!(|html: &str| {
         text.len(),
         html.len()
     );
-
-    // Nothing a mail window could be talked into running or fetching, where
-    // the reader is what put it there. Two things have to be ruled out before
-    // this says anything about the reader: a character reference, which can
-    // spell any of these out of bytes that do not look like them, and the
-    // sender simply having written the words. What is left is the reader
-    // assembling them, which is the only case worth failing on.
-    //
-    // Lowercased first: `JaVaScRiPt:` is the oldest trick there is.
-    if !html.contains('&') {
-        let lowered = text.to_lowercase();
-        let sent = html.to_lowercase();
-        for forbidden in NOT_FROM_A_READER {
-            assert!(
-                !lowered.contains(forbidden) || sent.contains(forbidden),
-                "the reader put `{forbidden}` in text the sender never wrote: {text:?}"
-            );
-        }
-    }
 
     // Reading it again must give the same text: the reader keeps no state
     // between messages, and a reader whose answer drifts is one that cannot
