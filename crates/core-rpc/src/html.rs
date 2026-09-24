@@ -316,6 +316,11 @@ fn push_text(out: &mut String, raw: &str) {
     }
 }
 
+/// The most an entity may run to, `&` and `;` included. Longer than
+/// `&hellip;` needs and shorter than a sentence: past this, an `&` is just an
+/// `&` and the text after it is text.
+const MOST_ENTITY: usize = 12;
+
 /// The entities mail actually uses, and numeric ones. An entity this does not
 /// know is left as it was written: in text, `&frac12;` is not dangerous, it
 /// is only ugly.
@@ -328,7 +333,14 @@ fn unescape(raw: &str) -> String {
     while let Some(at) = rest.find('&') {
         out.push_str(&rest[..at]);
         rest = &rest[at..];
-        let Some(end) = rest[..rest.len().min(12)].find(';') else {
+        // Over the bytes, not over the string. `&mdash;` and every other
+        // entity is ASCII, and an ASCII byte never appears inside a longer
+        // character — but a *window* of a fixed number of bytes can end
+        // inside one, and slicing a string there is a panic. A fuzzer found
+        // it in two minutes with `&\n\0Ľ!Ľ&6\0Ľ<`: twelve bytes into that
+        // is the middle of an `Ľ`.
+        let window = &rest.as_bytes()[..rest.len().min(MOST_ENTITY)];
+        let Some(end) = window.iter().position(|byte| *byte == b';') else {
             out.push('&');
             rest = &rest[1..];
             continue;
