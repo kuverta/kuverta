@@ -29,10 +29,18 @@
 //! an assertion that simply forbids the substring fails on ordinary mail —
 //! which is how this target failed in CI the first time it ran against the
 //! seed corpus. The check therefore applies to inputs with no character
-//! reference in them, where nothing can put those bytes there but the reader
-//! carrying markup through. That a script's *content* is dropped, and an
-//! event handler with it, is a claim about particular documents, and it is
-//! made about particular documents in `crates/core-rpc/tests/html.rs`.
+//! reference in them, and only where the sender did not write those bytes
+//! either — what is left is the reader having assembled them, which is the
+//! only case that says anything about this code.
+//!
+//! What that leaves out is most of the interesting claim, and deliberately.
+//! Whether a script's *content* is dropped, whether an event handler goes
+//! with it, and whether an empty link shows an address worth showing are all
+//! claims about particular documents, where it is known what the sender
+//! wrote and what the reader did. They are made about particular documents
+//! in `crates/core-rpc/tests/html.rs`. A fuzzer cannot tell provenance, and
+//! an assertion that pretends otherwise fails on ordinary mail — this one
+//! did, twice, before it said what it actually knows.
 #![no_main]
 
 use core_rpc::html::{self, Refused};
@@ -85,16 +93,21 @@ fuzz_target!(|html: &str| {
         html.len()
     );
 
-    // Nothing a mail window could be talked into running or fetching — asked
-    // only of messages with no character reference in them, for the reason in
-    // the note at the top. Lowercased first: `JaVaScRiPt:` is the oldest
-    // trick there is.
+    // Nothing a mail window could be talked into running or fetching, where
+    // the reader is what put it there. Two things have to be ruled out before
+    // this says anything about the reader: a character reference, which can
+    // spell any of these out of bytes that do not look like them, and the
+    // sender simply having written the words. What is left is the reader
+    // assembling them, which is the only case worth failing on.
+    //
+    // Lowercased first: `JaVaScRiPt:` is the oldest trick there is.
     if !html.contains('&') {
         let lowered = text.to_lowercase();
+        let sent = html.to_lowercase();
         for forbidden in NOT_FROM_A_READER {
             assert!(
-                !lowered.contains(forbidden),
-                "`{forbidden}` survived into the text: {text:?}"
+                !lowered.contains(forbidden) || sent.contains(forbidden),
+                "the reader put `{forbidden}` in text the sender never wrote: {text:?}"
             );
         }
     }

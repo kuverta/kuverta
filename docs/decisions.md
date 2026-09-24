@@ -2314,6 +2314,33 @@ general lesson is the narrower one — a fuzz assertion that cannot tell what
 the sender wrote from what the parser did is not an assertion about the
 parser.
 
+Fixing an assertion let the fuzzer further in, and it found two more things.
+libFuzzer stops at the first crash, so a clean run only ever means "nothing
+before that point" — the first seeded run's two and a quarter million runs
+were honest and proved less than they looked like they did.
+
+An empty link shows its address, because showing nothing would be worse. That
+reasoning does not reach every address: `<a href="javascript:alert(1)"></a>`
+was printed into the message word for word. Nothing ran — this produces text
+and the window renders text — but it is a line that reads like a link and
+means nothing to a person, and it would be a real hazard the day anything
+turns the addresses in a message back into links. An address is shown now
+only when somebody could follow or ring it: `http`, `https`, `mailto`, `tel`,
+after leading whitespace and control characters are taken off, since
+`\0java\0script:` is not a scheme any list should have to know about.
+
+And the text is not only ever appended to. A block element inside a link runs
+`newline`, which pops the trailing spaces, so by the closing `</a>` the text
+can be *shorter* than it was at the opening one — and reading the link's own
+words back by the offset noted at the `<a>` panicked: index 104 into a string
+of 101 bytes. A link wrapped round a paragraph does that, which is malformed
+and common. Nothing there to read means the link held only whitespace that
+has since been trimmed, which is an empty link, so that is what it is now
+read as.
+
+Both were in the released code rather than in anything written that week.
+Five million seeded runs after them, clean.
+
 A second target covers the scanner's arithmetic over raw pixels, where the
 width and the height are taken on trust and every offset is computed from
 them rather than from the buffer's length. Nothing in it panicked; the one
