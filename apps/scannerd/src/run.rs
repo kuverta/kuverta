@@ -195,18 +195,70 @@ impl Scanner {
         }
     }
 
-    /// Which folders that text looks like, before Paperless has said.
+    /// Where that text says the letter goes, before Paperless has said: the
+    /// one folder it fits best, and everybody it is for.
+    ///
+    /// One folder, not every folder it matches. A letter is a piece of paper
+    /// and goes in one place on the shelf, so naming two is asking for a
+    /// decision the rig is there to make. People are different — a letter can
+    /// be for two of them — and are all kept.
     pub fn guessed(&self) -> Vec<Folder> {
-        let text = self
-            .read_pages()
+        let text = self.read_text();
+        let ranked = crate::folders::rank(&text, &self.folders);
+        let best = ranked
+            .iter()
+            .find(|(folder, _)| !folder.person)
+            .map(|(folder, _)| (*folder).clone());
+        best.into_iter()
+            .chain(
+                ranked
+                    .iter()
+                    .filter(|(folder, _)| folder.person)
+                    .map(|(folder, _)| (*folder).clone()),
+            )
+            .collect()
+    }
+
+    /// Paperless's answer put in the order the rig would have put it in: the
+    /// folder the letter fits best first.
+    ///
+    /// Paperless tags a document with every folder whose words it matches,
+    /// and it is right to — a document can carry two labels. The paper
+    /// cannot: it goes in one folder, so the one named first had better be
+    /// the one it belongs in. Ranked by the rig's own reading of the pages,
+    /// which is the only measure it has; with nothing read, Paperless's order
+    /// stands.
+    fn best_first(&self, folders: Vec<Folder>) -> Vec<Folder> {
+        let text = self.read_text();
+        if text.trim().is_empty() {
+            return folders;
+        }
+        let hits: Vec<(String, bool, usize)> = crate::folders::rank(&text, &folders)
+            .into_iter()
+            .map(|(folder, hits)| (folder.name.clone(), folder.person, hits))
+            .collect();
+        let score = |folder: &Folder| {
+            hits.iter()
+                .find(|(name, person, _)| *name == folder.name && *person == folder.person)
+                .map_or(0, |(_, _, hits)| *hits)
+        };
+        let mut folders = folders;
+        // People keep their place at the back, where the display expects them.
+        folders.sort_by(|a, b| {
+            a.person
+                .cmp(&b.person)
+                .then_with(|| score(b).cmp(&score(a)))
+        });
+        folders
+    }
+
+    /// Everything the Pi has read of the letter in front of the camera.
+    fn read_text(&self) -> String {
+        self.read_pages()
             .iter()
             .map(|page| page.text.as_str())
             .collect::<Vec<_>>()
-            .join("\n");
-        crate::folders::guess(&text, &self.folders)
-            .into_iter()
-            .cloned()
-            .collect()
+            .join("\n")
     }
 
     /// Takes in whatever the reader has finished since the last turn.
@@ -1102,10 +1154,10 @@ impl Scanner {
                     return;
                 }
                 match uploader.document_tags(document).await {
-                    Ok(tags) => Outcome::Folders(folders_among(
+                    Ok(tags) => Outcome::Folders(self.best_first(folders_among(
                         &tags,
                         self.folder_tags.as_deref().unwrap_or_default(),
-                    )),
+                    ))),
                     Err(err) => {
                         tracing::warn!(%err, document, "could not read the document's tags");
                         return;
