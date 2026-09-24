@@ -77,6 +77,9 @@
   dialog img { display: block; width: 100%; max-height: 65vh; object-fit: contain; border-radius: 8px; background: #000; }
   dialog h2 { margin: 0 0 8px; }
   #folder-list { display: grid; gap: 8px; margin-top: 8px; }
+  .folder.read-only { display: grid; grid-template-columns: minmax(7em, auto) 1fr auto; gap: 10px; align-items: baseline; }
+  .folder-name { font-weight: 600; }
+  .folder-words { color: var(--muted); font-size: .9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .folder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto auto auto; gap: 6px; align-items: center; }
   .folder input { margin: 0; }
   .folder label.check { margin: 0; font-size: .85rem; white-space: nowrap; }
@@ -280,12 +283,10 @@
       <div class="row"><button type="button" id="reset-exposure">Start again from the camera’s own exposure</button></div>
 
       <h3>Folders and people</h3>
-      <p class="hint">Once Paperless has read a letter, the display says which of these folders it goes in. Each folder is a Paperless tag of the same name, which the scanner creates. Give a folder a few words that only its letters contain — a number plate, an insurer, “Finanzamt” — and it works from the first letter; leave the words empty and Paperless learns from the documents you tag with it. Mark one as the bin for post that needs no paper copy. Tick <b>Person</b> for somebody in the household who gets post — their name, and any other spelling of it — and the display says who a letter is for as well as where it goes.</p>
+      <p class="hint">These are Paperless's tags, read from it every few minutes — the same folders the desktop app shows, because Paperless is what actually files a letter. <b>Change them in kuverta's setup assistant</b>, not here: a second list kept on the scanner could only ever disagree with the one doing the filing. What the scanner decides for itself is which of them is the bin, for post that needs no paper copy — that is the one thing a Paperless tag cannot say.</p>
       <div id="folder-list"></div>
       <div class="row">
-        <button type="button" id="add-folder">Add a folder</button>
-        <button type="button" id="add-person">Add a person</button>
-        <button class="primary" type="button" id="save-folders" disabled>Save folders</button>
+        <button class="primary" type="button" id="save-folders" disabled>Save which is the bin</button>
       </div>
       <p class="hint" id="folder-status"></p>
 
@@ -600,32 +601,25 @@
 
   let folders = null;       // what the list shows, once filled from the status
   let checkBeforeSave = null; // the check shown when folders were saved; the next one reports on them
-  const folderKey = (list) => JSON.stringify((list || []).map((f) => [f.name.trim(), (f.words || '').trim(), Boolean(f.discard), Boolean(f.person)]));
 
+  /// The shelf as Paperless holds it, read-only but for the bin.
   function drawFolders() {
-    $('folder-list').replaceChildren(...folders.map((folder, index) => {
-      const row = Object.assign(document.createElement('div'), { className: 'folder' });
-      const name = Object.assign(document.createElement('input'), { value: folder.name, placeholder: folder.person ? 'Name' : 'Folder', autocomplete: 'off' });
-      const words = Object.assign(document.createElement('input'), { value: folder.words || '', placeholder: folder.person ? 'Other spellings of the name (optional)' : 'Words, separated by commas (optional)', autocomplete: 'off', className: 'words' });
+    $('folder-list').replaceChildren(...folders.map((folder) => {
+      const row = Object.assign(document.createElement('div'), { className: 'folder read-only' });
+      const name = Object.assign(document.createElement('span'), {
+        className: 'folder-name',
+        textContent: folder.name + (folder.person ? ' (person)' : ''),
+      });
+      const words = Object.assign(document.createElement('span'), {
+        className: 'folder-words',
+        textContent: folder.words || (folder.person ? 'their name' : 'Paperless learns this one from what you tag'),
+        title: folder.words || '',
+      });
       const bin = Object.assign(document.createElement('label'), { className: 'check' });
       const box = Object.assign(document.createElement('input'), { type: 'radio', name: 'bin', checked: Boolean(folder.discard) });
+      // Nobody is the bin.
+      box.disabled = Boolean(folder.person);
       bin.append(box, 'Bin');
-      // A row can be somebody instead of somewhere: then the display says the
-      // letter is for them, beside the folder it goes in.
-      const who = Object.assign(document.createElement('label'), { className: 'check', title: 'Somebody in the household, not a folder' });
-      const isPerson = Object.assign(document.createElement('input'), { type: 'checkbox', checked: Boolean(folder.person) });
-      who.append(isPerson, 'Person');
-      const remove = Object.assign(document.createElement('button'), { type: 'button', textContent: '✕', title: 'Remove this row' });
-      name.oninput = () => { folder.name = name.value; changedFolders(); };
-      words.oninput = () => { folder.words = words.value; changedFolders(); };
-      isPerson.onchange = () => {
-        folder.person = isPerson.checked;
-        // Nobody is the bin.
-        if (folder.person && folder.discard) { folder.discard = false; box.checked = false; }
-        name.placeholder = folder.person ? 'Name' : 'Folder';
-        words.placeholder = folder.person ? 'Other spellings of the name (optional)' : 'Words, separated by commas (optional)';
-        changedFolders();
-      };
       // A radio button cannot be unticked by tapping it again, so a second tap
       // on the bin that is already ticked clears it.
       box.onclick = () => {
@@ -635,8 +629,7 @@
         box.checked = folder.discard;
         changedFolders();
       };
-      remove.onclick = () => { folders.splice(index, 1); drawFolders(); changedFolders(); };
-      row.append(name, words, who, bin, remove);
+      row.append(name, words, bin);
       return row;
     }));
   }
@@ -644,25 +637,17 @@
   function changedFolders() {
     // A person and a folder may share a name — they are different tags — so
     // the two lists are checked apart.
-    const names = folders.map((f) => (f.person ? 'person:' : 'folder:') + f.name.trim().toLowerCase()).filter((key) => key.split(':')[1]);
-    const twice = names.find((name, i) => names.indexOf(name) !== i);
-    const saved = last ? folderKey(last.settings.folders) : '';
-    $('save-folders').disabled = Boolean(twice) || folderKey(folders.filter((f) => f.name.trim())) === saved;
-    $('folder-status').textContent = twice ? `Two ${twice.startsWith('person:') ? 'people are' : 'folders are'} called “${twice.slice(twice.indexOf(':') + 1)}”.` : '';
+    // Only the bin can be changed here now, so that is the only thing worth
+    // comparing against what was saved.
+    const binOf = (list) => ((list || []).find((f) => f.discard) || {}).name || '';
+    $('save-folders').disabled = binOf(folders) === binOf(last && last.settings.folders);
+    $('folder-status').textContent = '';
   }
 
-  const addRow = (person) => {
-    folders.push({ name: '', words: '', discard: false, person });
-    drawFolders();
-    changedFolders();
-    $('folder-list').lastElementChild.querySelector('input').focus();
-  };
-  $('add-folder').onclick = () => addRow(false);
-  $('add-person').onclick = () => addRow(true);
   $('save-folders').onclick = () => {
     const list = folders.filter((f) => f.name.trim()).map((f) => ({ name: f.name.trim(), words: (f.words || '').trim(), discard: Boolean(f.discard), person: Boolean(f.person) }));
     $('save-folders').disabled = true;
-    $('folder-status').textContent = 'Saved. Setting the folders up in Paperless…';
+    $('folder-status').textContent = 'Saved.';
     checkBeforeSave = JSON.stringify(last && last.check);
     post('/api/settings', { folders: list })
       .then(() => post('/api/check'))

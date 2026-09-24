@@ -163,6 +163,22 @@ size: paper covering less than about seven tenths of what a page covers (DL is
 about 0.4 of an A4 page, C5 about 0.6) is an envelope. The letter being
 collected is finished and sent at once, and the envelope is the first page of
 the next — which is not finished for the table being empty while it is opened.
+The folders themselves are **Paperless's**, read from it every few minutes.
+They are set up in the desktop app's assistant, which writes each one as a
+Paperless tag with its words; the scanner reads them back and shows them. It
+keeps no list of its own, because a second list could only ever disagree with
+the one doing the filing — and did, until the two `Lawstuff` lists had three
+words in common. The one thing the scanner still decides is which folder is
+the bin, since a Paperless tag cannot say that: `--bin-folder`, the `-Name` in
+the env file's list, or the one ticked on the setup page.
+
+A letter goes in **one** folder, because it is a piece of paper. Where its
+text fits more than one, the folder with the most of its words on the page
+wins — a letter carrying five of Taxes' words and one of Rechnungen's is a tax
+letter — and the others are said under it rather than beside it. Paperless
+tags the document with all of them, which is right for a document; the shelf
+is not a document.
+
 The words are matched against what tesseract made of a photograph, which is
 bad text: a letter from the Wasserschutzpolizei came out with
 "Strafprozessordnung" spelled three different wrong ways, and was filed by
