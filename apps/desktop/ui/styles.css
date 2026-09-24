@@ -1935,6 +1935,15 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
    way to take the row away. */
 .shelf-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) auto; gap: 6px; align-items: center; margin-bottom: 6px; }
 .shelf-row input { margin: 0; }
+/* What the filed letters suggest: one row a folder, its words as chips. */
+#shelf-learned { margin-top: 14px; }
+.learned-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2.6fr); gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid var(--line); }
+.learned-row > strong { overflow-wrap: anywhere; }
+.learned-words { display: flex; flex-wrap: wrap; gap: 6px; }
+.learned-words button { margin: 0; padding: 3px 9px; font-size: .9rem; }
+.learned-words button::after { content: " +"; opacity: .55; }
+.learned-words button[disabled]::after { content: " ✓"; opacity: 1; }
+.learned-row .hint { margin: 0; }
 @media (max-width: 620px) {
   .shelf-row { grid-template-columns: minmax(0, 1fr) auto; }
   .shelf-row .shelf-words { grid-column: 1 / -1; grid-row: 2; }

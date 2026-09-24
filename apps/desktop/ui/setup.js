@@ -560,6 +560,100 @@ function addShelfRow(person) {
   list.lastElementChild?.querySelector("input")?.focus();
 }
 
+/// Asks Paperless what the letters already filed suggest, and shows it: one
+/// row a folder, its words as buttons that give the word to the folder.
+///
+/// Nothing here writes anything. A suggested word lands in the folder's own
+/// words box, where it can be looked at, edited or taken out again, and it
+/// reaches Paperless when the folders are saved like any other word typed by
+/// hand. A machine that reads the post is allowed to have an opinion about
+/// where it goes; it is not allowed to file it.
+async function showLearned() {
+  const address = await shelfAddress();
+  if (!address) return;
+  const panel = el("shelf-learned");
+  const list = el("shelf-learned-list");
+  const button = el("shelf-learn");
+  panel.hidden = false;
+  button.disabled = true;
+  list.replaceChildren(node("p", { className: "hint", textContent: t("Reading the letters you have filed…") }));
+  let learned;
+  try {
+    learned = await invoke("paper_suggested_words", { id: address.id });
+  } catch (error) {
+    list.replaceChildren(node("p", { className: "setup-result bad", textContent: String(error) }));
+    return;
+  } finally {
+    button.disabled = false;
+  }
+  drawLearned(learned);
+}
+
+function drawLearned(learned) {
+  const list = el("shelf-learned-list");
+  const useful = (learned ?? []).filter((folder) => folder.words.length);
+  if (!useful.length) {
+    // Why there is nothing, which is a different thing from there being
+    // nothing to find. Until letters have been filed in two folders every
+    // word is in exactly one folder and in no other, boilerplate included.
+    const filed = (learned ?? []).filter((folder) => folder.from > 0);
+    list.replaceChildren(
+      node("p", {
+        className: "hint",
+        textContent:
+          filed.length >= 2
+            ? t("Nothing stood out yet. File a few more letters and ask again.")
+            : t(
+                "Not enough filed yet. Once letters have gone into two different folders, the words that tell them apart show up here.",
+              ),
+      }),
+    );
+    return;
+  }
+  list.replaceChildren(
+    ...useful.map((folder) => {
+      const words = node(
+        "div",
+        { className: "learned-words" },
+        ...folder.words.map((word) => {
+          const chip = node("button", {
+            type: "button",
+            textContent: word.word,
+            title: t("On {n} letters in this folder").replace("{n}", word.letters),
+          });
+          chip.onclick = () => {
+            giveWord(folder.folder, word.word);
+            chip.disabled = true;
+          };
+          return chip;
+        }),
+      );
+      return node(
+        "div",
+        { className: "learned-row" },
+        node("strong", { textContent: folder.folder }),
+        words,
+      );
+    }),
+  );
+}
+
+/// Adds a word to a folder's own words, where it can still be changed. Does
+/// nothing when the folder already has it: a word twice is not a word twice.
+function giveWord(name, word) {
+  const folder = (shelf ?? []).find((row) => row.name === name);
+  if (!folder) return;
+  const already = (folder.words ?? "")
+    .split(",")
+    .map((one) => one.trim().toLowerCase())
+    .filter(Boolean);
+  if (already.includes(word.toLowerCase())) return;
+  folder.words = folder.words?.trim() ? `${folder.words.trim()}, ${word}` : word;
+  drawShelf();
+}
+
+el("shelf-learn").onclick = showLearned;
+
 el("shelf-add").onclick = () => addShelfRow(false);
 el("household-add").onclick = () => addShelfRow(true);
 

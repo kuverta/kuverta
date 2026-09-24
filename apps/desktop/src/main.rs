@@ -1048,6 +1048,17 @@ async fn set_paper_folders(
     session.set_folders(&folders).await.map_err(fail)
 }
 
+/// Words the letters already filed suggest for each folder. A proposal:
+/// nothing changes until somebody accepts one and saves the folders.
+#[tauri::command]
+async fn paper_suggested_words(
+    app: State<'_, App>,
+    id: i64,
+) -> Result<Vec<core_rpc::learn::Learned>, String> {
+    let session = paper_session(&app, id)?;
+    session.suggested_words().await.map_err(fail)
+}
+
 /// Whether each postal address's Paperless answers, and which kuverta can
 /// start.
 #[tauri::command]
@@ -1970,6 +1981,7 @@ fn main() {
             paper_mailboxes,
             paper_folders,
             set_paper_folders,
+            paper_suggested_words,
             save_paper_mailbox,
             delete_paper_mailbox,
             set_paper_token,

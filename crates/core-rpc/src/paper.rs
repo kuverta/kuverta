@@ -829,6 +829,22 @@ impl PaperSession {
         self.client.set_folders(folders).await.map_err(paper_error)
     }
 
+    /// Words the letters already filed suggest for each folder, best first.
+    ///
+    /// Read-only, and a proposal: nothing is written until somebody accepts
+    /// one. What the evidence is, and when there is not enough of it to say
+    /// anything, is [`core_paper::learn`]'s business and travels with the
+    /// answer.
+    pub async fn suggested_words(&self) -> Result<Vec<core_paper::learn::Learned>> {
+        let folders = self.folders().await?;
+        let filed = self.client.filed(&folders).await.map_err(paper_error)?;
+        let filed: Vec<core_paper::learn::Filed<'_>> = filed
+            .iter()
+            .map(|(folder, text)| core_paper::learn::Filed { folder, text })
+            .collect();
+        Ok(core_paper::learn::learn(&filed, &folders))
+    }
+
     /// The document's file — the scan itself, for when its OCR text is no use.
     pub async fn download(&self, document_id: i64) -> Result<core_paper::Download> {
         self.client.download(document_id).await.map_err(paper_error)
