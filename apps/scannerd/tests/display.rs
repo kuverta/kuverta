@@ -29,8 +29,44 @@ fn facts(state: &str) -> Facts<'_> {
         can_refile: false,
         confirming: None,
         queue: &[],
+        guess: &[],
         showing_queue: false,
     }
+}
+
+#[test]
+fn the_letter_in_hand_says_where_it_looks_like_going_from_its_first_page() {
+    // The bug this is here for: the panel said nothing about the letter you
+    // were holding until Paperless had it — minutes later, and long after you
+    // had put the paper down somewhere.
+    let guess = vec!["Lawstuff".to_string()];
+    let scanning = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 1,
+        guess: &guess,
+        ..facts("waiting")
+    });
+    assert_eq!(scanning.guess.as_deref(), Some("Lawstuff"));
+
+    // Two folders read as two, and with nothing read there is nothing to say.
+    let both = vec!["Lawstuff".to_string(), "Taxes".to_string()];
+    let two = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 1,
+        guess: &both,
+        ..facts("waiting")
+    });
+    assert_eq!(two.guess.as_deref(), Some("Lawstuff · Taxes"));
+    let nothing = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 0,
+        guess: &guess,
+        ..facts("waiting")
+    });
+    assert_eq!(nothing.guess, None, "there is no letter to guess about yet");
 }
 
 /// A letter sent at 900, and what Paperless made of it at 950.

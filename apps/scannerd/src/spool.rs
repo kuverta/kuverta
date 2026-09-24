@@ -36,6 +36,11 @@ const READY: &str = "jpg";
 const LETTER: &str = "pdf";
 /// Where the pages of the letter being collected wait.
 const OPEN: &str = "open";
+/// The pages of the letter just sent, kept only so the setup page can still
+/// show what went. Emptied when the next letter starts, which is the same
+/// moment the text of those pages stops being shown — see
+/// `Scanner::read_pages`. A page here is not in any queue and is never sent.
+const SENT: &str = "sent";
 
 pub struct Spool {
     dir: PathBuf,
@@ -317,10 +322,34 @@ impl Spool {
             .with_context(|| format!("could not write {}", partial.display()))?;
         self.commit(&partial, &ready)?;
 
+        // Into `sent/` rather than deleted: the page that went is what the
+        // setup page goes on showing beside the text read from it, until the
+        // next letter starts. Kept as a copy of what is already inside the
+        // PDF, so losing it costs nothing.
+        let sent = self.dir.join(SENT);
+        let _ = fs::remove_dir_all(&sent);
+        let kept = fs::create_dir_all(&sent).is_ok();
         for page in &used {
-            let _ = fs::remove_file(page);
+            let moved = kept
+                && page
+                    .file_name()
+                    .is_some_and(|name| fs::rename(page, sent.join(name)).is_ok());
+            if !moved {
+                let _ = fs::remove_file(page);
+            }
         }
         Ok(Some(ready))
+    }
+
+    /// Lets go of the pages of the letter just sent. Called when the next
+    /// letter starts, so what is on the setup page is always one letter.
+    pub fn clear_sent(&self) {
+        let _ = fs::remove_dir_all(self.dir.join(SENT));
+    }
+
+    /// Where a page of the letter just sent is, if it is still there.
+    pub fn sent_page(&self, name: &str) -> PathBuf {
+        self.dir.join(SENT).join(name)
     }
 
     /// Forgets a capture, once Paperless has it.

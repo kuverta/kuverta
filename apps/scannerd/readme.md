@@ -163,6 +163,16 @@ size: paper covering less than about seven tenths of what a page covers (DL is
 about 0.4 of an A4 page, C5 about 0.6) is an envelope. The letter being
 collected is finished and sent at once, and the envelope is the first page of
 the next — which is not finished for the table being empty while it is opened.
+The words are matched against what tesseract made of a photograph, which is
+bad text: a letter from the Wasserschutzpolizei came out with
+"Strafprozessordnung" spelled three different wrong ways, and was filed by
+"Staatsanwaltschaft" surviving on its second page. So the word lists the
+setup assistant offers are longer than they look as if they need to be —
+every extra spelling of the same idea is another chance that one of them
+lands. Each list has to fit the 256 characters Paperless keeps of a tag's
+match, which `kuverta-bird/test/desktop-shelf.test.js` checks, and
+`cargo run --example match_check` runs a list against a real page's text.
+
 What a page covers is learnt from the pages, so corners set generously round
 where letters land still tell the two apart.
 
@@ -324,6 +334,12 @@ headless Pi needs no screen, no desktop and no second program: open
   delete it if it was photographed by mistake (a hand, the empty table, a page
   taken twice); a letter already sent is Paperless's to change;
 - what was sent and what is waiting, with **Retry uploads now**;
+- **Where it is going, from the first page.** The Pi reads each page itself
+  and matches the shelf's words, so the panel shows the folder as an outline
+  pill in the corner while you are still holding the letter — minutes before
+  Paperless has it. An outline because it is a guess; what Paperless decides
+  replaces it. The pill gives the corner back to the last letter's folder
+  once this one is sent.
 - **Learn empty table**, and setup. For the crop: put a page where letters will
   lie and press **Take a picture** — scannerd photographs the whole view in
   colour, finds the page (the largest bright area) and puts a box around it;

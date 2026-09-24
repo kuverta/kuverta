@@ -316,6 +316,41 @@ async fn a_press_with_nothing_photographed_does_not_close_the_next_letter_early(
 }
 
 #[test]
+fn the_pages_of_the_letter_just_sent_are_kept_for_the_setup_page() {
+    // The bug this is here for: the text read from a page went on being shown
+    // after the letter was sent, but the page itself had been deleted — so
+    // the preview said what the letter said beside an empty frame.
+    let dir = TempDir::new("sent-pages");
+    let spool = Spool::open(&dir.0).unwrap();
+    let mut names = Vec::new();
+    for _ in 0..2 {
+        let (partial, ready) = spool.reserve_page().unwrap();
+        std::fs::write(&partial, jpeg(100, 140)).unwrap();
+        spool.commit(&partial, &ready).unwrap();
+        names.push(ready.file_name().unwrap().to_string_lossy().into_owned());
+    }
+    spool.close_letter().unwrap().expect("a letter");
+
+    assert!(
+        spool.open_pages().unwrap().is_empty(),
+        "the letter is closed"
+    );
+    for name in &names {
+        let kept = spool.sent_page(name);
+        assert!(kept.exists(), "{name} is not there to be shown");
+        assert!(
+            scannerd::pdf::jpeg_info(&std::fs::read(&kept).unwrap()).is_ok(),
+            "{name} is not the photograph any more"
+        );
+    }
+
+    // And they go when the next letter starts, so what is on the page is
+    // always one letter.
+    spool.clear_sent();
+    assert!(!spool.sent_page(&names[0]).exists());
+}
+
+#[test]
 fn a_page_that_is_not_a_readable_jpeg_is_queued_on_its_own_rather_than_blocking_the_letter() {
     let dir = TempDir::new("bad-page");
     let spool = Spool::open(&dir.0).unwrap();

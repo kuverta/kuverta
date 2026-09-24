@@ -67,6 +67,11 @@ pub struct Screen {
     pub scanning: Option<Panes>,
     /// Where the letter before this one goes, while the next is scanned.
     pub last_letter: Option<(Tone, String)>,
+    /// Where the letter *being* scanned looks like going, from what the Pi
+    /// has read of it so far. A guess, drawn as one: it is on screen from
+    /// the first page, long before Paperless has the letter, which is the
+    /// point — you are standing there with the paper in your hand.
+    pub guess: Option<String>,
     /// A line for each button that is a letter waiting to be sent.
     pub queue: Vec<String>,
 }
@@ -194,6 +199,8 @@ pub struct Facts<'a> {
     pub can_refile: bool,
     /// What is waiting to be sent, oldest first.
     pub queue: &'a [crate::hub::Queued],
+    /// Folders the open letter's text looks like, newest reading first.
+    pub guess: &'a [String],
     /// Whether the display is showing that list.
     pub showing_queue: bool,
     /// A button waiting for its second tap.
@@ -267,6 +274,10 @@ impl Screen {
                 live: facts.live.clone(),
                 last: facts.last.and_then(|last| last.thumbnail.clone()),
             });
+            // What this letter looks like, as soon as a page has been read.
+            if facts.open_pages > 0 && !facts.guess.is_empty() {
+                screen.guess = Some(facts.guess.join(" · "));
+            }
             // Where the letter before goes stays in sight while the next is
             // scanned: the paper is still in a hand, or on the pile.
             screen.last_letter = relevant_filing(facts).map(|filing| {

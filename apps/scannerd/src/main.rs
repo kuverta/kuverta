@@ -628,6 +628,15 @@ async fn main() -> Result<()> {
                 .iter()
                 .map(queued)
                 .collect();
+            // Which folders the letter in hand looks like, from what the Pi
+            // has read of it: the panel says it from the first page, which
+            // is long before Paperless has the letter at all.
+            let guess: Vec<String> = scanner
+                .guessed()
+                .into_iter()
+                .filter(|folder| !folder.person)
+                .map(|folder| folder.name)
+                .collect();
             display.show(Screen::for_facts(&Facts {
                 now,
                 state: state_name(&turn, scanner.state()),
@@ -647,6 +656,7 @@ async fn main() -> Result<()> {
                 can_undo_letter: scanner.can_undo_letter(now),
                 can_refile: scanner.can_refile(now),
                 queue: &waiting,
+                guess: &guess,
                 showing_queue,
                 confirming: confirming
                     .filter(|(_, at)| now.saturating_sub(*at) < CONFIRM_SECS)
