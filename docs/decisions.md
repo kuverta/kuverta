@@ -1816,3 +1816,74 @@ you would do.
 Learning the table now goes last but is not given up. It stands down only when
 five rows are already taken, which is the most the card above the buttons can
 spare on a 480×320 panel.
+
+## 31. The card is asked for, the columns are yours, and a letter is not an envelope
+
+**2026-09-24.**
+
+Three things about the sender card, and one bug it caused.
+
+**It opens on being asked, not on reading.** The card opened itself whenever a
+message was opened, which took a quarter of the window every time to answer a
+question nobody had put. Now a sender's name — under the subject, and in a
+conversation's header — is the thing you click, and the card opens there.
+Once open it follows the cursor: having asked who one message is with, you are
+usually asking of the next one too. Its × closes it and stops it following.
+The hover card is unchanged; it was always the cheap version of the question
+and nobody complained about it.
+
+**The columns are dragged.** The widths were written into the grid — a fixed
+sidebar and a list between 300 and 390 — which is a guess about somebody
+else's screen. They are CSS variables now, dragged by the seams between the
+panes, double-clicked to put back, and kept in `localStorage`. The seams are
+grid items placed in the same cells as the panes, which is why the panes are
+now placed by hand: grid only lets items overlap where both were placed, and
+a handle has to sit *on* the border it moves. The one column with no width of
+its own is the reading pane, so it is the one that gives when the right-hand
+column opens.
+
+**A message can be thrown away from the card.** Each line of the exchange has
+a bin. It is the same queued move the list makes — `z` takes it back — and the
+card is asked for again afterwards by *address*, never by the message it was
+opened from, because that message may be the one that has just gone.
+
+### The envelope that was a letter
+
+Widening the quad in §29 broke something a long way from it. `Straightened::
+covered` is the share of the picture the paper covers, and it is how an
+envelope is told from a page — an envelope is smaller. It was measured against
+whatever had just been warped onto, which used to be the marks and now is
+sometimes the marks widened to hold an overhanging letter. A page measured
+against the wider quad comes out at an envelope's share, and an envelope
+finishes the letter being collected and starts a new one: so a letter was cut
+in two and its first page called the envelope of the second.
+
+`covered` is now always against the marks, whatever was warped onto. A number
+that answers "is this smaller than a page" only means something if its
+yardstick never moves.
+
+The same report turned up a second thing, older. With no page seen yet,
+`page_covers` stood in as 1.0 — a page fills the corners — and the rig's own
+pages cover about 0.70 of corners set generously round where letters land,
+against a threshold of 0.72. Every restart reset that, so the first page after
+one was a coin toss. Now nothing is an envelope until a page has been seen:
+an envelope mistaken for a page becomes page one of the letter it holds, which
+is where it belongs, while a page mistaken for an envelope cuts a letter in
+two. And paper whose edges could not be measured teaches that a page fills the
+corners, so a rig set up with tight corners still learns enough to tell an
+envelope later.
+
+### Verified
+
+`apps/scannerd/tests/straighten.rs` has a page that overhangs the marks, sized
+so the two yardsticks fall on opposite sides of the line: 0.83 of the marks,
+0.63 of the marks widened to hold it. It reads as a page, an envelope on the
+same marks still reads as an envelope, and the test fails with the measurement
+put back the way it was.
+
+`kuverta-bird/e2e/sender.test.js` drives the rest in a browser, because all of
+it is layout and pointers: reading a message leaves the column shut and
+clicking the sender opens it, it then keeps up with the cursor, the × shuts it
+for good, the reading pane is what gives up the width, the seams drag and stop
+at the limits and are remembered, and a message binned from the card leaves
+both the card and the list with the card still open on the same person.
