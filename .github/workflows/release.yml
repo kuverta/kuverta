@@ -8,8 +8,12 @@ on:
   push:
     tags: ["v*"]
 
+# Read-only by default, and each job that publishes says so for itself. Both
+# of them do today — one drafts the release, the other uploads to it — but a
+# job added later should have to ask rather than inherit the right to write
+# to the repository.
 permissions:
-  contents: write
+  contents: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,11 +22,18 @@ jobs:
   # One job makes the release, so the three builds do not each make their
   # own draft when they finish at the same time.
   release:
+    # Drafts the release.
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     outputs:
       id: ${{ steps.draft.outputs.result }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
 
       # The tag and the version the app reports have to agree, or the update
       # check would offer this release to itself forever.
@@ -38,7 +49,7 @@ jobs:
       # again fills the same draft.
       - name: Draft release
         id: draft
-        uses: actions/github-script@v7
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         with:
           script: |
             const tag = context.ref.replace('refs/tags/', '');
@@ -59,6 +70,9 @@ jobs:
             return data.id;
 
   build:
+    # Uploads the installers to the draft.
+    permissions:
+      contents: write
     needs: release
     strategy:
       fail-fast: false
@@ -81,7 +95,11 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
 
       - name: Rust toolchain and targets
         run: |
@@ -104,18 +122,26 @@ jobs:
       # The TLS library's assembly needs NASM to build for Windows.
       - name: NASM
         if: runner.os == 'Windows'
-        uses: ilammy/setup-nasm@v1
+        uses: ilammy/setup-nasm@72793074d3c8cdda771dba85f6deafe00623038b # v1.5.2
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: release-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: release-${{ matrix.os }}-
+      # Nothing is restored from a cache into this job, on purpose.
+      #
+      # What comes out of it is signed with this project's certificate and
+      # handed to people, so everything that goes into it has to come from
+      # this run. `target/` was cached here once: compiled objects, checked
+      # against nothing, linked into the installer and then signed. Caching
+      # only the registry does not fix it either — Cargo verifies a `.crate`
+      # archive against Cargo.lock when it unpacks it, but it does not hash
+      # `registry/src/` again on a later build, and that is what the cache
+      # would restore.
+      #
+      # It costs a few minutes of downloading, once a release, on a job that
+      # spends far longer compiling. CI caches its builds as before; this is
+      # the only workflow that signs anything.
 
-      - uses: actions/setup-node@v4
+      # No `cache:` here on purpose, for the reason above: nothing restored
+      # into a signing job that the job cannot verify.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 22
 
@@ -157,7 +183,7 @@ jobs:
           done
 
       - name: Build and upload
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

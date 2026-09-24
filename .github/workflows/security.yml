@@ -1,7 +1,8 @@
 name: Security
 
 # Dependencies with known advisories or unexpected licences and sources,
-# static analysis, and fuzzing of the code that reads other people's bytes.
+# static analysis of the code and of these workflows, and fuzzing of the code
+# that reads other people's bytes.
 #
 # Pushes and pull requests get a short fuzz run per target; the nightly run
 # fuzzes for longer and picks up advisories published since the last push.
@@ -26,8 +27,12 @@ jobs:
   cargo-deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check
 
@@ -36,13 +41,57 @@ jobs:
   npm-audit:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
       - name: Audit kuverta-bird
         working-directory: kuverta-bird
         run: npm audit --audit-level=high
+
+  # The workflows themselves: unpinned actions, permissions wider than a job
+  # needs, expressions interpolated into shell, and artifacts restored into a
+  # job that signs things. CI is where the signing keys are, so it is worth
+  # auditing like anything else that runs.
+  #
+  # Pinned actions are the reason this job exists rather than a one-off tidy:
+  # `uses: some/action@v4` follows whatever that tag points at today, and a
+  # tag is a label its owner can move. Every action here is pinned to a commit
+  # instead, and this is what stops the next one being added on a tag.
+  workflows:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      - name: zizmor
+        run: pip install "zizmor==1.16.3"
+
+      # `--offline` so the audit does not depend on GitHub answering, and
+      # cannot be turned off by a rate limit.
+      - name: Audit the workflows
+        run: zizmor --offline --persona=regular --format sarif .github/workflows/ > zizmor.sarif
+
+      - name: Report
+        if: always()
+        uses: github/codeql-action/upload-sarif@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
 
   codeql:
     runs-on: ubuntu-latest
@@ -56,13 +105,17 @@ jobs:
         # JavaScript; `actions` looks for injection in these workflows.
         language: [rust, javascript-typescript, actions]
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
+      - uses: github/codeql-action/init@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
         with:
           languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@3ea06614dafe36dec890db3446326e0d40ce53d4 # v3.38.1
         with:
           category: /language:${{ matrix.language }}
 
@@ -71,12 +124,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [parse_message, backfill_headers, open_pgp, reply_source, text]
+        target:
+          [parse_message, backfill_headers, open_pgp, reply_source, text, read_html, scan_picture]
     env:
       # A minute each on a push or pull request, ten at night.
       FUZZ_TIME: ${{ github.event_name == 'schedule' && '600' || '60' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
 
       # core-accounts links D-Bus for the keychain on Linux.
       - name: System libraries
@@ -87,7 +145,7 @@ jobs:
       - name: Nightly toolchain
         run: rustup toolchain install nightly --profile minimal
 
-      - uses: taiki-e/install-action@v2
+      - uses: taiki-e/install-action@7623a79cdfecb99d681017af368ca353d9f49bb5 # v2.87.19
         with:
           tool: cargo-fuzz
 
@@ -96,7 +154,7 @@ jobs:
       - name: Use the workspace's dependency versions
         run: cp Cargo.lock fuzz/Cargo.lock
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -108,7 +166,7 @@ jobs:
       # The corpus grows run by run: restored from the latest run on any
       # branch, saved under a new key each time since caches are immutable.
       - name: Restore corpus
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -133,7 +191,7 @@ jobs:
 
       - name: Save corpus
         if: success() && github.ref == 'refs/heads/main'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
@@ -142,7 +200,7 @@ jobs:
       # `cargo +nightly fuzz run <target> <file>`.
       - name: Upload crash
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzz-crash-${{ matrix.target }}
           path: fuzz/artifacts/${{ matrix.target }}
