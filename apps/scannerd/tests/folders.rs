@@ -240,7 +240,13 @@ async fn folders_tags_are_made_or_brought_up_to_date_in_paperless() {
         .find(|(request, _)| request == "PATCH /api/tags/3/")
         .expect("the existing tag is updated");
     let patch: serde_json::Value = serde_json::from_str(patch).unwrap();
-    assert_eq!(patch["matching_algorithm"], 1, "any word");
+    // Never matched by Paperless: where a letter goes is settled on the rig
+    // while somebody is holding the paper, and written on the document as it
+    // is uploaded. The words stay, because the rig reads a page against them.
+    assert_eq!(
+        patch["matching_algorithm"], 0,
+        "Paperless does not match it"
+    );
     assert_eq!(patch["match"], "Hyundai Kfz");
 
     let (_, created) = requests

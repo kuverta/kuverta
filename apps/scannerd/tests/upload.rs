@@ -128,7 +128,7 @@ async fn a_capture_is_posted_as_multipart_with_its_tags() {
     let (base, sent) = paperless!("200 OK", "\"3f2c-task-id\"");
 
     let task = uploader(&base, &["post", "home"])
-        .send("1757600000-7.jpg", b"\xff\xd8jpeg-bytes".to_vec())
+        .send("1757600000-7.jpg", b"\xff\xd8jpeg-bytes".to_vec(), &[])
         .await
         .unwrap();
 
@@ -172,7 +172,7 @@ async fn tags_are_sent_as_the_ids_paperless_knows_them_by() {
     // and sat in the spool. The fake used to accept names and hid it.
     let (base, sent) = paperless!("200 OK", "\"task\"");
     uploader(&base, &["post", "home"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap();
 
@@ -189,7 +189,7 @@ async fn tags_are_sent_as_the_ids_paperless_knows_them_by() {
 async fn a_tag_name_with_an_umlaut_and_a_space_is_looked_up_encoded() {
     let (base, sent) = paperless!("200 OK", "\"task\"");
     uploader(&base, &["Hauptstraße 12"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap();
 
@@ -210,7 +210,7 @@ async fn a_tag_paperless_does_not_have_fails_by_name_and_uploads_nothing() {
     // belongs to no address, which is worse than post that waits.
     let (base, sent) = paperless!("200 OK", "\"task\"");
     let err = uploader(&base, &["post", "Nebenstraße 3"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap_err();
 
@@ -226,8 +226,8 @@ async fn a_tag_paperless_does_not_have_fails_by_name_and_uploads_nothing() {
 async fn tags_are_looked_up_once_not_per_capture() {
     let (base, sent) = paperless!("200 OK", "\"task\"");
     let uploader = uploader(&base, &["post", "home"]);
-    uploader.send("a.jpg", b"x".to_vec()).await.unwrap();
-    uploader.send("b.jpg", b"y".to_vec()).await.unwrap();
+    uploader.send("a.jpg", b"x".to_vec(), &[]).await.unwrap();
+    uploader.send("b.jpg", b"y".to_vec(), &[]).await.unwrap();
 
     let requests = received(&sent);
     let lookups = requests
@@ -242,7 +242,7 @@ async fn tags_are_looked_up_once_not_per_capture() {
 async fn without_tags_nothing_is_looked_up() {
     let (base, sent) = paperless!("200 OK", "\"task\"");
     uploader(&base, &[])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap();
 
@@ -257,7 +257,7 @@ async fn the_body_ends_with_a_closing_boundary() {
     // rejects it — the classic hand-rolled-multipart bug.
     let (base, sent) = paperless!("200 OK", "\"ok\"");
     uploader(&base, &["post"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap();
 
@@ -279,7 +279,7 @@ async fn the_body_ends_with_a_closing_boundary() {
 async fn a_rejected_token_says_so_rather_than_being_a_status_code() {
     let (base, _sent) = paperless!("403 Forbidden", "{}");
     let err = uploader(&base, &[])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap_err();
     assert!(err.to_string().contains("rejected the token"), "{err}");
@@ -290,7 +290,7 @@ async fn a_token_rejected_at_the_tag_lookup_says_so_too() {
     // The lookup is now the first request a bad token meets.
     let (base, sent) = serve_with(|_| ("401 Unauthorized", "{}".into()));
     let err = uploader(&base, &["post"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap_err();
     assert!(err.to_string().contains("rejected the token"), "{err}");
@@ -303,7 +303,7 @@ async fn a_server_error_keeps_what_the_server_said() {
     // the reason has to survive into the log.
     let (base, _sent) = paperless!("500 Internal Server Error", "consumer is down");
     let err = uploader(&base, &["post"])
-        .send("a.jpg", b"x".to_vec())
+        .send("a.jpg", b"x".to_vec(), &[])
         .await
         .unwrap_err();
     assert!(err.to_string().contains("500"), "{err}");
