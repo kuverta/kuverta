@@ -772,17 +772,46 @@ impl Scanner {
                             let is_paper = quality
                                 .as_ref()
                                 .is_none_or(|quality| !quality.problems.contains(&Problem::NoPage));
+                            // Nothing is an envelope until a page has been
+                            // seen. An envelope is told apart by being
+                            // smaller than a page, so with no page to measure
+                            // against there is nothing to tell — and guessing
+                            // costs more than waiting: an envelope taken for
+                            // a page is page one of the letter it holds,
+                            // which is where it belongs anyway, while a page
+                            // taken for an envelope cuts a letter in two.
+                            // The corners are set generously round where
+                            // letters land, so a page covers about 0.7 of
+                            // them and sat right on the threshold.
+                            // Nothing is an envelope until a page has been
+                            // seen. An envelope is told apart by being
+                            // smaller than a page, so with no page to measure
+                            // against there is nothing to tell — and guessing
+                            // costs more than waiting: an envelope taken for a
+                            // page becomes page one of the letter it holds,
+                            // which is where it belongs anyway, while a page
+                            // taken for an envelope cuts a letter in two. It
+                            // used to be measured against the whole of the
+                            // corners, and the corners are set generously
+                            // round where letters land — so a page covers
+                            // about 0.7 of them and sat on the threshold.
                             let envelope = is_paper
-                                && crate::straighten::is_envelope(
-                                    covered,
-                                    self.page_covers.unwrap_or(1.0),
-                                );
-                            if let (false, Some(covered)) = (envelope, covered) {
+                                && self.page_covers.is_some_and(|page| {
+                                    crate::straighten::is_envelope(covered, page)
+                                });
+                            if is_paper && !envelope {
                                 // A page: learnt, a little at a time, so one
-                                // odd photograph does not move it far.
+                                // odd photograph does not move it far. Paper
+                                // whose edge could not be measured is paper
+                                // filling the corners, which is what corners
+                                // set close round a page look like — and that
+                                // is worth learning, because otherwise a rig
+                                // set up that way never learns anything and
+                                // can never tell an envelope at all.
+                                let seen = covered.unwrap_or(1.0);
                                 self.page_covers = Some(match self.page_covers {
-                                    Some(known) => known * 0.7 + covered * 0.3,
-                                    None => covered,
+                                    Some(known) => known * 0.7 + seen * 0.3,
+                                    None => seen,
                                 });
                             }
                             if let Some(warning) = warning {

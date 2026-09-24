@@ -359,7 +359,13 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
     };
     Ok(Straightened {
         jpeg: encode(&rgb, width, height, jpeg.len())?,
-        covered: page.covered,
+        // Always against the marks, never against whatever was warped onto.
+        // `covered` is how an envelope is told from a page, and the widening
+        // above would otherwise shrink it for a page that overhangs — which
+        // is a letter reported as the envelope it came in.
+        covered: page
+            .covered
+            .map(|covered| (covered * marked.area() / corners.area()).min(1.0)),
     })
 }
 
@@ -367,9 +373,14 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
 /// area the paper in it covered — which tells an envelope from a page.
 pub struct Straightened {
     pub jpeg: Vec<u8>,
-    /// The share of the straightened picture the paper's own corners
+    /// The share of **the marked corners' area** the paper's own corners
     /// enclose: 0.8–1 for an A4 page on setup's A4 corners, about 0.4 for a
     /// DL envelope and 0.6 for a C5. `None` when no paper was found.
+    ///
+    /// Against the marks rather than against the picture that came out,
+    /// because those are not always the same quad any more — see
+    /// [`paper_overhanging`] — and this number only means anything if its
+    /// yardstick never moves.
     pub covered: Option<f64>,
 }
 

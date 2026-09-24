@@ -279,7 +279,9 @@ async function openConversation(row) {
   emptyPane.hidden = true;
   conversationPane.hidden = false;
   el("conversation-avatar").textContent = initials(data.name);
-  el("conversation-name").textContent = data.name;
+  const name = el("conversation-name");
+  name.textContent = "";
+  name.append(senderName(data.name, { address: data.key }, { className: "sender-link plain" }));
   el("conversation-address").textContent = data.key;
   showSender({ address: data.key });
   if (!keepDraft) replyBox.value = "";
@@ -346,7 +348,7 @@ async function openWholeMessage(id) {
     emptyPane.hidden = true;
     el("reading-actions").hidden = true;
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
-    el("reading-meta").textContent = [detail.from, formatDate(detail.date_utc)].filter(Boolean).join("  ·  ");
+    fillMeta(el("reading-meta"), detail.from, { id }, [formatDate(detail.date_utc)]);
     el("reading-body").textContent = detail.body_text ?? t("(no readable body)");
     el("reading-urgency").hidden = true;
     showSender({ id });
