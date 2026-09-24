@@ -160,19 +160,41 @@ pub fn parse_env(text: &str) -> Vec<Folder> {
 /// phrase counts as one word. What Paperless learns for a folder with no
 /// words of its own cannot be copied, so those folders never show in a guess —
 /// the display says so when the letter is filed for real.
+/// The strongest first, because a letter is one piece of paper and goes in
+/// one folder on the shelf.
 pub fn guess<'a>(text: &str, folders: &'a [Folder]) -> Vec<&'a Folder> {
+    rank(text, folders)
+        .into_iter()
+        .map(|(folder, _)| folder)
+        .collect()
+}
+
+/// How many of each folder's words stand in the text, strongest first.
+///
+/// Ordered rather than merely filtered, because a letter fits more than one
+/// folder often enough — a tax letter that is also a Mahnung — and it still
+/// has to go in exactly one of them. The count is the whole of the judgement:
+/// a letter carrying five of Taxes' words and one of Rechnungen's is a tax
+/// letter. Folders that tie keep the order they are on the shelf in, so the
+/// answer does not move about between readings of the same page.
+pub fn rank<'a>(text: &str, folders: &'a [Folder]) -> Vec<(&'a Folder, usize)> {
     let text = text.to_lowercase();
-    folders
+    let mut found: Vec<(&Folder, usize)> = folders
         .iter()
-        .filter(|folder| {
-            folder
+        .map(|folder| {
+            let hits = folder
                 .looked_for()
                 .split(',')
                 .map(str::trim)
                 .filter(|word| !word.is_empty())
-                .any(|word| stands_in(&text, &word.to_lowercase()))
+                .filter(|word| stands_in(&text, &word.to_lowercase()))
+                .count();
+            (folder, hits)
         })
-        .collect()
+        .filter(|(_, hits)| *hits > 0)
+        .collect();
+    found.sort_by(|a, b| b.1.cmp(&a.1));
+    found
 }
 
 /// Whether `word` stands in `text` as a word of its own, rather than inside a
