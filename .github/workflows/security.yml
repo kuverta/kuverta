@@ -196,12 +196,33 @@ jobs:
           path: fuzz/corpus/${{ matrix.target }}
           key: fuzz-corpus-${{ matrix.target }}-${{ github.run_id }}
 
-      # The input that crashed, to reproduce with
+      # What went wrong, in the artifact's name.
+      #
+      # Downloading an artifact, or reading a job's log, needs admin on the
+      # repository; listing the artifacts does not. So the name carries what
+      # can be learnt without the file — libFuzzer's own prefix, which says
+      # whether the target panicked (`crash-`), ran out of memory (`oom-`) or
+      # hung (`timeout-`), and how big the input was. Those are different
+      # problems with different fixes, and a run that fails with neither the
+      # log nor the file readable is otherwise just a red tick.
+      - name: Name the failure
+        if: failure()
+        id: crash
+        run: |
+          found=$(ls fuzz/artifacts/${{ matrix.target }} 2>/dev/null | head -1)
+          if [ -n "$found" ]; then
+            size=$(wc -c < "fuzz/artifacts/${{ matrix.target }}/$found" | tr -d ' ')
+            echo "what=${found%%-*}-${size}bytes" >> "$GITHUB_OUTPUT"
+          else
+            echo "what=no-artifact" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The input itself, to reproduce with
       # `cargo +nightly fuzz run <target> <file>`.
       - name: Upload crash
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: fuzz-crash-${{ matrix.target }}
+          name: fuzz-${{ matrix.target }}-${{ steps.crash.outputs.what }}
           path: fuzz/artifacts/${{ matrix.target }}
           if-no-files-found: ignore
