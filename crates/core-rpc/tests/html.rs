@@ -224,3 +224,76 @@ fn a_letter_about_html_gets_its_html_back_as_words_rather_than_as_markup() {
     );
     assert_eq!(text.trim(), "Hello\nBye");
 }
+
+#[test]
+fn an_empty_link_shows_an_address_somebody_could_follow_and_no_other_kind() {
+    // The reason an empty link shows its address at all is that showing
+    // nothing would be worse. That reasoning does not reach a `javascript:`
+    // address, which means nothing to a person reading it — and a fuzzer
+    // found this one printed into the message word for word.
+    for href in [
+        "javascript:alert(1)",
+        "JaVaScRiPt:alert(1)",
+        "vbscript:msgbox",
+        "data:text/html;base64,PHNjcmlwdD4=",
+        "  \u{0}java\u{0}script:alert(1)",
+        "file:///etc/passwd",
+        "about:blank",
+    ] {
+        let text = to_text(&format!(
+            r#"<p>Before</p><a href="{href}"></a><p>After</p>"#
+        ))
+        .unwrap();
+        assert_eq!(
+            text.trim(),
+            "Before\nAfter",
+            "`{href}` was written into the message"
+        );
+    }
+
+    // And the addresses somebody could act on are still shown, whatever
+    // spacing the markup put round them.
+    for href in [
+        "https://example.de/paket",
+        "http://example.de",
+        "mailto:hallo@example.de",
+        "tel:+4940123456",
+        "  https://example.de/gap  ",
+    ] {
+        let text = to_text(&format!(r#"<a href="{href}"></a>"#)).unwrap();
+        assert_eq!(text.trim(), href.trim(), "`{href}` should still be shown");
+    }
+
+    // A link with words of its own shows its words and never its address,
+    // whatever the address is.
+    let text = to_text(r#"<a href="javascript:alert(1)">Sendung verfolgen</a>"#).unwrap();
+    assert_eq!(text.trim(), "Sendung verfolgen");
+}
+
+#[test]
+fn a_link_wrapped_round_a_paragraph_does_not_take_the_reader_with_it() {
+    // The text is not only ever appended to. A block element runs `newline`,
+    // which pops the trailing spaces, so by the closing `</a>` the text can
+    // be shorter than it was at the opening one. Reading the link's own words
+    // back by the offset noted at the `<a>` then panicked — index 104 into a
+    // string of 101 bytes, from a fuzzer, on markup like this.
+    let text = to_text("<p><a href=\"https://example.de\"> </h2><p></a>Danach</p>").unwrap();
+    assert!(text.contains("Danach"), "{text:?}");
+
+    // A link with a whole paragraph inside it is read for its words, and its
+    // address stays out of the way.
+    let text = to_text(
+        "<p>Vor</p><a href=\"https://example.de/paket\"><p>Sendung verfolgen</p></a><p>Nach</p>",
+    )
+    .unwrap();
+    assert!(text.contains("Sendung verfolgen"), "{text:?}");
+    assert!(
+        !text.contains("example.de"),
+        "the address is not shown: {text:?}"
+    );
+
+    // And one wrapped round nothing but a block that empties itself still
+    // counts as empty, so its address is what is left to show.
+    let text = to_text("<a href=\"https://example.de/x\"><p>  </p></a>").unwrap();
+    assert_eq!(text.trim(), "https://example.de/x");
+}
