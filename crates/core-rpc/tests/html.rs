@@ -297,3 +297,32 @@ fn a_link_wrapped_round_a_paragraph_does_not_take_the_reader_with_it() {
     let text = to_text("<a href=\"https://example.de/x\"><p>  </p></a>").unwrap();
     assert_eq!(text.trim(), "https://example.de/x");
 }
+
+#[test]
+fn the_words_either_side_of_a_tag_are_one_word() {
+    // Dropping markup joins what was around it, and that is the job: a word
+    // with a `<b>` in the middle is one word, and a sentence broken by a
+    // `<span>` is one sentence.
+    assert_eq!(
+        to_text("<p>Rech<b>nung</b> coGIS</p>").unwrap(),
+        "Rechnung coGIS"
+    );
+    assert_eq!(to_text("<p>a<span></span>b</p>").unwrap(), "ab");
+    // Even an empty tag, which is what `<>` is.
+    assert_eq!(to_text("<p>a<>b</p>").unwrap(), "ab");
+
+    // Which means the text can hold bytes the markup never had side by side.
+    // A fuzzer found `Tom Fisher!vbscript<>:m`, whose text says `vbscript:`.
+    // Nothing is wrong with that — the alternative is refusing to join words
+    // — and it is written down here because it is the reason the fuzz target
+    // asserts nothing about executable content: it cannot tell this from a
+    // parser carrying markup through, and neither can any input-only rule.
+    let text = to_text("<p>Tom Fisher!vbscript<>:m</p>").unwrap();
+    assert_eq!(text, "Tom Fisher!vbscript:m");
+    assert!(text.contains("vbscript:"));
+
+    // What follows for callers: this returns text, not safe markup. Anything
+    // that turns it back into links or HTML answers for that itself.
+    let text = to_text("<p>a<b>java</b>script:alert(1)</p>").unwrap();
+    assert_eq!(text, "ajavascript:alert(1)");
+}
