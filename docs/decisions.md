@@ -2294,6 +2294,26 @@ half-read message, and that nothing executable — a `<script`, an `onerror=`,
 a `javascript:` — survives into the text. Then 2.8 million runs found nothing
 further.
 
+The target's own first assertion was wrong, and CI found that out rather
+than a person did. It forbade the bytes `<script`, `onerror=` and
+`javascript:` anywhere in the output, on the reasoning that nothing
+executable should survive. But `&lt;script&gt;` unescapes to the characters
+`<script>`, correctly: that is somebody writing *about* a script tag, and
+what they wrote is what they should read back. It is text, and the window
+renders it as text. So the first run of this target against the seed corpus —
+real mail — failed within a minute on a message quoting HTML, and the
+assertion, not the reader, was at fault.
+
+The check now applies only to inputs with no character reference in them,
+where nothing can put those bytes in the output but the reader carrying
+markup through. Whether a script's *content* is dropped is a claim about
+particular documents rather than about all of them, so it is made about
+particular documents, and there is now a test holding the two cases side by
+side: the same bytes quoted, and the same bytes sent as a real script. The
+general lesson is the narrower one — a fuzz assertion that cannot tell what
+the sender wrote from what the parser did is not an assertion about the
+parser.
+
 A second target covers the scanner's arithmetic over raw pixels, where the
 width and the height are taken on trust and every offset is computed from
 them rather than from the buffer's length. Nothing in it panicked; the one
