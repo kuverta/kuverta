@@ -463,18 +463,22 @@ async fn setting_the_folders_up_changes_what_is_there_and_makes_what_is_not() {
         !changed.contains("\"name\""),
         "an existing tag keeps its name"
     );
-    assert!(changed.contains("\"matching_algorithm\":1"), "{changed}");
+    // Nothing matches itself: where a letter goes is settled on the rig while
+    // somebody is holding the paper, and written on the document as it is
+    // uploaded. A tag that went on matching would file a second opinion a
+    // minute later, against paper already in a drawer.
+    assert!(changed.contains("\"matching_algorithm\":0"), "{changed}");
     assert!(
         changed.contains("Rechnung Mahnung \\\"Offener Betrag\\\""),
         "a phrase is quoted for Paperless: {changed}"
     );
 
-    // `Auto` is new, and has no words: Paperless learns it from what is filed
-    // in it by hand.
+    // `Auto` is new, and has no words. It is still made — the rig reads the
+    // tags to know what folders there are — and it still matches nothing.
     let made = &asked[2];
     assert!(made.starts_with("POST /api/tags/"), "{made}");
     assert!(made.contains("\"name\":\"Auto\""), "{made}");
-    assert!(made.contains("\"matching_algorithm\":6"), "{made}");
+    assert!(made.contains("\"matching_algorithm\":0"), "{made}");
 
     // Somebody in the household is a tag of their own, marked as a person so
     // that a folder and a person of the same name stay two things, and looked
@@ -487,7 +491,7 @@ async fn setting_the_folders_up_changes_what_is_there_and_makes_what_is_not() {
         who.contains("\\\"Erika Mustermann\\\""),
         "looked for by name: {who}"
     );
-    assert!(who.contains("\"matching_algorithm\":1"), "{who}");
+    assert!(who.contains("\"matching_algorithm\":0"), "{who}");
 
     // The blank row the window leaves behind is not a tag called nothing.
     assert!(!asked.iter().any(|line| line.contains("\"nothing\"")));

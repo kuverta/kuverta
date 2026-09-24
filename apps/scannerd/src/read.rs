@@ -66,6 +66,12 @@ impl Reader {
 
     /// Reads a page in the background. The text arrives at [`Self::texts`].
     pub fn start(&self, page: &Path) {
+        self.start_as(page, Layout::default());
+    }
+
+    /// The same, cutting the page up another way — for a page the usual
+    /// reading mangles.
+    pub fn start_as(&self, page: &Path, how: Layout) {
         let Some(name) = page
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -80,7 +86,7 @@ impl Reader {
         let path = page.to_path_buf();
         std::thread::spawn(move || {
             let started = Instant::now();
-            match read_page(&program, &languages, &path) {
+            match read_page(&program, &languages, &path, how) {
                 Ok(text) => {
                     tracing::info!(
                         page = %name,
@@ -107,18 +113,57 @@ impl Reader {
     }
 }
 
+/// How the page is cut up before the words are read.
+///
+/// Measured on the rig's own photographs rather than chosen: a letter read as
+/// [`Layout::Column`] gave fifteen of the words a German reader recognises
+/// against thirteen for tesseract's default, with a quarter less of the
+/// punctuation-soup that marks a misread line; on a second page, nine against
+/// eight. [`Layout::Block`] finds many more "words" and no more real ones —
+/// it is reading the noise between the columns.
+///
+/// [`Layout::Block`] is still worth having, because a page the other two
+/// mangle is usually one whose columns they have run together, and it is what
+/// **Read it again** tries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Layout {
+    /// A column of text whose sizes vary: a letter, in other words.
+    #[default]
+    Column,
+    /// One uniform block, columns and all.
+    Block,
+}
+
+impl Layout {
+    fn psm(self) -> &'static str {
+        match self {
+            Self::Column => "4",
+            Self::Block => "6",
+        }
+    }
+
+    /// The other one, for reading a page a second time.
+    pub fn other(self) -> Self {
+        match self {
+            Self::Column => Self::Block,
+            Self::Block => Self::Column,
+        }
+    }
+}
+
 /// One page through the OCR, as text.
 ///
 /// Given a while and then killed: a reader that never comes back would hold a
 /// core of the four for as long as scannerd runs, and the loop still has a
 /// table to watch.
-fn read_page(program: &str, languages: &str, page: &PathBuf) -> Result<String> {
+fn read_page(program: &str, languages: &str, page: &PathBuf, how: Layout) -> Result<String> {
     let mut child = Command::new(program)
         .arg(page)
         // To standard output rather than a file beside the page: the spool is
         // the letter, and nothing else belongs in it.
         .arg("stdout")
         .args(["-l", languages])
+        .args(["--psm", how.psm()])
         // Three of the Pi's four cores: the fourth keeps watching the table.
         .env("OMP_THREAD_LIMIT", "3")
         .stdout(std::process::Stdio::piped())

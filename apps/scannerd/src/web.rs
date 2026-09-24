@@ -116,6 +116,10 @@ impl Web {
             "/api/retry" => Command::RetryNow,
             "/api/full-view" => Command::FullView,
             "/api/check" => Command::CheckPaperless,
+            "/api/read-again" => match read_page_name_field(body, "page").await {
+                Ok(name) => Command::ReadAgain(name),
+                Err(err) => return text(StatusCode::BAD_REQUEST, &err),
+            },
             "/api/delete-page" => match read_page_name(body).await {
                 Ok(name) => Command::DeletePage(name),
                 Err(message) => return text(StatusCode::BAD_REQUEST, &message),
@@ -200,6 +204,26 @@ pub async fn serve(listener: TcpListener, web: Arc<Web>) {
 
 /// `{"name": "<page file name>"}`, checked to be a page's name before the loop
 /// ever sees it.
+/// The same, under another field name — the reread asks by `page`.
+async fn read_page_name_field(body: Incoming, field: &str) -> Result<String, String> {
+    let bytes = Limited::new(body, 1024)
+        .collect()
+        .await
+        .map_err(|err| format!("could not read which page: {err}"))?
+        .to_bytes();
+    let body: serde_json::Value =
+        serde_json::from_slice(&bytes).map_err(|err| format!("which page? {err}"))?;
+    let name = body
+        .get(field)
+        .and_then(|name| name.as_str())
+        .unwrap_or_default()
+        .to_string();
+    if !is_page_name(&name) {
+        return Err(format!("{name:?} is not a page"));
+    }
+    Ok(name)
+}
+
 async fn read_page_name(body: Incoming) -> Result<String, String> {
     #[derive(serde::Deserialize)]
     struct Page {

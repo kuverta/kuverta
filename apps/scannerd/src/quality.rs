@@ -81,6 +81,40 @@ impl Quality {
         self.problems.is_empty()
     }
 
+    /// The same judgement, with the ink and the paper of the page **as the
+    /// camera took it** — before [`crate::flatten`] put its paper at white.
+    ///
+    /// Only the two exposure problems are decided again: whether the page is
+    /// sharp and whether there is any text on it are read off the picture
+    /// that will be sent, which is the right picture to read them off. How
+    /// bright it is is not, because this code made it bright.
+    pub fn exposed_as(self, tone: Option<crate::flatten::Tone>) -> Self {
+        let Some(tone) = tone else {
+            return self;
+        };
+        let mut problems: Vec<Problem> = self
+            .problems
+            .iter()
+            .copied()
+            .filter(|problem| !matches!(problem, Problem::NoPage | Problem::WashedOut))
+            .collect();
+        if tone.paper < PAPER {
+            // No paper in the photograph is no paper in it, whatever was done
+            // to the picture afterwards: the rest of the judgement is of a
+            // stretched table and means nothing.
+            problems.retain(|problem| !matches!(problem, Problem::Blurry | Problem::NoText));
+            problems.insert(0, Problem::NoPage);
+        } else if tone.paper >= CLIPPED && tone.ink > PALE_INK {
+            problems.insert(0, Problem::WashedOut);
+        }
+        Self {
+            ink: tone.ink,
+            paper: tone.paper,
+            problems,
+            ..self
+        }
+    }
+
     /// "good" or what is wrong, for a sentence.
     pub fn summary(&self) -> String {
         if self.ok() {
