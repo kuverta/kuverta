@@ -406,13 +406,23 @@ impl Store {
                 )?;
                 let id = tx.last_insert_rowid();
 
+                // The sender's name as well as their address, and who it
+                // went to. A letter in Sent carries the only name worth
+                // searching for in its recipients, and nowhere else.
+                let sender = match (&message.from_name, &message.from_addr) {
+                    (Some(name), Some(addr)) if !name.trim().is_empty() => {
+                        format!("{name} {addr}")
+                    }
+                    (_, addr) => addr.clone().unwrap_or_default(),
+                };
                 tx.execute(
-                    "INSERT INTO message_fts (rowid, subject, sender, body)
-                     VALUES (?1, ?2, ?3, ?4)",
+                    "INSERT INTO message_fts (rowid, subject, sender, recipients, body)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![
                         id,
                         message.subject.as_deref().unwrap_or(""),
-                        message.from_addr.as_deref().unwrap_or(""),
+                        sender,
+                        message.recipients.as_deref().unwrap_or(""),
                         message.search_text.as_deref().unwrap_or(""),
                     ],
                 )?;

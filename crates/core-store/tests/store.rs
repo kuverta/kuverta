@@ -290,6 +290,52 @@ fn search_finds_by_subject_and_body_and_is_scoped_to_the_account() {
 }
 
 #[test]
+fn a_letter_is_found_by_who_it_went_to_and_by_the_sender_s_name() {
+    // The index held the subject, the sender's address and the body. In Sent
+    // that misses the only name worth searching for: searching a real mailbox
+    // for `cadus` found twenty-six fewer letters than Thunderbird did, every
+    // one of them sent *by* the person searching *to* somebody at cadus.org.
+    let (store, account) = store_with_account();
+    let sent = NewMessage {
+        rfc822_message_id: Some("sent-1@example.de".into()),
+        subject: Some("Rechnung coGIS".into()),
+        from_name: Some("Erika Mustermann".into()),
+        from_addr: Some("erika@example.de".into()),
+        recipients: Some("er-accounting@cadus.example, ruben@cadus.example".into()),
+        date_utc: Some(1_756_620_000),
+        search_text: Some("anbei die Rechnung".into()),
+        ..Default::default()
+    };
+    store.upsert_message(account, &sent, None).unwrap();
+
+    // Who it went to, by domain and by the whole address.
+    assert_eq!(store.search(account, "cadus.example", 10).unwrap().len(), 1);
+    assert_eq!(
+        store
+            .search(account, "er-accounting@cadus.example", 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    // The second recipient counts as much as the first.
+    assert_eq!(
+        store
+            .search(account, "ruben@cadus.example", 10)
+            .unwrap()
+            .len(),
+        1
+    );
+    // The sender by name, not only by address.
+    assert_eq!(store.search(account, "Mustermann", 10).unwrap().len(), 1);
+    assert_eq!(
+        store.search(account, "erika@example.de", 10).unwrap().len(),
+        1
+    );
+    // And what is on no part of it is still not found.
+    assert_eq!(store.search(account, "Finanzamt", 10).unwrap().len(), 0);
+}
+
+#[test]
 fn search_treats_fts5_operators_as_literal_text() {
     // Unescaped, a query like `foo OR bar` or a stray quote is FTS5 syntax and
     // either matches the wrong rows or raises an error mid-search.
@@ -2072,4 +2118,95 @@ fn a_folder_badge_counts_a_queued_move_where_it_is_going() {
     assert!(store.cancel_operation(operation).unwrap());
     assert_eq!(count("INBOX"), (1, 1));
     assert_eq!(count("Archive"), (0, 0));
+}
+
+#[test]
+fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
+    // The searchable body is not a column on `message` — it lives only in the
+    // index. So v18 had to carry the old rows across rather than rebuild from
+    // the message table, which would have left every letter in the mailbox
+    // searchable by its subject and by nothing else, quietly.
+    let dir = std::env::temp_dir().join(format!("kuverta-store-v18-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("test.db");
+
+    let account = {
+        let store = Store::open(&path).unwrap();
+        let account = store
+            .add_account(&NewAccount {
+                label: "Test".into(),
+                email: "erika@example.de".into(),
+                imap_host: "127.0.0.1".into(),
+                imap_port: 10143,
+                imap_security: ImapSecurity::Plaintext,
+                username: "erika@example.de".into(),
+                auth_method: "app_password".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        store
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some("sent-2@example.de".into()),
+                    subject: Some("Rechnung coGIS".into()),
+                    from_addr: Some("erika@example.de".into()),
+                    recipients: Some("er-accounting@cadus.example".into()),
+                    date_utc: Some(1_756_620_000),
+                    search_text: Some("anbei die Abrechnung für Februar".into()),
+                    ..Default::default()
+                },
+                None,
+            )
+            .unwrap();
+        account
+    };
+
+    // Put the index back the way a v17 store left it: no recipients column,
+    // and the body still in it.
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE VIRTUAL TABLE message_fts_old USING fts5(subject, sender, body);
+             INSERT INTO message_fts_old (rowid, subject, sender, body)
+             SELECT rowid, subject, sender, body FROM message_fts;
+             DROP TRIGGER message_fts_delete;
+             DROP TABLE message_fts;
+             ALTER TABLE message_fts_old RENAME TO message_fts;
+             CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
+                 DELETE FROM message_fts WHERE rowid = old.id;
+             END;
+             PRAGMA user_version = 17;",
+        )
+        .unwrap();
+    }
+
+    let store = Store::open(&path).unwrap();
+    // What was only ever in the index is still in it.
+    assert_eq!(
+        store.search(account, "Abrechnung", 10).unwrap().len(),
+        1,
+        "the body text was lost rebuilding the index"
+    );
+    assert_eq!(
+        store.search(account, "Rechnung coGIS", 10).unwrap().len(),
+        1
+    );
+    // And what the rebuild was for is there now.
+    assert_eq!(
+        store
+            .search(account, "er-accounting@cadus.example", 10)
+            .unwrap()
+            .len(),
+        1,
+        "the recipients were not indexed by the migration"
+    );
+
+    // The trigger came back with the table: deleting a message still takes
+    // its row out of the index, or search returns rows that are not there.
+    store.delete_account(account).unwrap();
+    assert_eq!(store.search(account, "Abrechnung", 10).unwrap().len(), 0);
+
+    let _ = std::fs::remove_dir_all(&dir);
 }

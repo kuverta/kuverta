@@ -2393,3 +2393,51 @@ and rejects every byte outside the alphabet.
 
 Nothing token-shaped has ever been committed to this repository; the history
 was searched, not assumed.
+
+## 39. A letter is also the person it went to
+
+Searching a real mailbox for `cadus` found a hundred and eighty letters.
+Thunderbird, over the same mail, found two hundred and six. The twenty-six
+kuverta could not see were all of one kind: letters *sent*, to
+`er-accounting@cadus.org`, by the person doing the searching.
+
+The index held the subject, the sender and the body. That is most of a letter
+and it is the wrong most: in Sent the only name worth searching for is the one
+it went to, and that was the one field never indexed — though it had been sat
+on `message` as `recipients` the whole time. The sender's display name was
+missing for the same reason, the `sender` column having held the address
+alone.
+
+### The migration had to carry the old index, not rebuild it
+
+The searchable body text is not a column on `message`. It is passed in as
+`search_text` when a letter is stored, written straight into the index, and
+lives nowhere else — the blob on disk is the original message, not the text
+pulled out of it. So the obvious migration, dropping the index and
+regenerating it from the message table, would have left every letter in the
+mailbox searchable by its subject and by nothing else, with no error and
+nothing in a log. It carries the rows across instead and takes only the
+recipients from `message`.
+
+Run against a copy of the real database: a hundred and eighty found became two
+hundred and six, and all 12,674 bodies were still there afterwards. There is a
+test that rolls a store back to v17 and fails if that ever stops being true,
+because this is the kind of loss nobody notices for a month.
+
+## 40. The box and the list have to say the same thing
+
+Typing `cadus` and then clicking Sent showed the whole of Sent, with `cadus`
+still sitting in the search box, as though that were what had been asked for.
+
+Every reload leaves a search behind — it clears `state.searching` — so the box
+was describing a list that was not on screen. It is emptied in `reload` now,
+which is the one place every folder, category, smart mailbox and account
+change goes through; doing it in each of the dozen handlers instead is how the
+thirteenth gets forgotten.
+
+People is exempt, and that is the half worth remembering. There the box is not
+a search but a filter the page reads for itself when it loads, so clearing it
+would empty the list somebody had just narrowed. The test for this is
+structural rather than behavioural — the desktop window has no harness that
+boots it — so it pins two things only: that the clearing lives in `reload`,
+and that People is left out of it.
