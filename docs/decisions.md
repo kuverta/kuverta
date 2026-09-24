@@ -2441,3 +2441,61 @@ would empty the list somebody had just narrowed. The test for this is
 structural rather than behavioural — the desktop window has no harness that
 boots it — so it pins two things only: that the clearing lives in `reload`,
 and that People is left out of it.
+
+## 41. What a fuzzer cannot know, and three tries to admit it
+
+The HTML target asserted that nothing executable survives a read. It took
+three failures to work out that it cannot assert that at all.
+
+The first was forbidding `<script` in the output. It failed on the first real
+mail it saw, because `&lt;script&gt;` unescapes to the characters `<script>`
+— correctly. A message *quoting* HTML is not a message carrying it.
+
+The second excluded inputs with a character reference in them. It failed on
+`<a href="javascript:alert(1)"></a>`, which was a real finding in the reader
+and is fixed in §38, but the assertion was still wrong: the sender had
+written those bytes.
+
+The third excluded bytes the sender wrote as well, on the reasoning that what
+is left can only be the reader assembling them. CI, which by then could carry
+a small input in an artifact's name, handed over the counter-example:
+
+```text
+From: Tom Fisher!vbscript<>:m
+```
+
+`<>` is an empty tag. Dropping it leaves `vbscript` next to `:m`, and the text
+says `vbscript:` where the sender's bytes never did. Nothing is wrong. It is
+the job: `<b>java</b>script:` has to read as `javascript:`, because the words
+either side of markup are one word.
+
+So there is no form of this an input-only check can take. Joining text across
+removed markup can produce any bytes at all, and a fuzzer cannot tell that
+apart from a parser carrying something through. The assertion is gone rather
+than narrowed a fourth time, and what the target asserts now is what it can
+establish: that it returns, that its output is bounded by its own limit and
+the input's length, and that it is deterministic. Every claim about script
+content, event handlers and link addresses is made in
+`crates/core-rpc/tests/html.rs`, on documents where what the sender wrote and
+what the reader did are both known.
+
+One thing falls out of this for callers rather than for the parser.
+`to_text` returns **text, not safe markup**, and that text can hold
+`javascript:` whatever the markup was. Anything that ever turns message text
+back into links or HTML has to validate schemes itself; the converter cannot
+do it by refusing to join words.
+
+### Reading a failure you are not allowed to download
+
+None of this would have been found without a change to CI. Downloading an
+artifact, or reading a job's log, needs admin on the repository; listing the
+artifacts needs nothing at all. So an input small enough to be worth it now
+travels in the artifact names, in hex, across three of them.
+
+Before that the job was a red tick and nothing else. Seventeen million fuzz
+runs, eight million random builds of the fragments this parser has special
+cases for, seven point nine million exhaustive orderings, six runs from the
+seed mail and four two-stage runs mimicking CI exactly, all on this machine,
+all clean — against a hundred and fifteen bytes that CI had the whole time.
+The lesson is not about fuzzing. It is that a failure nobody can read is a
+failure nobody can fix, and the fix for that is cheaper than the search.
