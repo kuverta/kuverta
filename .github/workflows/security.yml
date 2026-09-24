@@ -210,11 +210,26 @@ jobs:
         id: crash
         run: |
           found=$(ls fuzz/artifacts/${{ matrix.target }} 2>/dev/null | head -1)
-          if [ -n "$found" ]; then
-            size=$(wc -c < "fuzz/artifacts/${{ matrix.target }}/$found" | tr -d ' ')
-            echo "what=${found%%-*}-${size}bytes" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$found" ]; then
             echo "what=no-artifact" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          file="fuzz/artifacts/${{ matrix.target }}/$found"
+          size=$(wc -c < "$file" | tr -d ' ')
+          echo "what=${found%%-*}-${size}bytes" >> "$GITHUB_OUTPUT"
+          # And the input itself, in hex, across as many names as it takes.
+          #
+          # Reading a job's log or downloading an artifact both need admin on
+          # the repository; listing the artifacts needs nothing. So a small
+          # input is carried in the names, where anyone who can see the repo
+          # can read it — including whoever has to fix it and cannot fetch the
+          # file. Only for inputs small enough to be worth it; a big one is in
+          # the artifact and nowhere else.
+          if [ "$size" -le 400 ]; then
+            hex=$(xxd -p "$file" | tr -d '\n')
+            echo "hex1=${hex:0:170}" >> "$GITHUB_OUTPUT"
+            echo "hex2=${hex:170:170}" >> "$GITHUB_OUTPUT"
+            echo "hex3=${hex:340:170}" >> "$GITHUB_OUTPUT"
           fi
 
       # The input itself, to reproduce with
@@ -224,5 +239,31 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: fuzz-${{ matrix.target }}-${{ steps.crash.outputs.what }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+      # The same input in hex, one name a part. Nothing is in these but the
+      # name; see "Name the failure" for why that is the useful bit.
+      - name: The input, part one
+        if: failure() && steps.crash.outputs.hex1 != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hex1-${{ steps.crash.outputs.hex1 }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+      - name: The input, part two
+        if: failure() && steps.crash.outputs.hex2 != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hex2-${{ steps.crash.outputs.hex2 }}
+          path: fuzz/artifacts/${{ matrix.target }}
+          if-no-files-found: ignore
+
+      - name: The input, part three
+        if: failure() && steps.crash.outputs.hex3 != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hex3-${{ steps.crash.outputs.hex3 }}
           path: fuzz/artifacts/${{ matrix.target }}
           if-no-files-found: ignore
