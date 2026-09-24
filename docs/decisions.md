@@ -2264,3 +2264,85 @@ On the archive as it stands — twenty-nine letters over twelve folders, most
 with two or three — it proposes nothing, and says so: not enough filed yet.
 That is the feature working. A suggestion made from three letters would be
 worth less than no suggestion, because it would be acted on.
+
+## 38. Auditing the things that read what other people wrote
+
+The security pipeline was already most of what it should be: `cargo deny` for
+advisories and licences, `npm audit`, CodeQL over Rust, JavaScript and the
+workflows, and five fuzz targets with a corpus that grows run by run. What
+follows is the gaps, and one of them was worth the whole exercise.
+
+### The HTML reader was not fuzzed, and it had a bug
+
+`core-rpc` was not in the fuzz crate at all, so §35's HTML reader — the
+newest parser in the program, and the one with the widest mouth, since anyone
+who can send mail can hand it a megabyte of anything — had only the examples
+written out by hand.
+
+Two minutes of fuzzing found `&\n\0Ľ!Ľ&6\0Ľ<`. Entities are looked for in a
+window of twelve bytes after an `&`, and twelve bytes into that string is the
+middle of an `Ľ`: slicing a `str` there is a panic. A letter with that in it
+would have taken down the thread rendering it, from anyone who could send
+mail. The window now runs over the bytes rather than the string, which is
+sound for the same reason the search was written that way in the first place
+— `;` is ASCII, and an ASCII byte never appears inside a longer character.
+
+The target asserts the four things the module promises rather than checking
+the text looks nice: that it returns at all, that its output is bounded by
+its own limit and not by the input, that a refusal is a refusal and never a
+half-read message, and that nothing executable — a `<script`, an `onerror=`,
+a `javascript:` — survives into the text. Then 2.8 million runs found nothing
+further.
+
+A second target covers the scanner's arithmetic over raw pixels, where the
+width and the height are taken on trust and every offset is computed from
+them rather than from the buffer's length. Nothing in it panicked; the one
+failure was the target's own post-condition, which asked `trim_to_page` for a
+guarantee it does not make. It hands a buffer it does not recognise straight
+back, dimensions and all, and the assertion now holds it to that.
+
+### Every action is pinned, because CI is where the keys are
+
+`uses: some/action@v4` follows whatever that tag points at today, and a tag
+is a label its owner can move. There were seventeen of them, four from
+outside GitHub, and two of those ran in the workflow that holds the Apple
+signing certificates. All are pinned to commit hashes now, with the version
+in a comment, and `zizmor` runs in CI so the next one cannot be added on a
+tag.
+
+Three more things it found, all of them fair:
+
+**Permissions granted to every job.** `contents: write` on the release
+workflow and `pages: write` on the website one were declared at the top,
+where every job in the file inherits them. Both now sit on the jobs that
+publish. Today that is every job in the release workflow anyway — one drafts
+the release, the other uploads to it — but a job added later should have to
+ask.
+
+**The workflow token left behind.** `actions/checkout` writes it into
+`.git/config` and leaves it there for every later step and every action they
+run. Nine checkouts, all now `persist-credentials: false`.
+
+**A cache restored into the job that signs.** The release build restored
+`target/` — compiled objects, verified against nothing, linked into the
+installer and then signed with this project's certificate. Caching only the
+registry does not fix it: Cargo checks a `.crate` archive against Cargo.lock
+when it unpacks it, but it does not hash `registry/src/` again on a later
+build, and that is what the cache would restore. So the release workflow now
+restores nothing at all. It costs a few minutes of downloading, once a
+release, on a job that spends far longer compiling — and CI caches its builds
+as before, because CI does not sign anything.
+
+### What was looked at and left alone
+
+The scanner's HTTP surface, which is the one thing on a network: its
+path-traversal guard is an allow-list rather than a deny-list, its password
+comparison is constant-time, its bodies are length-limited, it demands a
+header a browser will not attach to somebody else's form, and `tests/web.rs`
+already checks each of those, percent-encoded traversal included. Its base64
+decoder is hand-rolled, which is usually a smell, but it accumulates into a
+`u32` six bits at a time with at most thirteen live — it cannot overflow —
+and rejects every byte outside the alphabet.
+
+Nothing token-shaped has ever been committed to this repository; the history
+was searched, not assumed.

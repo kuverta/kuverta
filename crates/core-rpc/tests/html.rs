@@ -172,3 +172,28 @@ fn a_list_reads_as_a_list() {
     let text = to_text("<p>Bitte:</p><ul><li>zahlen</li><li>oder widersprechen</li></ul>").unwrap();
     assert_eq!(text, "Bitte:\n- zahlen\n- oder widersprechen");
 }
+
+#[test]
+fn an_entity_window_that_lands_inside_a_character_does_not_cut_it_in_half() {
+    // Found by fuzzing in two minutes. Entities are looked for in a window of
+    // twelve bytes after an `&`; twelve bytes into this is the middle of the
+    // second `Ľ`, and slicing a `str` there is a panic. A letter carrying it
+    // would have taken down the thread rendering it, from anyone who can send
+    // mail.
+    // Returning at all is the whole assertion — the bug was a panic, and
+    // either answer about this string is a fine one.
+    let found = "&\n\0Ľ!Ľ&6\0Ľ<";
+    let _ = to_text(found);
+
+    // The same shape, deliberately: an `&` with a multi-byte character
+    // straddling every byte of the window after it.
+    for pad in 0..16 {
+        let html = format!("<p>&{}Ľ;x</p>", "a".repeat(pad));
+        let text = to_text(&html).expect("a paragraph with an `&` in it is readable");
+        assert!(text.contains('x'), "{html:?} lost its text: {text:?}");
+    }
+
+    // And an entity that really is one still is, whatever is around it.
+    let text = to_text("<p>Ľ &amp; Ľ &mdash; Ľ</p>").unwrap();
+    assert_eq!(text.trim(), "Ľ & Ľ — Ľ");
+}

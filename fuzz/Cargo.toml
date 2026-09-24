@@ -1,5 +1,6 @@
 # Fuzz targets for the code that reads bytes someone else wrote: raw mail off
-# an IMAP server, PGP packets inside it, and text a model sent back.
+# an IMAP server, PGP packets inside it, the HTML a letter arrives in, text a
+# model sent back, and the scanner's arithmetic over raw pixels.
 #
 # Its own workspace, so the main build and `cargo test --workspace` never see
 # it: libFuzzer needs a nightly compiler and the rest of the tree is pinned to
@@ -17,11 +18,16 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+# The derive, so a target can take a width, a height and a buffer rather than
+# one flat slice it would have to cut up itself.
+arbitrary = { version = "1", features = ["derive"] }
 core-proto = { path = "../crates/core-proto" }
 core-pgp = { path = "../crates/core-pgp" }
 core-smtp = { path = "../crates/core-smtp" }
 core-store = { path = "../crates/core-store" }
 core-ai = { path = "../crates/core-ai" }
+core-rpc = { path = "../crates/core-rpc" }
+scannerd = { path = "../apps/scannerd" }
 
 [workspace]
 members = ["."]
@@ -57,6 +63,20 @@ bench = false
 [[bin]]
 name = "reply_source"
 path = "fuzz_targets/reply_source.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "read_html"
+path = "fuzz_targets/read_html.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan_picture"
+path = "fuzz_targets/scan_picture.rs"
 test = false
 doc = false
 bench = false
