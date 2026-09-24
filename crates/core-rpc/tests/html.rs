@@ -197,3 +197,30 @@ fn an_entity_window_that_lands_inside_a_character_does_not_cut_it_in_half() {
     let text = to_text("<p>Ľ &amp; Ľ &mdash; Ľ</p>").unwrap();
     assert_eq!(text.trim(), "Ľ & Ľ — Ľ");
 }
+
+#[test]
+fn a_letter_about_html_gets_its_html_back_as_words_rather_than_as_markup() {
+    // `&lt;script&gt;` is somebody writing about a script tag, not sending
+    // one, and what they wrote is what they should read back. It comes out
+    // as the characters `<script>` — text, which the window renders as text.
+    //
+    // This is here because the fuzzer's first run in CI asserted the opposite
+    // and failed on ordinary mail: a target that forbids the *bytes* `<script`
+    // anywhere in the output cannot tell a quoted tag from a carried one. The
+    // difference is whether the reader put them there, and that is what the
+    // rest of this file checks on documents where the answer is known.
+    let text = to_text("<p>Write &lt;script&gt;alert(1)&lt;/script&gt; to embed one.</p>").unwrap();
+    assert_eq!(text.trim(), "Write <script>alert(1)</script> to embed one.");
+
+    // The same bytes, sent as a real script, are not in the text at all.
+    let text = to_text("<p>Hello</p><script>alert(1)</script><p>Bye</p>").unwrap();
+    assert!(
+        !text.contains("alert"),
+        "the script's body survived: {text:?}"
+    );
+    assert!(
+        !text.contains("script"),
+        "the script tag survived: {text:?}"
+    );
+    assert_eq!(text.trim(), "Hello\nBye");
+}
