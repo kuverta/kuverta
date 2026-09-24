@@ -21,7 +21,6 @@ use crate::folders::Folder;
 /// A tag that matches nothing by itself: a label put on by hand, not a folder
 /// letters fall into.
 const MATCH_NONE: u64 = 0;
-const MATCH_ANY_WORD: u64 = 1;
 const MATCH_AUTO: u64 = 6;
 
 /// A question about a letter already sent is quick or not worth waiting for:
@@ -90,8 +89,15 @@ impl Uploader {
         })
     }
 
-    /// Sends one capture. Returns the task id Paperless answers with.
-    pub async fn send(&self, filename: &str, jpeg: Vec<u8>) -> Result<String> {
+    /// Sends one capture, in the folders it was decided to go in. Returns the
+    /// task id Paperless answers with.
+    ///
+    /// The folders are named rather than matched: where a letter goes is
+    /// settled on the rig, while somebody is holding the paper, and the
+    /// record has to agree with the drawer they put it in. Paperless does not
+    /// match folder tags itself any more — see `Paperless::set_folders` — so
+    /// what is named here is what the document ends up with.
+    pub async fn send(&self, filename: &str, jpeg: Vec<u8>, folders: &[String]) -> Result<String> {
         if self.token.trim().is_empty() {
             bail!("no Paperless token is set yet (the setup page or PAPERLESS_TOKEN); the capture is kept");
         }
@@ -106,6 +112,17 @@ impl Uploader {
         // Paperless takes repeated `tags` fields, one per tag.
         for id in tag_ids {
             fields.push(("tags".into(), id.to_string()));
+        }
+        // A folder whose tag has gone is worth a line in the log, not a
+        // refused upload: the letter matters more than the label.
+        for name in folders {
+            match self.find_tag(name).await {
+                Ok(Some(id)) => fields.push(("tags".into(), id.to_string())),
+                Ok(None) => {
+                    tracing::warn!(folder = %name, "no tag for the folder the letter goes in")
+                }
+                Err(err) => tracing::warn!(%err, folder = %name, "could not look the folder up"),
+            }
         }
 
         let body = multipart(&boundary, &fields, filename, &jpeg);
@@ -196,10 +213,13 @@ impl Uploader {
             .as_array()
             .into_iter()
             .flatten()
+            // A folder is a tag with words of its own — the ones the rig
+            // reads a page against. Paperless does not match them itself any
+            // more; a tag with no words is a label put on by hand, the
+            // address among them.
             .filter(|tag| {
-                tag["matching_algorithm"]
-                    .as_u64()
-                    .is_some_and(|how| how != MATCH_NONE)
+                tag["match"].as_str().is_some_and(|m| !m.trim().is_empty())
+                    || tag["matching_algorithm"].as_u64() == Some(MATCH_AUTO)
             })
             .filter_map(|tag| {
                 let name = tag["name"].as_str()?.trim();
@@ -237,8 +257,11 @@ impl Uploader {
         let mut out = Vec::with_capacity(folders.len());
         for folder in folders {
             let words = folder.paperless_match();
+            // Never matched by Paperless: where a letter goes is decided on
+            // the rig and written on the document as it is uploaded. The
+            // words stay, because the rig reads a page against them.
             let matching = serde_json::json!({
-                "matching_algorithm": if words.is_empty() { MATCH_AUTO } else { MATCH_ANY_WORD },
+                "matching_algorithm": if words.is_empty() { MATCH_AUTO } else { MATCH_NONE },
                 "match": words,
                 "is_insensitive": true,
             });

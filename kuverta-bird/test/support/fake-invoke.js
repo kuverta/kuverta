@@ -764,7 +764,7 @@ export function defaultPaper() {
         has_attachments: true,
         category: 'transactional',
         snippet: 'Ihr monatlicher Abschlag beträgt ab April 84,00 EUR.',
-        tags: ['home'],
+        tags: ['Lawstuff', 'Person: Nicolas Zemke'],
         page_count: 2,
       },
       {

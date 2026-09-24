@@ -43,7 +43,6 @@ pub type Result<T> = std::result::Result<T, PaperError>;
 
 /// Paperless's matching algorithms, as its API numbers them.
 const MATCH_NONE: i64 = 0;
-const MATCH_ANY_WORD: i64 = 1;
 const MATCH_AUTO: i64 = 6;
 
 /// What a person's tag is called in Paperless: their name behind this. The
@@ -845,7 +844,11 @@ impl Paperless {
         Ok(listing
             .results
             .into_iter()
-            .filter(|tag| tag.matching_algorithm.is_some_and(|how| how != MATCH_NONE))
+            // A folder is a tag with words of its own. Not one Paperless
+            // matches by itself — it no longer matches any of them — but one
+            // that says which letters belong in it. A tag with no words is a
+            // label somebody puts on by hand, the address among them.
+            .filter(|tag| tag.matches_something())
             .map(|tag| {
                 let (name, person) = match tag.name.strip_prefix(PERSON_TAG_PREFIX) {
                     Some(who) => (who.trim().to_string(), true),
@@ -879,7 +882,16 @@ impl Paperless {
             let name = name.as_str();
             let words = folder.paperless_match();
             let mut fields = serde_json::json!({
-                "matching_algorithm": if words.is_empty() { MATCH_AUTO } else { MATCH_ANY_WORD },
+                // Paperless does not match folder tags itself. Where a letter
+                // goes is settled on the rig, while somebody is holding the
+                // paper, and written on the document as it is uploaded — so
+                // the record says the drawer the paper is actually in. A
+                // second opinion arriving a minute later, from better OCR but
+                // after the filing, would only ever make the two disagree.
+                //
+                // The words stay on the tag: the rig reads them to make that
+                // decision, and this is where they are edited.
+                "matching_algorithm": MATCH_NONE,
                 "match": words,
                 "is_insensitive": true,
             });
@@ -1152,6 +1164,21 @@ struct TagRow {
     name: String,
     matching_algorithm: Option<i64>,
     r#match: Option<String>,
+}
+
+impl TagRow {
+    /// Whether this tag says which letters belong in it — a folder — rather
+    /// than being a label put on by hand.
+    ///
+    /// Words of its own, or an algorithm that finds its own: Paperless's
+    /// "auto" learns from the documents already tagged, and a folder set up
+    /// that way has nothing written down but is still a folder.
+    fn matches_something(&self) -> bool {
+        self.r#match
+            .as_deref()
+            .is_some_and(|m| !m.trim().is_empty())
+            || self.matching_algorithm == Some(MATCH_AUTO)
+    }
 }
 
 #[derive(Deserialize)]

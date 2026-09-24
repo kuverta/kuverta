@@ -2021,3 +2021,57 @@ own suite covers the rest.
 Against the real shelf: the Wasserschutzpolizei letter reads as `Lawstuff`,
 the Finanzamt letter as `Taxes` first and `Inkasso/Rechnungen` second — which
 is what it is. Both sides now hold the same twelve lists.
+
+## 34. The folder is decided once, while the paper is in your hand
+
+**2026-09-24.**
+
+§33 made the shelf one list and had a letter land in one folder. It still had
+the folder decided twice: the rig guessed from its own tesseract reading of a
+photograph, and a minute later Paperless matched the same tags against its own,
+much better OCR, and that answer replaced the guess.
+
+Which is wrong, and the reason is not accuracy. **The paper is already in a
+drawer by then.** Somebody read the folder off the panel, walked to the shelf
+and filed the letter. A record that changes its mind afterwards does not
+correct anything — it makes the record disagree with the room, and the whole
+point of keeping the record is to find the paper again.
+
+So the decision is made once, at the moment the letter is finished, from what
+the rig has read: `Scanner::closed` settles it and writes it beside the letter
+in the spool, as a `.folders` sidecar next to the `.attempts` one. Beside it
+rather than in memory because a letter can wait overnight for a Paperless that
+is down, and the paper was filed last night. The upload names those tags on
+the document, and **Paperless no longer matches folder tags at all**: they are
+saved with `matching_algorithm` set to none.
+
+The words stay on the tags, which is the part worth being careful about. They
+are not there for Paperless any more; they are what the rig reads a page
+against, and the tag is where they are edited and where both halves read them
+from. So "a folder" can no longer be recognised by Paperless matching it —
+a tag with words of its own is a folder, and a tag without any is a label
+somebody puts on by hand, the address among them.
+
+The cost is real and worth stating: the decision is made on a photograph read
+by tesseract, which is worse text than Paperless's OCR of the same page. A
+letter will occasionally be filed somewhere a better reader would not have
+filed it. That is a worse folder, once; the alternative is a record that is
+reliably wrong about where the paper is, for ever.
+
+### Finding the paper again
+
+An open letter in kuverta now says which folder it is in, under its subject —
+a pill with the folder's name, and who it is for beside it. The address label
+is left out: it is on every letter of a postbox and says nothing about where
+this one is. It is the most practical fact on the screen, because it is the
+only one you can act on with your hands.
+
+### Verified
+
+`apps/scannerd/tests/folders.rs` checks the tag is written with matching off
+and its words kept. `kuverta-bird/e2e/postbox.test.js` opens a letter in a
+browser and finds one folder pill and the person it is for, read apart.
+
+On the rig: the twelve tags were switched to no matching and it still took all
+twelve — `folders taken from Paperless count=12` — because it now knows a
+folder by its words. The bin and both people came through.

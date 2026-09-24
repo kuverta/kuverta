@@ -181,6 +181,25 @@ test('opening a letter shows its text, where it was sent and how many pages it h
   await context.close();
 });
 
+test('an open letter says which folder on the shelf the paper is in', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.locator('#postboxes .nav-item').first().click();
+  await page.waitForFunction(() => document.querySelectorAll('#content .row:not([hidden])').length > 0);
+  await page.locator('#content .row:not([hidden])').first().click();
+  await page.waitForSelector('#reading:not([hidden])');
+
+  // The rig decided this while somebody was holding the paper, so it is a
+  // drawer you can go and open — which is the whole point of saying it.
+  const shelf = page.locator('#reading-shelf');
+  await shelf.waitFor();
+  assert.match(await shelf.innerText(), /Lawstuff/);
+  // Who it is for reads as that, not as another folder.
+  assert.match(await shelf.innerText(), /Nicolas Zemke/);
+  assert.equal(await shelf.locator('.shelf-folder').count(), 1, 'one folder, one drawer');
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('a letter opens on its text or its scan, and the choice is kept for the next letter', async () => {
   const { page, context, problems } = await openWindow();
   await postbox(page).click();

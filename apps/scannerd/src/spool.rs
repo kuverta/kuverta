@@ -41,6 +41,9 @@ const OPEN: &str = "open";
 /// moment the text of those pages stops being shown — see
 /// `Scanner::read_pages`. A page here is not in any queue and is never sent.
 const SENT: &str = "sent";
+/// Beside a letter waiting to be sent: the folders it was decided to go in,
+/// one a line. See [`Spool::record_folders`].
+const FOLDERS: &str = "folders";
 
 pub struct Spool {
     dir: PathBuf,
@@ -341,6 +344,32 @@ impl Spool {
         Ok(Some(ready))
     }
 
+    /// Writes down which folders a letter was decided to go in, beside the
+    /// letter itself.
+    ///
+    /// Beside it, and not in memory, because the decision has to survive a
+    /// restart: it was made while somebody was holding the paper, and the
+    /// paper is in a drawer now. A letter that waited overnight for a
+    /// Paperless that was down must still be filed where the person put it.
+    pub fn record_folders(&self, letter: &Path, folders: &[String]) {
+        let path = letter.with_extension(FOLDERS);
+        let text = folders.join("\n");
+        if let Err(err) = fs::write(&path, text) {
+            tracing::warn!(%err, file = %path.display(), "could not write down where the letter goes");
+        }
+    }
+
+    /// Where a letter was decided to go, if it was.
+    pub fn folders_decided(&self, letter: &Path) -> Vec<String> {
+        fs::read_to_string(letter.with_extension(FOLDERS))
+            .unwrap_or_default()
+            .lines()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .map(str::to_string)
+            .collect()
+    }
+
     /// Lets go of the pages of the letter just sent. Called when the next
     /// letter starts, so what is on the setup page is always one letter.
     pub fn clear_sent(&self) {
@@ -355,6 +384,7 @@ impl Spool {
     /// Forgets a capture, once Paperless has it.
     pub fn done(&self, pending: &Pending) -> Result<()> {
         let _ = fs::remove_file(self.attempts_path(&pending.path));
+        let _ = fs::remove_file(pending.path.with_extension(FOLDERS));
         fs::remove_file(&pending.path)
             .with_context(|| format!("could not clear {}", pending.path.display()))
     }
