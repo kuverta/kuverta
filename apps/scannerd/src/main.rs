@@ -850,9 +850,14 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
     let collecting = scanner.collecting_letters();
     let finishing = scanner.finishing();
     let (table_change, movement) = scanner.measure().unwrap_or((0.0, 0.0));
+    let paper = scanner
+        .paper_like()
+        .unwrap_or(scannerd::detect::PaperLike::NOTHING);
     hub.update(|status| {
         status.finishing = finishing;
         status.table_change = table_change;
+        status.paper_share = paper.share;
+        status.paper_fill = paper.fill;
         status.movement = movement;
         status.state = state.to_string();
         status.frames_still = frames_still;

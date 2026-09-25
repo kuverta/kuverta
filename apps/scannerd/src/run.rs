@@ -768,6 +768,12 @@ impl Scanner {
         self.detector.last_measure()
     }
 
+    /// How much of the last frame looked like paper lying on the table, and
+    /// how densely it sat together.
+    pub fn paper_like(&self) -> Option<crate::detect::PaperLike> {
+        self.detector.last_paper()
+    }
+
     /// "The table is empty now": learns the last frame as the empty table and
     /// arms again. False when there is no frame yet to learn from.
     pub fn learn_empty(&mut self, now: u64) -> bool {
