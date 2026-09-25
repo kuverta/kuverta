@@ -34,6 +34,14 @@ empty surface:
 
 - **Is something there?** A sheet of paper is large and pale, so it changes a
   great many pixels. A shadow changes them slightly.
+- **Does it look like paper?** How much changed is not enough on its own: an
+  evening moves the light over the whole table, and the rig photographed a few
+  sunsets as letters. So the frame is also read in 16×16 blocks against the
+  table's own level: paper is **paler than the table it lies on** — thirty-five
+  counts above it, at least — and it is **one lump** rather than a wash, so the
+  blocks that look like paper must fill nearly half the box they span. A shadow
+  is neither: it darkens, and it is spread over everything. Both numbers are on
+  the setup page beside the change, so a rig that will not see a page shows why.
 - **Has it stopped?** A hand is still in shot for a moment after the page is,
   and capturing then gets a photograph of a thumb.
 
@@ -47,7 +55,10 @@ a page nudged or turned a few degrees is the same page: on the rig a nudge
 changed at most 17% of the blocks, the blank back of a page 31%, another letter
 34%, and 22% is the line. That also
 re-learns the baseline, so daylight moving across a desk over an afternoon does
-not slowly read as a page.
+not slowly read as a page — and when the light changes while nothing is lying
+there at all, the table is learnt again after a few seconds of it, so the rig
+settles into the new light instead of watching an empty table it no longer
+recognises.
 
 ## Letters of more than one page
 

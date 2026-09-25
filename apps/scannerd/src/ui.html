@@ -761,7 +761,8 @@
     $('state-hint').textContent = s.notice ? s.notice.text : hint;
     $('state-hint').className = s.notice ? (s.notice.ok ? 'hint ok' : 'hint bad') : 'hint';
     $('measure').textContent = s.frame_at > 0
-      ? `Changed from the empty table: ${percent(s.table_change)} · moving: ${percent(s.movement)} (a page shows as 18% or more; still means under 1%)`
+      ? `Changed from the empty table: ${percent(s.table_change)} · looks like paper: ${percent(s.paper_share)} of the frame, ${percent(s.paper_fill)} of it in one lump · moving: ${percent(s.movement)}`
+      + ` (a page shows as 18% changed, 6% paper in one lump of 45% or more; still means under 1% moving)`
       : '';
 
     // The live view keeps the crop's shape — a fraction of a 4:3 sensor — and

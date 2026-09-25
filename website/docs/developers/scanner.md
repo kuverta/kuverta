@@ -20,12 +20,16 @@ thing Paperless cannot, which is noticing that a letter has arrived.
 
 ## How it decides
 
-It compares frames with a baseline of the empty surface and asks two questions:
-*is something there?* (a sheet of paper is large and pale; a shadow changes
-pixels only slightly) and *has it stopped moving?* (a hand is in shot for a
-moment after the page is). After a capture it will not arm again until it has
-seen the surface empty — which also relearns the baseline, so daylight moving
-across a desk does not slowly read as a page.
+It compares frames with a baseline of the empty surface and asks three
+questions: *is something there?* (a sheet of paper changes a great many pixels),
+*does it look like paper?* (in 16×16 blocks against the table's own level:
+paler than the table by 35 counts, and one lump rather than a wash — an evening
+darkens everything and is neither) and *has it stopped moving?* (a hand is in
+shot for a moment after the page is). After a capture it will not arm again
+until it has seen the surface empty, which relearns the baseline; and when the
+light changes over an empty table the baseline is relearnt too, so the rig
+settles into the new light instead of watching for a table it no longer
+recognises.
 
 **Nothing is lost.** A capture is written to the spool directory before any
 upload is tried, and removed only once Paperless has confirmed it. Waiting
