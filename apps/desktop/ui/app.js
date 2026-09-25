@@ -1304,10 +1304,13 @@ async function openSelected() {
     showSender({ id: row.id });
     el("reading-shelf").hidden = true;
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
-    fillMeta(el("reading-meta"), detail.from, { id: row.id }, [
-      formatDate(detail.date_utc),
-      detail.folders.join(", "),
-    ]);
+    fillMeta(
+      el("reading-meta"),
+      detail.from,
+      { id: row.id },
+      [formatDate(detail.date_utc), detail.folders.join(", ")],
+      { to: [...detail.to, ...detail.cc] },
+    );
     // HTML mail arrives already rendered to text, so an empty body really
     // means an empty body — an attachment-only message, or one whose stored
     // copy has gone.
@@ -1354,14 +1357,51 @@ const PERSON_TAG = "Person: ";
 
 /// The line under a subject: who it is from — which opens the card for them
 /// — and then the facts about the message itself.
-function fillMeta(into, from, about, rest) {
+function fillMeta(into, from, about, rest, { to = [] } = {}) {
   into.textContent = "";
   if (from) into.append(senderName(from, about));
+  if (to.length) into.append(recipientsLine(to));
   for (const part of rest.filter(Boolean)) {
     const span = document.createElement("span");
     span.textContent = part;
     into.append(document.createTextNode("  ·  "), span);
   }
+}
+
+/// How many recipients are named before the rest become a number. A mail-out
+/// to forty people should say so, not list them.
+const NAMED_RECIPIENTS = 3;
+
+/// Who a letter went to, beside who it came from.
+///
+/// In Sent the sender is your own address on every letter, which says
+/// nothing; the recipient is the whole of what tells one from another. It is
+/// shown everywhere rather than only there, because "who else got this" is
+/// worth knowing in an inbox too.
+///
+/// Each one opens the same card the sender does — they are people, and the
+/// card is about a person rather than about a message.
+function recipientsLine(to) {
+  const wrap = document.createElement("span");
+  wrap.className = "meta-to";
+  wrap.append(document.createTextNode("  ·  "));
+  const label = document.createElement("span");
+  label.className = "meta-label";
+  label.textContent = t("to|who a letter went to");
+  wrap.append(label, document.createTextNode(" "));
+  for (const [at, address] of to.slice(0, NAMED_RECIPIENTS).entries()) {
+    if (at) wrap.append(document.createTextNode(", "));
+    wrap.append(senderName(address, { address }));
+  }
+  if (to.length > NAMED_RECIPIENTS) {
+    const rest = document.createElement("span");
+    const more = to.length - NAMED_RECIPIENTS;
+    rest.textContent = ` ${t("and {count} more", { count: more })}`;
+    // The ones not named are still readable, without taking a line each.
+    rest.title = to.slice(NAMED_RECIPIENTS).join(", ");
+    wrap.append(rest);
+  }
+  return wrap;
 }
 
 // -- post: the text, or the scan itself ----------------------------------------

@@ -213,6 +213,11 @@ pub struct StoredMessage {
     /// Path to the raw message on disk, relative to the blob root. `None` when
     /// the message was stored without its body.
     pub body_path: Option<String>,
+    /// Who it went to, as the headers had it, comma separated. Kept on the row
+    /// rather than read back out of the message, so a letter whose body is not
+    /// on disk still knows who it was for — which in Sent is the only name on
+    /// it worth anything.
+    pub recipients: Option<String>,
 }
 
 /// Where a message lives on the server. One message can have many locations —
