@@ -465,6 +465,44 @@ impl Core {
     /// only ever turned into text — nothing in it is run, fetched or
     /// followed, and a conversion that cannot be trusted is refused rather
     /// than half-made.
+    /// The recipients a message row keeps, as a list.
+    ///
+    /// Stored as one string the way the headers had them, which is comma
+    /// separated — except that a display name may hold a comma of its own, as
+    /// `"Zemke, Nicolas" <nic@example.de>` does. So this splits on the commas
+    /// outside the quotes, which is the rule the header itself is written by.
+    ///
+    /// An unclosed quote takes the rest of the line with it. That is the right
+    /// way round: one recipient too few beats a name torn in half and shown as
+    /// two people who do not exist.
+    fn split_addresses(recipients: Option<&str>) -> Vec<String> {
+        let Some(recipients) = recipients else {
+            return Vec::new();
+        };
+        let mut out: Vec<String> = Vec::new();
+        let mut piece = String::new();
+        let mut quoted = false;
+        let finish = |piece: &mut String, out: &mut Vec<String>| {
+            let done = piece.trim();
+            if !done.is_empty() {
+                out.push(done.to_string());
+            }
+            piece.clear();
+        };
+        for c in recipients.chars() {
+            match c {
+                '"' => {
+                    quoted = !quoted;
+                    piece.push(c);
+                }
+                ',' if !quoted => finish(&mut piece, &mut out),
+                _ => piece.push(c),
+            }
+        }
+        finish(&mut piece, &mut out);
+        out
+    }
+
     fn better_than(plain: String, parsed: Option<&mail_parser::Message<'_>>) -> String {
         if !html::looks_converted_badly(&plain) {
             return plain;
@@ -574,10 +612,15 @@ impl Core {
             subject: stored.subject,
             from: stored.from_addr,
             date_utc: stored.date_utc,
+            // The headers when the message is on disk, and the row's own
+            // record of them when it is not. A letter kept without its body
+            // still knows who it was for, and in Sent that is the only name
+            // on it worth reading.
             to: parsed
                 .as_ref()
                 .map(|p| addresses(p.to()))
-                .unwrap_or_default(),
+                .filter(|to| !to.is_empty())
+                .unwrap_or_else(|| Self::split_addresses(stored.recipients.as_deref())),
             cc: parsed
                 .as_ref()
                 .map(|p| addresses(p.cc()))

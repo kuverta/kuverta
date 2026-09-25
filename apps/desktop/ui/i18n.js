@@ -206,6 +206,8 @@ const GERMAN = {
   "Save folders": "Aktenordner speichern",
   "Name of the folder": "Name des Aktenordners",
   "Words, separated by commas (optional)": "Wörter, durch Kommas getrennt (optional)",
+  "to|who a letter went to": "an",
+  "and {count} more": "und {count} weitere",
   "Remove this folder": "Diesen Aktenordner entfernen",
   "What your letters suggest": "Was deine Briefe vorschlagen",
   "Look through the letters already filed for words that would have filed them":

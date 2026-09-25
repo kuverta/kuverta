@@ -817,6 +817,10 @@ footer .keys {
   color: var(--muted);
   font-size: 12px;
 }
+/* Who it went to, beside who it came from. Quieter than the sender: the
+   label is a word, not a heading. */
+.meta-to .meta-label { opacity: .65; }
+.meta-to { white-space: normal; }
 
 #reading-body {
   margin: 0;
