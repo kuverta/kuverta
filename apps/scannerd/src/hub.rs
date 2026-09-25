@@ -138,6 +138,10 @@ pub struct Status {
     /// Whether the last letter can still be filed by hand: in no folder, or
     /// in the bin.
     pub can_refile: bool,
+    /// How much of the last frame looked like paper lying on the table, and
+    /// how densely it sat together: what tells a page from the light changing.
+    pub paper_share: f32,
+    pub paper_fill: f32,
     pub open_pages: Vec<String>,
     /// What those pages say, as the Pi read them for the preview — empty
     /// where nothing could read them.
@@ -182,6 +186,8 @@ impl Default for Status {
             scanning: true,
             can_undo_letter: false,
             can_refile: false,
+            paper_share: 0.0,
+            paper_fill: 0.0,
             open_pages: Vec::new(),
             read_pages: Vec::new(),
             guess: Vec::new(),

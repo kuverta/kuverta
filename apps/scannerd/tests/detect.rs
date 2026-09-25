@@ -6,7 +6,7 @@
 //! transitions: never capture while a hand is still in shot, and never capture
 //! the same page twice.
 
-use scannerd::detect::{changed_fraction, Detector, State, Step, Thresholds};
+use scannerd::detect::{changed_fraction, paper_like, Detector, State, Step, Thresholds};
 
 const W: usize = 320;
 const H: usize = 240;
@@ -384,4 +384,99 @@ fn pages_are_told_apart_in_blocks_and_nudges_are_not_changes() {
     assert!(page_changed(&page, &page_at(40, 20, Some(1)), W) >= 0.22);
     // Frames it cannot compare are no change, rather than a panic.
     assert_eq!(page_changed(&page, &page[..100], W), 0.0);
+}
+
+// -- the light over the table, which is not paper --------------------------------
+
+/// The desk as the sun goes down: a wash over the whole frame, and the far
+/// side of it deeper in shadow than the near side.
+fn evening(shade: i16) -> Vec<u8> {
+    let mut frame = desk();
+    for (i, pixel) in frame.iter_mut().enumerate() {
+        let across = (i % W) as f32 / W as f32;
+        let taken = shade as f32 * (0.55 + 0.45 * across);
+        *pixel = (*pixel as f32 - taken).clamp(0.0, 255.0) as u8;
+    }
+    frame
+}
+
+/// A window frame's shadow: a band across the frame, sharp-edged, over as much
+/// of it as a page would cover.
+fn shadow_band(shade: i16) -> Vec<u8> {
+    let mut frame = desk();
+    for y in H / 5..H * 3 / 4 {
+        for x in 0..W {
+            let pixel = &mut frame[y * W + x];
+            *pixel = (*pixel as i16 - shade).clamp(0, 255) as u8;
+        }
+    }
+    frame
+}
+
+#[test]
+fn paper_is_one_lump_and_the_evening_is_a_wash() {
+    let page = paper_like(&desk(), &desk_with_page(0.5), W);
+    assert!(
+        page.share > 0.4,
+        "a page covers the blocks it lies on: {page:?}"
+    );
+    assert!(page.fill > 0.9, "and they sit together: {page:?}");
+
+    // The sun going down changes the whole frame, and darkens it: against a
+    // dark table that is not what paper does at all.
+    let dusk = paper_like(&desk(), &evening(30), W);
+    assert!(dusk.share < 0.06, "nothing lies there: {dusk:?}");
+
+    // A shadow with an edge to it is compact enough, but still the wrong way.
+    let band = paper_like(&desk(), &shadow_band(40), W);
+    assert!(band.share < 0.06, "a shadow is not paper: {band:?}");
+}
+
+#[test]
+fn the_sun_going_down_is_not_photographed() {
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+
+    // Frame after frame of a room getting darker, each still against the one
+    // before — which is exactly what a page settling looks like by every other
+    // measure.
+    for shade in 1..=40 {
+        for _ in 0..3 {
+            assert_eq!(
+                detector.observe(&evening(shade)),
+                Step::Wait,
+                "photographed the evening at {shade}"
+            );
+        }
+    }
+    // And a real page, put down in that light, is still seen.
+    let mut page = evening(40);
+    for pixel in page.iter_mut().take(PIXELS / 2) {
+        *pixel = 225;
+    }
+    let mut taken = false;
+    for _ in 0..6 {
+        taken |= detector.observe(&page) == Step::Capture;
+    }
+    assert!(taken, "a page in the new light is still a page");
+}
+
+#[test]
+fn a_table_the_light_has_moved_over_is_learnt_again() {
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let generation = detector.baseline_generation();
+
+    // A shadow that stays — the sun is where it is now.
+    for _ in 0..40 {
+        detector.observe(&shadow_band(60));
+    }
+    assert!(
+        detector.baseline_generation() > generation,
+        "the table it sees now is the table"
+    );
+    assert_eq!(detector.state(), State::Waiting);
+    // Which means it is quiet about it from then on.
+    let paper = detector.last_paper().expect("measured");
+    assert!(paper.share < 0.06, "{paper:?}");
 }

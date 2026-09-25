@@ -48,6 +48,13 @@ pub struct Thresholds {
     /// This fraction of blocks changed from the photographed page, and what
     /// lies there now is another page.
     pub new_page: f32,
+    /// What share of the frame must have changed *the way paper changes it* —
+    /// paler than a dark table, darker than a pale one — for the change to be
+    /// a page rather than the light shifting.
+    pub paper_share: f32,
+    /// And how densely those blocks must sit inside the box they span: paper
+    /// is one lump, and an evening shadow is spread over everything.
+    pub paper_fill: f32,
 }
 
 impl Default for Thresholds {
@@ -59,6 +66,11 @@ impl Default for Thresholds {
             clear: 0.05,
             handled: 0.05,
             new_page: 0.22,
+            // A DL envelope on the rig's corners covers about 0.4 of the
+            // frame and an A4 page nearly all of it, so this is generous —
+            // it is there to rule out the light, not to measure the paper.
+            paper_share: 0.06,
+            paper_fill: 0.45,
         }
     }
 }
@@ -157,6 +169,131 @@ pub fn page_changed(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
     least
 }
 
+/// The side of a block [`paper_like`] compares. Larger than [`BLOCK`]: this
+/// asks where the change *is*, not how much of it there is, and sensor noise
+/// averages away over 256 pixels.
+const PAPER_BLOCK: usize = 16;
+/// A block's mean must move this far from the table's to count as something
+/// lying there.
+const PAPER_BY: f32 = 12.0;
+/// And it must be this much paler than the table itself — not than the rest of
+/// the frame. A shadow over half the table makes the other half *look* paler
+/// than the average, which is how the sun going down came to be photographed
+/// as a letter; against the table's own level a shadow is never paper.
+const PAPER_ABOVE_TABLE: f32 = 35.0;
+/// However dark the table, paper reads at least this. The rig's table is 81 in
+/// the preview stream and its brightest pixel 121, so this is a floor under
+/// [`PAPER_ABOVE_TABLE`] and not a second opinion.
+const PAPER_LEVEL: f32 = 110.0;
+/// A baseline this pale is a pale table, and paper on it reads *darker*: the
+/// tests below and the rig both have a dark one, but a white desk is a desk.
+const PALE_TABLE: f32 = 150.0;
+
+/// Whether what changed looks like paper on the table or like the light
+/// changing over it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PaperLike {
+    /// The share of the frame's blocks that moved the way paper moves them.
+    pub share: f32,
+    /// How much of the box those blocks span they actually fill: 1 for one
+    /// solid lump, and much less for change scattered over the whole frame.
+    pub fill: f32,
+}
+
+impl PaperLike {
+    pub const NOTHING: Self = Self {
+        share: 0.0,
+        fill: 0.0,
+    };
+}
+
+/// Where the change between two frames is, and which way it went.
+///
+/// The sun going down was photographed as a letter: the light over the table
+/// changes, [`changed_fraction`] climbs past `present` — one offset for the
+/// whole frame cannot hide a shadow crossing it — and a photograph of the bare
+/// table is taken. What tells the two apart is not how much changed but the
+/// shape of it: paper is one lump, in one direction (paler than a dark table,
+/// darker than a pale one), and an evening is a wash over everything, mostly
+/// the other way.
+///
+/// So the frame is divided into blocks, each block's mean compared with the
+/// baseline's after the overall brightness is taken out, and the blocks that
+/// moved the way paper moves them are counted and their box measured.
+pub fn paper_like(baseline: Luma<'_>, frame: Luma<'_>, width: usize) -> PaperLike {
+    if baseline.len() != frame.len()
+        || width < PAPER_BLOCK * 3
+        || !frame.len().is_multiple_of(width)
+    {
+        return PaperLike::NOTHING;
+    }
+    let height = frame.len() / width;
+    let (bw, bh) = (width / PAPER_BLOCK, height / PAPER_BLOCK);
+    if bw < 3 || bh < 3 {
+        return PaperLike::NOTHING;
+    }
+    let block_mean = |plane: Luma<'_>, bx: usize, by: usize| {
+        let (x0, y0) = (bx * PAPER_BLOCK, by * PAPER_BLOCK);
+        let mut sum = 0u32;
+        for y in y0..y0 + PAPER_BLOCK {
+            sum += plane[y * width + x0..y * width + x0 + PAPER_BLOCK]
+                .iter()
+                .map(|&v| v as u32)
+                .sum::<u32>();
+        }
+        sum as f32 / (PAPER_BLOCK * PAPER_BLOCK) as f32
+    };
+
+    let mut table = 0.0f32;
+    let mut residuals = Vec::with_capacity(bw * bh);
+    for by in 0..bh {
+        for bx in 0..bw {
+            let was = block_mean(baseline, bx, by);
+            let now = block_mean(frame, bx, by);
+            table += was;
+            residuals.push(now - was);
+        }
+    }
+    let blocks = residuals.len() as f32;
+    table /= blocks;
+    // A page is paler than a dark table and darker than a pale one.
+    let pale_table = table >= PALE_TABLE;
+    let sign = if pale_table { -1.0 } else { 1.0 };
+    // What a block must read in itself to be paper: pale on a dark table, and
+    // clearly darker than the table when the table is the pale thing.
+    let level = if pale_table {
+        table - PAPER_ABOVE_TABLE
+    } else {
+        (table + PAPER_ABOVE_TABLE).max(PAPER_LEVEL)
+    };
+
+    let mut lit = 0usize;
+    let (mut left, mut top, mut right, mut bottom) = (bw, bh, 0usize, 0usize);
+    for (index, residual) in residuals.iter().enumerate() {
+        if residual * sign <= PAPER_BY {
+            continue;
+        }
+        let (bx, by) = (index % bw, index / bw);
+        let now = block_mean(frame, bx, by);
+        if (now - level) * sign <= 0.0 {
+            continue;
+        }
+        lit += 1;
+        left = left.min(bx);
+        top = top.min(by);
+        right = right.max(bx);
+        bottom = bottom.max(by);
+    }
+    if lit == 0 {
+        return PaperLike::NOTHING;
+    }
+    let box_blocks = ((right + 1 - left) * (bottom + 1 - top)) as f32;
+    PaperLike {
+        share: lit as f32 / blocks,
+        fill: lit as f32 / box_blocks,
+    }
+}
+
 /// Returns 0.0 for frames of different sizes rather than panicking: a camera
 /// that changes resolution mid-run should stall the state machine, not take
 /// the daemon down with it.
@@ -226,6 +363,12 @@ pub struct Detector {
     /// The last frame's change from the empty surface and from the frame
     /// before, for a person tuning the rig to look at.
     last_measure: Option<(f32, f32)>,
+    /// And whether that change looked like paper.
+    last_paper: Option<PaperLike>,
+    /// Consecutive frames whose change from the baseline did not look like
+    /// paper: the light over the table has moved, and after a while what it
+    /// looks like now is the table.
+    light_frames: u8,
 }
 
 impl Detector {
@@ -243,6 +386,8 @@ impl Detector {
             still_since_handled: 0,
             width: 320,
             last_measure: None,
+            last_paper: None,
+            light_frames: 0,
         }
     }
 
@@ -264,6 +409,11 @@ impl Detector {
 
     /// The last frame's change from the empty surface, then from the frame
     /// before it, as fractions of the frame.
+    /// Whether the last frame's change from the table looked like paper.
+    pub fn last_paper(&self) -> Option<PaperLike> {
+        self.last_paper
+    }
+
     pub fn last_measure(&self) -> Option<(f32, f32)> {
         self.last_measure
     }
@@ -343,6 +493,16 @@ impl Detector {
         };
 
         let against_baseline = changed_fraction(baseline, frame, self.thresholds.pixel);
+        // Only worth asking where the change is when there is enough of it to
+        // be a page: this walks the frame twice more.
+        let paper = if against_baseline >= self.thresholds.present {
+            paper_like(baseline, frame, self.width)
+        } else {
+            PaperLike::NOTHING
+        };
+        let looks_like_paper =
+            paper.share >= self.thresholds.paper_share && paper.fill >= self.thresholds.paper_fill;
+        self.last_paper = Some(paper);
         let against_previous = self
             .previous
             .as_deref()
@@ -353,14 +513,34 @@ impl Detector {
 
         match self.state {
             State::Waiting => {
-                if against_baseline >= self.thresholds.present {
+                if against_baseline < self.thresholds.present {
+                    self.light_frames = 0;
+                } else if looks_like_paper {
+                    self.light_frames = 0;
                     self.state = State::Settling { frames_still: 0 };
+                } else {
+                    // Changed, but not the way paper changes it: the sun has
+                    // moved over the table. Seen that way for a while, that is
+                    // what the table looks like now — otherwise every frame
+                    // from here to nightfall is a page about to be
+                    // photographed.
+                    self.light_frames = self.light_frames.saturating_add(1);
+                    if self.light_frames >= self.settle_frames.saturating_mul(4) {
+                        tracing::info!(
+                            share = paper.share,
+                            fill = paper.fill,
+                            change = against_baseline,
+                            "the light over the table changed: learning the table again"
+                        );
+                        self.learn_baseline(frame);
+                        self.light_frames = 0;
+                    }
                 }
                 Step::Wait
             }
 
             State::Settling { frames_still } => {
-                if against_baseline < self.thresholds.present {
+                if against_baseline < self.thresholds.present || !looks_like_paper {
                     // Whatever it was has gone again — a hand passing over.
                     self.state = State::Waiting;
                     Step::Wait
