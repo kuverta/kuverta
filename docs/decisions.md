@@ -2499,3 +2499,35 @@ seed mail and four two-stage runs mimicking CI exactly, all on this machine,
 all clean — against a hundred and fifteen bytes that CI had the whole time.
 The lesson is not about fuzzing. It is that a failure nobody can read is a
 failure nobody can fix, and the fix for that is cheaper than the search.
+
+## 42. A letter in Sent is about the person it went to
+
+Clicking through Sent, every letter showed the same address: your own. The
+reading pane named the sender and nobody else, which in an inbox is most of
+what you want and in Sent is the one fact that tells no two letters apart.
+
+So it names the recipients too, everywhere rather than only there — "who else
+got this" is worth knowing in an inbox as well. Three by name and then a
+count, because a mail-out to forty people should say so rather than list
+them, with the rest in the title attribute for anyone who wants them. Each
+one opens the same card the sender does: they are people, and the card is
+about a person rather than about a message.
+
+### Where the names come from when the letter is not on disk
+
+`to` and `cc` were read off the parsed message, so they existed only for
+letters whose body had been fetched. A first pass down a folder keeps headers
+alone — the whole point of §17's backfill — and those letters had no
+recipients at all. The row has kept them in a `recipients` column since long
+before this, which is the same column §39 put in the search index, so that is
+what stands in.
+
+Splitting it back into names is the one part with a trap in it. It is stored
+the way the header had it, comma separated, and a display name may hold a
+comma of its own: `"Zemke, Nicolas" <nic@example.de>`. The first attempt kept
+a piece with an `@` in it and joined a piece without one onto the piece
+before — which works until the quoted name is first on the line, where there
+is nothing before it to join to, and one person becomes two who do not exist.
+It splits on the commas outside the quotes now, which is the rule the header
+is written by. An unclosed quote takes the rest of the line with it, and that
+is the right way round: one recipient too few beats a name torn in half.

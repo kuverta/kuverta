@@ -1883,8 +1883,8 @@ pub(crate) const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_loc
                                             WHERE ul.message_id = m.id
                                               AND ul.flags LIKE '%\\Seen%')";
 
-const MESSAGE_COLUMNS: &str =
-    "SELECT id, rfc822_message_id, subject, from_addr, date_utc, body_path FROM message";
+const MESSAGE_COLUMNS: &str = "SELECT id, rfc822_message_id, subject, from_addr, date_utc, \
+     body_path, recipients FROM message";
 
 fn row_to_stored_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMessage> {
     Ok(StoredMessage {
@@ -1894,6 +1894,7 @@ fn row_to_stored_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredMess
         from_addr: row.get(3)?,
         date_utc: row.get(4)?,
         body_path: row.get(5)?,
+        recipients: row.get(6)?,
     })
 }
 
