@@ -163,6 +163,110 @@ pub struct DraftInput {
     /// not the message that goes out, only kept safe until it does.
     #[serde(default)]
     pub encrypt: bool,
+    /// Files sent along with it.
+    #[serde(default)]
+    pub attachments: Vec<DraftAttachment>,
+}
+
+/// A file sent along with a draft, bytes and all.
+///
+/// The bytes are in the draft rather than referred to by a path, because a
+/// draft outlives the moment it was written: a message scheduled for Monday is
+/// kept as its [`DraftInput`], and the file it was written with may have moved
+/// or changed by then. In JSON they are base64, which is what the window has
+/// once it has read a dropped file, and what a scheduled draft is stored as.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DraftAttachment {
+    pub name: String,
+    /// `type/subtype`, as the window or the file's name says. Empty when
+    /// nothing did: it is then sent as `application/octet-stream`.
+    #[serde(default)]
+    pub content_type: String,
+    #[serde(with = "base64_bytes")]
+    pub data: Vec<u8>,
+}
+
+impl std::fmt::Debug for DraftAttachment {
+    // A draft is logged at debug level; the file is not.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DraftAttachment")
+            .field("name", &self.name)
+            .field("content_type", &self.content_type)
+            .field("size", &self.data.len())
+            .finish()
+    }
+}
+
+impl DraftAttachment {
+    /// A file from disk, its type told by its name.
+    pub fn read(path: &Path) -> std::io::Result<Self> {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "attachment".into());
+        Ok(Self {
+            content_type: type_for_name(&name).into(),
+            data: std::fs::read(path)?,
+            name,
+        })
+    }
+}
+
+/// The type a file's name says it is, for the kinds people send. What the
+/// window is told by the system instead; the CLI has only the name.
+pub fn type_for_name(name: &str) -> &'static str {
+    let extension = name
+        .rsplit_once('.')
+        .map(|(_, ext)| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "pdf" => "application/pdf",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "heic" => "image/heic",
+        "txt" | "log" => "text/plain",
+        "md" => "text/markdown",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "ics" => "text/calendar",
+        "vcf" => "text/vcard",
+        "eml" => "message/rfc822",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "odp" => "application/vnd.oasis.opendocument.presentation",
+        _ => "application/octet-stream",
+    }
+}
+
+/// How much a draft may carry in files, together.
+///
+/// Most providers refuse a message over 25 MB, and base64 makes a file a third
+/// larger on the way — so this is already more than some will take. Refusing
+/// here says so before anything is sent; past it, the server would say it
+/// after a long upload, in its own words.
+pub const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
+
+mod base64_bytes {
+    use base64::Engine as _;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(bytes: &[u8], serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&base64::engine::general_purpose::STANDARD.encode(bytes))
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<u8>, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        base64::engine::general_purpose::STANDARD
+            .decode(text.trim())
+            .map_err(serde::de::Error::custom)
+    }
 }
 
 /// What a draft will look like, without sending it.
@@ -804,6 +908,30 @@ fn build_draft(
     // What was typed goes above whatever the reply or forward put there, which
     // is where a reply is read from.
     draft.body = format!("{}{}", input.body, draft.body);
+
+    let total: usize = input.attachments.iter().map(|a| a.data.len()).sum();
+    if total > MAX_ATTACHMENT_BYTES {
+        return Err(RpcError::Rejected(format!(
+            "the attached files come to {:.1} MB, and most mail servers refuse a message over \
+             {} MB. Send fewer, or share large files as a link.",
+            total as f64 / 1024.0 / 1024.0,
+            MAX_ATTACHMENT_BYTES / 1024 / 1024
+        )));
+    }
+    for attachment in &input.attachments {
+        draft = draft.attach(core_smtp::Attachment {
+            name: attachment.name.clone(),
+            // A file the system had no type for — a .docx on some Linux
+            // desktops — is named by its extension, not sent as bytes of
+            // nothing in particular.
+            content_type: if attachment.content_type.trim().is_empty() {
+                type_for_name(&attachment.name).into()
+            } else {
+                attachment.content_type.clone()
+            },
+            data: attachment.data.clone(),
+        });
+    }
     Ok(draft)
 }
 

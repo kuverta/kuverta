@@ -876,6 +876,56 @@ footer .keys {
 
 .compose-actions .hint { margin-left: auto; }
 
+/* What the assistant is reading, and then who wrote it. */
+.answer-status:empty { display: none; }
+
+/* -- files going out ------------------------------------------------------ */
+
+.file-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.file-tray[hidden] { display: none !important; }
+
+.attachment-chip.outgoing { padding-right: 4px; }
+
+.attachment-chip .remove {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: 14px;
+  line-height: 1;
+  border-radius: 999px;
+}
+
+.attachment-chip .remove:hover { color: var(--error); background: var(--bg); }
+
+/* Where files may be dropped: outlined while some are held over it. */
+#compose,
+#conversation { position: relative; }
+
+#compose.dropping,
+#conversation.dropping {
+  outline: 2px dashed var(--accent);
+  outline-offset: -6px;
+}
+
+.drop-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--accent-soft) 70%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.drop-hint[hidden] { display: none; }
+
 /* -- the send-later popover ---------------------------------------------- */
 
 .split { position: relative; }
@@ -1638,7 +1688,7 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 
 #conversation {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto auto auto;
   min-height: 0;
 }
 
@@ -1728,6 +1778,7 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 }
 
 .conversation-compose button { border-radius: 16px; }
+#conversation-files { padding: 8px 16px 0; }
 .conversation-hint { padding: 2px 20px 10px; }
 
 /* -- profiles ------------------------------------------------------------- */

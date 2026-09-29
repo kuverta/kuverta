@@ -284,7 +284,10 @@ async function openConversation(row) {
   name.append(senderName(data.name, { address: data.key }, { className: "sender-link plain" }));
   el("conversation-address").textContent = data.key;
   showSender({ address: data.key });
-  if (!keepDraft) replyBox.value = "";
+  if (!keepDraft) {
+    replyBox.value = "";
+    conversationFiles.clear();
+  }
 
   bubbles.textContent = "";
   let lastDay = "";
@@ -363,7 +366,8 @@ async function openWholeMessage(id) {
 /// message when there is one, so it threads, else a new message.
 async function sendInConversation() {
   const text = replyBox.value.trim();
-  if (!text || !thread.key) return;
+  const files = conversationFiles.forDraft();
+  if ((!text && !files.length) || !thread.key) return;
   const button = el("conversation-send");
   button.disabled = true;
   try {
@@ -380,11 +384,16 @@ async function sendInConversation() {
         forward: null,
         sign: false,
         encrypt: false,
+        attachments: files,
       },
     });
     replyBox.value = "";
+    conversationFiles.clear();
     // Shown now; the copy filed in Sent takes its place at the next sync.
-    bubbles.append(makeBubble({ id: null, from_me: true, text, unread: false }, null, new Date()));
+    const names = files.map((file) => `📎 ${file.name}`).join("\n");
+    bubbles.append(
+      makeBubble({ id: null, from_me: true, text: [text, names].filter(Boolean).join("\n\n"), unread: false }, null, new Date()),
+    );
     bubbles.scrollTop = bubbles.scrollHeight;
     say(sent.filing_error ? t("sent — but not filed: {error}", { error: sent.filing_error }) : t("sent"));
   } catch (err) {
@@ -395,6 +404,11 @@ async function sendInConversation() {
 }
 
 el("conversation-send").onclick = sendInConversation;
+
+// Files for the reply: dropped anywhere on the conversation, or picked.
+const conversationFiles = fileTray(el("conversation-files"));
+acceptDrops(el("conversation"), conversationFiles);
+el("conversation-attach").onclick = () => pickFiles(conversationFiles);
 replyBox.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
     event.preventDefault();

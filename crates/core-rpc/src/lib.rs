@@ -20,6 +20,7 @@
 //! docs/spike-tauri-list.md.
 
 pub mod ai;
+pub mod answer;
 pub mod assistant;
 pub mod attachments;
 pub mod cleanup;
@@ -30,6 +31,7 @@ pub mod outbox;
 pub mod paper;
 pub mod pgp;
 pub mod profiles;
+pub mod readable;
 pub mod sender;
 pub mod session;
 pub mod settings;
@@ -40,6 +42,7 @@ pub mod update;
 pub mod urgency;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
+pub use answer::AnswerDraft;
 pub use assistant::{AssistantEvent, AssistantTurn};
 pub use attachments::{Attachment, AttachmentView};
 pub use cleanup::{
@@ -63,8 +66,8 @@ pub use paper::{
 pub use profiles::ProfileView;
 pub use sender::{SenderFolder, SenderMessage, SenderView};
 pub use session::{
-    DraftInput, DraftPreview, SavedDraft, SentSummary, Session, SyncProgress, SyncSummary,
-    VerifiedFolder, VerifyReport,
+    DraftAttachment, DraftInput, DraftPreview, SavedDraft, SentSummary, Session, SyncProgress,
+    SyncSummary, VerifiedFolder, VerifyReport, MAX_ATTACHMENT_BYTES,
 };
 pub use settings::{AccountInput, AccountSettings};
 pub use smart::{

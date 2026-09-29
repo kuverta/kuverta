@@ -1703,7 +1703,10 @@ function addresses(field) {
     .filter(Boolean);
 }
 
-function draftInput() {
+/// Compose as the core takes it. `files: false` leaves the attached files
+/// out, for the previews that only need the envelope: they run on every
+/// change of recipient, and a preview's message would carry them back again.
+function draftInput({ files = true } = {}) {
   return {
     to: addresses(compose.to),
     cc: addresses(compose.cc),
@@ -1715,6 +1718,7 @@ function draftInput() {
     forward: compose.forward,
     sign: el("compose-sign").checked,
     encrypt: el("compose-encrypt").checked,
+    attachments: files ? (compose.files?.forDraft() ?? []) : [],
   };
 }
 
@@ -1728,6 +1732,10 @@ function closeCompose() {
   compose.forward = null;
   compose.replyAll = false;
   compose.envelope.textContent = "";
+  compose.files?.clear();
+  // A late answer from the assistant is for compose as it was, not this.
+  compose.answering = null;
+  el("compose-answer-status").textContent = "";
   for (const field of [compose.to, compose.cc, compose.bcc, compose.subject, compose.body]) {
     field.value = "";
   }
@@ -1759,7 +1767,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
     try {
       const preview = await invoke("preview", {
         email: state.email,
-        draft: draftInput(),
+        draft: draftInput({ files: false }),
       });
       compose.subject.value = preview.subject;
       compose.to.value = preview.recipients.join(", ");
@@ -1794,6 +1802,7 @@ async function openComposeWith(draft) {
   compose.body.value = draft.body ?? "";
   el("compose-sign").checked = Boolean(draft.sign);
   el("compose-encrypt").checked = Boolean(draft.encrypt);
+  compose.files.set(draft.attachments ?? []);
   securityChosen = true;
   compose.pane.hidden = false;
   reading.hidden = true;
@@ -1811,7 +1820,7 @@ async function refreshEnvelope() {
   try {
     const preview = await invoke("preview", {
       email: state.email,
-      draft: draftInput(),
+      draft: draftInput({ files: false }),
     });
     compose.envelope.textContent = `${preview.recipients.length} recipient(s): ${preview.recipients.join(", ")}`;
   } catch (err) {
@@ -1859,6 +1868,7 @@ for (const button of el("reading-actions").querySelectorAll("[data-act]")) {
       reply: () => openCompose({ replyAll: false }),
       "reply-all": () => openCompose({ replyAll: true }),
       forward: () => openCompose({ forward: true }),
+      answer: answerSelected,
       ask: () => askAboutMessages(actingOn().map((index) => state.rows.get(index)).filter(Boolean)),
       archive,
       trash,
@@ -2077,6 +2087,7 @@ const KEYS = {
   R: mailOnly(() => openCompose({ replyAll: false })),
   A: mailOnly(() => openCompose({ replyAll: true })),
   f: mailOnly(() => openCompose({ forward: true })),
+  a: mailOnly(() => answerSelected()),
 };
 
 // Going back to the list takes the keys back with it: while the chat input
@@ -2114,13 +2125,18 @@ document.addEventListener("keydown", async (event) => {
   }
 
   // While composing, the keys belong to the fields — otherwise typing "e"
-  // into a subject line would archive something.
-  if (compose.pane.contains(event.target)) {
+  // into a subject line would archive something. Only while it is open: after
+  // Discard, focus can stay on the hidden button, and the keys with it.
+  if (!compose.pane.hidden && compose.pane.contains(event.target)) {
     // The send-later menu is inside compose and has its own keys: ⌘↩ there
     // must not also send the message now.
     if (el("schedule-menu").contains(event.target)) return;
     if (event.key === "Escape") closeCompose();
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) await sendDraft();
+    if (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      await answerWithAssistant();
+    }
     return;
   }
 

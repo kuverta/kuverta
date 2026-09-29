@@ -444,6 +444,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
                 // user's name to words they have not read yet.
                 sign: false,
                 encrypt: false,
+                attachments: Vec::new(),
             };
             if input.to.is_empty() && input.reply_to.is_none() {
                 bail!(

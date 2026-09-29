@@ -463,6 +463,9 @@ struct SendArgs {
     /// Forward the message with this Message-ID. Needs at least one --to.
     #[arg(long)]
     forward: Option<String>,
+    /// Send this file along. Repeat for several.
+    #[arg(long, value_name = "FILE")]
+    attach: Vec<std::path::PathBuf>,
     /// Sign with the account's OpenPGP key (PGP/MIME).
     #[arg(long)]
     sign: bool,
@@ -1503,6 +1506,14 @@ async fn send(store: &Store, data_dir: &std::path::Path, args: SendArgs) -> Resu
         forward: args.forward.as_ref().map(resolve).transpose()?,
         sign: args.sign,
         encrypt: args.encrypt,
+        attachments: args
+            .attach
+            .iter()
+            .map(|path| {
+                core_rpc::DraftAttachment::read(path)
+                    .with_context(|| format!("reading {}", path.display()))
+            })
+            .collect::<Result<_>>()?,
     };
 
     let session = core_rpc::Session::new(data_dir).with_password_env(args.password_env.clone());

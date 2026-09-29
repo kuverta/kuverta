@@ -105,6 +105,7 @@
         <button type="button" data-act="reply" title="Reply (R)">Reply</button>
         <button type="button" data-act="reply-all" title="Reply all (A)">Reply all</button>
         <button type="button" data-act="forward" title="Forward (f)">Forward</button>
+        <button type="button" data-act="answer" title="Let the assistant write the reply (a)">✨ Answer</button>
         <button type="button" data-act="ask" title="Ask the assistant about this message (Shift+I)">Ask the assistant</button>
         <span class="spacer"></span>
         <button type="button" data-act="archive" title="Archive (e)">Archive</button>
@@ -151,11 +152,15 @@
         </div>
       </div>
       <div id="bubbles" class="bubbles"></div>
+      <!-- Files going with the reply: dropped on the conversation, or picked. -->
+      <div id="conversation-files" class="file-tray" hidden></div>
       <div class="conversation-compose">
+        <button type="button" id="conversation-attach" class="tool icon-only" title="Attach files — or drop them here" aria-label="Attach files">📎</button>
         <textarea id="conversation-reply" rows="2" placeholder="Write a reply…" spellcheck="true"></textarea>
         <button type="button" id="conversation-send" class="primary">Send</button>
       </div>
       <div class="hint conversation-hint">⌘/ctrl+enter sends, as a reply to their latest message. Double-click a bubble for the whole message.</div>
+      <div class="drop-hint" hidden>Drop to attach</div>
     </section>
 
     <section id="compose" hidden>
@@ -168,6 +173,10 @@
       <input id="compose-bcc" placeholder="Bcc (never appears in the message)" spellcheck="false">
       <input id="compose-subject" placeholder="Subject">
       <textarea id="compose-body" rows="10" spellcheck="true"></textarea>
+      <!-- Files going with it: dropped anywhere on compose, or picked with
+           Attach. See compose-files.js. -->
+      <div id="compose-files" class="file-tray" hidden></div>
+      <div class="drop-hint" hidden>Drop to attach</div>
       <!-- OpenPGP, when there are keys to use. Shown by encryption.js. -->
       <div id="compose-security" class="compose-security" hidden>
         <label><input type="checkbox" id="compose-sign"> Sign</label>
@@ -196,8 +205,12 @@
           </div>
         </div>
         <button id="compose-cancel">Discard</button>
+        <button type="button" id="compose-attach" title="Attach files — or drop them here">📎 Attach</button>
+        <!-- The assistant writes it, taking what is typed as the brief. See answer.js. -->
+        <button type="button" id="compose-answer" title="The assistant writes it — what you have typed is its brief (⌘J)">✨ Answer with assistant</button>
         <span class="hint">⌘/ctrl+enter sends · escape discards</span>
       </div>
+      <div id="compose-answer-status" class="hint answer-status" aria-live="polite"></div>
     </section>
   </section>
 
@@ -280,6 +293,7 @@
       <span>c compose</span>
       <span>R reply</span>
       <span>A reply all</span>
+      <span>a answer</span>
       <span>r sync</span>
       <span>v text/pdf</span>
       <span>/ search</span>
@@ -973,6 +987,7 @@
        #aside because it floats against the window. -->
   <div id="sender-hover" class="sender-card floating" role="tooltip" hidden></div>
 
+  <input type="file" id="file-picker" multiple hidden>
   <script src="i18n.js"></script>
   <script src="app.js"></script>
   <script src="setup.js"></script>
@@ -985,6 +1000,8 @@
   <script src="diagnostics.js"></script>
   <script src="encryption.js"></script>
   <script src="attachments.js"></script>
+  <script src="compose-files.js"></script>
+  <script src="answer.js"></script>
   <script src="people.js"></script>
   <script src="sender.js"></script>
   <script src="profiles.js"></script>
