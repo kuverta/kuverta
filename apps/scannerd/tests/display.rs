@@ -6,7 +6,7 @@ use anyhow::Result;
 use scannerd::display::{
     drive, render, Facts, Frame, Panel, Screen, FULL_EVERY, HEIGHT, ROW_BYTES, WIDTH,
 };
-use scannerd::folders::{Filings, Folder, Outcome};
+use scannerd::folders::{Filings, Folder, Outcome, Refiling};
 use scannerd::quality::{Problem, Quality};
 use scannerd::run::Photographed;
 
@@ -267,6 +267,90 @@ fn a_letter_just_sent_can_be_filed_by_hand_from_the_display() {
     );
     // Five at most, or they do not fit above the picture.
     assert!(scanning.buttons.len() <= 5, "{labels:?}");
+}
+
+#[test]
+fn the_answer_already_given_is_not_offered_again() {
+    // Both buttons stayed up after "No folder" was tapped, which looked as if
+    // the tap had not taken. The other answer stays, for a change of mind.
+    let labels = |filings: &Filings, scanning: bool| -> Vec<String> {
+        Screen::for_facts(&Facts {
+            filing: filings.latest(),
+            can_refile: true,
+            touch: true,
+            scanning,
+            ..facts("waiting")
+        })
+        .buttons
+        .iter()
+        .map(|b| b.label())
+        .collect()
+    };
+    let nowhere = filed(Outcome::Nowhere);
+    let bin = filed(Outcome::Folders(vec![Folder {
+        discard: true,
+        ..Folder::named("Throw away")
+    }]));
+    // Tapped while Paperless was still reading: done once it has.
+    let mut pending = filed(Outcome::Reading);
+    pending.named("letter.pdf").unwrap().refile = Some(Refiling::Nowhere);
+
+    for scanning in [true, false] {
+        for filings in [&nowhere, &pending] {
+            let shown = labels(filings, scanning);
+            assert!(!shown.contains(&"No folder".to_string()), "{shown:?}");
+            assert!(shown.contains(&"Throw away".to_string()), "{shown:?}");
+        }
+        let shown = labels(&bin, scanning);
+        assert!(shown.contains(&"No folder".to_string()), "{shown:?}");
+        assert!(!shown.contains(&"Throw away".to_string()), "{shown:?}");
+    }
+}
+
+#[test]
+fn where_the_rig_decided_a_letter_goes_is_said_while_paperless_reads_it() {
+    // The rig decides the folder as the letter is closed and writes it on the
+    // upload; Paperless on a Pi then takes a minute to say the same back.
+    // "Sorting..." for all that minute was the folder hidden, not unknown.
+    let mut filings = filed(Outcome::Reading);
+    filings.decided(
+        "task",
+        vec![Folder::named("Taxes"), Folder::person("Erika Mustermann")],
+    );
+    let between = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(between.headline, "Taxes");
+    assert_eq!(between.detail, "For Erika Mustermann");
+
+    let scanning = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        touch: true,
+        scanning: true,
+        ..facts("waiting")
+    });
+    assert_eq!(
+        scanning.last_letter.map(|(_, words)| words).as_deref(),
+        Some("Last letter: Taxes")
+    );
+
+    // With nothing decided — no folder's words on the pages — it is still
+    // Paperless's to say.
+    let undecided = filed(Outcome::Reading);
+    let screen = Screen::for_facts(&Facts {
+        filing: undecided.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Sorting...");
+
+    // And what Paperless says wins: a letter it had already is not filed.
+    filings.decide("task", Outcome::Duplicate, 950);
+    let screen = Screen::for_facts(&Facts {
+        filing: filings.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Already filed");
 }
 
 #[test]

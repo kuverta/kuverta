@@ -140,9 +140,12 @@ async fn a_guessed_empty_table_is_not_kept() {
 }
 
 #[tokio::test]
-async fn learning_the_empty_table_gets_a_stuck_detector_going_again() {
-    // The failure from the Pi, reproduced: started on a page, then the page
-    // is lifted.
+async fn starting_on_a_page_and_lifting_it_photographs_nothing() {
+    // The failure from the Pi: started with a page lying there, so the first
+    // frame — the only guess available — became the table, and lifting the
+    // page changed everything and was photographed as a page. The empty table
+    // is not paper, whatever the baseline was, and enough frames of it become
+    // the table: the rig gets itself going again.
     let dir = TempDir::new("stuck");
     let spool = Spool::open(dir.0.join("spool")).unwrap();
     let camera = Script::new([page(), desk(90), desk(90), desk(90), desk(90)]);
@@ -151,27 +154,25 @@ async fn learning_the_empty_table_gets_a_stuck_detector_going_again() {
 
     assert_eq!(
         camera.captures.get(),
-        1,
-        "the empty table photographed as a page"
-    );
-    assert_eq!(scanner.state(), State::Spent);
-    camera.then([desk(90), desk(90), page(), page(), page(), page()]);
-    run(&mut scanner, &camera, &spool).await;
-    assert_eq!(
-        camera.captures.get(),
-        1,
-        "and stuck: a real page is not seen"
+        0,
+        "the empty table is not a page, whatever the table was thought to be"
     );
 
-    // "The table is empty now."
-    camera.then([desk(90)]);
+    // Seen for long enough, the empty table is the table.
+    camera.then(std::array::from_fn::<_, 16, _>(|_| desk(90)));
     run(&mut scanner, &camera, &spool).await;
-    assert!(scanner.learn_empty(3));
+    assert_eq!(camera.captures.get(), 0);
 
+    // And a real page is seen again without anyone pressing anything.
     camera.then([page(), page(), page(), page()]);
     let turns = run(&mut scanner, &camera, &spool).await;
     assert!(matches!(turns.last(), Some(Turn::Captured(_))), "{turns:?}");
-    assert_eq!(camera.captures.get(), 2);
+    assert_eq!(camera.captures.get(), 1);
+
+    // "The table is empty now" still works, of course.
+    camera.then([desk(90), desk(90)]);
+    run(&mut scanner, &camera, &spool).await;
+    assert!(scanner.learn_empty(3));
 }
 
 #[tokio::test]

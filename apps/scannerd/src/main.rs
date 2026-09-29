@@ -515,7 +515,19 @@ async fn main() -> Result<()> {
                     }
                 }
                 Command::Refile(into) => {
-                    scanner.refile_letter(&uploader, into, now).await;
+                    // Said on the display, or a tap there looks as if it
+                    // did nothing — the letter's own line changes only a
+                    // little, and only once Paperless has read it.
+                    let filed = scanner.refile_letter(&uploader, into.clone(), now).await;
+                    let words = match (filed, into) {
+                        (false, _) => "Could not file it - see the setup page",
+                        (true, scannerd::folders::Refiling::Nowhere) => "Kept in no folder",
+                        (true, scannerd::folders::Refiling::Bin) => {
+                            "Throw it away - Paperless keeps it"
+                        }
+                        (true, scannerd::folders::Refiling::Into(_)) => "Filed",
+                    };
+                    notice = Some((now, filed, words));
                 }
                 Command::RetryNow => scanner.retry_all(&spool, &uploader, now).await,
                 Command::FullView => {

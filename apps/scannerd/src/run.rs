@@ -83,6 +83,11 @@ const EVENTS: usize = 50;
 /// How long a finish waits for something that keeps moving.
 pub const FINISH_WAIT_SECS: u64 = 15;
 
+/// The last page left lying on the table untouched this long counts as the
+/// table cleared: the countdown to finishing starts. Turning a page over or
+/// fetching the next takes a hand, which starts it again.
+pub const LYING_SECS: u64 = 20;
+
 pub struct Scanner {
     detector: Detector,
     /// How often the spool is looked at when nothing is being captured.
@@ -124,6 +129,8 @@ pub struct Scanner {
     letters_closed: u64,
     /// Since when the table has been seen empty with a letter open.
     clear_since: Option<u64>,
+    /// Since when the page photographed last has lain there untouched.
+    lying_since: Option<u64>,
     /// The open letter is so far only its envelope: the table is empty while
     /// the letter is taken out of it, which is not the letter being done.
     envelope_only: bool,
@@ -176,6 +183,7 @@ impl Scanner {
             watching: true,
             letters_closed: 0,
             clear_since: None,
+            lying_since: None,
             envelope_only: false,
             page_layouts: std::collections::HashMap::new(),
             decided: Vec::new(),
@@ -402,6 +410,7 @@ impl Scanner {
         // What its pages said stays in front of whoever is standing there
         // until the next letter starts.
         self.sent_texts = std::mem::take(&mut self.page_texts);
+        self.detector.new_letter();
         // And where it goes is settled here, while the paper is still in
         // somebody's hand, rather than later by Paperless. The folder on the
         // panel is the drawer the paper goes in; it has to be the folder the
@@ -456,6 +465,27 @@ impl Scanner {
         }
     }
 
+    /// The page photographed last was the one before it with a hand pressing
+    /// it flat — the detector saw that page again once the hand had gone.
+    /// Taken back as "Undo last page" would, and said.
+    fn retract_page(&mut self, spool: &Spool, now: u64) {
+        match spool.discard_last_page() {
+            Ok(Some(page)) => {
+                tracing::info!(page = %page.display(), "the last page was the one before it under a hand: taken back");
+                self.event(
+                    now,
+                    true,
+                    "the last photograph was the page before it with a hand on it: taken back",
+                );
+                self.last_photographed = None;
+            }
+            Ok(None) => {}
+            Err(err) => {
+                tracing::warn!(%err, "could not take back a page photographed under a hand");
+            }
+        }
+    }
+
     /// "Cancel letter": every page of the open letter goes to `discarded/`,
     /// and says how many.
     pub fn cancel_letter(&mut self, spool: &Spool, now: u64) -> usize {
@@ -471,6 +501,7 @@ impl Scanner {
                 self.clear_since = None;
                 self.envelope_only = false;
                 self.last_photographed = None;
+                self.detector.new_letter();
                 pages
             }
             Err(err) => {
@@ -523,13 +554,15 @@ impl Scanner {
     /// Paperless may still be reading it, and the answer is wanted before
     /// then — that is the point of the buttons. In that case the letter is
     /// marked, and filed this way the moment it is read.
-    pub async fn refile_letter(&mut self, uploader: &Uploader, into: Refiling, now: u64) {
+    ///
+    /// Whether it was filed, or will be.
+    pub async fn refile_letter(&mut self, uploader: &Uploader, into: Refiling, now: u64) -> bool {
         if !self.can_refile(now) {
             self.event(now, false, "no letter to file");
-            return;
+            return false;
         }
         let Some((name, _)) = self.last_letter.clone() else {
-            return;
+            return false;
         };
         if into == Refiling::Bin && self.bin().is_none() {
             self.event(
@@ -537,24 +570,24 @@ impl Scanner {
                 false,
                 "no folder is marked as the bin: mark one on the setup page",
             );
-            return;
+            return false;
         }
         if let Refiling::Into(name) = &into {
             if self.named_folder(name).is_none() {
                 self.event(now, false, format!("there is no folder called {name:?}"));
-                return;
+                return false;
             }
         }
         let Some(filing) = self.filings.named(&name) else {
             self.event(now, false, "that letter was not sent to Paperless");
-            return;
+            return false;
         };
         let (task, document) = (filing.task.clone(), filing.document);
         let Some(document) = document else {
             filing.refile = Some(into.clone());
             let words = words_for(&into, true);
             self.event(now, true, format!("the last letter {words}"));
-            return;
+            return true;
         };
         match self.refile_document(uploader, document, into.clone()).await {
             Ok(()) => {
@@ -562,8 +595,12 @@ impl Scanner {
                 self.filings.decide(&task, outcome, now);
                 let words = words_for(&into, false);
                 self.event(now, true, format!("the last letter {words}"));
+                true
             }
-            Err(err) => self.event(now, false, format!("could not file the letter: {err:#}")),
+            Err(err) => {
+                self.event(now, false, format!("could not file the letter: {err:#}"));
+                false
+            }
         }
     }
 
@@ -862,6 +899,9 @@ impl Scanner {
                 }
                 self.last_frame = Some(frame);
 
+                if step == Step::Retract {
+                    self.retract_page(spool, now);
+                }
                 if step == Step::Capture {
                     let taking =
                         capture(camera, spool, collecting, self.straighten.as_ref(), self.ev);
@@ -940,6 +980,7 @@ impl Scanner {
                                         self.event(now, true, "an envelope: the letter before it is finished, sending");
                                         self.close_requested_at = None;
                                         self.closed(spool, &letter, now);
+                                        self.detector.new_letter_from_last();
                                         sent_before = true;
                                     }
                                     Ok(None) => {}
@@ -988,6 +1029,7 @@ impl Scanner {
                             });
                             let kept = !nothing_on_it;
                             if nothing_on_it {
+                                self.detector.forget_last_page();
                                 if let Err(err) = spool.discard_capture(&path) {
                                     tracing::warn!(%err, "could not put the table's photograph aside");
                                 }
@@ -1051,6 +1093,7 @@ impl Scanner {
                             return Turn::Captured(path);
                         }
                         Err(err) => {
+                            self.detector.forget_last_page();
                             tracing::error!(%err, "capture failed");
                             self.event(
                                 now,
@@ -1095,7 +1138,16 @@ impl Scanner {
         self.last_drain = Some(now);
         self.prepare_folders(spool, uploader, now).await;
         let filings = (!self.folders.is_empty()).then_some(&mut self.filings);
-        drain(spool, uploader, now, false, &mut self.events, filings).await;
+        drain(
+            spool,
+            uploader,
+            now,
+            false,
+            &mut self.events,
+            filings,
+            &self.folders,
+        )
+        .await;
         self.cap_events();
     }
 
@@ -1106,7 +1158,16 @@ impl Scanner {
         self.last_drain = Some(now);
         self.prepare_folders(spool, uploader, now).await;
         let filings = (!self.folders.is_empty()).then_some(&mut self.filings);
-        drain(spool, uploader, now, true, &mut self.events, filings).await;
+        drain(
+            spool,
+            uploader,
+            now,
+            true,
+            &mut self.events,
+            filings,
+            &self.folders,
+        )
+        .await;
         self.cap_events();
     }
 
@@ -1311,7 +1372,16 @@ impl Scanner {
         // is done. Only while the camera is watched — stopped, the table is
         // not looked at, and an empty-looking one means nothing.
         let open = spool.last_page_at().ok().flatten().is_some();
-        if self.watching && open && !self.envelope_only && self.detector.state() == State::Waiting {
+        self.lying_since = if self.detector.lying_untouched() {
+            Some(self.lying_since.unwrap_or(now))
+        } else {
+            None
+        };
+        let lying = self
+            .lying_since
+            .is_some_and(|since| now.saturating_sub(since) >= LYING_SECS);
+        let clear = self.detector.state() == State::Waiting;
+        if self.watching && open && !self.envelope_only && (clear || lying) {
             let since = *self.clear_since.get_or_insert(now);
             if let Some(after) = when_clear {
                 if now.saturating_sub(since) >= after.as_secs() && self.close_requested_at.is_none()
@@ -1604,6 +1674,7 @@ async fn drain(
     force: bool,
     events: &mut Vec<Event>,
     mut filings: Option<&mut Filings>,
+    shelf: &[Folder],
 ) {
     let pending = match spool.pending() {
         Ok(pending) => pending,
@@ -1644,6 +1715,12 @@ async fn drain(
                 tracing::info!(file = %filename, %task, "uploaded");
                 if let Some(filings) = filings.as_deref_mut() {
                     filings.sent(&filename, &task, now);
+                    let decided = folders
+                        .iter()
+                        .filter_map(|name| shelf.iter().find(|folder| folder.tag_name() == *name))
+                        .cloned()
+                        .collect();
+                    filings.decided(&task, decided);
                 }
                 events.push(Event {
                     at: now,
