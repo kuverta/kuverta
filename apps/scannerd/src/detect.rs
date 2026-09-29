@@ -419,7 +419,7 @@ fn largest_lump(lit: &[bool], bw: usize, bh: usize) -> Option<Lump> {
             top = top.min(by);
             right = right.max(bx);
             bottom = bottom.max(by);
-            let mut push = |bx: usize, by: usize, stack: &mut Vec<usize>, seen: &mut Vec<bool>| {
+            let push = |bx: usize, by: usize, stack: &mut Vec<usize>, seen: &mut Vec<bool>| {
                 let next = by * bw + bx;
                 if lit[next] && !seen[next] {
                     seen[next] = true;
