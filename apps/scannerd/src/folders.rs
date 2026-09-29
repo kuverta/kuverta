@@ -271,7 +271,24 @@ pub struct Filing {
     /// To be filed by hand as soon as Paperless has read it: the display was
     /// told where it goes before Paperless had an answer.
     pub refile: Option<Refiling>,
+    /// Where the rig decided it goes as it was closed, strongest first — and
+    /// wrote on it as it was sent. Paperless takes half a minute or more to
+    /// read a letter on a Pi and then only says the same back.
+    pub decided: Vec<Folder>,
     checked_at: Option<u64>,
+}
+
+impl Filing {
+    /// What to say about the letter: where it was decided to go while
+    /// Paperless is still reading it, rather than "sorting" for as long as
+    /// Paperless takes. Paperless's own answer replaces it — a duplicate, a
+    /// failure, a folder changed by hand.
+    pub fn shown(&self) -> Outcome {
+        match &self.outcome {
+            Outcome::Reading if !self.decided.is_empty() => Outcome::Folders(self.decided.clone()),
+            outcome => outcome.clone(),
+        }
+    }
 }
 
 /// How often Paperless is asked whether a letter is done.
@@ -300,6 +317,7 @@ impl Filings {
             document: None,
             undo: false,
             refile: None,
+            decided: Vec::new(),
             checked_at: None,
         });
         if self.filings.len() > KEEP {
@@ -329,6 +347,13 @@ impl Filings {
             }
         }
         None
+    }
+
+    /// Where the letter sent as `task` was decided to go when it was closed.
+    pub fn decided(&mut self, task: &str, folders: Vec<Folder>) {
+        if let Some(filing) = self.filings.iter_mut().find(|f| f.task == task) {
+            filing.decided = folders;
+        }
     }
 
     pub fn decide(&mut self, task: &str, outcome: Outcome, now: u64) {

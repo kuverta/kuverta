@@ -31,7 +31,7 @@ use u8g2_fonts::fonts;
 use u8g2_fonts::types::{FontColor, HorizontalAlignment, VerticalPosition};
 use u8g2_fonts::FontRenderer;
 
-use crate::folders::{Filing, Folder, Outcome, GIVE_UP_SECS};
+use crate::folders::{Filing, Folder, Outcome, Refiling, GIVE_UP_SECS};
 use crate::picture::Picture;
 use crate::run::Photographed;
 
@@ -231,6 +231,13 @@ impl Screen {
                     None => "Next page, or finish".into(),
                 },
                 ("waiting", _) => "Put a page down".into(),
+                // The last page left lying: the letter finishes all the same.
+                ("photographed", _) if facts.open_pages > 0 && facts.finishing_in.is_some() => {
+                    format!(
+                        "Next page? Finishing in {}s",
+                        facts.finishing_in.unwrap_or_default()
+                    )
+                }
                 ("settling", _) => "Hold still...".into(),
                 ("photographed", _) if facts.last.is_some_and(|last| !last.kept) => {
                     "That was the table - not kept".into()
@@ -262,8 +269,7 @@ impl Screen {
                 // whoever is standing there; taking it back is a rarer one,
                 // and waits until scanning is stopped.
                 if facts.can_refile {
-                    buttons.push(Action::FileNowhere);
-                    buttons.push(Action::FileInBin);
+                    buttons.extend(refile_buttons(facts));
                 } else if facts.can_undo_letter {
                     buttons.push(undo_letter(facts));
                 }
@@ -281,12 +287,13 @@ impl Screen {
             // Where the letter before goes stays in sight while the next is
             // scanned: the paper is still in a hand, or on the pile.
             screen.last_letter = relevant_filing(facts).map(|filing| {
-                let (words, _) = where_it_goes(&filing.outcome);
-                let words = match &filing.outcome {
+                let shown = filing.shown();
+                let (words, _) = where_it_goes(&shown);
+                let words = match &shown {
                     Outcome::Reading => "Last letter: sorting...".to_string(),
                     _ => format!("Last letter: {words}"),
                 };
-                (tone_of(&filing.outcome), words)
+                (tone_of(&shown), words)
             });
         } else {
             if screen.headline == "Ready" {
@@ -310,8 +317,7 @@ impl Screen {
             screen.verdict = None;
             screen.buttons = vec![Action::StartScanning];
             if facts.can_refile {
-                screen.buttons.push(Action::FileNowhere);
-                screen.buttons.push(Action::FileInBin);
+                screen.buttons.extend(refile_buttons(facts));
             }
             if facts.can_undo_letter {
                 screen.buttons.push(undo_letter(facts));
@@ -410,13 +416,14 @@ impl Screen {
             && matches!(facts.state, "waiting" | "paused")
             && facts.open_pages == 0;
         if let Some(filing) = filing.filter(|_| between_letters) {
-            let (headline, detail) = where_it_goes(&filing.outcome);
+            let shown = filing.shown();
+            let (headline, detail) = where_it_goes(&shown);
             return Self {
                 headline,
                 detail,
                 verdict: None,
                 footer: footer(facts, &["Ready for the next letter".to_string()]),
-                tone: tone_of(&filing.outcome),
+                tone: tone_of(&shown),
                 ..Self::default()
             };
         }
@@ -438,7 +445,7 @@ impl Screen {
             first.push(format!("Letter: {} page{plural}", facts.open_pages));
         }
         if let Some(filing) = filing.filter(|f| f.decided_at.is_some()) {
-            first.push(format!("Last: {}", where_it_goes(&filing.outcome).0));
+            first.push(format!("Last: {}", where_it_goes(&filing.shown()).0));
         }
 
         Self {
@@ -473,6 +480,27 @@ fn undo_letter(facts: &Facts<'_>) -> Action {
 
 /// The letter sent last, while where it goes is worth saying: being read, or
 /// known for [`VERDICT_SECS`].
+/// "No folder" and "Throw away", less whichever the last letter was already
+/// given. Both stayed up after a tap, which looked as if the tap had not
+/// taken — and was tapped again. The other one stays, for a change of mind.
+fn refile_buttons(facts: &Facts<'_>) -> Vec<Action> {
+    let chosen = facts.filing.and_then(|filing| match filing.shown() {
+        // Tapped while Paperless was still reading: waiting to be done.
+        _ if filing.outcome == Outcome::Reading && filing.refile.is_some() => filing.refile.clone(),
+        Outcome::Nowhere => Some(Refiling::Nowhere),
+        Outcome::Folders(folders) if folders.iter().any(|f| f.discard) => Some(Refiling::Bin),
+        _ => None,
+    });
+    [
+        (Refiling::Nowhere, Action::FileNowhere),
+        (Refiling::Bin, Action::FileInBin),
+    ]
+    .into_iter()
+    .filter(|(refiling, _)| chosen.as_ref() != Some(refiling))
+    .map(|(_, action)| action)
+    .collect()
+}
+
 fn relevant_filing<'a>(facts: &Facts<'a>) -> Option<&'a Filing> {
     facts.filing.filter(|filing| match filing.decided_at {
         None => facts.now.saturating_sub(filing.sent_at) < GIVE_UP_SECS,
