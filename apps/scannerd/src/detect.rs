@@ -70,7 +70,13 @@ impl Default for Thresholds {
             // frame and an A4 page nearly all of it, so this is generous —
             // it is there to rule out the light, not to measure the paper.
             paper_share: 0.06,
-            paper_fill: 0.45,
+            // Generous too, and for a reason measured on the rig: a page lies
+            // at an angle, and a rectangle turned 45° fills only half of any
+            // upright box drawn round it. Real pages there measured 0.45 to
+            // 0.50, so anything near that would refuse them by luck. What
+            // rules out the light is that the lump is one lump and the right
+            // way round, not how tidily it sits in a box.
+            paper_fill: 0.3,
         }
     }
 }
@@ -169,6 +175,84 @@ pub fn page_changed(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
     least
 }
 
+/// Of the blocks that differ between `a` and `b`, the share that is darker in
+/// `a` — at the shift that lines the two up best, and with the frames'
+/// overall brightness taken out. A hand over a page only ever darkens it; the
+/// other side of a page, or another page, moves its text about and is darker
+/// in some blocks and paler in others, and a blank back is paler throughout.
+/// 0 when nothing differs.
+pub fn darker_share(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
+    if a.len() != b.len() || width <= 2 * SHIFT + BLOCK * 4 || !a.len().is_multiple_of(width) {
+        return 0.0;
+    }
+    let height = a.len() / width;
+    if height <= 2 * SHIFT + BLOCK * 4 {
+        return 0.0;
+    }
+    let (bw, bh) = ((width - 2 * SHIFT) / BLOCK, (height - 2 * SHIFT) / BLOCK);
+    let means = |frame: Luma<'_>, dx: isize, dy: isize| {
+        let mut out = Vec::with_capacity(bw * bh);
+        for by in 0..bh {
+            for bx in 0..bw {
+                let (x0, y0) = (
+                    (SHIFT + bx * BLOCK).wrapping_add_signed(dx),
+                    (SHIFT + by * BLOCK).wrapping_add_signed(dy),
+                );
+                let mut sum = 0u32;
+                for y in y0..y0 + BLOCK {
+                    sum += frame[y * width + x0..y * width + x0 + BLOCK]
+                        .iter()
+                        .map(|&v| v as u32)
+                        .sum::<u32>();
+                }
+                out.push(sum as f32 / (BLOCK * BLOCK) as f32);
+            }
+        }
+        out
+    };
+    let now = means(b, 0, 0);
+    // (changed, darker in `a`) at a shift of `a`.
+    let counted = |dx: isize, dy: isize| {
+        let then = means(a, dx, dy);
+        // The median, not the mean: a hand over a third of the page would
+        // drag a mean down, and every block it did not touch would then look
+        // paler than it is.
+        let mut differences: Vec<f32> = now.iter().zip(&then).map(|(n, t)| n - t).collect();
+        differences.sort_by(f32::total_cmp);
+        let offset = differences[differences.len() / 2];
+        let mut changed = 0usize;
+        let mut darker = 0usize;
+        for (n, t) in now.iter().zip(&then) {
+            let difference = t - n + offset;
+            if difference.abs() > BLOCK_CHANGE {
+                changed += 1;
+                if difference < 0.0 {
+                    darker += 1;
+                }
+            }
+        }
+        (changed, darker)
+    };
+    let reach = SHIFT as isize;
+    let mut best = (usize::MAX, 0usize);
+    for dy in -reach..=reach {
+        for dx in -reach..=reach {
+            let here = counted(dx, dy);
+            if here.0 < best.0 {
+                best = here;
+            }
+        }
+    }
+    match best {
+        (0, _) | (usize::MAX, _) => 0.0,
+        (changed, darker) => darker as f32 / changed as f32,
+    }
+}
+
+/// A photograph this much darker than the page seen again after it — of the
+/// blocks that differ — was that page with a hand on it.
+const HAND_DARKER: f32 = 0.8;
+
 /// The side of a block [`paper_like`] compares. Larger than [`BLOCK`]: this
 /// asks where the change *is*, not how much of it there is, and sensor noise
 /// averages away over 256 pixels.
@@ -176,15 +260,19 @@ const PAPER_BLOCK: usize = 16;
 /// A block's mean must move this far from the table's to count as something
 /// lying there.
 const PAPER_BY: f32 = 12.0;
-/// And it must be this much paler than the table itself — not than the rest of
-/// the frame. A shadow over half the table makes the other half *look* paler
-/// than the average, which is how the sun going down came to be photographed
-/// as a letter; against the table's own level a shadow is never paper.
-const PAPER_ABOVE_TABLE: f32 = 35.0;
-/// However dark the table, paper reads at least this. The rig's table is 81 in
-/// the preview stream and its brightest pixel 121, so this is a floor under
-/// [`PAPER_ABOVE_TABLE`] and not a second opinion.
-const PAPER_LEVEL: f32 = 110.0;
+/// And it must stand out from the rest of the frame by this much: paper is the
+/// pale thing in the picture, whatever the camera's exposure made of it.
+///
+/// Measured inside the frame rather than against a level, because the camera
+/// sets its exposure for every frame: a white page in view makes the camera
+/// pull everything down, so paper can read barely brighter than the table did
+/// on its own — and asking for an absolute level then stops seeing paper at
+/// all, which is what the first version of this did.
+const PAPER_STANDS_OUT: f32 = 18.0;
+/// Where a page covers this much of the frame there is nothing left to stand
+/// out from, so the test is not asked. The rig's crop is page-shaped, so a
+/// letter squarely on it covers nearly all of it.
+const PAPER_FILLS_FRAME: f32 = 0.75;
 /// A baseline this pale is a pale table, and paper on it reads *darker*: the
 /// tests below and the rig both have a dark one, but a white desk is a desk.
 const PALE_TABLE: f32 = 150.0;
@@ -193,10 +281,12 @@ const PALE_TABLE: f32 = 150.0;
 /// changing over it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct PaperLike {
-    /// The share of the frame's blocks that moved the way paper moves them.
+    /// The share of the frame taken up by the largest single lump of blocks
+    /// that moved the way paper moves them. A page is one lump; light changing
+    /// is a scattering of small ones.
     pub share: f32,
-    /// How much of the box those blocks span they actually fill: 1 for one
-    /// solid lump, and much less for change scattered over the whole frame.
+    /// How much of the box that lump spans it actually fills: 1 for a solid
+    /// rectangle, which is what a sheet of paper is.
     pub fill: f32,
 }
 
@@ -257,41 +347,104 @@ pub fn paper_like(baseline: Luma<'_>, frame: Luma<'_>, width: usize) -> PaperLik
     let blocks = residuals.len() as f32;
     table /= blocks;
     // A page is paler than a dark table and darker than a pale one.
-    let pale_table = table >= PALE_TABLE;
-    let sign = if pale_table { -1.0 } else { 1.0 };
-    // What a block must read in itself to be paper: pale on a dark table, and
-    // clearly darker than the table when the table is the pale thing.
-    let level = if pale_table {
-        table - PAPER_ABOVE_TABLE
-    } else {
-        (table + PAPER_ABOVE_TABLE).max(PAPER_LEVEL)
-    };
+    let sign = if table >= PALE_TABLE { -1.0 } else { 1.0 };
 
-    let mut lit = 0usize;
-    let (mut left, mut top, mut right, mut bottom) = (bw, bh, 0usize, 0usize);
+    // Which blocks moved the way paper moves them. Compared with the table as
+    // it was learnt, and with no offset taken out for the frame as a whole: an
+    // offset is what let a shadow over half the table make the other half look
+    // paler than the average, and paler than the average is what paper looks
+    // like.
+    let mut lit = vec![false; bw * bh];
+    let (mut lit_count, mut lit_level, mut rest_level) = (0usize, 0.0f32, 0.0f32);
     for (index, residual) in residuals.iter().enumerate() {
-        if residual * sign <= PAPER_BY {
-            continue;
-        }
         let (bx, by) = (index % bw, index / bw);
         let now = block_mean(frame, bx, by);
-        if (now - level) * sign <= 0.0 {
+        if residual * sign <= PAPER_BY {
+            rest_level += now;
             continue;
         }
-        lit += 1;
-        left = left.min(bx);
-        top = top.min(by);
-        right = right.max(bx);
-        bottom = bottom.max(by);
+        lit[index] = true;
+        lit_count += 1;
+        lit_level += now;
     }
-    if lit == 0 {
+    if lit_count == 0 {
         return PaperLike::NOTHING;
     }
-    let box_blocks = ((right + 1 - left) * (bottom + 1 - top)) as f32;
-    PaperLike {
-        share: lit as f32 / blocks,
-        fill: lit as f32 / box_blocks,
+    // And paper is the pale thing in the picture: the blocks that moved must
+    // stand out from the ones that did not. A shadow is the other way round,
+    // whichever way the light went.
+    let rest = blocks - lit_count as f32;
+    if rest / blocks > 1.0 - PAPER_FILLS_FRAME {
+        let stands_out = (lit_level / lit_count as f32 - rest_level / rest) * sign;
+        if stands_out < PAPER_STANDS_OUT {
+            return PaperLike::NOTHING;
+        }
     }
+    // The largest lump of them, and how solidly it fills its own box. Measured
+    // on the lump rather than on every lit block, because one lit block in a
+    // corner would otherwise stretch the box over the whole frame and make a
+    // page look as scattered as an evening — which on the rig it did.
+    let Some(lump) = largest_lump(&lit, bw, bh) else {
+        return PaperLike::NOTHING;
+    };
+    PaperLike {
+        share: lump.blocks as f32 / blocks,
+        fill: lump.blocks as f32 / lump.box_blocks as f32,
+    }
+}
+
+/// One connected group of blocks: how many there are, and the box they span.
+struct Lump {
+    blocks: usize,
+    box_blocks: usize,
+}
+
+/// The largest group of lit blocks that touch one another, edge to edge.
+fn largest_lump(lit: &[bool], bw: usize, bh: usize) -> Option<Lump> {
+    let mut seen = vec![false; lit.len()];
+    let mut best: Option<Lump> = None;
+    let mut stack = Vec::new();
+    for start in 0..lit.len() {
+        if !lit[start] || seen[start] {
+            continue;
+        }
+        seen[start] = true;
+        stack.push(start);
+        let (mut blocks, mut left, mut top, mut right, mut bottom) =
+            (0usize, bw, bh, 0usize, 0usize);
+        while let Some(index) = stack.pop() {
+            blocks += 1;
+            let (bx, by) = (index % bw, index / bw);
+            left = left.min(bx);
+            top = top.min(by);
+            right = right.max(bx);
+            bottom = bottom.max(by);
+            let mut push = |bx: usize, by: usize, stack: &mut Vec<usize>, seen: &mut Vec<bool>| {
+                let next = by * bw + bx;
+                if lit[next] && !seen[next] {
+                    seen[next] = true;
+                    stack.push(next);
+                }
+            };
+            if bx > 0 {
+                push(bx - 1, by, &mut stack, &mut seen);
+            }
+            if bx + 1 < bw {
+                push(bx + 1, by, &mut stack, &mut seen);
+            }
+            if by > 0 {
+                push(bx, by - 1, &mut stack, &mut seen);
+            }
+            if by + 1 < bh {
+                push(bx, by + 1, &mut stack, &mut seen);
+            }
+        }
+        let box_blocks = (right + 1 - left) * (bottom + 1 - top);
+        if best.as_ref().is_none_or(|found| blocks > found.blocks) {
+            best = Some(Lump { blocks, box_blocks });
+        }
+    }
+    best
 }
 
 /// Returns 0.0 for frames of different sizes rather than panicking: a camera
@@ -337,7 +490,16 @@ pub enum Step {
     Wait,
     /// Take the photograph now.
     Capture,
+    /// The last photograph was not a page of its own: what lies there now is
+    /// the page before it again, so the last one was that page with a hand
+    /// pressing it flat. Take it back.
+    Retract,
 }
+
+/// Pages of one letter the detector remembers to tell a new page from. More
+/// than a letter has; a cap so single pages, never gathered into letters, do
+/// not pile up without end.
+const PAGES_KEPT: usize = 30;
 
 pub struct Detector {
     thresholds: Thresholds,
@@ -354,6 +516,12 @@ pub struct Detector {
     /// The frame a photograph was taken at: what the next page is told
     /// apart from.
     photographed: Option<Vec<u8>>,
+    /// Every page of the letter photographed so far, oldest first — the last
+    /// is `photographed`. A page is told apart from all of them, not only
+    /// from the last: a hand resting on a page is photographed as a page of
+    /// its own, and once it goes, the page under it differs from that
+    /// photograph as much as from any other page.
+    pages: Vec<Vec<u8>>,
     /// Whether a hand has been over the page since it was photographed.
     handled: bool,
     /// Still frames, since the hand, with a page there.
@@ -382,6 +550,7 @@ impl Detector {
             state: State::Waiting,
             clear_frames: 0,
             photographed: None,
+            pages: Vec::new(),
             handled: false,
             still_since_handled: 0,
             width: 320,
@@ -402,9 +571,42 @@ impl Detector {
         self.state = State::Spent;
         self.clear_frames = 0;
         self.photographed = Some(frame.to_vec());
+        self.pages.push(frame.to_vec());
+        if self.pages.len() > PAGES_KEPT {
+            self.pages.remove(0);
+        }
         self.handled = false;
         self.still_since_handled = 0;
         Step::Capture
+    }
+
+    /// A new letter: its pages are told apart from each other, not from the
+    /// last letter's.
+    pub fn new_letter(&mut self) {
+        self.pages.clear();
+    }
+
+    /// A new letter that begins with the page just photographed — the
+    /// envelope that finished the one before.
+    pub fn new_letter_from_last(&mut self) {
+        self.pages = self.photographed.iter().cloned().collect();
+    }
+
+    /// The last photograph was not kept as a page: the table, or a capture
+    /// that failed.
+    pub fn forget_last_page(&mut self) {
+        self.pages.pop();
+    }
+
+    /// A page lies there, photographed, and nothing has touched it since:
+    /// the letter may be done with the last page left lying.
+    pub fn lying_untouched(&self) -> bool {
+        self.state == State::Spent
+            && !self.handled
+            && self.clear_frames == 0
+            && self
+                .last_measure
+                .is_some_and(|(_, against_previous)| against_previous < self.thresholds.still)
     }
 
     /// The last frame's change from the empty surface, then from the frame
@@ -517,6 +719,12 @@ impl Detector {
                     self.light_frames = 0;
                 } else if looks_like_paper {
                     self.light_frames = 0;
+                    tracing::info!(
+                        share = paper.share,
+                        fill = paper.fill,
+                        change = against_baseline,
+                        "that looks like paper: waiting for it to be still"
+                    );
                     self.state = State::Settling { frames_still: 0 };
                 } else {
                     // Changed, but not the way paper changes it: the sun has
@@ -524,7 +732,30 @@ impl Detector {
                     // what the table looks like now — otherwise every frame
                     // from here to nightfall is a page about to be
                     // photographed.
+                    //
+                    // Only when there is *nothing* paper-like in the frame,
+                    // though. A page refused for any other reason must never
+                    // be learnt as the table: that swallows the page, and then
+                    // nothing is ever seen again — which is exactly what
+                    // happened on the rig when this was let through on any
+                    // refusal.
+                    if paper.share >= self.thresholds.paper_share / 2.0 {
+                        self.light_frames = 0;
+                        return Step::Wait;
+                    }
                     self.light_frames = self.light_frames.saturating_add(1);
+                    // Said once a run, with the numbers: a rig that has stopped
+                    // seeing pages must be able to show why.
+                    if self.light_frames == 1 {
+                        tracing::info!(
+                            share = paper.share,
+                            fill = paper.fill,
+                            change = against_baseline,
+                            want_share = self.thresholds.paper_share,
+                            want_fill = self.thresholds.paper_fill,
+                            "something changed that does not look like paper"
+                        );
+                    }
                     if self.light_frames >= self.settle_frames.saturating_mul(4) {
                         tracing::info!(
                             share = paper.share,
@@ -592,12 +823,34 @@ impl Detector {
                                 .as_deref()
                                 .map(|photographed| page_changed(photographed, frame, self.width))
                                 .unwrap_or(0.0);
-                            if changed >= self.thresholds.new_page {
-                                return self.photographed(frame);
-                            }
-                            // Touched, straightened, but the same page.
+                            // Which page of the letter this is again, if any,
+                            // newest first.
+                            let earlier = self.pages.len().saturating_sub(1);
+                            let again = (0..earlier).rev().find(|&index| {
+                                page_changed(&self.pages[index], frame, self.width)
+                                    < self.thresholds.new_page
+                            });
                             self.handled = false;
                             self.still_since_handled = 0;
+                            if changed < self.thresholds.new_page {
+                                // Touched, straightened, but the same page.
+                            } else if again == Some(earlier.wrapping_sub(1))
+                                && self.photographed.as_deref().is_some_and(|last| {
+                                    darker_share(last, frame, self.width) >= HAND_DARKER
+                                })
+                            {
+                                // The page before the last, again: the last
+                                // photograph was this page with a hand on it.
+                                self.pages.pop();
+                                self.photographed = Some(frame.to_vec());
+                                if let Some(page) = self.pages.last_mut() {
+                                    *page = frame.to_vec();
+                                }
+                                return Step::Retract;
+                            } else if again.is_none() {
+                                return self.photographed(frame);
+                            }
+                            // An earlier page turned back up: already taken.
                         }
                     }
                 }

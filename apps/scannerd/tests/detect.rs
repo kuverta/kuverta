@@ -375,6 +375,85 @@ fn a_hand_passing_over_the_page_takes_nothing_new() {
     assert_eq!(after_the_first(&page_at(40, 20, Some(0)), then), 0);
 }
 
+/// A hand resting on `page`, reaching in from the bottom edge: skin, darker
+/// than paper and than a line of print averaged over a block.
+fn with_hand(page: &[u8]) -> Vec<u8> {
+    let mut frame = page.to_vec();
+    for row in 70..H {
+        for column in 110..230 {
+            frame[row * W + column] = 150;
+        }
+    }
+    frame
+}
+
+/// Runs `frames` after the first page, counting photographs and pages taken
+/// back.
+fn steps_after_the_first(first: &[u8], frames: Vec<Vec<u8>>) -> (usize, usize) {
+    let mut detector = detector();
+    detector.observe(&desk());
+    for _ in 0..5 {
+        detector.observe(first);
+    }
+    let steps: Vec<Step> = frames.iter().map(|frame| detector.observe(frame)).collect();
+    (
+        steps.iter().filter(|step| **step == Step::Capture).count(),
+        steps.iter().filter(|step| **step == Step::Retract).count(),
+    )
+}
+
+#[test]
+fn a_hand_left_resting_on_a_page_is_taken_back_once_it_goes() {
+    // On the rig: the back of a page photographed, then photographed again
+    // with a hand pressing it flat, then a third time once the hand had gone
+    // — the last differed from the hand's photograph as much as another page
+    // does. The hand's photograph is taken back, and nothing new is taken.
+    let front = page_at(40, 20, Some(0));
+    let back = page_at(40, 20, Some(1));
+    let pressed = with_hand(&back);
+    let mut frames = hand(&front);
+    frames.extend(std::iter::repeat_n(back.clone(), 5));
+    frames.extend(hand(&back));
+    frames.extend(std::iter::repeat_n(pressed.clone(), 5));
+    let (captured, _) = steps_after_the_first(&front, frames.clone());
+    assert_eq!(captured, 2, "the back, and the back under a hand");
+
+    frames.extend(hand(&pressed));
+    frames.extend(std::iter::repeat_n(back, 6));
+    assert_eq!(steps_after_the_first(&front, frames), (2, 1));
+}
+
+#[test]
+fn a_page_turned_back_up_keeps_both_sides_and_takes_nothing_new() {
+    // Turned over and back again: the back was a page of its own, and must
+    // not be taken for a hand's photograph just because the front came back.
+    let front = page_at(40, 20, Some(0));
+    for back in [page_at(40, 20, Some(1)), page_at(40, 20, None)] {
+        let mut frames = hand(&front);
+        frames.extend(std::iter::repeat_n(back.clone(), 5));
+        frames.extend(hand(&back));
+        frames.extend(std::iter::repeat_n(front.clone(), 6));
+        assert_eq!(steps_after_the_first(&front, frames), (1, 0));
+    }
+}
+
+#[test]
+fn a_page_left_lying_is_untouched_until_a_hand_comes() {
+    let page = page_at(40, 20, Some(0));
+    let mut detector = detector();
+    detector.observe(&desk());
+    for _ in 0..5 {
+        detector.observe(&page);
+    }
+    assert_eq!(detector.state(), State::Spent);
+    detector.observe(&page);
+    assert!(detector.lying_untouched());
+    for frame in hand(&page) {
+        detector.observe(&frame);
+    }
+    assert!(!detector.lying_untouched(), "a hand is over it");
+}
+
 #[test]
 fn pages_are_told_apart_in_blocks_and_nudges_are_not_changes() {
     let page = page_at(40, 20, Some(0));
@@ -433,6 +512,31 @@ fn paper_is_one_lump_and_the_evening_is_a_wash() {
 }
 
 #[test]
+fn a_page_the_camera_darkened_is_still_a_page() {
+    // The camera sets its exposure for every frame: a white page in view makes
+    // it pull everything down, so the page reads far darker than the paper on
+    // the table looks to a person, and the table around it darker still. The
+    // first version of this asked for paper to reach a level and stopped
+    // seeing pages altogether — paper is *the pale thing in the frame*, not a
+    // number.
+    let mut frame: Vec<u8> = (0..PIXELS).map(|i| 65 + (i % 3) as u8).collect();
+    for pixel in frame.iter_mut().take(PIXELS / 2) {
+        *pixel = 120;
+    }
+    let seen = paper_like(&desk(), &frame, W);
+    assert!(seen.share > 0.4, "the page is still a page: {seen:?}");
+    assert!(seen.fill > 0.9, "{seen:?}");
+
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let mut taken = false;
+    for _ in 0..6 {
+        taken |= detector.observe(&frame) == Step::Capture;
+    }
+    assert!(taken, "and it is photographed");
+}
+
+#[test]
 fn the_sun_going_down_is_not_photographed() {
     let mut detector = detector();
     detector.learn_empty(&desk());
@@ -459,6 +563,110 @@ fn the_sun_going_down_is_not_photographed() {
         taken |= detector.observe(&page) == Step::Capture;
     }
     assert!(taken, "a page in the new light is still a page");
+}
+
+#[test]
+fn a_page_lying_at_an_angle_is_still_one_lump() {
+    // How pages actually lie on the rig: turned, corner to corner, so the
+    // upright box round them is the whole frame and a tilted rectangle fills
+    // only about half of it. Measured there: 0.45 to 0.50. The threshold has
+    // to sit well under that, or a page is refused for lying crooked.
+    let mut frame = desk();
+    let (cx, cy) = (W as f32 / 2.0, H as f32 / 2.0);
+    let angle: f32 = 0.5; // about 29°
+    let (half_w, half_h) = (W as f32 * 0.32, H as f32 * 0.40);
+    for y in 0..H {
+        for x in 0..W {
+            let (dx, dy) = (x as f32 - cx, y as f32 - cy);
+            let along = dx * angle.cos() + dy * angle.sin();
+            let across = -dx * angle.sin() + dy * angle.cos();
+            if along.abs() < half_w && across.abs() < half_h {
+                frame[y * W + x] = 225;
+            }
+        }
+    }
+    let seen = paper_like(&desk(), &frame, W);
+    assert!(
+        seen.share > 0.2,
+        "a turned page is most of the frame: {seen:?}"
+    );
+    assert!(
+        seen.fill > Thresholds::default().paper_fill,
+        "and it is not refused for lying crooked: {seen:?} against {}",
+        Thresholds::default().paper_fill
+    );
+
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let mut taken = false;
+    for _ in 0..6 {
+        taken |= detector.observe(&frame) == Step::Capture;
+    }
+    assert!(taken, "and it is photographed");
+}
+
+#[test]
+fn one_lit_block_in_a_corner_does_not_make_a_page_look_scattered() {
+    // On the rig a real page measured share 0.47 and fill 0.47 — the same
+    // number, which is the giveaway: the box was the whole frame, because a
+    // stray block at the far edge stretched it there. Measured on the lump
+    // itself, a page is a page.
+    let mut frame = desk();
+    // A page over the middle third, tidy and solid.
+    for y in H / 3..2 * H / 3 {
+        for x in W / 4..3 * W / 4 {
+            frame[y * W + x] = 225;
+        }
+    }
+    // And one bright speck in the far corner — a cup's rim catching the light.
+    for y in 0..20 {
+        for x in W - 20..W {
+            frame[y * W + x] = 200;
+        }
+    }
+    let seen = paper_like(&desk(), &frame, W);
+    assert!(seen.fill > 0.85, "the page fills its own box: {seen:?}");
+    assert!(seen.share > 0.1, "{seen:?}");
+}
+
+#[test]
+fn a_page_refused_is_never_learnt_as_the_table() {
+    // What broke the rig: a page was refused — the rule was too strict — and
+    // then, because something had changed and it did not look like paper, the
+    // page was learnt as the table. After that the page *was* the table and
+    // nothing was ever seen again, not even after learning the empty table by
+    // hand, because the next frame swallowed the next page the same way.
+    //
+    // Refusing a page is a threshold to argue about. Swallowing one is a rig
+    // that has stopped working, so only a frame with nothing paper-like in it
+    // at all may become the table.
+    let mut strict = Detector::new(
+        Thresholds {
+            // As strict as the version that broke: nothing will be paper.
+            paper_fill: 1.01,
+            ..Thresholds::default()
+        },
+        3,
+    );
+    strict.learn_empty(&desk());
+    let generation = strict.baseline_generation();
+
+    for _ in 0..60 {
+        assert_eq!(strict.observe(&desk_with_page(0.5)), Step::Wait);
+    }
+    assert_eq!(
+        strict.baseline_generation(),
+        generation,
+        "the page was learnt as the table"
+    );
+    // And with the real thresholds it is simply photographed.
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let mut taken = false;
+    for _ in 0..6 {
+        taken |= detector.observe(&desk_with_page(0.5)) == Step::Capture;
+    }
+    assert!(taken);
 }
 
 #[test]
