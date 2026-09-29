@@ -92,6 +92,9 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     return found;
   };
 
+  // What compose previewed, sent and had written.
+  const outgoing = { previews: [], sent: [], answered: [] };
+
   // How many syncs the window has asked for, and when the last one landed.
   let syncs = 0;
   let lastSynced = null;
@@ -291,6 +294,52 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
         local: true,
       };
     },
+
+    // Compose: what it would send, what it sent, and what the assistant was
+    // asked to write — each recorded for a test to read back.
+    preview: async ({ draft }) => {
+      outgoing.previews.push(draft);
+      const recipients = [...draft.to, ...draft.cc, ...draft.bcc].filter(Boolean);
+      if (!recipients.length && !draft.reply_to) throw new Error('a message needs at least one recipient');
+      const source = draft.reply_to ? need(draft.reply_to) : null;
+      return {
+        from: 'you@example.com',
+        recipients: recipients.length ? recipients : [source.from],
+        subject: draft.subject || (source ? `Re: ${source.subject}` : ''),
+        body: draft.body,
+        rfc822: '',
+        signed: false,
+        encrypted: false,
+      };
+    },
+    send: async ({ draft }) => {
+      outgoing.sent.push(draft);
+      return {
+        message_id: `sent-${outgoing.sent.length}@example.com`,
+        recipients: [...draft.to, ...draft.cc, ...draft.bcc].filter(Boolean),
+        filed_in: 'Sent',
+        filing_error: null,
+      };
+    },
+    // The assistant writing: it says what it read, then writes from the brief.
+    draft_answer: async ({ draft, onEvent }) => {
+      outgoing.answered.push(draft);
+      for (const file of draft.attachments ?? []) {
+        onEvent?.onmessage?.({ kind: 'looked', what: `reading ${file.name}` });
+      }
+      const source = draft.reply_to ? need(draft.reply_to) : null;
+      const files = (draft.attachments ?? []).map((f) => f.name).join(', ');
+      const body = [
+        source ? `Hallo, danke für „${source.subject}“.` : 'Hallo,',
+        draft.body.trim() ? `Wie gewünscht: ${draft.body.trim()}` : 'Gerne.',
+        files ? `Anbei: ${files}.` : '',
+        'Viele Grüße',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+      return { body, model: 'llama3.2:3b', local: true };
+    },
+    outgoing_log: async () => outgoing,
 
     move_to: async ({ id, target }) => {
       const m = need(id);

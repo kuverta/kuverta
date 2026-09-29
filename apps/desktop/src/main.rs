@@ -1760,6 +1760,28 @@ async fn assistant_ask(
     .await
 }
 
+/// The assistant writes what compose is open on: `draft` is compose as it
+/// stands, its body the person's notes. What it reads on the way arrives on
+/// `on_event`. It looks and writes; it changes no mail and sends nothing.
+#[tauri::command]
+async fn draft_answer(
+    app: State<'_, App>,
+    account: i64,
+    draft: core_rpc::DraftInput,
+    on_event: tauri::ipc::Channel<core_rpc::AssistantEvent>,
+) -> Result<core_rpc::AnswerDraft, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("answer", move || async move {
+        core_rpc::Session::new(data_dir)
+            .draft_answer(account, &draft, |event| {
+                let _ = on_event.send(event.clone());
+            })
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
 #[tauri::command]
 fn tasks(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::TaskView>, String> {
     app.core.lock().unwrap().tasks(account).map_err(fail)
@@ -2081,6 +2103,7 @@ fn main() {
             set_account_profile,
             set_postbox_profile,
             assistant_ask,
+            draft_answer,
             tasks,
             save_task,
             delete_task,
