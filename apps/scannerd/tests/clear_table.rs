@@ -118,6 +118,21 @@ async fn the_next_page_laid_down_in_time_keeps_the_letter_open() {
 }
 
 #[tokio::test]
+async fn the_last_page_left_lying_finishes_the_letter_too() {
+    // On the rig the last sheet was turned over and left where it lay: the
+    // table was never empty, and the letter waited five minutes to be left
+    // alone. Untouched for LYING_SECS, the countdown starts as for an empty
+    // table.
+    let frames = vec![desk(), page(), page(), page(), page()];
+    let lying = scannerd::run::LYING_SECS;
+    assert_eq!(
+        letters_finished("lying-short", frames.clone(), lying).await,
+        0
+    );
+    assert_eq!(letters_finished("lying", frames, lying + 8 + 8).await, 1);
+}
+
+#[tokio::test]
 async fn with_nothing_photographed_an_empty_table_finishes_nothing() {
     assert_eq!(letters_finished("empty", vec![desk()], 20).await, 0);
 }
