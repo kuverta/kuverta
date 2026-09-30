@@ -939,7 +939,7 @@ dependencies = [
 
 [[package]]
 name = "core-accounts"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -956,7 +956,7 @@ dependencies = [
 
 [[package]]
 name = "core-ai"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "base64 0.23.1",
  "core-rules",
@@ -1020,7 +1020,7 @@ dependencies = [
 
 [[package]]
 name = "core-paper"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "core-rules",
  "reqwest",
@@ -1033,7 +1033,7 @@ dependencies = [
 
 [[package]]
 name = "core-pgp"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "core-accounts",
  "core-smtp",
@@ -1047,7 +1047,7 @@ dependencies = [
 
 [[package]]
 name = "core-proto"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "async-imap",
  "chrono",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "core-rpc"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "aes 0.9.3",
  "base64 0.23.1",
@@ -1105,7 +1105,7 @@ dependencies = [
 
 [[package]]
 name = "core-rules"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "serde",
  "tracing",
@@ -1113,7 +1113,7 @@ dependencies = [
 
 [[package]]
 name = "core-smtp"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "chrono",
  "core-accounts",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "core-store"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "rusqlite",
  "serde",
@@ -3436,7 +3436,7 @@ dependencies = [
 
 [[package]]
 name = "kuverta-cli"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3459,7 +3459,7 @@ dependencies = [
 
 [[package]]
 name = "kuverta-desktop"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "anyhow",
  "core-accounts",
@@ -3479,7 +3479,7 @@ dependencies = [
 
 [[package]]
 name = "kuverta-mcp"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "anyhow",
  "clap",
@@ -5269,7 +5269,7 @@ dependencies = [
 
 [[package]]
 name = "scannerd"
-version = "0.5.32"
+version = "0.5.33"
 dependencies = [
  "anyhow",
  "chrono",
