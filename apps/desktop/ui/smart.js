@@ -151,7 +151,7 @@ async function deleteSmart(mailbox) {
         folder: mailbox.folder,
       })
     : t("Delete the smart mailbox “{name}”? No mail is deleted — it only stops gathering it.", { name: mailbox.name });
-  if (!confirm(question)) return;
+  if (!(await ask(question, { yes: t("Delete"), danger: true }))) return;
   try {
     await invoke("delete_smart_mailbox", { id: mailbox.id });
     if (state.filter.smart === mailbox.id) state.filter = { ...state.filter, smart: null };

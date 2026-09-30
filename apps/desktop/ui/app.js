@@ -1228,7 +1228,10 @@ function render(force = false) {
     node.unread.className = row.unread ? "dot on" : "dot";
     const scanned = state.postbox && postOrder === "added";
     node.date.textContent = listDate(scanned ? (row.added_utc ?? row.date_utc) : row.date_utc);
-    node.sender.textContent = row.from;
+    // What the account sent is named by who it went to: in Sent, the sender
+    // is always the same person.
+    node.sender.textContent = row.to ? sentTo(row.to) : row.from;
+    node.sender.title = row.to ? row.to.join(", ") : "";
     node.subject.textContent = row.subject;
     node.snippet.textContent = row.snippet ?? "";
     node.tag.textContent = [row.has_attachments ? "📎" : "", row.category ? t(row.category) : ""]
@@ -1237,6 +1240,16 @@ function render(force = false) {
   }
 
   ensureLoaded(first, first + state.pool.length);
+}
+
+/// "To Erika Mustermann, bob@example.com and 3 more": two by name, the rest
+/// a number, as the list has room for.
+function sentTo(names) {
+  if (!names.length) return t("To (nobody)");
+  const shown = names.slice(0, 2).join(", ");
+  return names.length > 2
+    ? t("To {names} and {count} more", { names: shown, count: names.length - 2 })
+    : t("To {names}", { names: shown });
 }
 
 /** Requests any page covering the visible range that is not in hand. */
@@ -2368,6 +2381,43 @@ function closeDialog(sheet) {
   sheet.dispatchEvent(new Event("close"));
 }
 
+/// Asks a yes-or-no question, and answers true for yes.
+///
+/// In the window's own sheet, because window.confirm is no use here: the
+/// webview has no handler for it and answers "no" at once, without showing
+/// anything — which made every delete behind one quietly do nothing.
+/// Escape and Cancel are no; Enter is yes. `yes` names what yes does.
+function ask(question, { yes = t("OK"), danger = false } = {}) {
+  const sheet = el("ask-sheet");
+  const yesButton = el("ask-yes");
+  const noButton = el("ask-no");
+  el("ask-question").textContent = question;
+  yesButton.textContent = yes;
+  yesButton.className = danger ? "primary danger-fill" : "primary";
+  const opener = document.activeElement;
+  sheet.hidden = false;
+  yesButton.focus();
+  return new Promise((resolve) => {
+    const settle = (answer) => {
+      sheet.hidden = true;
+      yesButton.onclick = noButton.onclick = sheet.onkeydown = null;
+      if (opener && document.contains(opener)) opener.focus();
+      resolve(answer);
+    };
+    yesButton.onclick = () => settle(true);
+    noButton.onclick = () => settle(false);
+    // Its own keys, before the window's: Escape here is no, not closing the
+    // sheet the question was asked from.
+    sheet.onkeydown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        settle(false);
+      }
+    };
+  });
+}
+
 // -- start -----------------------------------------------------------------
 
 async function start() {
@@ -2781,7 +2831,8 @@ el("settings-delete").onclick = async () => {
   if (!account) return;
   // Removing an account throws away its mail as well as its settings, and
   // there is no undo for that, so it asks.
-  if (!confirm(t("Remove {account} and everything synced for it?", { account: account.email }))) return;
+  if (!(await ask(t("Remove {account} and everything synced for it?", { account: account.email }), { yes: t("Remove"), danger: true })))
+    return;
 
   try {
     await invoke("delete_account", { id: account.id });
@@ -3051,7 +3102,7 @@ el("paper-delete").onclick = async () => {
   // Says what is and is not lost: the documents are Paperless's and stay
   // there. Only this client's view of them, and the stored token, go.
   const name = address.label || address.base_url;
-  if (!confirm(t("Remove {name}? Its documents stay in Paperless; only the address and its stored token are forgotten here.", { name }))) {
+  if (!(await ask(t("Remove {name}? Its documents stay in Paperless; only the address and its stored token are forgotten here.", { name }), { yes: t("Remove"), danger: true }))) {
     return;
   }
   try {
@@ -3399,7 +3450,7 @@ models.providerForm.preset.addEventListener("change", () => {
 el("provider-delete").onclick = async () => {
   const provider = models.providers.find((p) => p.id === models.editing);
   if (!provider) return;
-  if (!confirm(`Remove ${provider.label}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.`)) {
+  if (!(await ask(`Remove ${provider.label}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.`, { yes: t("Remove"), danger: true }))) {
     return;
   }
   try {

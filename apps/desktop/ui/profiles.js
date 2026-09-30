@@ -239,7 +239,7 @@ function profileItem(profile, at) {
   remove.className = "danger";
   remove.textContent = t("Delete");
   remove.onclick = async () => {
-    if (!confirm(t("Delete the profile “{name}”? Its accounts and addresses stay, in no profile.", { name: profile.name })))
+    if (!(await ask(t("Delete the profile “{name}”? Its accounts and addresses stay, in no profile.", { name: profile.name }), { yes: t("Delete"), danger: true })))
       return;
     await invoke("delete_profile", { id: profile.id });
     if (activeProfile() === profile.id) setActiveProfile(null);

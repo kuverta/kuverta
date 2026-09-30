@@ -2735,3 +2735,42 @@ Erika Mustermann. ↓ ↑ choose, Enter or Tab take, and Escape closes the list
 without discarding the message, as it would otherwise. A name with a comma in
 it goes in quoted — `"Mustermann, Erika" <erika@example.de>` — and the field
 splits on commas outside quotes, so it stays one recipient.
+
+## 47. Questions asked in the window, and what Sent shows
+
+### window.confirm never asked
+
+Deleting a mailbox from its menu did nothing, and so did every other action
+behind a `confirm()`: deleting a smart mailbox, a task, a profile, a key or an
+account, cancelling a scheduled message, sending what the assistant drafted.
+The webview Tauri gives kuverta on macOS — wry's WKWebView — has no handler
+for JavaScript's dialogs; without one WebKit answers `confirm()` "no" at once
+and shows nothing. The browser tests ran in Chromium, which shows the dialog
+and was told to accept it.
+
+So a question is asked in the window's own sheet, `ask()`: over whatever is
+open, a settings sheet included, with the answer naming what it does — Delete,
+Remove, Send — Enter for yes and Escape for no, the no not closing the sheet
+the question was asked from. And every browser test now fails on a native
+dialog, which in the app is a question that is never seen.
+
+### A sent message is in Sent when the send returns
+
+The copy filed in Sent reached the store only with the next sync, minutes
+away; until then Sent looked as if nothing had gone. The server does not say
+which UID an APPEND got (without UIDPLUS, which is not relied on), so the copy
+cannot honestly be stored where it is by guessing. Instead the Sent folder is
+synced, alone, on the same connection, straight after the append — unless it
+is excluded from syncing. Orphans are left alone, as they are by any sync that
+has not seen every folder. A failure there is only logged: the message is
+filed, and the next sync finds it.
+
+### Sent names who it went to
+
+In Sent the sender is always the same person. A row of mail the account sent
+now says who it went to — "To Erika Mustermann, bob@example.com and 2 more",
+all of them in its tooltip — in Sent and wherever else sent mail is listed.
+The store keeps recipients as addresses, so the names are the ones those
+people signed their own mail with, found by address through the sender index;
+someone only ever written to is shown by address, and so is anyone who writes
+their address in capitals, which the index does not match.

@@ -86,6 +86,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     list_id: m.list_id ?? null,
     category: m.category ?? null,
     snippet: m.snippet ?? null,
+    // Who what the account sent went to; the list names those rows by it.
+    to: m.to ?? null,
   });
 
   // Models: the Ollama every store starts with, and what it has pulled.
@@ -631,6 +633,19 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       return { id, folder, moved, created_folder: created };
     },
     smart_log: async () => smartLog,
+
+    // Mailboxes made and deleted from the sidebar's menu.
+    create_folder: async ({ name }) => {
+      const made = { id: 10 + madeFolders.length, name, label: name, special_use: null };
+      madeFolders.push(made);
+      return { id: made.id, name };
+    },
+    delete_folder: async ({ folder }) => {
+      const at = madeFolders.findIndex((f) => f.id === folder);
+      if (at < 0) throw new Error(`no folder ${folder}`);
+      const [gone] = madeFolders.splice(at, 1);
+      return gone.name;
+    },
     outbox: async () => [],
     cleanup_counts: async () => ({
       bulk_in_inbox: [...messages.values()].filter(

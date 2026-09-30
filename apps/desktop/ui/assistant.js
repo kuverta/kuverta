@@ -444,7 +444,7 @@ function draftCard(event) {
   body.value = event.body;
   box.insertBefore(body, actions);
   cardButton(actions, t("Send"), async (button) => {
-    if (!confirm(t("Send this to {to}?", { to: event.to }))) {
+    if (!(await ask(t("Send this to {to}?", { to: event.to }), { yes: t("Send") }))) {
       button.disabled = false;
       return;
     }
@@ -760,8 +760,10 @@ function proposalItem(proposal) {
   };
   if (proposal.kind === "reply") {
     button(t("Send"), async () => {
-      const ask = proposal.from ? t("Send this reply to {sender}?", { sender: proposal.from }) : t("Send this reply?");
-      if (!confirm(ask)) throw new Error(t("not sent"));
+      const question = proposal.from
+        ? t("Send this reply to {sender}?", { sender: proposal.from })
+        : t("Send this reply?");
+      if (!(await ask(question, { yes: t("Send") }))) throw new Error(t("not sent"));
       await sendReply(proposal.message_id, body.value);
       await invoke("settle_proposal", { id: proposal.id, state: "done", detail: "sent" });
     }, "primary");
@@ -954,7 +956,7 @@ taskForm.addEventListener("submit", async (event) => {
 
 el("task-cancel").onclick = () => closeDialog(taskSheet);
 el("task-delete").onclick = async () => {
-  if (!confirm(t("Delete this task? What it did stays done."))) return;
+  if (!(await ask(t("Delete this task? What it did stays done."), { yes: t("Delete"), danger: true }))) return;
   await invoke("delete_task", { id: taskEditing.id });
   closeDialog(taskSheet);
   await refreshTasks();

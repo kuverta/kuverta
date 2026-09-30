@@ -1025,6 +1025,13 @@ const GERMAN = {
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
 
+  // Questions asked in the window's own sheet, and who sent mail went to
+  OK: "OK",
+  "Cancel it": "Nicht senden",
+  "To {names}": "An {names}",
+  "To {names} and {count} more": "An {names} und {count} weitere",
+  "To (nobody)": "An (niemanden)",
+
   // Address suggestions
   "Suggested addresses": "Vorgeschlagene Adressen",
 

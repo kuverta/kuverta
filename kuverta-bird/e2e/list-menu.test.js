@@ -94,6 +94,12 @@ async function openWindow({ seed = null } = {}) {
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
+  // The app's webview answers a native confirm() "no" without showing it, so
+  // one here is a question the person would never have been asked.
+  page.on('dialog', async (dialog) => {
+    problems.push(`a native ${dialog.type()} dialog: ${dialog.message()}`);
+    await dialog.dismiss();
+  });
   page.on('console', (message) => {
     if (message.type() === 'error') problems.push(message.text());
   });
@@ -303,5 +309,76 @@ test('one message on its own is offered no rule either', async () => {
 
   await menu(page).waitFor();
   assert.equal(await items(page).filter({ hasText: 'smart mailbox' }).count(), 0);
+  await context.close();
+});
+
+// -- deleting a mailbox, and asking first ---------------------------------------
+
+async function withAMailbox(page, name) {
+  await page.evaluate(async (n) => (await window.__fakeBridge)('create_folder', { name: n }), name);
+  // The sidebar is drawn again on the next reload; a sync is one.
+  await page.keyboard.press('r');
+  await page.locator('#folders .nav-item', { hasText: name }).waitFor();
+}
+
+test('a mailbox deleted from its menu is asked about in the window, and goes', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  await withAMailbox(page, 'Alt');
+  await page.locator('#folders .nav-item', { hasText: 'Alt' }).click({ button: 'right' });
+  await items(page).filter({ hasText: /^Delete/ }).click();
+
+  // Asked in the window's own sheet, not by the webview's confirm().
+  const sheet = page.locator('#ask-sheet');
+  await sheet.waitFor();
+  assert.match(await page.locator('#ask-question').innerText(), /Delete the mailbox “Alt” from the server\?/);
+  assert.equal(await page.locator('#ask-yes').innerText(), 'Delete');
+  await page.locator('#ask-yes').click();
+
+  await page.locator('#folders .nav-item', { hasText: 'Alt' }).waitFor({ state: 'detached' });
+  assert.match(await page.locator('#toast').innerText(), /deleted Alt/);
+  assert.equal(await sheet.isHidden(), true);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('Escape answers no, and the mailbox stays', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  await withAMailbox(page, 'Behalten');
+  await page.locator('#folders .nav-item', { hasText: 'Behalten' }).click({ button: 'right' });
+  await items(page).filter({ hasText: /^Delete/ }).click();
+  await page.locator('#ask-sheet').waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('#ask-sheet').waitFor({ state: 'hidden' });
+  assert.equal(await page.locator('#folders .nav-item', { hasText: 'Behalten' }).count(), 1);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+// -- what was sent, by who it went to -------------------------------------------
+
+test('a sent message is listed by who it went to, not by who sent it', async () => {
+  const seed = runFromOneSender();
+  seed.push({
+    ...seed[0],
+    message_id: 'sent-1@example.com',
+    from: 'Dev <you@example.com>',
+    subject: 'Antwort',
+    to: ['Erika Mustermann', 'bob@example.com', 'carl@example.com', 'dora@example.com'],
+    date_utc: seed[0].date_utc + 60,
+  });
+  const { page, context, problems } = await openWindow({ seed });
+  const row = page.locator('#content .row', { hasText: 'Antwort' });
+  await row.waitFor();
+  assert.equal(await row.locator('.sender').innerText(), 'To Erika Mustermann, bob@example.com and 2 more');
+  assert.equal(
+    await row.locator('.sender').getAttribute('title'),
+    'Erika Mustermann, bob@example.com, carl@example.com, dora@example.com',
+  );
+  // Mail that arrived is still named by its sender.
+  assert.equal(
+    await page.locator('#content .row', { hasText: 'Ihre Bestellung 1041' }).locator('.sender').innerText(),
+    'Shop <shop@example.de>',
+  );
+  assert.deepEqual(problems, []);
   await context.close();
 });

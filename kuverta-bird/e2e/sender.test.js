@@ -96,6 +96,12 @@ async function openWindow({ seed = null } = {}) {
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
+  // The app's webview answers a native confirm() "no" without showing it, so
+  // one here is a question the person would never have been asked.
+  page.on('dialog', async (dialog) => {
+    problems.push(`a native ${dialog.type()} dialog: ${dialog.message()}`);
+    await dialog.dismiss();
+  });
   page.on('console', (message) => {
     if (message.type() === 'error') problems.push(message.text());
   });

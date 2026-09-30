@@ -412,7 +412,7 @@ function outboxItem(entry) {
     });
     button(t("Cancel"), async () => {
       const subject = entry.subject || t("(no subject)");
-      if (!confirm(t("Cancel “{subject}”? It will not be sent.", { subject }))) return;
+      if (!(await ask(t("Cancel “{subject}”? It will not be sent.", { subject }), { yes: t("Cancel it"), danger: true }))) return;
       try {
         await invoke("cancel_scheduled", { id: entry.id });
         say(t("cancelled"));

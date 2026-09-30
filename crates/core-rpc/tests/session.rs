@@ -325,17 +325,31 @@ async fn sending_files_a_copy_and_says_where() {
     assert!(sent.filing_error.is_none(), "{:?}", sent.filing_error);
     assert_eq!(sent.filed_in.as_deref(), Some("Sent"));
 
-    // And it comes back on the next sync, which is the loop closing.
-    session.sync_account(user).await.unwrap();
+    // And it is in Sent the moment the send returns — not at the next sync,
+    // which may be minutes away — named by who it went to.
     let core = core(&dir);
     let account = core.accounts().unwrap()[0].id;
+    let sent_folder = core
+        .store()
+        .folder_named(account, "Sent")
+        .unwrap()
+        .expect("Sent is in the store");
     let found = core
-        .messages(account, 0, 50, &ListFilter::default())
+        .messages(
+            account,
+            0,
+            50,
+            &ListFilter {
+                folder: Some(sent_folder),
+                ..Default::default()
+            },
+        )
         .unwrap()
         .rows
         .into_iter()
-        .find(|row| row.subject == "from the session");
-    assert!(found.is_some(), "the sent copy should sync back");
+        .find(|row| row.subject == "from the session")
+        .expect("the sent copy is in Sent without another sync");
+    assert_eq!(found.to, Some(vec!["jane@example.com".to_string()]));
 }
 
 #[tokio::test]
