@@ -488,6 +488,13 @@ CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
     DELETE FROM message_fts WHERE rowid = old.id;
 END;
 "#,
+    // v19 — a smart mailbox that takes its mail out of the Inbox. `folder` is
+    // the server folder it moves Inbox mail into; NULL keeps it a search. The
+    // moving is a task's, one that belongs to the mailbox and goes with it.
+    r#"
+ALTER TABLE smart_mailbox ADD COLUMN folder TEXT;
+ALTER TABLE task ADD COLUMN smart_mailbox_id INTEGER REFERENCES smart_mailbox(id) ON DELETE CASCADE;
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

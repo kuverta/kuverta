@@ -132,6 +132,10 @@ pub struct SyncSummary {
     pub deleted: usize,
     pub unparseable: usize,
     pub invalidated: usize,
+    /// Messages the tasks and smart mailboxes moved once the sync was done:
+    /// set by the window, which sorts new mail before it shows it.
+    #[serde(default)]
+    pub sorted: usize,
 }
 
 /// A message to send, as the caller describes it.
@@ -518,6 +522,7 @@ impl Session {
             deleted: report.deleted,
             unparseable: report.unparseable,
             invalidated: report.invalidated,
+            sorted: 0,
         })
     }
 

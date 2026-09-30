@@ -225,6 +225,64 @@ test('several messages from one sender offer a smart mailbox already written', a
   await context.close();
 });
 
+test('a smart mailbox made from picked messages takes them out of the Inbox into its folder', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  const before = await rows(page).count();
+  await rows(page).nth(0).click();
+  await rows(page).nth(2).click({ modifiers: ['Shift'] });
+  await rows(page).nth(1).click({ button: 'right' });
+  await items(page).filter({ hasText: 'New smart mailbox from these 3…' }).click();
+
+  // New, it takes its mail out of the Inbox, into a folder named after it —
+  // without the address, and without anything a server reads as a path.
+  await page.locator('#smart-sheet').waitFor();
+  assert.equal(await page.locator('#smart-form [name=take]').isChecked(), true);
+  assert.equal(await page.locator('#smart-form [name=folder]').inputValue(), 'Shop');
+  assert.match(await page.locator('#smart-take-hint').innerText(), /before it shows in the Inbox/);
+  await page.locator('#smart-save').click();
+  await page.locator('#smart-sheet').waitFor({ state: 'hidden' });
+
+  assert.match(await page.locator('#toast').innerText(), /3 moved out of the Inbox into Shop/);
+  const saved = await page.evaluate(async () => (await window.__fakeBridge)('smart_log', {}));
+  assert.equal(saved[0].folder, 'Shop');
+  // Gone from the Inbox, and in the sidebar once: as the smart mailbox, not
+  // also as a folder.
+  await page.waitForFunction(
+    (n) => document.querySelectorAll('#content .row:not([hidden])').length === n - 3,
+    before,
+  );
+  assert.equal(await page.locator('#smart .nav-item', { hasText: 'Shop' }).count(), 1);
+  assert.equal(await page.locator('#folders .nav-item', { hasText: /^Shop/ }).count(), 0);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('a smart mailbox left a search moves nothing', async () => {
+  const { page, context, problems } = await openWindow({ seed: runFromOneSender() });
+  const before = await rows(page).count();
+  await rows(page).nth(0).click();
+  await rows(page).nth(2).click({ modifiers: ['Shift'] });
+  await rows(page).nth(1).click({ button: 'right' });
+  await items(page).filter({ hasText: 'New smart mailbox from these 3…' }).click();
+  await page.locator('#smart-sheet').waitFor();
+  await page.locator('#smart-form [name=take]').uncheck();
+  assert.equal(await page.locator('#smart-form [name=folder]').isDisabled(), true);
+  assert.match(await page.locator('#smart-take-hint').innerText(), /A search only/);
+  await page.locator('#smart-save').click();
+  await page.locator('#smart-sheet').waitFor({ state: 'hidden' });
+
+  const saved = await page.evaluate(async () => (await window.__fakeBridge)('smart_log', {}));
+  assert.equal(saved[0].folder, null);
+  // The smart mailbox is shown, and the list — which the fake always draws
+  // as the Inbox — still has all of it.
+  await page.waitForFunction(() => document.querySelectorAll('#smart .nav-item').length === 1);
+  assert.equal(await rows(page).count(), before);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('messages with nothing in common are offered no rule', async () => {
   const { page, context } = await openWindow({ seed: runFromOneSender() });
   // Two different senders, two unrelated subjects: there is no rule that

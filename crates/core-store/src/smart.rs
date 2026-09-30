@@ -84,6 +84,9 @@ pub struct StoredSmartMailbox {
     pub query: SmartQuery,
     /// Where it came from, when it was imported: `thunderbird` or `apple_mail`.
     pub source: Option<String>,
+    /// The server folder it takes its Inbox mail into; `None` for a mailbox
+    /// that only gathers, as a search.
+    pub folder: Option<String>,
 }
 
 impl SmartRule {
@@ -323,7 +326,7 @@ fn positive(op: SmartOp) -> SmartOp {
 impl Store {
     pub fn smart_mailboxes(&self, account_id: AccountId) -> Result<Vec<StoredSmartMailbox>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, account_id, name, match_all, rules, source
+            "SELECT id, account_id, name, match_all, rules, source, folder
              FROM smart_mailbox WHERE account_id = ?1 ORDER BY name COLLATE NOCASE, id",
         )?;
         let rows = stmt.query_map(params![account_id], row_to_smart)?;
@@ -334,7 +337,7 @@ impl Store {
     pub fn smart_mailbox(&self, id: i64) -> Result<Option<StoredSmartMailbox>> {
         self.conn
             .query_row(
-                "SELECT id, account_id, name, match_all, rules, source
+                "SELECT id, account_id, name, match_all, rules, source, folder
                  FROM smart_mailbox WHERE id = ?1",
                 params![id],
                 row_to_smart,
@@ -371,6 +374,15 @@ impl Store {
                 Ok(self.conn.last_insert_rowid())
             }
         }
+    }
+
+    /// Which folder a smart mailbox takes its Inbox mail into, or none.
+    pub fn set_smart_mailbox_folder(&self, id: i64, folder: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE smart_mailbox SET folder = ?2 WHERE id = ?1",
+            params![id, folder],
+        )?;
+        Ok(())
     }
 
     pub fn delete_smart_mailbox(&self, id: i64) -> Result<()> {
@@ -436,5 +448,6 @@ fn row_to_smart(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredSmartMailbox>
             rules: serde_json::from_str(&rules).unwrap_or_default(),
         },
         source: row.get(5)?,
+        folder: row.get(6)?,
     })
 }

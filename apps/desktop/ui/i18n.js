@@ -1025,6 +1025,20 @@ const GERMAN = {
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
 
+  // Smart mailboxes that take their mail out of the Inbox
+  "Rules are checked against every message on the account.": "Die Regeln werden gegen jede Nachricht des Kontos geprüft.",
+  "Take its mail out of the Inbox, into the folder": "Seine E-Mails aus dem Posteingang nehmen, in den Ordner",
+  "Folder name": "Ordnername",
+  "What it gathers in the Inbox moves to this folder on the server — now, and each new message before it shows in the Inbox. Your other devices see it there too.":
+    "Was er im Posteingang sammelt, wandert in diesen Ordner auf dem Server — jetzt, und jede neue Nachricht, bevor sie im Posteingang erscheint. Ihre anderen Geräte sehen sie dann auch dort.",
+  "A search only: its mail stays where it is.": "Nur eine Suche: seine E-Mails bleiben, wo sie sind.",
+  "name the folder its mail goes into": "den Ordner benennen, in den seine E-Mails kommen",
+  "{name}: {count} moved out of the Inbox into {folder}": "{name}: {count} aus dem Posteingang nach {folder} verschoben",
+  "Delete the smart mailbox “{name}”? Its folder {folder} stays on the server with the mail in it; new mail stops going there.":
+    "Den Suchordner „{name}“ löschen? Sein Ordner {folder} bleibt mit den E-Mails darin auf dem Server; neue E-Mails kommen nicht mehr dorthin.",
+  "{rules} — takes its mail into {folder}": "{rules} — nimmt seine E-Mails nach {folder}",
+  "{count} sorted by your rules": "{count} nach Ihren Regeln einsortiert",
+
   // Safe preview
   Attachments: "Anhänge",
   "🛡 Safe preview — drawn by kuverta in a sealed-off process. The file itself was not opened.":
@@ -1107,8 +1121,6 @@ const GERMAN = {
   "Show mail that matches": "Post zeigen, auf die zutrifft",
   "+ Add a rule": "+ Regel hinzufügen",
   common: "häufig",
-  "Rules are checked against every message on the account. Nothing is moved.":
-    "Die Regeln werden gegen jede Nachricht des Kontos geprüft. Es wird nichts verschoben.",
   Create: "Anlegen",
 
   // Folders, attachments, similar

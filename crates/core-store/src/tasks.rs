@@ -30,6 +30,10 @@ pub struct StoredTask {
     pub created_at: i64,
     pub last_run_at: Option<i64>,
     pub last_summary: Option<String>,
+    /// The smart mailbox this task moves mail for. Such a task is the
+    /// mailbox's, not the person's: it is kept in step with the mailbox and
+    /// goes when the mailbox goes.
+    pub smart_mailbox_id: Option<i64>,
 }
 
 /// Something a task or the assistant would do, waiting for a yes or a no.
@@ -65,7 +69,7 @@ pub struct NewProposal {
 }
 
 const TASK_COLUMNS: &str = "id, account_id, name, match_all, rules, action, review, enabled, \
-                            created_at, last_run_at, last_summary";
+                            created_at, last_run_at, last_summary, smart_mailbox_id";
 
 fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredTask> {
     let rules: String = row.get(4)?;
@@ -83,6 +87,7 @@ fn row_to_task(row: &rusqlite::Row<'_>) -> rusqlite::Result<StoredTask> {
         created_at: row.get(8)?,
         last_run_at: row.get(9)?,
         last_summary: row.get(10)?,
+        smart_mailbox_id: row.get(11)?,
     })
 }
 
@@ -158,6 +163,27 @@ impl Store {
                 Ok(self.conn.last_insert_rowid())
             }
         }
+    }
+
+    /// Makes a task a smart mailbox's own.
+    pub fn link_task(&self, task_id: i64, smart_mailbox_id: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE task SET smart_mailbox_id = ?2 WHERE id = ?1",
+            params![task_id, smart_mailbox_id],
+        )?;
+        Ok(())
+    }
+
+    /// The task a smart mailbox moves its mail with, when it has one.
+    pub fn task_of_smart_mailbox(&self, smart_mailbox_id: i64) -> Result<Option<StoredTask>> {
+        self.conn
+            .query_row(
+                &format!("SELECT {TASK_COLUMNS} FROM task WHERE smart_mailbox_id = ?1"),
+                params![smart_mailbox_id],
+                row_to_task,
+            )
+            .optional()
+            .map_err(Into::into)
     }
 
     pub fn delete_task(&self, id: i64) -> Result<()> {

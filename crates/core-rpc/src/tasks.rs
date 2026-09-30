@@ -192,6 +192,8 @@ impl Core {
         self.store()
             .tasks(account)?
             .into_iter()
+            // A smart mailbox's own task is edited as the mailbox, not here.
+            .filter(|task| task.smart_mailbox_id.is_none())
             .map(|task| {
                 let action: TaskAction = serde_json::from_str(&task.action).map_err(|err| {
                     RpcError::Rejected(format!("task {} is unreadable: {err}", task.id))
@@ -271,7 +273,7 @@ impl Core {
         )?;
         if input.id.is_none() && !input.include_existing {
             // From now on only: what the rules select today counts as dealt with.
-            let existing = self.matching(input.account_id, &input.query, 20_000)?;
+            let existing = self.matching(input.account_id, &input.query, 20_000, None)?;
             self.store().mark_task_seen(id, &existing)?;
         }
         Ok(id)
@@ -285,12 +287,13 @@ impl Core {
         Ok(self.store().set_task_enabled(id, enabled)?)
     }
 
-    /// Messages a query selects, newest first.
+    /// Messages a query selects, newest first — in one folder, when `within`.
     fn matching(
         &self,
         account: AccountId,
         query: &SmartQuery,
         limit: usize,
+        within: Option<core_store::model::FolderId>,
     ) -> Result<Vec<MessageId>> {
         Ok(self
             .messages(
@@ -299,6 +302,7 @@ impl Core {
                 limit,
                 &ListFilter {
                     smart: Some(query.clone()),
+                    folder: within,
                     ..Default::default()
                 },
             )?
@@ -314,10 +318,11 @@ impl Core {
         account: AccountId,
         query: &SmartQuery,
         limit: usize,
+        within: Option<core_store::model::FolderId>,
     ) -> Result<Vec<MessageId>> {
         let seen: HashSet<MessageId> = self.store().task_seen(task_id)?;
         Ok(self
-            .matching(account, query, limit)?
+            .matching(account, query, limit, within)?
             .into_iter()
             .filter(|id| !seen.contains(id))
             .collect())
@@ -328,16 +333,37 @@ impl Core {
     pub fn run_rule_tasks(&self, account: AccountId) -> Result<Vec<TaskRun>> {
         let mut runs = Vec::new();
         for task in self.store().tasks(account)? {
+            runs.extend(self.run_rule_task(account, &task)?);
+        }
+        Ok(runs)
+    }
+
+    /// Runs one task that needs no model, when it is enabled. A smart
+    /// mailbox's own task acts only on mail in the Inbox: it takes mail out of
+    /// the Inbox, and what is already filed elsewhere was filed on purpose.
+    pub fn run_rule_task(
+        &self,
+        account: AccountId,
+        task: &core_store::StoredTask,
+    ) -> Result<Option<TaskRun>> {
+        {
             if !task.enabled {
-                continue;
+                return Ok(None);
             }
             let Ok(action) = serde_json::from_str::<TaskAction>(&task.action) else {
-                continue;
+                return Ok(None);
             };
             if action.needs_model() {
-                continue;
+                return Ok(None);
             }
-            let ids = self.unseen(task.id, account, &task.query, RULE_TASK_WINDOW)?;
+            let within = match task.smart_mailbox_id {
+                Some(_) => match self.store().folder_named(account, "INBOX")? {
+                    Some(inbox) => Some(inbox),
+                    None => return Ok(None),
+                },
+                None => None,
+            };
+            let ids = self.unseen(task.id, account, &task.query, RULE_TASK_WINDOW, within)?;
             let mut run = TaskRun {
                 task_id: task.id,
                 name: task.name.clone(),
@@ -369,9 +395,8 @@ impl Core {
             if !ids.is_empty() || task.last_run_at.is_none() {
                 self.store().task_ran(task.id, &run.summary_text())?;
             }
-            runs.push(run);
+            Ok(Some(run))
         }
-        Ok(runs)
     }
 
     /// The messages the tasks that ask a model have not dealt with yet, a
@@ -395,7 +420,7 @@ impl Core {
                 continue;
             }
             for id in self
-                .unseen(task.id, account, &task.query, RULE_TASK_WINDOW)?
+                .unseen(task.id, account, &task.query, RULE_TASK_WINDOW, None)?
                 .into_iter()
                 .take(MODEL_TASK_BATCH)
             {
@@ -535,7 +560,7 @@ impl Core {
 
     /// Says a folder is missing, and which there are — what a person, or a
     /// model trying again, needs to know next.
-    fn no_such_folder(&self, account: AccountId, folder: &str) -> String {
+    pub(crate) fn no_such_folder(&self, account: AccountId, folder: &str) -> String {
         let names: Vec<String> = self
             .store()
             .folders(account)

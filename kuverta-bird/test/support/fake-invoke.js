@@ -46,6 +46,30 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     return message;
   };
 
+  // Smart mailboxes, and the folders saving one made.
+  const smartBoxes = [];
+  const smartLog = [];
+  const madeFolders = [];
+  const allFolders = () => [
+    { id: 1, name: INBOX, label: 'Inbox', special_use: 'inbox' },
+    { id: 2, name: ARCHIVE, label: 'Archive', special_use: 'archive' },
+    ...madeFolders,
+  ];
+  // Only the fields the window can write a rule about from the list are
+  // matched — sender, subject, mailing list — and a rule about anything else
+  // matches nothing rather than quietly matching everything, which would
+  // make an editor that gathers the whole mailbox look like it works.
+  const gathers = (query, m) => {
+    const of = (field) => ({ from: m.from, subject: m.subject, list_id: m.list_id ?? '' })[field] ?? null;
+    const holds = (rule) => {
+      const have = of(rule.field);
+      if (have === null) return false;
+      const want = String(rule.value ?? '').toLowerCase();
+      return rule.op === 'is' ? have.toLowerCase() === want : have.toLowerCase().includes(want);
+    };
+    return query.match_all === false ? query.rules.some(holds) : query.rules.every(holds);
+  };
+
   const visible = () =>
     [...messages.values()]
       .filter((m) => m.folder === INBOX)
@@ -137,10 +161,12 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
 
     special_folders: async () => ({ archive: ARCHIVE, trash: TRASH }),
 
-    folders: async () => [
-      { id: 1, name: INBOX, label: 'Inbox', special_use: 'inbox', total: messages.size, unread: 0 },
-      { id: 2, name: ARCHIVE, label: 'Archive', special_use: 'archive', total: 0, unread: 0 },
-    ],
+    folders: async () =>
+      allFolders().map((f) => ({
+        ...f,
+        total: [...messages.values()].filter((m) => m.folder === f.name).length,
+        unread: 0,
+      })),
 
     category_counts: async () => {
       const counts = new Map();
@@ -543,29 +569,49 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     // -- what the window around the list asks for ---------------------------
     // Smart mailboxes, the outbox, cleanup and the log: the window calls these
     // as it opens, and a page that errors on them is a page with a bug.
-    smart_mailboxes: async () => [],
+    smart_mailboxes: async () =>
+      smartBoxes.map((box) => {
+        const inIt = [...messages.values()].filter((m) =>
+          box.folder ? m.folder === box.folder : gathers(box.query, m),
+        );
+        return { ...box, total: inIt.length, unread: inIt.filter((m) => m.unread).length };
+      }),
 
-    // What the smart mailbox editor shows while rules are being written. Only
-    // the fields the window can write a rule about from the list are matched
-    // here — sender, subject, mailing list — and a rule about anything else
-    // matches nothing rather than quietly matching everything, which would
-    // make an editor that gathers the whole mailbox look like it works.
+    // What the smart mailbox editor shows while rules are being written, by
+    // the same matching as `gathers`.
     preview_smart: async ({ query }) => {
-      const of = (m, field) =>
-        ({ from: m.from, subject: m.subject, list_id: m.list_id ?? '' })[field] ?? null;
-      const holds = (m, rule) => {
-        const have = of(m, rule.field);
-        if (have === null) return false;
-        const want = String(rule.value ?? '').toLowerCase();
-        return rule.op === 'is' ? have.toLowerCase() === want : have.toLowerCase().includes(want);
-      };
-      const found = visible().filter((m) =>
-        query.match_all === false
-          ? query.rules.some((rule) => holds(m, rule))
-          : query.rules.every((rule) => holds(m, rule)),
-      );
+      const found = visible().filter((m) => gathers(query, m));
       return { total: found.length, rows: found.slice(0, 8).map(asRow) };
     },
+
+    // Saving one that takes its mail out of the Inbox makes its folder when
+    // there is none and moves what it gathers in the Inbox there — as the
+    // core does, so the window can be seen to follow.
+    save_smart_mailbox: async ({ input }) => {
+      smartLog.push(input);
+      let created = false;
+      if (input.folder && !allFolders().some((f) => f.name.toLowerCase() === input.folder.toLowerCase())) {
+        madeFolders.push({ id: 10 + madeFolders.length, name: input.folder, label: input.folder, special_use: null });
+        created = true;
+      }
+      const folder = input.folder ? allFolders().find((f) => f.name.toLowerCase() === input.folder.toLowerCase()).name : null;
+      const id = input.id ?? smartBoxes.length + 1;
+      const box = { id, account_id: input.account_id, name: input.name, query: input.query, source: null, folder };
+      const at = smartBoxes.findIndex((b) => b.id === id);
+      if (at >= 0) smartBoxes[at] = box;
+      else smartBoxes.push(box);
+      let moved = 0;
+      if (folder) {
+        for (const m of messages.values()) {
+          if (m.folder === INBOX && gathers(box.query, m)) {
+            m.folder = folder;
+            moved += 1;
+          }
+        }
+      }
+      return { id, folder, moved, created_folder: created };
+    },
+    smart_log: async () => smartLog,
     outbox: async () => [],
     cleanup_counts: async () => ({
       bulk_in_inbox: [...messages.values()].filter(
