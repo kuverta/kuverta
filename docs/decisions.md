@@ -2705,3 +2705,33 @@ A mailbox that takes its mail lists its folder rather than its rules — mail
 moved there by hand included — and the sidebar lists that folder once, as
 the mailbox. Deleted, the mailbox leaves its folder and the mail in it on the
 server; the folder is then listed again.
+
+## 46. The To field suggests from the mail there is
+
+Typing an address meant typing all of it, or finding an old message to reply
+to. Now To, Cc and Bcc suggest as they are typed into, from nothing but the
+account's own mail: everyone it has written to, To and Cc, and everyone who
+has written to it. There is no separate address book to keep, and none to
+import; the mail already says who the people are.
+
+Left out: the account itself, senders nobody answers (`noreply`, bounces),
+the senders of newsletters, marketing and notifications, and mail that is only
+in the Trash or the Junk — a spammer once is not a correspondent. Ranked by how
+much mail there is either way, what was sent counting three times what arrived
+— having written to somebody is the strongest sign of writing to them again —
+and each message counting half as much for every half year of its age. A name
+is the one somebody last signed with; someone only ever written to has none,
+since the store keeps recipients as addresses.
+
+The whole book, at most 5000 people, comes once when compose opens, and the
+window filters it as each key is typed. Reading an account's mail for it takes
+35 ms for twenty thousand messages, which is fast enough not to need an index
+kept in step with every sync; a new book is fetched after anything was sent,
+after mail arrived, and otherwise every five minutes.
+
+A match is the start of the name, of a word in it, of the address, of a part of
+its local part, or of the domain: "eri", "muster", "example.de" all find
+Erika Mustermann. ↓ ↑ choose, Enter or Tab take, and Escape closes the list
+without discarding the message, as it would otherwise. A name with a comma in
+it goes in quoted — `"Mustermann, Erika" <erika@example.de>` — and the field
+splits on commas outside quotes, so it stays one recipient.

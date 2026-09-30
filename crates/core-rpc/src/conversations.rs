@@ -13,6 +13,18 @@ use serde::{Deserialize, Serialize};
 use crate::{Core, Result};
 
 /// A person in the conversation list.
+/// Someone to suggest in an address field, most likely first.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactView {
+    pub address: String,
+    pub name: Option<String>,
+    /// Messages sent to them, and from them: said beside the suggestion, so
+    /// "Erika — 12 sent" is told from an Erika written to once.
+    pub sent: usize,
+    pub received: usize,
+    pub last_utc: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConversationView {
     /// Their address, which is also how the conversation is asked for.
@@ -142,6 +154,30 @@ impl Core {
             bubbles,
             reply_to,
         })
+    }
+
+    /// Who the account could be writing to, most likely first, for the
+    /// address fields to suggest from. At most 5000: the window filters
+    /// them as an address is typed, without asking again.
+    pub fn address_book(&self, account: AccountId) -> Result<Vec<ContactView>> {
+        let me = self.account_email(account)?;
+        let skip = self.folders_to_leave_out(account)?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        Ok(self
+            .store()
+            .address_book(account, &me, &skip, now, 5_000)?
+            .into_iter()
+            .map(|contact| ContactView {
+                address: contact.address,
+                name: contact.name,
+                sent: contact.sent,
+                received: contact.received,
+                last_utc: contact.last_utc,
+            })
+            .collect())
     }
 
     /// Folders whose mail is not part of anyone's conversation: the Trash

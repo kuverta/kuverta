@@ -85,6 +85,69 @@ pub struct Correspondent {
     pub waiting: Option<Urgency>,
 }
 
+/// Someone the account could write to, as its mail knows them: for the To
+/// field to suggest while an address is being typed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Contact {
+    /// Lowercased.
+    pub address: String,
+    /// Their name as they last wrote it; `None` for someone who has only ever
+    /// been written to, whose name the store never saw.
+    pub name: Option<String>,
+    /// Messages the account sent them (To or Cc), and messages from them.
+    pub sent: usize,
+    pub received: usize,
+    pub last_utc: Option<i64>,
+    /// How likely they are the one meant: mail sent to them counts three
+    /// times what they sent, and each message less the older it is.
+    pub score: f64,
+}
+
+impl Contact {
+    fn new(address: String) -> Self {
+        Self {
+            address,
+            name: None,
+            sent: 0,
+            received: 0,
+            last_utc: None,
+            score: 0.0,
+        }
+    }
+}
+
+/// Senders nobody writes back to.
+fn cannot_be_answered(address: &str) -> bool {
+    let local = address.split('@').next().unwrap_or_default();
+    [
+        "noreply",
+        "no-reply",
+        "no_reply",
+        "donotreply",
+        "do-not-reply",
+        "do_not_reply",
+        "mailer-daemon",
+        "postmaster",
+        "bounce",
+    ]
+    .iter()
+    .any(|word| local.contains(word))
+}
+
+/// The addresses in a `recipients` column: comma separated, each bare or in
+/// angle brackets.
+fn addresses_in(recipients: &str) -> impl Iterator<Item = String> + '_ {
+    recipients.split(',').filter_map(|part| {
+        let part = part.trim();
+        let address = match (part.rfind('<'), part.rfind('>')) {
+            (Some(open), Some(close)) if open < close => &part[open + 1..close],
+            _ => part,
+        };
+        let address = address.trim().to_lowercase();
+        (address.contains('@') && !address.contains(char::is_whitespace)).then_some(address)
+    })
+}
+
 /// How soon a message needs acting on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Urgency {
@@ -260,6 +323,97 @@ impl Store {
             offset,
             conversations,
         })
+    }
+
+    /// Everyone the account has written to and everyone who has written to
+    /// it, most likely first, at most `limit`. Left out: the account itself,
+    /// senders nobody answers (noreply and the like), bulk mail's senders,
+    /// and mail that is only in `skip_folders` — the Trash and the Junk.
+    ///
+    /// All of an account's mail is read to answer it, once, when compose
+    /// opens; the window filters the answer as it is typed into.
+    pub fn address_book(
+        &self,
+        account_id: AccountId,
+        me: &str,
+        skip_folders: &[String],
+        now_utc: i64,
+        limit: usize,
+    ) -> Result<Vec<Contact>> {
+        use std::collections::HashMap;
+
+        let skip = serde_json::to_string(skip_folders).unwrap_or_else(|_| "[]".into());
+        let me = me.to_lowercase();
+        let bulk = crate::CLEANUP_CATEGORIES;
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT lower(m.from_addr), m.from_name, m.recipients, m.date_utc,
+                    COALESCE(c.category, 'unknown')
+             FROM message m
+             {join}
+             WHERE {filter}",
+            join = crate::CURRENT_CATEGORY_JOIN,
+            filter = conversation_filter(),
+        ))?;
+        let rows = stmt.query_map(params![me, account_id, skip, true], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, String>(4)?,
+            ))
+        })?;
+
+        let mut book: HashMap<String, Contact> = HashMap::new();
+        let mut named_at: HashMap<String, i64> = HashMap::new();
+        for row in rows {
+            let (from, from_name, recipients, date, category) = row?;
+            // Half as much every half year.
+            let weight = date.map_or(0.25, |date| {
+                let days = (now_utc - date).max(0) as f64 / 86_400.0;
+                0.5f64.powf(days / 182.0)
+            });
+            if from.as_deref() == Some(me.as_str()) {
+                for address in addresses_in(recipients.as_deref().unwrap_or_default()) {
+                    if address == me {
+                        continue;
+                    }
+                    let contact = book
+                        .entry(address.clone())
+                        .or_insert_with(|| Contact::new(address));
+                    contact.sent += 1;
+                    contact.score += 3.0 * weight;
+                    contact.last_utc = contact.last_utc.max(date);
+                }
+            } else if let Some(from) = from.filter(|f| f.contains('@')) {
+                if bulk.contains(&category.as_str()) || cannot_be_answered(&from) {
+                    continue;
+                }
+                let contact = book
+                    .entry(from.clone())
+                    .or_insert_with(|| Contact::new(from.clone()));
+                contact.received += 1;
+                contact.score += weight;
+                contact.last_utc = contact.last_utc.max(date);
+                // The name from their latest message: people change how they
+                // sign, and the latest is how they sign now.
+                if let Some(name) = from_name.filter(|n| !n.trim().is_empty()) {
+                    let at = date.unwrap_or(0);
+                    if named_at.get(&from).is_none_or(|seen| at >= *seen) {
+                        named_at.insert(from, at);
+                        contact.name = Some(name.trim().to_string());
+                    }
+                }
+            }
+        }
+        let mut contacts: Vec<Contact> = book.into_values().collect();
+        contacts.sort_by(|a, b| {
+            b.score
+                .total_cmp(&a.score)
+                .then_with(|| a.address.cmp(&b.address))
+        });
+        contacts.truncate(limit);
+        Ok(contacts)
     }
 
     /// The last `limit` messages with one person, oldest first.

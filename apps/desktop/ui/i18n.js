@@ -1025,6 +1025,9 @@ const GERMAN = {
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
 
+  // Address suggestions
+  "Suggested addresses": "Vorgeschlagene Adressen",
+
   // Smart mailboxes that take their mail out of the Inbox
   "Rules are checked against every message on the account.": "Die Regeln werden gegen jede Nachricht des Kontos geprüft.",
   "Take its mail out of the Inbox, into the folder": "Seine E-Mails aus dem Posteingang nehmen, in den Ordner",

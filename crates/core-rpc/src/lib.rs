@@ -50,7 +50,7 @@ pub use cleanup::{
     CleanupCounts, Reclassified, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
     UnsubscribeResult, UnsubscribeSenderView,
 };
-pub use conversations::{Bubble, ConversationPage, ConversationView, Thread};
+pub use conversations::{Bubble, ContactView, ConversationPage, ConversationView, Thread};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};
 pub use core_paper::{learn, PaperReport, ShelfFolder};
 pub use core_pgp::{

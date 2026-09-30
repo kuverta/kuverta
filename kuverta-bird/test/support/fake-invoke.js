@@ -26,7 +26,7 @@ const CATEGORIES = [
   'unknown',
 ];
 
-export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}) {
+export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), contacts = [] } = {}) {
   const { paperMailboxes, documents } = paper;
   const messages = new Map();
   const queue = [];
@@ -116,6 +116,9 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
     if (!found) throw new Error(`no model provider ${id}`);
     return found;
   };
+
+  // How often compose asked who to suggest.
+  let addressBookAsked = 0;
 
   // What compose previewed, sent and had written.
   const outgoing = { previews: [], sent: [], answered: [] };
@@ -384,6 +387,22 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       return { body, model: 'llama3.2:3b', local: true };
     },
     outgoing_log: async () => outgoing,
+
+    // Who compose suggests: everyone the seeded mail is from, most recent
+    // first, and whoever a test adds.
+    address_book: async () => {
+      addressBookAsked += 1;
+      const seen = new Map();
+      const newest = [...messages.values()].sort((a, b) => b.date_utc - a.date_utc);
+      for (const m of newest) {
+        const match = /^(.*?)\s*<([^>]+)>$/.exec(m.from ?? '');
+        const address = (match ? match[2] : m.from ?? '').toLowerCase();
+        if (!address.includes('@') || seen.has(address)) continue;
+        seen.set(address, { address, name: match?.[1] || null, sent: 0, received: 1, last_utc: m.date_utc });
+      }
+      return [...contacts, ...seen.values()];
+    },
+    address_book_asked: async () => addressBookAsked,
 
     move_to: async ({ id, target }) => {
       const m = need(id);

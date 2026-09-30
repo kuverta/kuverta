@@ -1702,11 +1702,23 @@ const compose = {
   sending: false,
 };
 
+/// The addresses in a field: split at commas, but not at one inside a quoted
+/// name — "Mustermann, Erika" <erika@example.de> is one address.
 function addresses(field) {
-  return field.value
-    .split(",")
-    .map((a) => a.trim())
-    .filter(Boolean);
+  const found = [];
+  let current = "";
+  let quoted = false;
+  for (const c of field.value) {
+    if (c === '"') quoted = !quoted;
+    if (c === "," && !quoted) {
+      found.push(current);
+      current = "";
+    } else {
+      current += c;
+    }
+  }
+  found.push(current);
+  return found.map((a) => a.trim()).filter(Boolean);
 }
 
 /// Compose as the core takes it. `files: false` leaves the attached files
@@ -1789,6 +1801,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
   compose.pane.hidden = false;
   reading.hidden = true;
   emptyPane.hidden = true;
+  loadAddressBook();
   (compose.to.value ? compose.body : compose.to).focus();
   await refreshEnvelope();
 }
@@ -1810,6 +1823,7 @@ async function openComposeWith(draft) {
   el("compose-encrypt").checked = Boolean(draft.encrypt);
   compose.files.set(draft.attachments ?? []);
   securityChosen = true;
+  loadAddressBook();
   compose.pane.hidden = false;
   reading.hidden = true;
   emptyPane.hidden = true;
@@ -1851,6 +1865,8 @@ async function sendDraft() {
       const filed = sent.filed_in ? `, filed in ${sent.filed_in}` : "";
       say(`sent to ${sent.recipients.length} recipient(s)${filed}`);
     }
+    // Whoever it went to is someone written to now.
+    addressBookChanged();
     closeCompose();
     await reload();
   } catch (err) {
@@ -1954,6 +1970,7 @@ async function sync(account = null, { background = false } = {}) {
     if (!background) say(mine ? what : `${email}: ${what}`);
     else if (s.inserted) say(t("{account}: {count} new", { account: email, count: s.inserted }));
     failedSyncs.delete(email);
+    if (s.inserted) addressBookChanged();
     // When mail last arrived has just changed, and that is what the row's
     // tooltip says — so the accounts are read again whichever one this was.
     state.accounts = await invoke("accounts");

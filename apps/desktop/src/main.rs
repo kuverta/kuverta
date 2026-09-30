@@ -1673,6 +1673,13 @@ fn urgency_of(app: State<'_, App>, id: i64) -> Result<Option<core_rpc::UrgencyVi
 
 // -- conversations ---------------------------------------------------------------
 
+/// Who the account writes to and hears from, most likely first, for the
+/// address fields to suggest while an address is typed.
+#[tauri::command]
+fn address_book(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::ContactView>, String> {
+    app.core.lock().unwrap().address_book(account).map_err(fail)
+}
+
 #[tauri::command]
 fn conversations(
     app: State<'_, App>,
@@ -2163,6 +2170,7 @@ fn main() {
             urgent_messages,
             urgency_of,
             conversations,
+            address_book,
             sender,
             paper_sender,
             conversation,

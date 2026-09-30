@@ -2205,3 +2205,33 @@ button.sender-msg:hover { background: var(--selected); border-color: transparent
 
 .take-line input[name="folder"] { flex: 1; min-width: 160px; }
 .take-line input[name="folder"]:disabled { opacity: 0.5; }
+
+/* Suggestions under an address field, from the mail there already is. */
+.address-suggestions {
+  position: absolute;
+  z-index: 20;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--raised);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.address-suggestions[hidden] { display: none; }
+
+.address-suggestion {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.address-suggestion.active { background: var(--selected); }
+.address-suggestion .name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+.address-suggestion .address { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
