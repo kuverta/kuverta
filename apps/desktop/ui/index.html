@@ -604,6 +604,11 @@
               <p class="hint">Spam and bulk mail come in runs. When a message you delete has look-alikes — the same sender and subject pattern, the same list, or the same text from different senders — kuverta shows them and lets you delete them together or gather them in a smart mailbox.</p>
             </section>
             <section class="card">
+              <h3>Attachments</h3>
+              <label class="check"><input type="checkbox" id="pref-safe-preview"> Safe preview</label>
+              <p class="hint">Pictures and PDFs from other people are drawn by kuverta itself, in a separate process that can neither read nor write files, reach the network nor start programs — never by the system's own image and PDF readers, where attacks hidden in a file have worked without a click. Word, Excel and web pages are shown as their text. Opening a file in another app asks twice, and every file saved or opened is marked as downloaded, so the system checks it too. Off, attachments are shown by the system's viewers: sharper, and as safe as they are.</p>
+            </section>
+            <section class="card">
               <h3>Needs attention</h3>
               <label class="check"><input type="checkbox" id="pref-urgency-model"> After each sync, let the model for sorting mail judge how soon new mail needs me</label>
               <p class="hint">kuverta's urgency agent always checks what it can itself — whether you write to the sender, whether you have answered, deadline and payment words. With this on, it also shows the model chosen under Models → Sorting mail the start of each new message that is not bulk mail, with those findings, and asks how soon it needs you and why. With a hosted model, that text leaves this computer.</p>
@@ -846,11 +851,17 @@
       <div class="dialog-head">
         <h2 id="attachment-title"></h2>
         <p class="hint" id="attachment-sub"></p>
+        <!-- Said whenever safe preview drew what is shown. See attachments.js. -->
+        <p class="safe-note" id="attachment-safe" hidden>🛡 Safe preview — drawn by kuverta in a sealed-off process. The file itself was not opened.</p>
       </div>
       <div class="dialog-body viewer-body">
         <img id="attachment-image" alt="" hidden>
         <iframe id="attachment-pdf" title="The attachment" hidden></iframe>
         <pre id="attachment-text" hidden></pre>
+        <!-- Safe preview's pages: pictures kuverta drew, a few at a time. -->
+        <div id="attachment-pages" class="safe-pages" hidden>
+          <button type="button" id="attachment-more" hidden>More pages</button>
+        </div>
         <p id="attachment-status" class="hint"></p>
       </div>
       <div class="dialog-foot">

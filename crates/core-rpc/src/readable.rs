@@ -142,7 +142,13 @@ pub async fn read(
     bytes: &[u8],
     mut on_page: impl FnMut(usize, usize),
 ) -> String {
-    match contents(name, content_type, bytes) {
+    // In the preview worker when there is one: the file is someone else's,
+    // and its parsing belongs where safe preview does it.
+    let read = match crate::preview::worker() {
+        Some(worker) => crate::preview::contents(worker, name, content_type, bytes),
+        None => contents(name, content_type, bytes),
+    };
+    match read {
         Contents::Text(text) if text.trim().is_empty() => "[the file has no text in it]".into(),
         Contents::Text(text) => text,
         Contents::Unreadable(why) => format!("[not readable: {why}]"),
@@ -815,7 +821,9 @@ mod tests {
         let read = text(contents(
             "Rechnung.pdf",
             "application/pdf",
-            &pdf_saying("Rechnung Nummer 4711 fuer Erika Mustermann, faellig am 1. Oktober"),
+            &tests_support::pdf_saying(
+                "Rechnung Nummer 4711 fuer Erika Mustermann, faellig am 1. Oktober",
+            ),
         ));
         assert!(read.contains("Rechnung Nummer 4711"), "{read}");
     }
@@ -855,10 +863,14 @@ mod tests {
         assert!(clipped.starts_with("äöü\n"), "{clipped}");
         assert!(clipped.contains("3 more characters"), "{clipped}");
     }
+}
 
+/// What the tests of this module and of [`crate::preview`] make files from.
+#[cfg(test)]
+pub(crate) mod tests_support {
     /// A one-page PDF with `line` on it, in Helvetica, cross-reference table
     /// and all.
-    fn pdf_saying(line: &str) -> Vec<u8> {
+    pub(crate) fn pdf_saying(line: &str) -> Vec<u8> {
         let stream = format!("BT /F1 12 Tf 72 720 Td ({line}) Tj ET");
         let objects = [
             "<< /Type /Catalog /Pages 2 0 R >>".to_string(),

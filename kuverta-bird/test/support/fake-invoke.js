@@ -31,6 +31,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
   const messages = new Map();
   const queue = [];
   const saved = [];
+  const previewed = [];
   const opened = [];
   let nextId = 1;
 
@@ -225,8 +226,25 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper() } = {}
       opened.push(found.name);
       return null;
     },
-    // What was saved and opened, for a test to check.
-    attachment_log: async () => ({ saved, opened }),
+    // Safe preview, without a worker: a picture comes back as the one pixel
+    // it is, a PDF as three pages drawn a few at a time, a web page as its
+    // words — and nothing else as anything.
+    attachment_preview: async ({ id, index, first, count }) => {
+      const found = need(id).attachments?.[index];
+      if (!found) throw new Error(`message ${id} has no attachment ${index + 1}`);
+      previewed.push({ name: found.name, first, count });
+      const pixel = btoa(String.fromCharCode(...PIXEL_PNG));
+      if (found.preview === 'image') return { kind: 'pages', first: 0, total: 1, pages: [pixel] };
+      if (found.preview === 'pdf') {
+        const total = 3;
+        const pages = Array.from({ length: Math.max(0, Math.min(count, total - first)) }, () => pixel);
+        return { kind: 'pages', first, total, pages };
+      }
+      if (found.content_type === 'text/html') return { kind: 'text', text: 'Bitte melden Sie sich an\n\nPasswort' };
+      return { kind: 'unavailable', why: 'a kind of file kuverta cannot read' };
+    },
+    // What was saved, opened and previewed, for a test to check.
+    attachment_log: async () => ({ saved, opened, previewed }),
 
     // The assistant, without a model: it searches the seeded mail for the
     // question's words, longest first, until one finds something, and shows

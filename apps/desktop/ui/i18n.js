@@ -1025,6 +1025,20 @@ const GERMAN = {
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
 
+  // Safe preview
+  Attachments: "Anhänge",
+  "🛡 Safe preview — drawn by kuverta in a sealed-off process. The file itself was not opened.":
+    "🛡 Sichere Vorschau — von kuverta in einem abgeschotteten Prozess gezeichnet. Die Datei selbst wurde nicht geöffnet.",
+  "More pages": "Weitere Seiten",
+  "More pages ({shown} of {total})": "Weitere Seiten ({shown} von {total})",
+  "Page {page}": "Seite {page}",
+  "Open anyway?": "Trotzdem öffnen?",
+  "Another app reads the file itself, outside safe preview. Open it only if you trust the sender — click again to open.":
+    "Ein anderes Programm liest die Datei selbst, außerhalb der sicheren Vorschau. Öffnen Sie sie nur, wenn Sie dem Absender vertrauen — zum Öffnen noch einmal klicken.",
+  "Safe preview": "Sichere Vorschau",
+  "Pictures and PDFs from other people are drawn by kuverta itself, in a separate process that can neither read nor write files, reach the network nor start programs — never by the system's own image and PDF readers, where attacks hidden in a file have worked without a click. Word, Excel and web pages are shown as their text. Opening a file in another app asks twice, and every file saved or opened is marked as downloaded, so the system checks it too. Off, attachments are shown by the system's viewers: sharper, and as safe as they are.":
+    "Bilder und PDFs von anderen zeichnet kuverta selbst, in einem eigenen Prozess, der weder Dateien lesen oder schreiben noch ins Netz gehen oder Programme starten kann — nie die Bild- und PDF-Leser des Systems, über die in Dateien versteckte Angriffe schon ohne einen Klick gelungen sind. Word, Excel und Webseiten erscheinen als ihr Text. Das Öffnen in einem anderen Programm fragt zweimal nach, und jede gespeicherte oder geöffnete Datei wird als heruntergeladen markiert, damit auch das System sie prüft. Ausgeschaltet zeigen die Betrachter des Systems die Anhänge: schärfer, und so sicher wie sie.",
+
   // Files going out, and the assistant writing
   "📎 Attach": "📎 Anhängen",
   "Attach files": "Dateien anhängen",
