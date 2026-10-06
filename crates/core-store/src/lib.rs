@@ -11,7 +11,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub mod blobs;
+pub mod chats;
 pub mod dedup;
+pub mod documents;
 pub mod hygiene;
 pub mod model;
 pub mod outbox;

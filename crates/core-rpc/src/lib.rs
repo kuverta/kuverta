@@ -23,12 +23,15 @@ pub mod ai;
 pub mod answer;
 pub mod assistant;
 pub mod attachments;
+pub mod chats;
 pub mod cleanup;
 pub mod conversations;
+pub mod documents;
 pub mod html;
 pub mod mailboxes;
 pub mod outbox;
 pub mod paper;
+pub mod pdf;
 pub mod pgp;
 pub mod preview;
 pub mod profiles;
@@ -46,6 +49,7 @@ pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Tas
 pub use answer::AnswerDraft;
 pub use assistant::{AssistantEvent, AssistantTurn};
 pub use attachments::{Attachment, AttachmentView};
+pub use chats::{ChatFull, ChatView};
 pub use cleanup::{
     CleanupCounts, Reclassified, SimilarMessage, SimilarReport, SmartSuggestion, UnsubscribeMethod,
     UnsubscribeResult, UnsubscribeSenderView,
@@ -58,6 +62,7 @@ pub use core_pgp::{
     SignatureState, SignatureView,
 };
 pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
+pub use documents::{DocumentFile, DocumentSource, DocumentView, SignatureSettings};
 pub use mailboxes::CreatedFolder;
 pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{

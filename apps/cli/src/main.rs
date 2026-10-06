@@ -2023,8 +2023,33 @@ fn describe_event(event: &core_rpc::AssistantEvent) -> String {
         E::Looked { what } | E::Failed { what } => what.clone(),
         E::Changed { what, .. } => format!("{what} (queued, undoable)"),
         E::Draft {
-            to, subject, body, ..
-        } => format!("drafted a reply to {to}: {subject}\n{body}"),
+            to,
+            subject,
+            body,
+            documents,
+            ..
+        } => {
+            let mut line = format!("drafted a reply to {to}: {subject}\n{body}");
+            for document in documents {
+                line.push_str(&format!(
+                    "\n    attached document {}: {}",
+                    document.id, document.name
+                ));
+            }
+            line
+        }
+        E::Document { document, note } => {
+            let mut line = format!(
+                "made the document {}: {}{}",
+                document.id,
+                document.name,
+                if document.signed { " (signed)" } else { "" }
+            );
+            if let Some(note) = note {
+                line.push_str(&format!("\n    {note}"));
+            }
+            line
+        }
         E::TaskCreated {
             name,
             what,

@@ -7,6 +7,11 @@
 // thing a person may want to take back or finish: an Undo for every change, a
 // reply to read and send, a task to check.
 //
+// A document it makes — a letter it wrote, a PDF it signed — is a card too:
+// to show, save, attach to a message, or delete. A question that fails —
+// the model's service is down, or out of credit — leaves a Retry. Every
+// conversation is kept as it goes, and Earlier chats opens one again.
+//
 // The Tasks tab lists the standing tasks and what they are waiting to be told
 // yes or no about. Tasks run after every sync.
 
@@ -23,6 +28,10 @@ const assistant = {
   // they were picked. Emptied once the question has been asked — from then on
   // they are part of the conversation.
   about: [],
+  // The conversation as kept: its id in the store once it has been saved,
+  // and each exchange as the log showed it, so it can be shown again.
+  chatId: null,
+  exchanges: [],
 };
 
 /// What to do with the messages you handed it, offered as a starting point.
@@ -39,6 +48,7 @@ const SUGGESTIONS = [
   t("Find my invoices from this month."),
   t("From now on, move invoices into a folder called Rechnungen."),
   t("Draft replies to the support requests from this week — I'll check them."),
+  t("Write a letter cancelling my gym membership, signed, as a PDF."),
 ];
 
 /// A channel for a command to report on as it goes. Outside the app — in the
@@ -92,11 +102,19 @@ for (const button of assistant.panel.querySelectorAll(".assistant-tabs [data-tab
   button.onclick = () => showAssistantTab(button.dataset.tab);
 }
 el("assistant-new").onclick = () => {
-  assistant.turns = [];
-  assistant.log.textContent = "";
-  ensureConversation();
+  startChat();
   showAssistantTab("chat");
 };
+
+/// A fresh, unsaved conversation on the account on screen.
+function startChat() {
+  assistant.turns = [];
+  assistant.chatId = null;
+  assistant.exchanges = [];
+  assistant.log.textContent = "";
+  hideHistory();
+  ensureConversation();
+}
 
 // -- the messages a question is about --------------------------------------------------
 
@@ -164,7 +182,10 @@ function ensureConversation(suggestions = SUGGESTIONS) {
   if (assistant.account !== state.account) {
     assistant.account = state.account;
     assistant.turns = [];
+    assistant.chatId = null;
+    assistant.exchanges = [];
     assistant.log.textContent = "";
+    hideHistory();
   }
   showSuggestionsInto(suggestions);
 }
@@ -302,25 +323,34 @@ function inline(text) {
   return nodes;
 }
 
-async function sendToAssistant() {
-  const text = assistant.input.value.trim();
+/// Asks what is in the box — or, on a Retry, the question that failed, with
+/// the messages it was about.
+async function sendToAssistant(again = null) {
+  const text = again ? again.text : assistant.input.value.trim();
   if (!text || assistant.busy) return;
   if (state.account === null || state.postbox) {
     say(t("choose a mail account first"), true);
     return;
   }
   ensureConversation();
+  hideHistory();
   assistant.busy = true;
   el("chat-send").disabled = true;
-  assistant.input.value = "";
+  if (!again) assistant.input.value = "";
   // Asked with the messages that were attached; from now on they are part of
   // the conversation, so the bar empties.
-  const about = assistant.about;
-  assistant.about = [];
-  showAbout();
-  appendChat("chat-msg user", text);
-  if (about.length) {
-    appendChat("chat-activity", t("about {messages}", { messages: about.map((m) => `“${m.label}”`).join(", ") }));
+  const about = again ? again.about : assistant.about;
+  if (!again) {
+    assistant.about = [];
+    showAbout();
+  }
+  if (again) {
+    again.error.remove();
+  } else {
+    appendChat("chat-msg user", text);
+    if (about.length) {
+      appendChat("chat-activity", t("about {messages}", { messages: about.map((m) => `“${m.label}”`).join(", ") }));
+    }
   }
   const thinking = appendChat("chat-thinking", t("Thinking…"));
 
@@ -339,23 +369,175 @@ async function sendToAssistant() {
       onEvent: channel,
     });
     thinking.remove();
-    if (assistant.account === account) assistant.turns = result.turns;
-    appendChat("chat-msg assistant", "").replaceChildren(markdown(result.reply.trim() || t("(no answer)")));
+    const reply = result.reply.trim();
+    appendChat("chat-msg assistant", "").replaceChildren(markdown(reply || t("(no answer)")));
     assistant.log.scrollTop = assistant.log.scrollHeight;
     showAssistantModel(result);
+    if (assistant.account === account) {
+      assistant.turns = result.turns;
+      assistant.exchanges.push({
+        question: text,
+        about: about.map((m) => ({ id: m.id, label: m.label, from: m.from })),
+        events: result.events,
+        reply,
+        model: result.model,
+        local: result.local,
+      });
+      await keepChat(account);
+    }
     if (result.events.some((e) => e.kind === "changed" || e.kind === "task_created")) {
       await reload({ keepPosition: true });
       await refreshAssistantBadge();
     }
   } catch (err) {
     thinking.remove();
-    appendChat("chat-msg error", String(err));
+    // The question stays asked and the conversation as it was, so Retry
+    // sends exactly it again — after topping up a hosted service's credit,
+    // or once the model is back.
+    const error = appendChat("chat-msg error", String(err));
+    const retry = document.createElement("button");
+    retry.type = "button";
+    retry.className = "retry";
+    retry.textContent = t("Retry");
+    retry.onclick = () => sendToAssistant({ text, about, error });
+    error.append(retry);
   } finally {
     assistant.busy = false;
     el("chat-send").disabled = false;
     assistant.input.focus();
   }
 }
+
+// -- keeping the conversation ---------------------------------------------------------
+
+/// Keeps the conversation as it now stands. A new one gets its id here; from
+/// then on it is the same chat, added to. Quietly: a chat that could not be
+/// kept is still on screen.
+async function keepChat(account) {
+  try {
+    const kept = await invoke("save_chat", {
+      id: assistant.chatId,
+      account,
+      turns: assistant.turns,
+      log: assistant.exchanges,
+    });
+    if (assistant.account === account) assistant.chatId = kept.id;
+  } catch (err) {
+    console.warn("the chat could not be kept", err);
+  }
+}
+
+/// Shows a kept conversation again, as it was shown the first time, and
+/// goes on from it.
+async function openChat(id) {
+  let chat;
+  try {
+    chat = await invoke("chat", { id });
+  } catch (err) {
+    say(String(err), true);
+    return;
+  }
+  if (chat.account_id !== state.account) return;
+  assistant.account = state.account;
+  assistant.turns = chat.turns;
+  assistant.chatId = chat.id;
+  assistant.exchanges = Array.isArray(chat.log) ? chat.log : [];
+  assistant.about = [];
+  showAbout();
+  hideHistory();
+  assistant.log.textContent = "";
+  for (const exchange of assistant.exchanges) {
+    appendChat("chat-msg user", exchange.question);
+    if (exchange.about?.length) {
+      appendChat("chat-activity", t("about {messages}", { messages: exchange.about.map((m) => `“${m.label}”`).join(", ") }));
+    }
+    for (const event of exchange.events ?? []) showEvent(event);
+    appendChat("chat-msg assistant", "").replaceChildren(markdown(exchange.reply || t("(no answer)")));
+  }
+  assistant.log.scrollTop = assistant.log.scrollHeight;
+  const last = assistant.exchanges[assistant.exchanges.length - 1];
+  showAssistantModel(last?.model ? { model: last.model, local: last.local } : null);
+  assistant.input.focus();
+}
+
+function hideHistory() {
+  el("chat-history").hidden = true;
+  assistant.log.hidden = false;
+}
+
+/// The earlier conversations on this account, newest first, in place of the
+/// log until one is picked.
+async function showHistory() {
+  if (state.account === null || state.postbox) return;
+  const panel = el("chat-history");
+  if (!panel.hidden) {
+    hideHistory();
+    return;
+  }
+  let chats = [];
+  try {
+    chats = await invoke("chats", { account: state.account });
+  } catch (err) {
+    say(String(err), true);
+    return;
+  }
+  panel.textContent = "";
+  const head = document.createElement("div");
+  head.className = "chat-history-head";
+  const title = document.createElement("span");
+  title.textContent = t("Earlier chats");
+  const back = document.createElement("button");
+  back.type = "button";
+  back.className = "tool";
+  back.textContent = t("Back");
+  back.onclick = hideHistory;
+  head.append(title, back);
+  panel.append(head);
+  if (!chats.length) {
+    const none = document.createElement("p");
+    none.className = "hint";
+    none.textContent = t("Nothing yet. Every conversation is kept as it goes, and shows here.");
+    panel.append(none);
+  }
+  for (const chat of chats) {
+    const row = document.createElement("div");
+    row.className = `item chat-history-item${chat.id === assistant.chatId ? " current" : ""}`;
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "grow open";
+    const name = document.createElement("div");
+    name.className = "title";
+    // textContent: the title is the person's own question.
+    name.textContent = chat.title;
+    const when = document.createElement("div");
+    when.className = "sub";
+    when.textContent = formatDate(chat.updated_at);
+    open.append(name, when);
+    open.onclick = () => openChat(chat.id);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "tool icon-only";
+    remove.textContent = "×";
+    remove.title = t("Delete this chat");
+    remove.setAttribute("aria-label", t("Delete the chat “{title}”", { title: chat.title }));
+    remove.onclick = async () => {
+      try {
+        await invoke("delete_chat", { id: chat.id });
+      } catch (err) {
+        say(String(err), true);
+        return;
+      }
+      if (chat.id === assistant.chatId) assistant.chatId = null;
+      row.remove();
+    };
+    row.append(open, remove);
+    panel.append(row);
+  }
+  assistant.log.hidden = true;
+  panel.hidden = false;
+}
+
+el("assistant-history").onclick = showHistory;
 
 /// What the assistant did, as a line or a card.
 function showEvent(event) {
@@ -377,6 +559,9 @@ function showEvent(event) {
       break;
     case "message":
       assistant.log.append(messageCard(event));
+      break;
+    case "document":
+      assistant.log.append(documentCard(event));
       break;
   }
   assistant.log.scrollTop = assistant.log.scrollHeight;
@@ -443,22 +628,34 @@ function draftCard(event) {
   const body = document.createElement("textarea");
   body.value = event.body;
   box.insertBefore(body, actions);
+  // Documents the assistant made that go with it: shown as chips, and sent
+  // or opened in compose with the message.
+  const documents = event.documents ?? [];
+  if (documents.length) {
+    const files = document.createElement("div");
+    files.className = "attachments";
+    for (const doc of documents) files.append(documentChip(doc));
+    box.insertBefore(files, actions);
+  }
   cardButton(actions, t("Send"), async (button) => {
     if (!(await ask(t("Send this to {to}?", { to: event.to }), { yes: t("Send") }))) {
       button.disabled = false;
       return;
     }
+    const attachments = await documentAttachments(documents);
     if (reply) {
-      await sendReply(event.message_id, body.value);
+      await sendReply(event.message_id, body.value, attachments);
     } else {
-      await sendNew(event.to, event.subject, body.value);
+      await sendNew(event.to, event.subject, body.value, attachments);
     }
     box.classList.add("done");
     button.textContent = t("Sent");
   }, "primary");
   cardButton(actions, t("Open in compose"), async () => {
+    const attachments = await documentAttachments(documents);
     if (reply) {
       await openReplyInCompose(event.message_id, body.value);
+      compose.files.set(attachments);
       return;
     }
     await openComposeWith({
@@ -470,10 +667,83 @@ function draftCard(event) {
       reply_to: null,
       reply_all: false,
       forward: null,
+      attachments,
     });
     compose.what.textContent = t("New message");
   });
   return box;
+}
+
+/// A document the assistant made: show it, save it, attach it to a new
+/// message, or delete it.
+function documentCard(event) {
+  const doc = event.document;
+  const { box, actions } = card(
+    doc.name,
+    [
+      t("PDF"),
+      sizeText(doc.size),
+      doc.pages == null ? "" : doc.pages === 1 ? t("one page") : t("{count} pages", { count: doc.pages }),
+      doc.signed ? t("signed") : "",
+    ]
+      .filter(Boolean)
+      .join("  ·  "),
+  );
+  box.classList.add("found");
+  if (event.note) {
+    const note = document.createElement("div");
+    note.className = "card-note";
+    note.textContent = event.note;
+    box.insertBefore(note, actions);
+  }
+  cardButton(actions, t("Show"), async (button) => {
+    button.disabled = false;
+    await openDocument(doc);
+  }, "primary");
+  cardButton(actions, t("Save to Downloads"), async (button) => {
+    button.disabled = false;
+    const path = await invoke("save_document", { id: doc.id });
+    say(t("saved to {path}", { path }));
+  });
+  cardButton(actions, t("Attach to a new message"), async (button) => {
+    button.disabled = false;
+    await openComposeWith({
+      to: [],
+      cc: [],
+      bcc: [],
+      subject: "",
+      body: "",
+      reply_to: null,
+      reply_all: false,
+      forward: null,
+      attachments: await documentAttachments([doc]),
+    });
+    compose.what.textContent = t("New message");
+  });
+  cardButton(actions, t("Delete it"), async (button) => {
+    if (!(await ask(t("Delete {name}?", { name: doc.name }), { yes: t("Delete"), danger: true }))) {
+      button.disabled = false;
+      return;
+    }
+    await invoke("delete_document", { id: doc.id });
+    box.classList.add("done");
+    button.textContent = t("Deleted");
+  }, "danger");
+  return box;
+}
+
+/// Documents as a draft carries them: name, type and bytes as base64.
+async function documentAttachments(documents) {
+  const out = [];
+  for (const doc of documents) {
+    const bytes = new Uint8Array(await invoke("document", { id: doc.id }));
+    let binary = "";
+    for (let at = 0; at < bytes.length; at += 0x8000) {
+      binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+    }
+    out.push({ name: doc.name, content_type: doc.content_type, data: btoa(binary) });
+  }
+  return out;
 }
 
 /// A message the assistant found: open it, or go straight to an attachment —
@@ -530,7 +800,7 @@ function taskCard(event) {
 
 /// Sends a new message the person has read: to whoever the assistant named,
 /// with the subject it wrote.
-async function sendNew(to, subject, body) {
+async function sendNew(to, subject, body, attachments = []) {
   const sent = await invoke("send", {
     email: state.email,
     draft: {
@@ -544,6 +814,7 @@ async function sendNew(to, subject, body) {
       forward: null,
       sign: false,
       encrypt: false,
+      attachments,
     },
   });
   say(
@@ -555,7 +826,7 @@ async function sendNew(to, subject, body) {
 
 /// Sends a reply the person has read: threaded as a reply to the message,
 /// with its quote, as any reply is.
-async function sendReply(messageId, body) {
+async function sendReply(messageId, body, attachments = []) {
   const sent = await invoke("send", {
     email: state.email,
     draft: {
@@ -569,6 +840,7 @@ async function sendReply(messageId, body) {
       forward: null,
       sign: false,
       encrypt: false,
+      attachments,
     },
   });
   say(
