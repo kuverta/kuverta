@@ -906,9 +906,11 @@ function accountCard(entry) {
   details.append(node("div", { className: "setup-row" }, node("label", {}, t("Sign in with"), method), clientId));
   if (state.profiles.length) {
     const profile = node("select", { name: "profile" });
+    // In its label first: filling it hides the label when there are no
+    // profiles, and there is no label to hide before this.
+    fields.append(node("label", {}, t("Profile"), profile));
     fillProfileSelect(profile, entry.profile ?? activeProfile() ?? state.profiles[0].id);
     profile.onchange = () => (entry.profile = selectedProfile(profile));
-    fields.append(node("label", {}, t("Profile"), profile));
   }
   fields.append(details);
   card.append(fields);
