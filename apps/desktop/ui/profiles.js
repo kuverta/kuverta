@@ -103,7 +103,10 @@ function fillProfileSelect(select, current) {
   select.append(new Option(t("No profile"), ""));
   for (const profile of state.profiles) select.append(new Option(profile.name, String(profile.id)));
   select.value = current ? String(current) : "";
-  select.closest("label").hidden = state.profiles.length === 0;
+  // A select not yet in its label — the setup assistant's account cards
+  // fill theirs before placing them — has nothing to hide.
+  const label = select.closest("label");
+  if (label) label.hidden = state.profiles.length === 0;
 }
 
 function selectedProfile(select) {
