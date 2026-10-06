@@ -383,6 +383,7 @@ fn the_assistant_drafts_mail_to_someone_else_and_sends_none_of_it() {
             ref to,
             ref subject,
             ref body,
+            ..
         }) => {
             assert_eq!(message_id, None, "a new message, not a reply");
             assert_eq!(to, "clara@example.com");

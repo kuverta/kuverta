@@ -1816,7 +1816,10 @@ fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
         conn.execute_batch(
-            "ALTER TABLE folder DROP COLUMN backfill_uid;
+            "DROP TABLE assistant_chat;
+             DROP TABLE signature;
+             DROP TABLE document;
+             ALTER TABLE folder DROP COLUMN backfill_uid;
              ALTER TABLE classification DROP COLUMN rules_version;
              DROP TABLE task_proposal;
              DROP TABLE task_seen;
@@ -2178,6 +2181,9 @@ fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
              CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
                  DELETE FROM message_fts WHERE rowid = old.id;
              END;
+             DROP TABLE assistant_chat;
+             DROP TABLE signature;
+             DROP TABLE document;
              ALTER TABLE smart_mailbox DROP COLUMN folder;
              ALTER TABLE task DROP COLUMN smart_mailbox_id;
              PRAGMA user_version = 17;",

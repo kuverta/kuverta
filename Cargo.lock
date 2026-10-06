@@ -1086,6 +1086,7 @@ dependencies = [
  "hmac 0.13.0",
  "image",
  "libc",
+ "lopdf",
  "mail-parser",
  "pbkdf2",
  "pdf-extract",

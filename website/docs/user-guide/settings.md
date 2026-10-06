@@ -82,7 +82,28 @@ Your OpenPGP keys and other people's, creating a key, and importing keys. See
 - **Setup** — **Open the setup assistant** again.
 - **Deleting mail** — *After deleting a message, offer to delete messages like
   it too*: turns [similar messages](similar.md) on and off.
+- **Attachments** — **Safe preview**: see [Reading](reading.md#attachments).
+- **Signature** — the picture the assistant signs PDFs with; see below.
+- **Needs attention** — whether the sorting model also judges how soon new mail
+  needs you; see [Needs attention](attention.md).
 - **Updates** — which version this is, and **Check for updates**.
+
+### Signature
+
+A picture of your handwritten signature, for the [assistant](assistant.md#writing-and-signing-pdfs)
+to put on a PDF when you ask it to. Sign on white paper, photograph or scan
+it, crop to the signature, and **Choose a picture…** — a PNG or JPEG, at most
+4000 pixels on a side. The white of the paper is left out when it is placed on
+a page, so a scan works; a PNG with a transparent background is placed as it
+is. The picture shows on the page once it is kept; **Remove** forgets it.
+
+**Place** is written in front of the date beneath the signature, the way a
+letter is signed — *Musterstadt, 06.10.2026*; left empty, the date stands
+alone.
+
+It is a picture, not a certificate: what you would get from printing a page,
+signing it and scanning it. The assistant signs only when you ask it to, shows
+you the signed copy, and never sends it.
 
 ## Diagnostics
 

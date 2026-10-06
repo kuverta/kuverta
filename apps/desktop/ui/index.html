@@ -236,10 +236,14 @@
           <button type="button" role="tab" data-tab="tasks">Tasks <span id="tasks-badge" class="badge" hidden></span></button>
         </div>
         <span class="spacer"></span>
+        <button type="button" id="assistant-history" class="tool" title="Open an earlier conversation">Earlier chats</button>
         <button type="button" id="assistant-new" class="tool" title="Start a new conversation">New chat</button>
         <button type="button" id="assistant-close" class="tool icon-only" title="Close (i)" aria-label="Close the assistant">×</button>
       </div>
       <div id="assistant-chat" class="assistant-pane">
+        <!-- Earlier conversations on this account, kept to be opened again.
+             Shown in place of the log; filled by assistant.js. -->
+        <div id="chat-history" class="chat-history" hidden></div>
         <div id="chat-log" class="chat-log"></div>
         <!-- The messages the question is about: what was open or picked when
              the assistant was asked about them. -->
@@ -607,6 +611,20 @@
               <h3>Attachments</h3>
               <label class="check"><input type="checkbox" id="pref-safe-preview"> Safe preview</label>
               <p class="hint">Pictures and PDFs from other people are drawn by kuverta itself, in a separate process that can neither read nor write files, reach the network nor start programs — never by the system's own image and PDF readers, where attacks hidden in a file have worked without a click. Word, Excel and web pages are shown as their text. Opening a file in another app asks twice, and every file saved or opened is marked as downloaded, so the system checks it too. Off, attachments are shown by the system's viewers: sharper, and as safe as they are.</p>
+            </section>
+            <section class="card" id="signature-card">
+              <h3>Signature</h3>
+              <p class="hint">A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper, photograph or scan it, crop to the signature, and save it as a PNG or JPEG. The white of the paper is left out when it is placed; a PNG with a transparent background is placed as it is.</p>
+              <p class="hint">It is a picture, as on a page you printed, signed and scanned, not a certificate. The assistant signs only when you ask it to, shows you the signed copy, and never sends it: that stays yours to do.</p>
+              <div id="signature-preview" class="signature-preview" hidden><img id="signature-image" alt="Your signature"></div>
+              <p class="hint" id="signature-status"></p>
+              <div class="card-actions">
+                <input type="file" id="signature-file" accept="image/png,image/jpeg" hidden>
+                <button type="button" id="signature-choose">Choose a picture…</button>
+                <button type="button" id="signature-remove" class="danger" hidden>Remove</button>
+              </div>
+              <label>Place<input id="signature-place" autocomplete="off" spellcheck="false"></label>
+              <p class="hint">Written in front of the date beneath the signature, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.</p>
             </section>
             <section class="card">
               <h3>Needs attention</h3>
@@ -1038,6 +1056,7 @@
   <script src="people.js"></script>
   <script src="sender.js"></script>
   <script src="profiles.js"></script>
+  <script src="signature.js"></script>
   <script src="assistant.js"></script>
 </body>
 </html>

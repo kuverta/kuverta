@@ -495,6 +495,53 @@ END;
 ALTER TABLE smart_mailbox ADD COLUMN folder TEXT;
 ALTER TABLE task ADD COLUMN smart_mailbox_id INTEGER REFERENCES smart_mailbox(id) ON DELETE CASCADE;
 "#,
+    // v20 — documents the assistant writes and signs, the signature, and the
+    // assistant's chats.
+    //
+    // A document is a PDF kuverta made: written from text, or a copy of an
+    // attachment with the person's signature put on it. The bytes are in the
+    // row: a document is kilobytes, a signed scan a few megabytes, and a row
+    // that is the file cannot be orphaned by a crash between two writes or
+    // left behind when the account goes. The signature is a picture of the
+    // person's handwritten signature, one for the whole store, with the
+    // place that goes in front of the date beneath it. A chat is kept so it
+    // can be opened again: as the model sees it, to go on, and as the window
+    // showed it, to read.
+    r#"
+CREATE TABLE document (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    name       TEXT    NOT NULL,
+    note       TEXT,
+    signed     INTEGER NOT NULL DEFAULT 0,
+    pages      INTEGER,
+    pdf        BLOB    NOT NULL,
+    created_at INTEGER NOT NULL
+);
+CREATE INDEX document_account ON document (account_id, created_at);
+CREATE TABLE signature (
+    id           INTEGER PRIMARY KEY CHECK (id = 1),
+    image        BLOB,
+    content_type TEXT,
+    width        INTEGER,
+    height       INTEGER,
+    place        TEXT,
+    updated_at   INTEGER NOT NULL
+);
+CREATE TABLE assistant_chat (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    title      TEXT    NOT NULL,
+    -- The conversation as the model sees it, JSON, core-ai's turns.
+    turns      TEXT    NOT NULL,
+    -- The conversation as the window showed it, JSON: each question, its
+    -- answer, and what the assistant did on the way.
+    log        TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE INDEX assistant_chat_account ON assistant_chat (account_id, updated_at);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
