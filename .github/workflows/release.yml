@@ -1,7 +1,7 @@
 name: Release
 
-# A tag like v0.2.0 builds kuverta for macOS, Linux and Windows and puts the
-# installers on one draft release, to be read over and published by hand.
+# A tag like v0.2.0 builds kuverta for macOS, Linux (x86-64 and ARM64) and
+# Windows and puts the installers on one draft release, to be read over and published by hand.
 # `tools/release.sh` makes the tag.
 
 on:
@@ -62,7 +62,7 @@ jobs:
               body: [
                 '**macOS** — download the `.dmg`, open it and drag kuverta into Applications. If macOS says it cannot check the app, allow it once under System Settings → Privacy & Security → Open Anyway.',
                 '',
-                '**Linux** — the `.AppImage` runs on most distributions (`chmod +x` it first); the `.deb` and `.rpm` install through the package manager.',
+                '**Linux** — the `.AppImage` runs on most distributions (`chmod +x` it first); the `.deb` and `.rpm` install through the package manager. Each comes for x86-64 (`amd64`, `x86_64`) and 64-bit ARM (`arm64`, `aarch64`).',
                 '',
                 '**Windows** — run the `-setup.exe`. Windows builds are not tested yet; SmartScreen warns about unsigned programs (More info → Run anyway).',
               ].join('\n'),
@@ -85,6 +85,12 @@ jobs:
           # The oldest supported Ubuntu, so the AppImage runs on older systems
           # too: it links against the glibc it was built with.
           - os: ubuntu-22.04
+            targets: ""
+            args: ""
+          # The same for 64-bit ARM — a Raspberry Pi with a 64-bit system, ARM
+          # laptops and servers — built natively on GitHub's ARM runner, so
+          # nothing is cross-compiled.
+          - os: ubuntu-22.04-arm
             targets: ""
             args: ""
           - os: windows-latest

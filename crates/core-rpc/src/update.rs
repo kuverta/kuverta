@@ -24,8 +24,9 @@ pub struct UpdateInfo {
     pub newer: bool,
     /// The release page.
     pub url: String,
-    /// The installer for this system, when the release has one: the disk
-    /// image on macOS, the setup program on Windows, the AppImage on Linux.
+    /// The installer for this system and processor, when the release has
+    /// one: the disk image on macOS, the setup program on Windows, the
+    /// AppImage on Linux.
     pub download_url: Option<String>,
     pub notes: String,
 }
@@ -116,11 +117,38 @@ fn installers(os: &str) -> &'static [&'static str] {
     }
 }
 
-fn read(current: &str, release: Release) -> Option<UpdateInfo> {
-    read_for(std::env::consts::OS, current, release)
+/// What installers for a processor have in their names, for each value of
+/// `std::env::consts::ARCH`. The bundler names one architecture differently
+/// per kind of package: `amd64` in a .deb, `x86_64` in an .rpm, `x64` on
+/// Windows.
+const ARCH_NAMES: &[(&str, &[&str])] = &[
+    ("x86_64", &["amd64", "x86_64", "x64"]),
+    ("aarch64", &["arm64", "aarch64"]),
+];
+
+/// Whether an installer called `name` runs on `arch`: it names that
+/// processor, or it names none — the universal macOS image.
+fn runs_on(name: &str, arch: &str) -> bool {
+    let names = |arch: &str| {
+        ARCH_NAMES
+            .iter()
+            .find(|(known, _)| *known == arch)
+            .map_or(&[][..], |(_, names)| *names)
+    };
+    let mentions = |names: &[&str]| names.iter().any(|n| name.contains(n));
+    mentions(names(arch)) || !ARCH_NAMES.iter().any(|(_, names)| mentions(names))
 }
 
-fn read_for(os: &str, current: &str, release: Release) -> Option<UpdateInfo> {
+fn read(current: &str, release: Release) -> Option<UpdateInfo> {
+    read_for(
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        current,
+        release,
+    )
+}
+
+fn read_for(os: &str, arch: &str, current: &str, release: Release) -> Option<UpdateInfo> {
     if release.draft || release.prerelease {
         return None;
     }
@@ -129,7 +157,7 @@ fn read_for(os: &str, current: &str, release: Release) -> Option<UpdateInfo> {
         release
             .assets
             .iter()
-            .find(|asset| asset.name.ends_with(kind))
+            .find(|asset| asset.name.ends_with(kind) && runs_on(&asset.name, arch))
             .map(|asset| asset.browser_download_url.clone())
     });
     Some(UpdateInfo {
@@ -216,7 +244,11 @@ mod tests {
                 { "name": "kuverta_0.2.0_universal.app.tar.gz", "browser_download_url": "https://example/app.tar.gz" },
                 { "name": "kuverta_0.2.0_universal.dmg", "browser_download_url": "https://example/kuverta.dmg" },
                 { "name": "kuverta_0.2.0_amd64.deb", "browser_download_url": "https://example/kuverta.deb" },
+                { "name": "kuverta_0.2.0_arm64.deb", "browser_download_url": "https://example/kuverta-arm.deb" },
+                { "name": "kuverta_0.2.0_aarch64.AppImage", "browser_download_url": "https://example/kuverta-arm.AppImage" },
+                { "name": "kuverta-0.2.0-1.aarch64.rpm", "browser_download_url": "https://example/kuverta-arm.rpm" },
                 { "name": "kuverta_0.2.0_amd64.AppImage", "browser_download_url": "https://example/kuverta.AppImage" },
+                { "name": "kuverta-0.2.0-1.x86_64.rpm", "browser_download_url": "https://example/kuverta.rpm" },
                 { "name": "kuverta_0.2.0_x64_en-US.msi", "browser_download_url": "https://example/kuverta.msi" },
                 { "name": "kuverta_0.2.0_x64-setup.exe", "browser_download_url": "https://example/kuverta-setup.exe" }
             ]
@@ -226,29 +258,50 @@ mod tests {
 
     #[test]
     fn a_release_says_where_its_disk_image_is() {
-        let info = read_for("macos", "0.1.0", release("v0.2.0")).unwrap();
+        let info = read_for("macos", "aarch64", "0.1.0", release("v0.2.0")).unwrap();
         assert!(info.newer);
         assert_eq!(info.latest, "0.2.0");
         assert_eq!(
             info.download_url.as_deref(),
             Some("https://example/kuverta.dmg")
         );
-        let windows = read_for("windows", "0.1.0", release("v0.2.0")).unwrap();
+        let windows = read_for("windows", "x86_64", "0.1.0", release("v0.2.0")).unwrap();
         assert_eq!(
             windows.download_url.as_deref(),
             Some("https://example/kuverta-setup.exe")
         );
-        let linux = read_for("linux", "0.1.0", release("v0.2.0")).unwrap();
+        let linux = read_for("linux", "x86_64", "0.1.0", release("v0.2.0")).unwrap();
         assert_eq!(
             linux.download_url.as_deref(),
             Some("https://example/kuverta.AppImage")
         );
+        let arm = read_for("linux", "aarch64", "0.1.0", release("v0.2.0")).unwrap();
+        assert_eq!(
+            arm.download_url.as_deref(),
+            Some("https://example/kuverta-arm.AppImage"),
+            "not the x86-64 one listed after it"
+        );
+        let intel_mac = read_for("macos", "x86_64", "0.1.0", release("v0.2.0")).unwrap();
+        assert_eq!(
+            intel_mac.download_url.as_deref(),
+            Some("https://example/kuverta.dmg"),
+            "the universal image runs on both"
+        );
+
+        // An ARM machine is not sent the x86-64 package when the release
+        // has no ARM one.
+        let mut x86_only = release("v0.2.0");
+        x86_only
+            .assets
+            .retain(|asset| !runs_on(&asset.name, "aarch64") || asset.name.ends_with(".dmg"));
+        let arm = read_for("linux", "aarch64", "0.1.0", x86_only).unwrap();
+        assert_eq!(arm.download_url, None);
 
         // A release without this system's installer still says it exists,
         // with the release page to go to.
         let mut mac_only = release("v0.2.0");
         mac_only.assets.retain(|asset| asset.name.ends_with(".dmg"));
-        let linux = read_for("linux", "0.1.0", mac_only).unwrap();
+        let linux = read_for("linux", "x86_64", "0.1.0", mac_only).unwrap();
         assert!(linux.newer);
         assert_eq!(linux.download_url, None);
         assert!(info.url.ends_with("/v0.2.0"));

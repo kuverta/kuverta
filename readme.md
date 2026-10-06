@@ -114,8 +114,10 @@ verified" (releases are not notarised yet), open **System Settings → Privacy &
 Security** and press **Open Anyway** next to kuverta — once. Or, in a terminal:
 `xattr -dr com.apple.quarantine /Applications/kuverta.app`.
 
-**Linux** (x86-64): the `.AppImage` runs on most distributions —
-`chmod +x kuverta_*.AppImage` and start it. Or install the `.deb`
+**Linux** (x86-64 and 64-bit ARM): the `.AppImage` runs on most distributions —
+`chmod +x kuverta_*.AppImage` and start it. On Debian and Ubuntu, add the
+[apt repository](https://kuverta.github.io/kuverta/install/#linux) and
+`sudo apt install kuverta`; or install a downloaded `.deb`
 (`sudo apt install ./kuverta_*.deb`) or the `.rpm`. The keychain is the Secret
 Service, so GNOME Keyring or KWallet has to be running.
 
