@@ -11,7 +11,7 @@ lists what is still missing.
 | System | Installers |
 | --- | --- |
 | macOS 11 or later, Apple Silicon and Intel | `.dmg` (and the `.app` as `.tar.gz`) |
-| Linux, x86-64 | `.AppImage`, `.deb`, `.rpm` |
+| Linux, x86-64 and 64-bit ARM | `.AppImage`, `.deb`, `.rpm` |
 | Windows 10 or later, x86-64 | `-setup.exe`, `.msi` |
 
 ## macOS
@@ -53,6 +53,18 @@ Pick one:
 
 === "Debian, Ubuntu"
 
+    Add kuverta's apt repository once, and `apt` keeps kuverta up to date
+    with the rest of the system:
+
+    ```sh
+    sudo curl -fsSLo /usr/share/keyrings/kuverta.gpg https://kuverta.github.io/kuverta/apt/kuverta.gpg
+    sudo curl -fsSLo /etc/apt/sources.list.d/kuverta.sources https://kuverta.github.io/kuverta/apt/kuverta.sources
+    sudo apt update
+    sudo apt install kuverta
+    ```
+
+    Or install a downloaded package without the repository:
+
     ```sh
     sudo apt install ./kuverta_*.deb
     ```
@@ -68,8 +80,13 @@ which is what GNOME Keyring and KWallet provide. On GNOME and KDE desktops it
 already runs; on a minimal window manager, start `gnome-keyring-daemon` (or
 another Secret Service provider) first, or kuverta cannot store a password.
 
-The Linux packages are not signed. Only x86-64 is built; there is no ARM build
-yet.
+The packages themselves are not signed; the apt repository is, so `apt`
+checks every package it downloads against it.
+
+Each package comes for x86-64 (`amd64`, `x86_64` in the name) and for 64-bit
+ARM (`arm64`, `aarch64`), such as a Raspberry Pi 4 or 5 with a 64-bit system;
+the apt repository picks the right one by itself. There is no build for 32-bit
+ARM (`armhf`).
 
 ## Windows
 
@@ -120,8 +137,9 @@ one, the header says **"kuverta X.Y.Z is available"** with **Download**,
 straight away.
 
 Updating is installing the new release over the old one — drag the new app
-into Applications, install the new package, or run the new setup. Your mail,
-settings and passwords stay where they are.
+into Applications, install the new package, or run the new setup. With the apt
+repository, `sudo apt update && sudo apt upgrade` does it. Your mail, settings
+and passwords stay where they are.
 
 ## Uninstalling
 
@@ -141,6 +159,12 @@ its entries in the system keychain.
     ```sh
     sudo apt remove kuverta     # .deb
     sudo dnf remove kuverta     # .rpm
+    ```
+
+    If you added the apt repository, remove it and its key too:
+
+    ```sh
+    sudo rm /etc/apt/sources.list.d/kuverta.sources /usr/share/keyrings/kuverta.gpg
     ```
 
 === "Windows"

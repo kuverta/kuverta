@@ -11,9 +11,10 @@ makes a **draft** release and builds into it:
 | --- | --- | --- |
 | macOS 11+ (Apple Silicon and Intel) | macos-14 | `.dmg`, and the `.app` as `.tar.gz` |
 | Linux (x86-64) | ubuntu-22.04 | `.AppImage`, `.deb`, `.rpm` |
+| Linux (64-bit ARM) | ubuntu-22.04-arm | `.AppImage`, `.deb`, `.rpm` |
 | Windows 10+ (x86-64) | windows-latest | `-setup.exe`, `.msi` |
 
-Nothing is public until the draft is published. The three builds are separate:
+Nothing is public until the draft is published. The four builds are separate:
 if one fails the others still upload, and building the same tag again fills the
 same draft.
 
@@ -30,6 +31,9 @@ Then, on GitHub → Releases, read the draft (about fifteen minutes the first
 time, less with a warm cache), write what changed, and **Publish**. Within
 twelve hours every running kuverta shows "kuverta 0.2.0 is available" in its
 header; Settings → *Check for updates* asks at once.
+
+Publishing also runs `.github/workflows/pages.yml`, which puts the new `.deb`
+into the [apt repository](#the-apt-repository) a few minutes later.
 
 The workflow refuses a tag that does not match the version in `Cargo.toml`: the
 app compares its own version with the latest tag, and a mismatch would offer the
@@ -57,11 +61,57 @@ To try the bundle locally first: `make bundle` (needs
       and the next release is signed and notarised. `docs/releasing.md` has the
       details.
 
+## The apt repository
+
+Debian and Ubuntu install kuverta from an apt repository at
+<https://kuverta.github.io/kuverta/apt>, published with this website. It is
+static files: `tools/apt-repo.sh` makes them from the `.deb` of the last five
+published releases and signs them, and the workflow's `apt` job runs it on
+every deployment. A deployment replaces the whole site, so the repository is
+made again each time and nothing is kept between runs. The job that runs
+MkDocs never holds the signing key.
+
+Without the key the site is still published, only without `/apt`.
+
+### Once, to set it up
+
+1. **Make a signing key** that does nothing else, on a machine you trust:
+
+    ```sh
+    export GNUPGHOME=$(mktemp -d)
+    gpg --batch --passphrase '' --quick-gen-key 'kuverta apt repository' ed25519 sign never
+    gpg --armor --export-secret-keys > kuverta-apt-private.asc
+    gpg --armor --export > kuverta-apt-public.asc
+    ```
+
+2. **Add the private key as a secret**: Settings → Secrets and variables →
+   Actions → *New repository secret*, named `APT_SIGNING_KEY`, with the whole
+   of `kuverta-apt-private.asc`. A key with a passphrase also needs
+   `APT_SIGNING_PASSPHRASE`.
+3. **Let releases deploy the site**: Settings → Environments → `github-pages`
+   → *Deployment branches and tags* → add a **tag** rule `v*`. The
+   environment only accepts `main` at first, and a release runs the workflow
+   for its tag.
+4. **Keep `kuverta-apt-private.asc` somewhere safe and offline**, then delete
+   the copy and `$GNUPGHOME`. Everyone who added the repository trusts this
+   key; a new one means each of them fetching `kuverta.gpg` again.
+5. **Run the workflow once** (Actions → Website → *Run workflow*) so the
+   repository exists before the next release.
+
+To check it from any Debian or Ubuntu machine, follow the steps on the
+[install page](../install.md#linux): `apt policy kuverta` should list the
+latest release.
+
 ## What each system still lacks
 
 - **Windows and Linux are unsigned.** SmartScreen warns (*More info → Run
-  anyway*); signing needs a code-signing certificate.
-- **Linux on ARM** is not built.
+  anyway*); signing needs a code-signing certificate. The Linux packages are
+  unsigned too, but the apt repository is signed, and apt checks each package
+  against its checksum there.
+- **32-bit ARM Linux** (`armhf`) is not built: GitHub has no runner for it,
+  and cross-compiling WebKitGTK is its own project. If it ever is, adding its
+  `.deb` to the release is enough for apt: `tools/apt-repo.sh` makes an index
+  for every architecture it is given.
 
 ## What a release does not include yet
 
