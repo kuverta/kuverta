@@ -17,9 +17,65 @@
 // Excel and web pages come back as their text. See core-rpc's preview.rs.
 // Opening a file in another app then leaves that protection, so it takes a
 // second, deliberate click.
+//
+// The same viewer shows the documents the assistant makes — a letter it
+// wrote, a PDF it signed — which have the same four commands under other
+// names (see `viewerCall`), and are drawn in safe preview too: a signed copy
+// of a stranger's PDF is mostly the stranger's PDF.
 
 const attachmentSheet = el("attachment-sheet");
 const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0, openArmed: false };
+
+/// The command that fetches, draws, saves or opens what the viewer shows:
+/// an attachment of a message, or — when `attachment.document` is set — a
+/// document the assistant made, which has the same four.
+function viewerCall(what, extra = {}) {
+  const { account, messageId, attachment } = viewer;
+  if (attachment.document != null) {
+    const names = { attachment: "document", attachment_preview: "document_preview", save_attachment: "save_document", open_attachment: "open_document" };
+    return invoke(names[what], { id: attachment.document, ...extra });
+  }
+  return invoke(what, { account, id: messageId, index: attachment.index, ...extra });
+}
+
+/// A document the assistant made, as the viewer takes it.
+function documentAsAttachment(doc) {
+  return {
+    index: 0,
+    name: doc.name,
+    content_type: doc.content_type,
+    size: doc.size,
+    inline: false,
+    preview: "pdf",
+    risky: false,
+    document: doc.id,
+  };
+}
+
+/// Opens the viewer on a document the assistant made.
+function openDocument(doc) {
+  return openAttachment(null, null, documentAsAttachment(doc));
+}
+
+/// A chip for a document, like an attachment's, that opens it in the viewer.
+function documentChip(doc) {
+  const chip = document.createElement("button");
+  chip.type = "button";
+  chip.className = "attachment-chip";
+  chip.title = doc.signed ? t("{name} — signed", { name: doc.name }) : doc.name;
+  const icon = document.createElement("span");
+  icon.className = "icon";
+  icon.textContent = doc.signed ? "✍️" : "📄";
+  const name = document.createElement("span");
+  name.className = "name";
+  name.textContent = doc.name;
+  const size = document.createElement("span");
+  size.className = "size";
+  size.textContent = sizeText(doc.size);
+  chip.append(icon, name, size);
+  chip.onclick = () => openDocument(doc);
+  return chip;
+}
 
 /// Pages safe preview asks for at a time: a first look fast, more on request.
 const SAFE_PAGES_AT_ONCE = 2;
@@ -123,14 +179,10 @@ function clearViewer() {
 
 /// Shows what the worker drew or read, from `first` on.
 async function showSafePreview(generation, first) {
-  const { account, messageId, attachment } = viewer;
   const status = el("attachment-status");
   const more = el("attachment-more");
   more.disabled = true;
-  const shown = await invoke("attachment_preview", {
-    account,
-    id: messageId,
-    index: attachment.index,
+  const shown = await viewerCall("attachment_preview", {
     first,
     count: first === 0 ? SAFE_PAGES_AT_ONCE : 4,
   });
@@ -205,9 +257,7 @@ async function openAttachment(account, messageId, attachment) {
   if (attachment.preview === "none") return;
 
   try {
-    const bytes = new Uint8Array(
-      await invoke("attachment", { account, id: messageId, index: attachment.index }),
-    );
+    const bytes = new Uint8Array(await viewerCall("attachment"));
     if (generation !== viewer.generation || attachmentSheet.hidden) return;
     if (attachment.preview === "text") {
       const text = el("attachment-text");
@@ -232,9 +282,8 @@ attachmentSheet.addEventListener("close", () => {
 el("attachment-close").onclick = () => closeDialog(attachmentSheet);
 
 el("attachment-save").onclick = async () => {
-  const { account, messageId, attachment } = viewer;
   try {
-    const path = await invoke("save_attachment", { account, id: messageId, index: attachment.index });
+    const path = await viewerCall("save_attachment");
     say(t("saved to {path}", { path }));
   } catch (err) {
     say(t("could not save it: {error}", { error: err }), true);
@@ -242,7 +291,6 @@ el("attachment-save").onclick = async () => {
 };
 
 el("attachment-open").onclick = async () => {
-  const { account, messageId, attachment } = viewer;
   // In safe preview, another app is outside it: the first click says so, the
   // second opens.
   if (safePreview() && !viewer.openArmed) {
@@ -256,7 +304,7 @@ el("attachment-open").onclick = async () => {
     return;
   }
   try {
-    await invoke("open_attachment", { account, id: messageId, index: attachment.index });
+    await viewerCall("open_attachment");
   } catch (err) {
     say(t("could not open it: {error}", { error: err }), true);
   }

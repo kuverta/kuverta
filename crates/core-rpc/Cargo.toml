@@ -53,6 +53,10 @@ roxmltree = "0.21.1"
 # text in a PDF, and the XML inside Word, LibreOffice and Excel files. Deflate
 # only — every office format uses it, and nothing else pulls in a C library.
 pdf-extract = "0.12.1"
+# Writing PDFs the assistant composes, and putting the person's signature on
+# a page of one: the same crate pdf-extract already reads them with, without
+# its default date and threading dependencies.
+lopdf = { version = "0.42.0", default-features = false }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Safe preview: attachments drawn by decoders written in Rust, in a worker
 # process locked down before it reads a byte of them — never by the system's

@@ -80,7 +80,12 @@ in its header.
   reads and acts on mail (every change undoable, never sends), finds the one
   message you mean and hands it over with its attachments, and standing
   tasks — rules plus an action, or a model's instruction — that run after each
-  sync, asking first where told to and always for replies
+  sync, asking first where told to and always for replies; every chat is kept
+  and can be opened again, and a failed answer has a Retry
+- **PDFs, written and signed** — the assistant writes a letter or a
+  confirmation as a PDF, and signs a PDF — its own, or a contract that came as
+  an attachment — with the picture of your signature from the settings, only
+  when asked; the signed copy is a card to open, save or attach to a draft
 - **Profiles** — accounts and postal addresses grouped (private, one company,
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in

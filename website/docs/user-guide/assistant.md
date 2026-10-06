@@ -1,5 +1,5 @@
 ---
-description: The assistant answers questions about your mail and acts on it — search, move, archive, file, draft replies — and sets up tasks that keep doing it as mail arrives.
+description: The assistant answers questions about your mail and acts on it — search, move, archive, file, draft replies, write and sign PDFs — and sets up tasks that keep doing it as mail arrives.
 ---
 
 # Assistant and tasks
@@ -35,7 +35,21 @@ it happens:
   a task (below) and shows its rules in words and how many messages they match
   now, so a rule that catches too much or too little shows before it acts.
 
+- **Documents** — a PDF it wrote or signed (below) shows as a card: **Show**,
+  **Save to Downloads**, **Attach to a new message**, **Delete it**.
+
 Before moving or trashing more than 30 messages it says how many and asks.
+
+When an answer fails — the model's service is down, or a hosted one has run
+out of credit and says so — the error shows in the conversation with
+**Retry**, which asks the same question again once you have put it right.
+
+### Earlier chats
+
+Every conversation is kept as it goes, on the account it was about. **Earlier
+chats** in the panel's header lists them, newest first, each named after its
+first question: open one to read it again, with its cards, and go on from
+where it stopped; **×** deletes it. **New chat** starts afresh.
 
 ### Working on a message you have open
 
@@ -77,6 +91,34 @@ to do, but it does not look inside attachments itself.
 
 ![The assistant finding an eSIM sent months ago](../assets/screens/assistant-found-light.webp#only-light)
 ![The assistant finding an eSIM sent months ago](../assets/screens/assistant-found-dark.webp#only-dark)
+
+## Writing and signing PDFs
+
+The assistant writes PDF documents: *"Write a letter cancelling my gym
+membership as a PDF"*, *"Make a confirmation of the appointment on Tuesday I
+can send them"*, *"Put the invoice numbers from this month in a PDF"*. It sets
+the text in a plain typeface on A4 — a title, headings, lists, and an address
+block kept line by line — and shows the document as a card to open in the
+viewer, save, or attach to a new message. *"Send it to the gym"* makes it draft
+the message with the document attached; as with any draft, you read it and
+send it, or it goes nowhere.
+
+It can also **sign** a PDF: one it wrote, or one that came as an attachment —
+a contract to sign and return. *"Sign the lease in the mail from the landlord
+and reply with it"* signs a copy (the original is never changed), shows it as a
+card, and drafts the reply with the signed copy attached. The signature goes on
+the last page at the bottom left unless you say otherwise — *"on page 2, bottom
+right, a bit higher"* — with the place and the date beneath it; if it landed in
+the wrong spot, say so and it signs the original again elsewhere.
+
+For that it needs your signature: a picture of it, under
+[Settings → General → Signature](settings.md#signature). Without one it writes
+PDFs but says it cannot sign. It is a picture, as on a page you printed, signed
+and scanned, not a certificate, and the assistant places it only when you ask
+it to — never on its own, and never sends what it signed.
+
+Ask *"which documents have you made?"* for the list; the assistant can read,
+rename and delete them. They are kept per account, with your mail.
 
 ## Tasks
 

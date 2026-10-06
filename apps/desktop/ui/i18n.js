@@ -291,8 +291,6 @@ const GERMAN = {
   "(no subject)": "(kein Betreff)",
   "(untitled)": "(ohne Titel)",
   "(no answer)": "(keine Antwort)",
-  "one page": "eine Seite",
-  "{count} pages": "{count} Seiten",
   "Paperless document {id}": "Paperless-Dokument {id}",
   "(no text yet — Paperless may still be reading this scan)":
     "(noch kein Text — Paperless liest diesen Scan vielleicht noch)",
@@ -432,6 +430,22 @@ const GERMAN = {
     "Verschiebe Rechnungen ab jetzt in einen Ordner namens Rechnungen.",
   "Draft replies to the support requests from this week — I'll check them.":
     "Entwirf Antworten auf die Support-Anfragen dieser Woche — ich sehe sie durch.",
+  "Write a letter cancelling my gym membership, signed, as a PDF.":
+    "Schreibe einen Kündigungsbrief für mein Fitnessstudio als PDF, unterschrieben.",
+  Retry: "Noch einmal",
+  "Earlier chats": "Frühere Gespräche",
+  "Open an earlier conversation": "Ein früheres Gespräch öffnen",
+  "Nothing yet. Every conversation is kept as it goes, and shows here.":
+    "Noch nichts. Jedes Gespräch wird laufend aufbewahrt und erscheint hier.",
+  "Delete this chat": "Dieses Gespräch löschen",
+  "Delete the chat “{title}”": "Das Gespräch „{title}“ löschen",
+  "one page": "eine Seite",
+  "{count} pages": "{count} Seiten",
+  signed: "unterschrieben",
+  "{name} — signed": "{name} — unterschrieben",
+  Show: "Anzeigen",
+  "Attach to a new message": "An eine neue Nachricht anhängen",
+  "Delete {name}?": "{name} löschen?",
   "{model}, on this computer. A small model may miss things; a larger one (Settings → Models → Assistant) does better.":
     "{model}, auf diesem Rechner. Ein kleines Modell übersieht schon einmal etwas; ein größeres (Einstellungen → Modelle → Assistent) macht es besser.",
   "{model}, hosted: what the assistant reads is sent to that service.":
@@ -808,6 +822,24 @@ const GERMAN = {
   "{count} bytes": "{count} Bytes",
   "{count} KB": "{count} KB",
   "{count} MB": "{count} MB",
+
+  // -- the signature --------------------------------------------------------
+  Signature: "Unterschrift",
+  "A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper, photograph or scan it, crop to the signature, and save it as a PNG or JPEG. The white of the paper is left out when it is placed; a PNG with a transparent background is placed as it is.":
+    "Ein Bild Ihrer handschriftlichen Unterschrift, das der Assistent auf ein PDF setzt, wenn Sie ihn darum bitten: einen Vertrag, der per E-Mail zum Unterschreiben kam, oder einen Brief, den er für Sie geschrieben hat. Unterschreiben Sie auf weißem Papier, fotografieren oder scannen Sie es, schneiden Sie auf die Unterschrift zu und speichern Sie sie als PNG oder JPEG. Das Weiß des Papiers wird beim Einsetzen weggelassen; ein PNG mit durchsichtigem Hintergrund wird so eingesetzt, wie es ist.",
+  "It is a picture, as on a page you printed, signed and scanned, not a certificate. The assistant signs only when you ask it to, shows you the signed copy, and never sends it: that stays yours to do.":
+    "Es ist ein Bild, wie auf einer Seite, die Sie gedruckt, unterschrieben und gescannt haben — kein Zertifikat. Der Assistent unterschreibt nur, wenn Sie ihn darum bitten, zeigt Ihnen die unterschriebene Kopie und sendet sie nie: Das bleibt Ihre Sache.",
+  "Choose a picture…": "Bild wählen…",
+  Place: "Ort",
+  "Written in front of the date beneath the signature, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.":
+    "Steht vor dem Datum unter der Unterschrift, wie ein Brief unterschrieben wird: der Ort, ein Komma, das heutige Datum. Leer gelassen, steht das Datum allein.",
+  "{width} × {height} pixels. Ask the assistant to sign a PDF, and it uses this.":
+    "{width} × {height} Pixel. Bitten Sie den Assistenten, ein PDF zu unterschreiben, nimmt er diese.",
+  "No signature yet. The assistant can write PDFs, but not sign them.":
+    "Noch keine Unterschrift. Der Assistent kann PDFs schreiben, aber nicht unterschreiben.",
+  "signature kept": "Unterschrift gespeichert",
+  "Remove the signature? The assistant can then no longer sign anything.":
+    "Unterschrift entfernen? Der Assistent kann dann nichts mehr unterschreiben.",
 
   // -- encryption -----------------------------------------------------------
   "Encryption settings": "Verschlüsselungseinstellungen",

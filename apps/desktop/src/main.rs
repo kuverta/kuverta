@@ -1859,6 +1859,155 @@ fn delete_task(app: State<'_, App>, id: i64) -> Result<(), String> {
     app.core.lock().unwrap().delete_task(id).map_err(fail)
 }
 
+// -- documents and the signature -----------------------------------------------
+
+#[tauri::command]
+fn documents(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::DocumentView>, String> {
+    app.core.lock().unwrap().documents(account).map_err(fail)
+}
+
+#[tauri::command]
+fn document_view(app: State<'_, App>, id: i64) -> Result<core_rpc::DocumentView, String> {
+    app.core.lock().unwrap().document_view(id).map_err(fail)
+}
+
+/// A document's bytes, for the window to show or attach: a binary response.
+#[tauri::command]
+fn document(app: State<'_, App>, id: i64) -> Result<tauri::ipc::Response, String> {
+    let file = app.core.lock().unwrap().document(id).map_err(fail)?;
+    Ok(tauri::ipc::Response::new(file.bytes))
+}
+
+/// Safe preview of a document, like an attachment's: a PDF kuverta wrote is
+/// still drawn in the locked-down worker, because a signed copy of a
+/// stranger's PDF is mostly the stranger's PDF.
+#[tauri::command]
+async fn document_preview(
+    app: State<'_, App>,
+    id: i64,
+    first: usize,
+    count: usize,
+) -> Result<core_rpc::preview::SafePreview, String> {
+    let file = app.core.lock().unwrap().document(id).map_err(fail)?;
+    let worker = core_rpc::preview::worker()
+        .cloned()
+        .ok_or("safe preview is not available: its worker could not be found")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        core_rpc::preview::preview(
+            &worker,
+            &file.view.name,
+            &file.view.content_type,
+            &file.bytes,
+            first,
+            count,
+        )
+    })
+    .await
+    .map_err(|err| format!("the preview did not finish: {err}"))?
+}
+
+#[tauri::command]
+fn save_document(app: State<'_, App>, id: i64) -> Result<String, String> {
+    let file = app.core.lock().unwrap().document(id).map_err(fail)?;
+    let dir = files::downloads().ok_or("there is no Downloads folder to save to")?;
+    let path = files::save_new(&dir, &file.view.name, &file.bytes)?;
+    tracing::info!(id, "saved a document");
+    let _ = logging::reveal(&path);
+    Ok(path.display().to_string())
+}
+
+#[tauri::command]
+fn open_document(app: State<'_, App>, id: i64) -> Result<(), String> {
+    let file = app.core.lock().unwrap().document(id).map_err(fail)?;
+    let path = files::copy_to_open(&file.view.name, &file.bytes)?;
+    tracing::info!(id, "opened a document");
+    files::open(&path)
+}
+
+#[tauri::command]
+fn rename_document(
+    app: State<'_, App>,
+    id: i64,
+    name: String,
+) -> Result<core_rpc::DocumentView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .rename_document(id, &name)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_document(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_document(id).map_err(fail)
+}
+
+#[tauri::command]
+fn signature(app: State<'_, App>) -> Result<core_rpc::SignatureSettings, String> {
+    app.core.lock().unwrap().signature().map_err(fail)
+}
+
+/// Keeps the picture the person picked: its bytes as base64, which is how
+/// the window reads a file.
+#[tauri::command]
+fn set_signature(
+    app: State<'_, App>,
+    image: String,
+    content_type: String,
+) -> Result<core_rpc::SignatureSettings, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_signature_base64(&image, &content_type)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_signature_place(app: State<'_, App>, place: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_signature_place(Some(&place))
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn clear_signature(app: State<'_, App>) -> Result<(), String> {
+    app.core.lock().unwrap().clear_signature().map_err(fail)
+}
+
+// -- the assistant's chats, kept ----------------------------------------------
+
+#[tauri::command]
+fn chats(app: State<'_, App>, account: i64) -> Result<Vec<core_rpc::ChatView>, String> {
+    app.core.lock().unwrap().chats(account).map_err(fail)
+}
+
+#[tauri::command]
+fn chat(app: State<'_, App>, id: i64) -> Result<core_rpc::ChatFull, String> {
+    app.core.lock().unwrap().chat(id).map_err(fail)
+}
+
+#[tauri::command]
+fn save_chat(
+    app: State<'_, App>,
+    id: Option<i64>,
+    account: i64,
+    turns: Vec<core_ai::Turn>,
+    log: serde_json::Value,
+) -> Result<core_rpc::ChatView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_chat(id, account, &turns, &log)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_chat(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_chat(id).map_err(fail)
+}
+
 #[tauri::command]
 fn set_task_enabled(app: State<'_, App>, id: i64, enabled: bool) -> Result<(), String> {
     app.core
@@ -2191,6 +2340,22 @@ fn main() {
             approve_proposal,
             settle_proposal,
             cancel_changes,
+            documents,
+            document_view,
+            document,
+            document_preview,
+            save_document,
+            open_document,
+            rename_document,
+            delete_document,
+            signature,
+            set_signature,
+            set_signature_place,
+            clear_signature,
+            chats,
+            chat,
+            save_chat,
+            delete_chat,
         ])
         .run(tauri::generate_context!())
         .expect("failed to start the window");
