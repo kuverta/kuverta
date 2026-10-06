@@ -1,8 +1,10 @@
 name: Website
 
 # Builds website/ with MkDocs and publishes it to GitHub Pages at
-# https://kuverta.github.io/kuverta/. Needs Settings → Pages → Source set to
-# "GitHub Actions" once.
+# https://kuverta.github.io/kuverta/, with the apt repository made from the
+# latest releases at /apt. Needs Settings → Pages → Source set to
+# "GitHub Actions" once; see website/docs/developers/releasing.md for the apt
+# repository's signing key.
 
 on:
   push:
@@ -11,6 +13,12 @@ on:
       - "website/**"
       - "assets/brand/**"
       - ".github/workflows/pages.yml"
+      - "tools/apt-repo.sh"
+  # A published release goes into the apt repository. Every deployment
+  # replaces the whole site, so the repository is made again on every run,
+  # not only on this one.
+  release:
+    types: [published]
   workflow_dispatch:
 
 # Read-only by default. `deploy` asks for what it needs and no job else has
@@ -27,7 +35,68 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The apt repository, in a job of its own: it is the only one that holds
+  # the signing key, and the job that runs MkDocs never sees it. Without the
+  # key it builds nothing, and the site is published without /apt.
+  apt:
+    runs-on: ubuntu-latest
+    outputs:
+      built: ${{ steps.repo.outputs.built }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The workflow token is not left in .git/config for
+          # every later step, and every action they run, to read.
+          persist-credentials: false
+
+      # The .deb of the last five published releases, so apt can go back a
+      # version. Drafts and pre-releases are left out.
+      - name: Download the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/debs"
+          gh release list --repo "$REPO" --exclude-drafts --exclude-pre-releases \
+              --limit 5 --json tagName --jq '.[].tagName' |
+            while read -r tag; do
+              gh release download "$tag" --repo "$REPO" --pattern '*.deb' --dir "$RUNNER_TEMP/debs"
+            done
+          ls -l "$RUNNER_TEMP/debs"
+
+      - name: Build the repository
+        id: repo
+        env:
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+        run: |
+          if [ -z "$APT_SIGNING_KEY" ]; then
+            echo "::warning::APT_SIGNING_KEY is not set; the site is published without the apt repository"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          shopt -s nullglob
+          debs=("$RUNNER_TEMP"/debs/*.deb)
+          if [ ${#debs[@]} -eq 0 ]; then
+            echo "::warning::no published release has a .deb; the site is published without the apt repository"
+            echo "built=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # apt-ftparchive is in the runner image today; this is for the day
+          # it is not.
+          command -v apt-ftparchive >/dev/null || sudo apt-get install -y --no-install-recommends apt-utils
+          tools/apt-repo.sh "$RUNNER_TEMP/apt" "${debs[@]}"
+          echo "built=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.repo.outputs.built == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: apt
+          path: ${{ runner.temp }}/apt
+          retention-days: 1
+
   build:
+    needs: apt
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -49,6 +118,13 @@ jobs:
       # unknown anchor — into a failed build rather than a quietly broken site.
       - name: Build
         run: mkdocs build --strict -f website/mkdocs.yml -d "$RUNNER_TEMP/site"
+
+      - name: Add the apt repository
+        if: needs.apt.outputs.built == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: apt
+          path: ${{ runner.temp }}/site/apt
 
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
 

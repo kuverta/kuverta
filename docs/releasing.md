@@ -7,9 +7,10 @@ makes a **draft** release and builds into it:
 | --- | --- | --- |
 | macOS 11+ (Apple Silicon and Intel) | macos-14 | `.dmg`, and the `.app` as `.tar.gz` |
 | Linux (x86-64) | ubuntu-22.04 | `.AppImage`, `.deb`, `.rpm` |
+| Linux (64-bit ARM) | ubuntu-22.04-arm | `.AppImage`, `.deb`, `.rpm` |
 | Windows 10+ (x86-64) | windows-latest | `-setup.exe`, `.msi` |
 
-Nothing is public until the draft is published. The three builds are separate: if
+Nothing is public until the draft is published. The four builds are separate: if
 one fails, the others still upload, and building the same tag again fills the
 same draft.
 
@@ -73,8 +74,9 @@ a `.dmg` for this Mac in `target/release/bundle/`.
 
 - **Windows and Linux are unsigned.** Windows SmartScreen warns about an
   unsigned program (*More info → Run anyway*); signing needs a code-signing
-  certificate. Linux packages are not signed either.
-- **Linux on ARM** is not built.
+  certificate. Linux packages are not signed either; the apt repository that
+  pages.yml publishes is (see the website's releasing page).
+- **32-bit ARM Linux** (`armhf`) is not built.
 
 ## What a release does not include yet
 
