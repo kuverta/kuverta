@@ -245,6 +245,15 @@ test('a message asking for its contract back signed is answered with the signed 
   assert.match(await chip.innerText(), /Vertrag \(signed\)\.pdf/);
   assert.match(await page.locator('#compose-answer-status').innerText(), /Vertrag \(signed\)\.pdf attached/);
 
+  // And it can be looked at before it goes: the chip opens the viewer, and
+  // safe preview draws the page there rather than the file being opened.
+  await chip.locator('.open').click();
+  await page.waitForSelector('#attachment-sheet:not([hidden])');
+  assert.match(await page.locator('#attachment-title').innerText(), /Vertrag \(signed\)\.pdf/);
+  await page.locator('#attachment-pages img').first().waitFor();
+  await page.locator('#attachment-close').click();
+  await page.waitForFunction(() => el('attachment-sheet').hidden);
+
   // And it is what is sent: bytes and all, as a file of the draft.
   await page.locator('#compose-send').click();
   const sent = (await outgoing(page)).sent.at(-1);

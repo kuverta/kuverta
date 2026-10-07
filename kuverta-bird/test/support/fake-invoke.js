@@ -437,6 +437,29 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       image: btoa(String.fromCharCode(...PIXEL_PNG)),
     }),
 
+    // A file about to be sent, drawn by safe preview: the window has its
+    // bytes already and asks only for the picture.
+    outgoing_preview: async ({ file, first, count }) => {
+      previewed.push({ name: file.name, first, count });
+      const pixel = btoa(String.fromCharCode(...PIXEL_PNG));
+      if (file.content_type === 'application/pdf') {
+        const total = 2;
+        const pages = [];
+        for (let at = first; at < Math.min(first + count, total); at += 1) pages.push(pixel);
+        return { kind: 'pages', first, total, pages };
+      }
+      if (file.content_type.startsWith('image/')) return { kind: 'pages', first: 0, total: 1, pages: [pixel] };
+      return { kind: 'unavailable', why: 'kuverta cannot draw this kind of file' };
+    },
+    save_outgoing: async ({ file }) => {
+      saved.push(file.name);
+      return `/Users/you/Downloads/${file.name}`;
+    },
+    open_outgoing: async ({ file }) => {
+      opened.push(file.name);
+      return null;
+    },
+
     // How large each page of a document is, in millimetres: A4, portrait.
     document_pages: async () => [[210, 297]],
 

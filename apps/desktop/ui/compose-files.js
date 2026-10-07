@@ -111,6 +111,13 @@ function fileTray(strip) {
         const chip = document.createElement("span");
         chip.className = "attachment-chip outgoing";
         chip.title = file.name;
+        // The chip opens the file in the viewer, as a received attachment's
+        // does: what is about to go out is the thing you most want to look
+        // at first — above all a PDF the assistant signed for you.
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "open";
+        open.title = t("Show {name}", { name: file.name });
         const icon = document.createElement("span");
         icon.className = "icon";
         icon.textContent = attachmentIcon({
@@ -127,6 +134,8 @@ function fileTray(strip) {
         const size = document.createElement("span");
         size.className = "size";
         size.textContent = sizeText(file.size);
+        open.append(icon, name, size);
+        open.onclick = () => openOutgoing(file);
         const remove = document.createElement("button");
         remove.type = "button";
         remove.className = "remove";
@@ -137,7 +146,7 @@ function fileTray(strip) {
           tray.files.splice(at, 1);
           tray.render();
         };
-        chip.append(icon, name, size, remove);
+        chip.append(open, remove);
         strip.append(chip);
       });
     },

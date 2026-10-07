@@ -54,9 +54,15 @@ kuverta does not keep drafts of what you discard.
 An account needs an outgoing server to send; it is set under **Outgoing mail**
 in the account's settings.
 
+### Files going with it
+
+**📎 Attach**, or drop files anywhere on compose. Each is a chip under the
+body: click it to look at it in the viewer — drawn by safe preview, like a
+file that arrived — and press its **×** to take it back out. A message can
+carry 25 MB of files, which is what most servers accept.
+
 !!! note "Not yet"
-    Attachments cannot be added in compose yet, and there is no rich text: mail
-    is written as plain text.
+    There is no rich text: mail is written as plain text.
 
 ## Letting the assistant write it
 
@@ -71,9 +77,10 @@ brings your notes back.
 A message that asks for something back signed — a contract, a form — is
 answered with it: the assistant puts [your signature](settings.md#signature)
 on the attachment, on the line the document rules for it, and the signed copy
-joins the files going out, as a chip you can take back out with its ×. The
-original is never changed, and nothing is sent: you read the message, look at
-the file, and send it yourself.
+joins the files going out, as a chip. Click it to see where the signature
+landed before you send it; press its **×** to take it back out. The original
+is never changed, and nothing is sent: you read the message, look at the
+file, and send it yourself.
 
 ## Send later
 

@@ -1102,6 +1102,7 @@ const GERMAN = {
   "Attach files": "Dateien anhängen",
   "Attach files — or drop them here": "Dateien anhängen — oder hierher ziehen",
   "Drop to attach": "Zum Anhängen loslassen",
+  "Show {name}": "{name} anzeigen",
   "Take {name} out": "{name} herausnehmen",
   "could not read {name}: {error}": "{name} ließ sich nicht lesen: {error}",
   "{name} is too large: a message can carry {count} MB of files, and most servers refuse more":
