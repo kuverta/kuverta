@@ -144,7 +144,7 @@ impl Session {
         Ok(folder.name)
     }
 
-    async fn connect(
+    pub(crate) async fn connect(
         &self,
         account: &core_store::model::Account,
     ) -> Result<core_proto::ImapClient> {

@@ -9,13 +9,14 @@
 
 use std::collections::HashSet;
 use std::future::Future;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
 
 use crate::ollama::{AiError, ChatReply, Ollama, TRANSCRIBE};
+use crate::usage::{self, Meter};
 
 /// A model a provider offers.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -57,6 +58,8 @@ pub struct OpenAiCompatible {
     /// Models that think before answering unless told not to, and spent a
     /// short answer's whole budget doing it. They are told from then on.
     unthinking: Mutex<HashSet<String>>,
+    /// Told what each request cost, when someone is counting.
+    pub(crate) meter: Option<Arc<dyn Meter>>,
 }
 
 impl OpenAiCompatible {
@@ -77,6 +80,7 @@ impl OpenAiCompatible {
             key: key.filter(|key| !key.trim().is_empty()),
             http,
             unthinking: Mutex::new(HashSet::new()),
+            meter: None,
         })
     }
 
@@ -200,6 +204,13 @@ impl OpenAiCompatible {
                     .json(body),
             )
             .await?;
+        usage::note(
+            &self.meter,
+            body.get("model")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            usage::from_openai(&reply),
+        );
         let content = reply
             .pointer("/choices/0/message/content")
             .and_then(Value::as_str)
@@ -278,6 +289,15 @@ impl Provider {
             "openai" => Ok(Self::OpenAi(OpenAiCompatible::new(base_url, key)?)),
             other => Err(AiError::Kind(other.to_string())),
         }
+    }
+
+    /// The same provider, telling `meter` what each request costs.
+    pub fn metered(mut self, meter: Arc<dyn Meter>) -> Self {
+        match &mut self {
+            Self::Ollama(ollama) => ollama.meter = Some(meter),
+            Self::OpenAi(service) => service.meter = Some(meter),
+        }
+        self
     }
 
     pub fn base_url(&self) -> &str {

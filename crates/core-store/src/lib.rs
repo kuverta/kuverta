@@ -15,6 +15,7 @@ pub mod chats;
 pub mod dedup;
 pub mod documents;
 pub mod hygiene;
+pub mod memory;
 pub mod model;
 pub mod outbox;
 pub mod people;
@@ -22,6 +23,7 @@ pub mod profiles;
 mod schema;
 pub mod smart;
 pub mod tasks;
+pub mod usage;
 
 pub use blobs::Blobs;
 pub use dedup::{dedup_key, normalize_message_id};
@@ -29,6 +31,7 @@ pub use hygiene::{
     sender_key, BackfilledHeaders, SimilarityRow, UnsubscribeSender, Unsubscription,
     CLEANUP_CATEGORIES,
 };
+pub use memory::{MemorySync, StoredMemory};
 pub use model::*;
 pub use outbox::OutboxEntry;
 pub use people::{
@@ -38,6 +41,7 @@ pub use people::{
 pub use profiles::Profile;
 pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};
 pub use tasks::{NewProposal, Proposal, StoredTask};
+pub use usage::UsageRow;
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
@@ -71,6 +75,14 @@ impl Store {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         let conn = Connection::open(path)?;
         Self::init(conn)
+    }
+
+    /// Where the database file is, or `None` for one in memory.
+    pub fn path(&self) -> Option<std::path::PathBuf> {
+        self.conn
+            .path()
+            .filter(|path| !path.is_empty())
+            .map(std::path::PathBuf::from)
     }
 
     /// In-memory store, for tests.

@@ -825,16 +825,18 @@ const GERMAN = {
 
   // -- the signature --------------------------------------------------------
   Signature: "Unterschrift",
-  "A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper, photograph or scan it, crop to the signature, and save it as a PNG or JPEG. The white of the paper is left out when it is placed; a PNG with a transparent background is placed as it is.":
-    "Ein Bild Ihrer handschriftlichen Unterschrift, das der Assistent auf ein PDF setzt, wenn Sie ihn darum bitten: einen Vertrag, der per E-Mail zum Unterschreiben kam, oder einen Brief, den er für Sie geschrieben hat. Unterschreiben Sie auf weißem Papier, fotografieren oder scannen Sie es, schneiden Sie auf die Unterschrift zu und speichern Sie sie als PNG oder JPEG. Das Weiß des Papiers wird beim Einsetzen weggelassen; ein PNG mit durchsichtigem Hintergrund wird so eingesetzt, wie es ist.",
+  "A picture of your handwritten signature, for the assistant to put on a PDF when you ask it to: a contract that came by mail to sign and return, or a letter it wrote for you. Sign on white paper and photograph or scan it, straight on, as a PNG or JPEG. kuverta takes the paper away — its grey, its shadows, its grain — and keeps the ink, so the signature sits on the page as if written there. The preview below is what is placed.":
+    "Ein Bild Ihrer handschriftlichen Unterschrift, das der Assistent auf ein PDF setzt, wenn Sie ihn darum bitten: einen Vertrag, der per E-Mail zum Unterschreiben kam, oder einen Brief, den er für Sie geschrieben hat. Unterschreiben Sie auf weißem Papier und fotografieren oder scannen Sie es gerade von oben, als PNG oder JPEG. kuverta nimmt das Papier weg — sein Grau, seine Schatten, seine Körnung — und behält die Tinte, sodass die Unterschrift auf der Seite sitzt, als wäre sie dort geschrieben. Die Vorschau unten ist, was eingesetzt wird.",
+  "Written in front of the date beneath the signature wherever it is placed, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.":
+    "Steht vor dem Datum unter der Unterschrift, wo immer sie eingesetzt wird, wie ein Brief unterschrieben wird: der Ort, ein Komma, das heutige Datum. Leer gelassen, steht das Datum allein.",
+  "Show on a page": "Auf einer Seite zeigen",
+  "A signed page": "Eine unterschriebene Seite",
+  "Cut out of its paper, {width} × {height} pixels. Ask the assistant to sign a PDF, and this goes on it.":
+    "Aus dem Papier ausgeschnitten, {width} × {height} Pixel. Bitten Sie den Assistenten, ein PDF zu unterschreiben, kommt das darauf.",
   "It is a picture, as on a page you printed, signed and scanned, not a certificate. The assistant signs only when you ask it to, shows you the signed copy, and never sends it: that stays yours to do.":
     "Es ist ein Bild, wie auf einer Seite, die Sie gedruckt, unterschrieben und gescannt haben — kein Zertifikat. Der Assistent unterschreibt nur, wenn Sie ihn darum bitten, zeigt Ihnen die unterschriebene Kopie und sendet sie nie: Das bleibt Ihre Sache.",
   "Choose a picture…": "Bild wählen…",
   Place: "Ort",
-  "Written in front of the date beneath the signature, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.":
-    "Steht vor dem Datum unter der Unterschrift, wie ein Brief unterschrieben wird: der Ort, ein Komma, das heutige Datum. Leer gelassen, steht das Datum allein.",
-  "{width} × {height} pixels. Ask the assistant to sign a PDF, and it uses this.":
-    "{width} × {height} Pixel. Bitten Sie den Assistenten, ein PDF zu unterschreiben, nimmt er diese.",
   "No signature yet. The assistant can write PDFs, but not sign them.":
     "Noch keine Unterschrift. Der Assistent kann PDFs schreiben, aber nicht unterschreiben.",
   "signature kept": "Unterschrift gespeichert",
@@ -1259,6 +1261,60 @@ const GERMAN = {
   "could not start Paperless": "Paperless ließ sich nicht starten",
   "could not load messages": "Nachrichten konnten nicht geladen werden",
   "nothing to show": "nichts zu zeigen",
+
+  // -- assistant memory ----------------------------------------------------
+  "Assistant memory": "Gedächtnis des Assistenten",
+  "What the assistant remembers about each account.": "Was sich der Assistent zu jedem Konto merkt.",
+  "Short notes the assistant keeps about an account — who someone is, where a kind of mail goes, how you like things done — so it need not look them up again. They go with every question to the assistant's model, so a few short ones save more than many long ones.":
+    "Kurze Notizen, die sich der Assistent zu einem Konto merkt — wer jemand ist, wohin eine Art E-Mail gehört, wie du etwas erledigt haben möchtest —, damit er nicht erneut danach suchen muss. Sie gehen mit jeder Frage an das Modell des Assistenten; wenige kurze sparen deshalb mehr als viele lange.",
+  Notes: "Notizen",
+  Note: "Notiz",
+  "No notes yet. The assistant keeps one when you tell it something worth remembering, or add one here.":
+    "Noch keine Notizen. Der Assistent legt eine an, wenn du ihm etwas Merkenswertes sagst — oder füge hier eine hinzu.",
+  "e.g. Invoices from the electricity company go to the folder Rechnungen": "z. B. Rechnungen vom Stromanbieter kommen in den Ordner Rechnungen",
+  Add: "Hinzufügen",
+  Forget: "Vergessen",
+  Forgotten: "Vergessen",
+  Remembered: "Gemerkt",
+  "All notes": "Alle Notizen",
+  "{count} of 60": "{count} von 60",
+  "The assistant keeps notes only from what you tell it, never because a message asks it to; each one it keeps shows in the chat with a way to forget it.":
+    "Der Assistent merkt sich nur, was du ihm sagst — nie, weil eine E-Mail ihn darum bittet. Jede Notiz, die er anlegt, erscheint im Chat und lässt sich dort wieder vergessen.",
+  "On your other devices": "Auf deinen anderen Geräten",
+  "Sync the notes through this account's mail server": "Notizen über den Mailserver dieses Kontos abgleichen",
+  "Kept as one message in a folder named “Kuverta Memory” that kuverta does not show as mail, signed with this account's OpenPGP key and encrypted to it alone: the server, and anyone who reads it there, sees only that the message exists. Another device reads the notes once it has the same key. They sync with the mail.":
+    "Abgelegt als eine Nachricht im Ordner „Kuverta Memory“, den kuverta nicht als E-Mail anzeigt — signiert mit dem OpenPGP-Schlüssel dieses Kontos und nur für ihn verschlüsselt: Der Server und wer dort mitliest, sieht nur, dass es die Nachricht gibt. Ein anderes Gerät liest die Notizen, sobald es denselben Schlüssel hat. Abgeglichen wird mit den E-Mails.",
+  "Sync now": "Jetzt abgleichen",
+  "Syncing…": "Wird abgeglichen…",
+  "notes synced": "Notizen abgeglichen",
+  "notes synced — {count} changed by another device": "Notizen abgeglichen — {count} von einem anderen Gerät geändert",
+  "Encrypted to key {id}.": "Verschlüsselt für Schlüssel {id}.",
+  "Encrypted to key {id}. Last synced {when}.": "Verschlüsselt für Schlüssel {id}. Zuletzt abgeglichen {when}.",
+  "Encrypted to key {id}. Not synced yet.": "Verschlüsselt für Schlüssel {id}. Noch nicht abgeglichen.",
+  "The last sync failed: {error}": "Der letzte Abgleich ist fehlgeschlagen: {error}",
+
+  // -- token usage ---------------------------------------------------------
+  "Token usage": "Token-Verbrauch",
+  "How much the models were asked and answered.": "Wie viel die Modelle gefragt wurden und geantwortet haben.",
+  "How many tokens the models were sent and wrote back, counted on this computer for every job: the assistant, sorting mail, judging urgency, tasks and reading scans. A hosted service bills by these; a model on this computer costs time and power instead.":
+    "Wie viele Tokens die Modelle bekommen und zurückgeschrieben haben, gezählt auf diesem Computer für jede Aufgabe: Assistent, Einsortieren, Dringlichkeit, Aufgaben und Scans lesen. Ein gehosteter Dienst rechnet danach ab; ein Modell auf diesem Computer kostet stattdessen Zeit und Strom.",
+  "The last 30 days": "Die letzten 30 Tage",
+  "tokens in and out per day": "Tokens hinein und heraus pro Tag",
+  "This month by model": "Dieser Monat nach Modell",
+  "This month by job": "Dieser Monat nach Aufgabe",
+  "Nothing counted this month.": "Diesen Monat noch nichts gezählt.",
+  "Reset the statistics": "Statistik zurücksetzen",
+  "Reset the token statistics? Counting starts again from nothing.": "Token-Statistik zurücksetzen? Gezählt wird dann wieder von null an.",
+  Today: "Heute",
+  "This month": "Dieser Monat",
+  "Since counting began": "Seit Beginn der Zählung",
+  "{input} in · {output} out · {calls} requests": "{input} hinein · {output} heraus · {calls} Anfragen",
+  "{provider}, on this computer": "{provider}, auf diesem Computer",
+  "Reading scans": "Scans lesen",
+  "Trying models": "Modelle ausprobieren",
+  "Counted since {date}.": "Gezählt seit {date}.",
+  "Nothing has been counted yet: counting starts with the next question to a model.":
+    "Noch nichts gezählt: Die Zählung beginnt mit der nächsten Frage an ein Modell.",
 };
 
 const CATALOGUES = { de: GERMAN };

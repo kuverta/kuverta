@@ -9,7 +9,9 @@ pub mod parse;
 mod stream;
 pub mod sync;
 
-pub use client::{FolderState, ImapClient, ImapConfig, RawMessage, RemoteFolder};
+pub use client::{
+    is_memory_folder, FolderState, ImapClient, ImapConfig, RawMessage, RemoteFolder, MEMORY_FOLDER,
+};
 pub use mutate::{flush_operations, FlushReport};
 pub use sync::{sync_account, sync_account_reporting, SyncProgress, SyncReport};
 

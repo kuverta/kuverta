@@ -63,11 +63,14 @@ fn result(outcome: &core_rpc::assistant::ToolOutcome) -> Value {
     serde_json::from_str(&outcome.content).unwrap()
 }
 
-/// A small PNG of a signature: black on transparent.
+/// A small picture of a signature: a black stroke on grey paper, as a
+/// photograph has it.
 fn signature_png() -> Vec<u8> {
-    let mut image = image::RgbaImage::new(40, 12);
-    for x in 0..40 {
-        image.put_pixel(x, 6, image::Rgba([0, 0, 0, 255]));
+    let mut image = image::RgbaImage::from_pixel(200, 60, image::Rgba([190, 190, 190, 255]));
+    for x in 20..180 {
+        for y in 28..34 {
+            image.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+        }
     }
     let mut out = std::io::Cursor::new(Vec::new());
     image.write_to(&mut out, image::ImageFormat::Png).unwrap();
@@ -210,7 +213,11 @@ fn the_assistant_writes_a_letter_and_signs_it_once_there_is_a_signature() {
         .unwrap();
     let settings = world.core.signature().unwrap();
     assert!(settings.present);
-    assert_eq!((settings.width, settings.height), (Some(40), Some(12)));
+    // Cut out of its paper and cropped to the stroke.
+    assert!(
+        settings.width.unwrap() < 200 && settings.height.unwrap() < 60,
+        "{settings:?}"
+    );
     assert!(settings.image.is_some());
     let signed = world.core.assistant_tool(
         world.account,
@@ -220,6 +227,15 @@ fn the_assistant_writes_a_letter_and_signs_it_once_there_is_a_signature() {
         ),
     );
     assert_eq!(result(&signed)["signed"], true);
+    let signed_id = result(&signed)["document_id"].as_i64().unwrap();
+    let signed_text =
+        pdf_extract::extract_text_from_mem(&world.core.document(signed_id).unwrap().bytes).unwrap();
+    let today = chrono::Local::now().format("%d.%m.%Y").to_string();
+    assert!(signed_text.contains(&today), "{signed_text}");
+    // The settings show it cut out: a PNG with the paper transparent.
+    let settings = world.core.signature().unwrap();
+    assert_eq!(settings.content_type.as_deref(), Some("image/png"));
+    assert!(!world.core.signature_sample().unwrap().is_empty());
     let listed = world.core.documents(world.account).unwrap();
     assert_eq!(listed.len(), 2);
     assert!(listed.iter().any(|d| d.signed));

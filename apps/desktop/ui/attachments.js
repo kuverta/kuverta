@@ -35,7 +35,26 @@ function viewerCall(what, extra = {}) {
     const names = { attachment: "document", attachment_preview: "document_preview", save_attachment: "save_document", open_attachment: "open_document" };
     return invoke(names[what], { id: attachment.document, ...extra });
   }
+  if (attachment.sample) {
+    // The settings' sample page, signed with the stored signature.
+    const names = { attachment: "signature_sample", attachment_preview: "signature_sample_preview", save_attachment: "save_signature_sample", open_attachment: "open_signature_sample" };
+    return invoke(names[what], extra);
+  }
   return invoke(what, { account, id: messageId, index: attachment.index, ...extra });
+}
+
+/// Opens the viewer on a page signed with the stored signature.
+function openSignatureSample() {
+  return openAttachment(null, null, {
+    index: 0,
+    name: t("A signed page"),
+    content_type: "application/pdf",
+    size: 0,
+    inline: false,
+    preview: "pdf",
+    risky: false,
+    sample: true,
+  });
 }
 
 /// A document the assistant made, as the viewer takes it.
@@ -225,7 +244,7 @@ async function openAttachment(account, messageId, attachment) {
   el("attachment-title").textContent = attachment.name;
   el("attachment-sub").textContent = [
     attachment.content_type,
-    sizeText(attachment.size),
+    attachment.size ? sizeText(attachment.size) : "",
     attachment.risky ? t("could run something when opened: save it only if you trust the sender") : "",
   ]
     .filter(Boolean)

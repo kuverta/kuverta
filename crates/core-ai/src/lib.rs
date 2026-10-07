@@ -30,6 +30,7 @@ mod ollama;
 mod prompt;
 mod provider;
 mod transcript;
+mod usage;
 
 pub use agent::{AssistantReply, ToolCall, ToolSpec, Turn};
 pub use neighbours::{cosine, embedding_input, Hybrid, Nearest, Neighbours};
@@ -39,3 +40,4 @@ pub use ollama::{
 pub use prompt::{ModelVerdict, PromptClassifier};
 pub use provider::{Chat, ModelInfo, OpenAiCompatible, Provider};
 pub use transcript::{cut_repetition, LOOP_MARK};
+pub use usage::{Meter, Usage};

@@ -335,16 +335,19 @@ struct Setter<'a> {
     current: String,
     y: f32,
     signature: Option<&'a Pixels>,
+    /// Written beneath the signature, in small type: the place and the date.
+    caption: Option<&'a str>,
     signed: bool,
 }
 
 impl<'a> Setter<'a> {
-    fn new(signature: Option<&'a Pixels>) -> Self {
+    fn new(signature: Option<&'a Pixels>, caption: Option<&'a str>) -> Self {
         Self {
             pages: Vec::new(),
             current: String::new(),
             y: PAGE.1 - MARGIN,
             signature,
+            caption,
             signed: false,
         }
     }
@@ -391,13 +394,29 @@ impl<'a> Setter<'a> {
             return;
         };
         let (w, h) = fit(pixels, SIGNATURE_WIDTH, SIGNATURE_HEIGHT);
-        self.need(h + 6.0);
+        let caption = self.caption.map(str::trim).filter(|c| !c.is_empty());
+        let below = if caption.is_some() {
+            CAPTION_SIZE + 4.0
+        } else {
+            0.0
+        };
+        self.need(h + 6.0 + below);
         self.y -= h;
         self.current.push_str(&format!(
             "q /GS1 gs {w:.2} 0 0 {h:.2} {x:.2} {y:.2} cm /Sig Do Q\n",
             x = MARGIN,
             y = self.y
         ));
+        if let Some(caption) = caption {
+            self.y -= CAPTION_SIZE + 2.0;
+            self.current.push_str(&format!(
+                "BT /F1 {CAPTION_SIZE} Tf {x:.2} {y:.2} Td {text} Tj ET\n",
+                x = MARGIN,
+                y = self.y,
+                text = literal(caption)
+            ));
+            self.y -= 2.0;
+        }
         self.y -= 6.0;
         self.signed = true;
     }
@@ -421,19 +440,20 @@ fn fit(pixels: &Pixels, width: f32, most_height: f32) -> (f32, f32) {
 }
 
 /// Writes a document. `sign` draws the signature where the text marks it, or
-/// after the text when it does not; without `sign`, a marker leaves a gap to
-/// sign by hand.
+/// after the text when it does not, with `caption` — the place and the date
+/// — beneath it; without `sign`, a marker leaves a gap to sign by hand.
 pub fn write(
     title: &str,
     text: &str,
     signature: Option<&Pixels>,
     sign: bool,
+    caption: Option<&str>,
 ) -> Result<Written, String> {
     if sign && signature.is_none() {
         return Err("there is no signature to sign with".into());
     }
     let drawn = if sign { signature } else { None };
-    let mut setter = Setter::new(drawn);
+    let mut setter = Setter::new(drawn, caption);
     let blocks = blocks(text);
     let mut marked = false;
     for (at, block) in blocks.iter().enumerate() {
@@ -893,6 +913,7 @@ mod tests {
             "# Kündigung\n\nSehr geehrte Damen und Herren,\n\nhiermit kündige ich meinen Vertrag Nr. 4711 zum nächstmöglichen Zeitpunkt.\n\nMit freundlichen Grüßen\n\n[signature]\nErika Mustermann",
             None,
             false,
+            None,
         )
         .unwrap();
         assert_eq!(written.pages, 1);
@@ -908,7 +929,7 @@ mod tests {
             .map(|n| format!("Zeile {n}: ein Satz, der auf der Seite steht."))
             .collect::<Vec<_>>()
             .join("\n");
-        let many = write("Lang", &long, None, false).unwrap();
+        let many = write("Lang", &long, None, false, None).unwrap();
         assert!(many.pages >= 4, "{}", many.pages);
         assert_eq!(page_count(&many.pdf), Some(many.pages));
         assert!(text_of(&many.pdf).contains("Zeile 200"));
@@ -916,8 +937,22 @@ mod tests {
 
     #[test]
     fn signing_a_written_document_draws_the_picture_once() {
-        let marked = write("x", "Text\n\n[signature]\nName", Some(&pixels()), true).unwrap();
+        let marked = write(
+            "x",
+            "Text\n\n[signature]\nName",
+            Some(&pixels()),
+            true,
+            Some("Musterstadt, 07.10.2026"),
+        )
+        .unwrap();
         assert!(marked.signed);
+        let text = text_of(&marked.pdf);
+        assert!(text.contains("Musterstadt, 07.10.2026"), "{text}");
+        // The caption sits between the signature and the printed name.
+        assert!(
+            text.find("Musterstadt").unwrap() < text.find("Name").unwrap(),
+            "{text}"
+        );
         let doc = Document::load_mem(&marked.pdf).unwrap();
         let page = doc.get_pages()[&1];
         assert_eq!(doc.get_page_images(page).unwrap().len(), 1);
@@ -925,9 +960,9 @@ mod tests {
         assert_eq!(content.matches("/Sig Do").count(), 1);
         assert!(content.contains("/GS1 gs"));
 
-        let unmarked = write("x", "Text only", Some(&pixels()), true).unwrap();
+        let unmarked = write("x", "Text only", Some(&pixels()), true, None).unwrap();
         assert!(unmarked.signed);
-        assert!(write("x", "Text", None, true).is_err());
+        assert!(write("x", "Text", None, true, None).is_err());
     }
 
     #[test]

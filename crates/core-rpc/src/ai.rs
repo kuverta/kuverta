@@ -254,7 +254,28 @@ impl Core {
 
     /// A client for one provider, with its key if it has one.
     pub fn ai_provider_client(&self, id: i64) -> Result<core_ai::Provider> {
-        connect(&self.stored_ai_provider(id)?)
+        let provider = self.stored_ai_provider(id)?;
+        // Listing models costs nothing; trying one at a job does, and counts.
+        Ok(self.metered(connect(&provider)?, "trial", &provider))
+    }
+
+    /// A client that adds what it costs to the store's tally, for the
+    /// settings to show. A store in memory keeps no tally.
+    fn metered(
+        &self,
+        client: core_ai::Provider,
+        task: &str,
+        provider: &StoredAiProvider,
+    ) -> core_ai::Provider {
+        match self.store.path() {
+            Some(db) => client.metered(std::sync::Arc::new(crate::usage::StoreMeter {
+                db,
+                task: task.to_string(),
+                provider: provider.label.clone(),
+                local: is_loopback(&provider.base_url),
+            })),
+            None => client,
+        }
     }
 
     /// The provider and model a job uses now.
@@ -266,7 +287,7 @@ impl Core {
             .ok_or_else(|| RpcError::Rejected(format!("no job {}", task.as_str())))?;
         let provider = self.stored_ai_provider(chosen.provider_id)?;
         Ok(AiChoice {
-            provider: connect(&provider)?,
+            provider: self.metered(connect(&provider)?, task.as_str(), &provider),
             model: chosen.model,
             local: is_loopback(&provider.base_url),
             provider_label: provider.label,

@@ -3,8 +3,10 @@
 // written in front of the date beneath it.
 //
 // The picture is read here as base64, the way a file attached to a message
-// is, and kept by the core, which decodes it once to make sure it draws. It
-// is fetched back only for the preview on this page; the chat never sees it,
+// is, and kept by the core, which cuts the ink out of its paper (core-rpc's
+// signature.rs). What comes back is the cut-out, shown on paper with the
+// place and date line beneath it, as it is placed; Show on a page opens a
+// sample PDF signed with it in the viewer. The chat never sees the picture,
 // and the signed PDFs are the core's to make.
 
 {
@@ -21,13 +23,24 @@
       image.removeAttribute("src");
     }
     el("signature-remove").hidden = !settings.present;
+    el("signature-sample").hidden = !settings.present;
     status.textContent = settings.present
-      ? t("{width} × {height} pixels. Ask the assistant to sign a PDF, and it uses this.", {
+      ? t("Cut out of its paper, {width} × {height} pixels. Ask the assistant to sign a PDF, and this goes on it.", {
           width: settings.width,
           height: settings.height,
         })
       : t("No signature yet. The assistant can write PDFs, but not sign them.");
     el("signature-place").value = settings.place ?? "";
+    showCaption();
+  }
+
+  /// The line beneath the signature as it will be written: the place, a
+  /// comma, today's date — or the date alone.
+  function showCaption() {
+    const place = el("signature-place").value.trim();
+    const now = new Date();
+    const date = `${String(now.getDate()).padStart(2, "0")}.${String(now.getMonth() + 1).padStart(2, "0")}.${now.getFullYear()}`;
+    el("signature-caption").textContent = place ? `${place}, ${date}` : date;
   }
 
   async function showSignature() {
@@ -66,6 +79,7 @@
     }
   };
 
+  el("signature-place").addEventListener("input", showCaption);
   el("signature-place").addEventListener("change", async (event) => {
     try {
       await invoke("set_signature_place", { place: event.target.value.trim() });
@@ -73,4 +87,6 @@
       say(String(err), true);
     }
   });
+
+  el("signature-sample").onclick = () => openSignatureSample();
 }

@@ -29,6 +29,7 @@ pub mod conversations;
 pub mod documents;
 pub mod html;
 pub mod mailboxes;
+pub mod memory;
 pub mod outbox;
 pub mod paper;
 pub mod pdf;
@@ -40,10 +41,12 @@ pub mod sender;
 pub mod session;
 pub mod settings;
 pub mod setup;
+pub mod signature;
 pub mod smart;
 pub mod tasks;
 pub mod update;
 pub mod urgency;
+pub mod usage;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
 pub use answer::AnswerDraft;
@@ -64,6 +67,7 @@ pub use core_pgp::{
 pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
 pub use documents::{DocumentFile, DocumentSource, DocumentView, SignatureSettings};
 pub use mailboxes::CreatedFolder;
+pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
@@ -82,6 +86,7 @@ pub use smart::{
 };
 pub use tasks::{ProposalView, TaskAction, TaskInput, TaskRun, TaskView};
 pub use urgency::{UrgencyJob, UrgencyView, UrgentRow};
+pub use usage::{UsageDay, UsageShare, UsageStats, UsageTotals};
 
 use std::path::Path;
 
