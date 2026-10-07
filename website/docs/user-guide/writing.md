@@ -51,6 +51,23 @@ in the account's settings.
     Attachments cannot be added in compose yet, and there is no rich text: mail
     is written as plain text.
 
+## Letting the assistant write it
+
+**✨ Answer with assistant** in compose — or <kbd>a</kbd> on an open message,
+which opens the reply and writes it in one step — hands what is in front of
+you to the assistant: the message being answered, the files already attached,
+and whatever you have typed, which it takes as the brief. *"zusagen, aber erst
+ab Mittwoch"* is followed; a half-written reply is finished in your own words.
+What it writes replaces the body, and <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>Z</kbd>
+brings your notes back.
+
+A message that asks for something back signed — a contract, a form — is
+answered with it: the assistant puts [your signature](settings.md#signature)
+on the attachment, on the line the document rules for it, and the signed copy
+joins the files going out, as a chip you can take back out with its ×. The
+original is never changed, and nothing is sent: you read the message, look at
+the file, and send it yourself.
+
 ## Send later
 
 **Send later…** beside Send asks when.

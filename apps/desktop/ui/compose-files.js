@@ -67,6 +67,27 @@ function fileTray(strip) {
       tray.render();
     },
 
+    /// Adds files the core made — a PDF the assistant signed to go out with
+    /// the message — as a draft carries them, bytes and all. One that no
+    /// longer fits is refused by name, as a dropped one is.
+    attach(attachments = []) {
+      for (const file of attachments) {
+        const size = base64Size(file.data);
+        if (tray.total() + size > MOST_ATTACHMENT_BYTES) {
+          say(
+            t("{name} is too large: a message can carry {count} MB of files, and most servers refuse more", {
+              name: file.name,
+              count: MOST_ATTACHMENT_BYTES / 1024 / 1024,
+            }),
+            true,
+          );
+          continue;
+        }
+        tray.files.push({ ...file, size });
+      }
+      tray.render();
+    },
+
     /// Fills the tray from a draft the core kept.
     set(attachments = []) {
       tray.files = attachments.map((a) => ({ ...a, size: base64Size(a.data) }));

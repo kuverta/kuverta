@@ -1117,6 +1117,9 @@ const GERMAN = {
   "Written by {model}. Read it before you send it — ⌘Z brings back your notes.":
     "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden — ⌘Z holt Ihre Notizen zurück.",
   "Written by {model}. Read it before you send it.": "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden.",
+  "signing {name}…": "unterschreibt {name}…",
+  "Written by {model}, with {name} attached. Read both before you send them.":
+    "Geschrieben von {model}, mit {name} im Anhang. Lesen Sie beides, bevor Sie es senden.",
   "⌘/ctrl+enter sends · escape discards": "⌘/Strg+Enter sendet · Escape verwirft",
   "⌘/ctrl+enter sends, as a reply to their latest message. Double-click a bubble for the whole message.":
     "⌘/Strg+Enter sendet, als Antwort auf die letzte Nachricht. Doppelklick auf eine Sprechblase zeigt die ganze Nachricht.",

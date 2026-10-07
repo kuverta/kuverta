@@ -46,6 +46,9 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     return message;
   };
 
+  // Documents the assistant made — a PDF it signed — by id.
+  const signedDocuments = new Map();
+
   // Smart mailboxes, and the folders saving one made.
   const smartBoxes = [];
   const smartLog = [];
@@ -371,6 +374,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       };
     },
     // The assistant writing: it says what it read, then writes from the brief.
+    // A message that asks for its PDF back signed is answered with the signed
+    // copy, which the real one makes as a document and hands to compose.
     draft_answer: async ({ draft, onEvent }) => {
       outgoing.answered.push(draft);
       for (const file of draft.attachments ?? []) {
@@ -378,15 +383,44 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       }
       const source = draft.reply_to ? need(draft.reply_to) : null;
       const files = (draft.attachments ?? []).map((f) => f.name).join(', ');
+      const signed = [];
+      const asksForSigning = /unterschr|signier|sign/i.test(`${source?.body ?? ''} ${draft.body}`);
+      const contract = (source?.attachments ?? []).find(
+        (file) => !file.inline && file.content_type === 'application/pdf',
+      );
+      if (asksForSigning && contract) {
+        const document = {
+          id: signedDocuments.size + 1,
+          account_id: 1,
+          name: `${contract.name.replace(/\.pdf$/i, '')} (signed).pdf`,
+          note: `signed copy of ${contract.name}; on the line “Unterschrift Mieter” on page 2`,
+          signed: true,
+          pages: 2,
+          size: SIGNED_PDF.byteLength,
+          created_at: Math.floor(Date.UTC(2026, 9, 7) / 1000),
+          content_type: 'application/pdf',
+        };
+        signedDocuments.set(document.id, document);
+        onEvent?.onmessage?.({ kind: 'document', document, note: document.note });
+        signed.push(document);
+      }
       const body = [
         source ? `Hallo, danke für „${source.subject}“.` : 'Hallo,',
         draft.body.trim() ? `Wie gewünscht: ${draft.body.trim()}` : 'Gerne.',
+        signed.length ? `Anbei unterschrieben: ${signed.map((d) => d.name).join(', ')}.` : '',
         files ? `Anbei: ${files}.` : '',
         'Viele Grüße',
       ]
         .filter(Boolean)
         .join('\n\n');
-      return { body, model: 'llama3.2:3b', local: true };
+      return { body, documents: signed, model: 'llama3.2:3b', local: true };
+    },
+
+    // A document's bytes, as the viewer and compose take them: a binary
+    // response, which arrives as an ArrayBuffer.
+    document: async ({ id }) => {
+      if (!signedDocuments.has(Number(id))) throw new Error(`no such document: ${id}`);
+      return SIGNED_PDF.buffer.slice(SIGNED_PDF.byteOffset, SIGNED_PDF.byteOffset + SIGNED_PDF.byteLength);
     },
     outgoing_log: async () => outgoing,
 
@@ -823,6 +857,9 @@ const PIXEL_PNG = Uint8Array.from(
   atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='),
   (c) => c.charCodeAt(0),
 );
+
+/** Enough of a PDF for compose to carry a signed document as bytes. */
+const SIGNED_PDF = Uint8Array.from('%PDF-1.4\n% signed\n%%EOF\n', (c) => c.charCodeAt(0));
 
 /** An attachment as `core-rpc`'s `AttachmentView` has it. */
 function attachmentView(a, index) {

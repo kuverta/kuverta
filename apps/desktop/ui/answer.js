@@ -8,9 +8,16 @@
 // of a PDF, a Word file, a scan through the vision model — so the answer can
 // say what it is sending along.
 //
+// A message that asks for something back signed — a contract, a form — is
+// answered with it: the assistant puts the person's stored signature on the
+// attachment and the signed copy joins the files going out, as a chip in the
+// tray with a × like any other. Nothing is sent; the person reads the text,
+// looks at the file and sends it themselves.
+//
 // What it writes replaces the body through the field's own editing, so ⌘Z
 // brings back what was typed. It changes no mail and sends nothing: see
-// answer.rs, which offers the model only the tools that look.
+// answer.rs, which offers the model the tools that look and the one that
+// signs.
 
 const answerButton = el("compose-answer");
 const answerStatus = el("compose-answer-status");
@@ -56,7 +63,9 @@ async function answerWithAssistant() {
     : t("the assistant is writing…");
 
   const channel = progressChannel((event) => {
-    if (compose.answering === ticket && event.kind === "looked") answerStatus.textContent = `${event.what}…`;
+    if (compose.answering !== ticket) return;
+    if (event.kind === "looked") answerStatus.textContent = `${event.what}…`;
+    if (event.kind === "document") answerStatus.textContent = t("signing {name}…", { name: event.document.name });
   });
   try {
     const result = await invoke("draft_answer", {
@@ -68,9 +77,19 @@ async function answerWithAssistant() {
     if (compose.answering !== ticket) return;
     const hadNotes = compose.body.value.trim() !== "";
     replaceBody(`${result.body.trim()}\n`);
-    answerStatus.textContent = hadNotes
-      ? t("Written by {model}. Read it before you send it — ⌘Z brings back your notes.", { model: result.model })
-      : t("Written by {model}. Read it before you send it.", { model: result.model });
+    // What it signed goes out with the message, unless the person takes it
+    // out of the tray again.
+    const documents = result.documents ?? [];
+    const attached = documents.length ? await documentAttachments(documents) : [];
+    compose.files.attach(attached);
+    answerStatus.textContent = attached.length
+      ? t("Written by {model}, with {name} attached. Read both before you send them.", {
+          model: result.model,
+          name: attached.map((file) => file.name).join(", "),
+        })
+      : hadNotes
+        ? t("Written by {model}. Read it before you send it — ⌘Z brings back your notes.", { model: result.model })
+        : t("Written by {model}. Read it before you send it.", { model: result.model });
   } catch (err) {
     if (compose.answering !== ticket) return;
     answerStatus.textContent = "";

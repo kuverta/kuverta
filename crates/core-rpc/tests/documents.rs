@@ -79,14 +79,59 @@ fn signature_png() -> Vec<u8> {
 
 /// A one-page PDF saying `line`, as a simple PDF writer would write it.
 fn pdf_saying(line: &str) -> Vec<u8> {
-    let stream = format!("BT /F1 12 Tf 72 720 Td ({line}) Tj ET");
-    let objects = [
+    pdf_of(&[format!("BT /F1 12 Tf 72 720 Td ({line}) Tj ET")])
+}
+
+/// A contract of two pages, the second ruling a line for each party with the
+/// words that name it beneath, the way a word processor writes one.
+fn contract() -> Vec<u8> {
+    let rule = "_".repeat(45);
+    pdf_of(&[
+        "BT /F1 12 Tf 72 720 Td (Mietvertrag Seite 1) Tj ET".to_string(),
+        format!(
+            "BT /F1 11 Tf 70 400 Td ({rule}) Tj ET\n\
+             BT /F1 11 Tf 70 386 Td (Unterschrift Vermieter) Tj ET\n\
+             BT /F1 11 Tf 70 300 Td ({rule}) Tj ET\n\
+             BT /F1 11 Tf 70 286 Td (Unterschrift Mieter) Tj ET"
+        ),
+    ])
+}
+
+/// A form with one line to sign and nothing written beneath it.
+fn form() -> Vec<u8> {
+    pdf_of(&[format!(
+        "BT /F1 11 Tf 70 414 Td (Bitte hier unterschreiben:) Tj ET\n\
+         BT /F1 11 Tf 70 400 Td ({}) Tj ET",
+        "_".repeat(30)
+    )])
+}
+
+/// A PDF of one page per content stream, letter-sized, with Helvetica as /F1.
+fn pdf_of(streams: &[String]) -> Vec<u8> {
+    let first = 4;
+    let kids: Vec<String> = (0..streams.len())
+        .map(|at| format!("{} 0 R", first + at * 2))
+        .collect();
+    let mut objects = vec![
         "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
-        "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
-        format!("<< /Length {} >>\nstream\n{stream}\nendstream", stream.len()),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>".to_string(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {} >>",
+            kids.join(" "),
+            streams.len()
+        ),
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
+            .to_string(),
     ];
+    for (at, stream) in streams.iter().enumerate() {
+        objects.push(format!(
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents {} 0 R /Resources << /Font << /F1 3 0 R >> >> >>",
+            first + at * 2 + 1
+        ));
+        objects.push(format!(
+            "<< /Length {} >>\nstream\n{stream}\nendstream",
+            stream.len()
+        ));
+    }
     let mut out = b"%PDF-1.4\n".to_vec();
     let mut offsets = Vec::new();
     for (at, object) in objects.iter().enumerate() {
@@ -245,6 +290,98 @@ fn the_assistant_writes_a_letter_and_signs_it_once_there_is_a_signature() {
         .core
         .assistant_tool(world.account, &call("list_documents", json!({})));
     assert_eq!(result(&list)["documents"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn the_signature_lands_on_the_line_the_document_rules_for_it() {
+    let world = world("line");
+    world.core.set_signature_place(Some("Musterstadt")).unwrap();
+    world
+        .core
+        .set_signature(&signature_png(), "image/png")
+        .unwrap();
+
+    // One line, and nothing to say where: it is found, and the signature
+    // sits on it rather than above the bottom edge of the last page.
+    let message = file_with_pdf(&world, &form());
+    let signed = world.core.assistant_tool(
+        world.account,
+        &call("sign_pdf", json!({"message_id": message, "attachment": 0})),
+    );
+    let out = result(&signed);
+    assert!(
+        out["where"]
+            .as_str()
+            .unwrap()
+            .contains("on the line “Bitte hier unterschreiben:” on page 1"),
+        "{out}"
+    );
+    let id = out["document_id"].as_i64().unwrap();
+    let text = pdf_extract::extract_text_from_mem(&world.core.document(id).unwrap().bytes).unwrap();
+    // Nothing is written under that line, so the place and the date go there.
+    assert!(text.contains("Musterstadt, "), "{text}");
+
+    // A contract that rules a line for each party is asked about, with both
+    // named, rather than signed in the wrong place.
+    let contract = file_with_pdf(&world, &contract());
+    let asked = world.core.assistant_tool(
+        world.account,
+        &call("sign_pdf", json!({"message_id": contract, "attachment": 0})),
+    );
+    assert!(
+        asked.content.contains("2 places to sign"),
+        "{}",
+        asked.content
+    );
+    assert!(
+        asked.content.contains("Unterschrift Vermieter"),
+        "{}",
+        asked.content
+    );
+    assert!(
+        asked.content.contains("Unterschrift Mieter"),
+        "{}",
+        asked.content
+    );
+    assert_eq!(world.core.documents(world.account).unwrap().len(), 1);
+
+    // Said which, it signs that one — on page 2, where the line is, and
+    // without writing the date over the words that name the line.
+    let signed = world.core.assistant_tool(
+        world.account,
+        &call(
+            "sign_pdf",
+            json!({"message_id": contract, "attachment": 0, "near": "Mieter"}),
+        ),
+    );
+    let out = result(&signed);
+    let where_it_went = out["where"].as_str().unwrap();
+    assert!(
+        where_it_went.contains("on the line “Unterschrift Mieter” on page 2"),
+        "{where_it_went}"
+    );
+    let id = out["document_id"].as_i64().unwrap();
+    let text = pdf_extract::extract_text_from_mem(&world.core.document(id).unwrap().bytes).unwrap();
+    assert!(text.contains("Unterschrift Mieter"), "{text}");
+    assert!(!text.contains("Musterstadt, "), "{text}");
+
+    // Numbers given by hand are still taken as given: the line is not
+    // looked for, and nothing is asked.
+    let moved = world.core.assistant_tool(
+        world.account,
+        &call(
+            "sign_pdf",
+            json!({"message_id": contract, "attachment": 0, "page": 2, "above_bottom_mm": 40}),
+        ),
+    );
+    assert!(
+        result(&moved)["where"]
+            .as_str()
+            .unwrap()
+            .contains("signature on page 2"),
+        "{}",
+        moved.content
+    );
 }
 
 #[test]
