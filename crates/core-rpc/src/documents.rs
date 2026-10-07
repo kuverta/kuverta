@@ -288,7 +288,7 @@ impl Core {
     // -- the signature ----------------------------------------------------
 
     pub fn signature(&self) -> Result<SignatureSettings> {
-        let stored = self.store().signature()?;
+        let stored = self.cleaned_signature()?;
         Ok(match stored {
             Some(s) => SignatureSettings {
                 present: s.image.is_some(),
@@ -390,10 +390,33 @@ impl Core {
 
     /// The signature as pixels to draw, or `None` when there is none.
     fn signature_pixels(&self) -> Result<Option<Pixels>> {
-        match self.store().signature()?.and_then(|s| s.image) {
+        match self.cleaned_signature()?.and_then(|s| s.image) {
             Some(bytes) => decode(&bytes).map(Some),
             None => Ok(None),
         }
+    }
+
+    /// The stored signature, cut out of its paper. A picture kept by a
+    /// kuverta before 0.5.37 is the photograph as it was chosen; it is
+    /// cleaned the first time it is wanted and kept cleaned, so nobody has
+    /// to choose it again.
+    fn cleaned_signature(&self) -> Result<Option<core_store::documents::StoredSignature>> {
+        let stored = self.store().signature()?;
+        let Some(signature) = &stored else {
+            return Ok(None);
+        };
+        let (Some(image), Some(content_type)) = (&signature.image, &signature.content_type) else {
+            return Ok(stored);
+        };
+        if content_type == "image/png" {
+            return Ok(stored);
+        }
+        tracing::info!(
+            content_type,
+            "cutting a signature kept as a photograph out of its paper"
+        );
+        self.set_signature(image, content_type)?;
+        self.store().signature().map_err(Into::into)
     }
 }
 
@@ -441,6 +464,39 @@ mod tests {
         assert_eq!(document_name("../x/y.pdf"), "y.pdf");
         assert_eq!(document_name(""), "attachment.pdf");
         assert_eq!(document_name("a."), "a.pdf");
+    }
+
+    #[test]
+    fn a_signature_kept_as_a_photograph_is_cleaned_when_first_wanted() {
+        let store = core_store::Store::open_in_memory().unwrap();
+        let mut photo = image::RgbaImage::from_pixel(200, 60, image::Rgba([170, 170, 170, 255]));
+        for x in 20..180 {
+            for y in 28..34 {
+                photo.put_pixel(x, y, image::Rgba([0, 0, 0, 255]));
+            }
+        }
+        let mut jpeg = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(photo)
+            .to_rgb8()
+            .write_to(&mut jpeg, image::ImageFormat::Jpeg)
+            .unwrap();
+        // As a kuverta before 0.5.37 kept it: the file as chosen.
+        store
+            .set_signature(jpeg.get_ref(), "image/jpeg", 200, 60)
+            .unwrap();
+        let core = Core::new(store, core_store::Blobs::new(std::env::temp_dir()));
+        let settings = core.signature().unwrap();
+        assert_eq!(settings.content_type.as_deref(), Some("image/png"));
+        assert!(settings.width.unwrap() < 200, "{settings:?}");
+        assert_eq!(
+            core.store()
+                .signature()
+                .unwrap()
+                .unwrap()
+                .content_type
+                .as_deref(),
+            Some("image/png")
+        );
     }
 
     #[test]
