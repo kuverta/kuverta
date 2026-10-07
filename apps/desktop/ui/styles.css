@@ -1062,6 +1062,45 @@ footer .keys {
 
 .dialog-panel.wide { width: min(720px, 94vw); }
 
+/* The placer: the page drawn as a picture, the signature loose on top of it. */
+.place-page {
+  position: relative;
+  align-self: center;
+  max-height: 60vh;
+  line-height: 0;
+}
+
+.place-page img#place-sheet-image {
+  display: block;
+  max-width: 100%;
+  max-height: 60vh;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #fff;
+  user-select: none;
+}
+
+.place-page img#place-signature {
+  position: absolute;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  outline: 1px dashed var(--accent, #4a7);
+  outline-offset: 2px;
+}
+
+.place-page img#place-signature:active { cursor: grabbing; }
+
+.place-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.place-size input { width: 120px; }
+
 .dialog-head { padding: 18px 20px 6px; }
 .dialog-head h2 { margin: 0 0 4px; font-size: 16px; }
 .dialog-head p { margin: 0; }

@@ -256,6 +256,56 @@ test('a message asking for its contract back signed is answered with the signed 
   await context.close();
 });
 
+test('the signature is dragged onto the line, and that is where it is signed again', async () => {
+  const { page, context, problems } = await openWindow({ withContract: true });
+
+  // The reply, with the signed contract, is where a document to place comes
+  // from; the placer is opened on it directly, as its card's button does.
+  await page.locator('#content .row', { hasText: 'Mietvertrag zur Unterschrift' }).click();
+  await page.locator('#reading-actions [data-act=answer]').click();
+  await page.waitForSelector('#compose-files .attachment-chip');
+  await page.evaluate(async () => {
+    const document = { id: 1, name: 'Vertrag (signed).pdf', size: 12, signed: true, content_type: 'application/pdf',
+      placed: { source: { kind: 'attachment', message: 1, index: 2 }, page: 1, x_mm: 20, above_bottom_mm: 30, width_mm: 50, with_date: true } };
+    await window.openPlacer(document, () => {});
+  });
+  await page.waitForSelector('#place-sheet:not([hidden])');
+  await page.waitForFunction(() => el('place-signature').style.width !== '');
+
+  // 50 mm of a 210 mm page, 20 mm in, 30 mm up from the bottom edge.
+  const before = await page.evaluate(() => ({
+    width: el('place-signature').style.width,
+    left: el('place-signature').style.left,
+    top: el('place-signature').style.top,
+  }));
+  assert.match(before.width, /^23\.8/);
+  assert.match(before.left, /^9\.5/);
+  // 297 − 30 − 15 mm of signature, over 297.
+  assert.match(before.top, /^84\.8/);
+
+  // Dragged a page-width to the right and down, and saved.
+  const box = await page.locator('#place-signature').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 8 });
+  await page.mouse.up();
+  await page.locator('#place-save').click();
+  await page.waitForFunction(() => el('place-sheet').hidden);
+
+  const saved = (await page.evaluate(async () => (await window.__fakeBridge)('placements_log', {}))).at(-1);
+  assert.equal(saved.id, 1);
+  assert.equal(saved.page, 1);
+  // It moved right and down, stayed on the page, and kept its width.
+  assert.ok(saved.x_mm > 20, `x ${saved.x_mm}`);
+  assert.ok(saved.above_bottom_mm < 30, `y ${saved.above_bottom_mm}`);
+  assert.ok(saved.x_mm + saved.width_mm <= 210, `x ${saved.x_mm}`);
+  assert.ok(saved.above_bottom_mm >= 0, `y ${saved.above_bottom_mm}`);
+  assert.equal(saved.width_mm, 50);
+
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('a new message is written, not answered, and the button says so', async () => {
   const { page, context, problems } = await openWindow();
 

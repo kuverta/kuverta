@@ -46,8 +46,10 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     return message;
   };
 
-  // Documents the assistant made — a PDF it signed — by id.
+  // Documents the assistant made — a PDF it signed — by id, and every
+  // placement the placer saved.
   const signedDocuments = new Map();
+  const placements = [];
 
   // Smart mailboxes, and the folders saving one made.
   const smartBoxes = [];
@@ -399,6 +401,14 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
           size: SIGNED_PDF.byteLength,
           created_at: Math.floor(Date.UTC(2026, 9, 7) / 1000),
           content_type: 'application/pdf',
+          placed: {
+            source: { kind: 'attachment', message: Number(draft.reply_to), index: 2 },
+            page: 1,
+            x_mm: 20,
+            above_bottom_mm: 30,
+            width_mm: 50,
+            with_date: true,
+          },
         };
         signedDocuments.set(document.id, document);
         onEvent?.onmessage?.({ kind: 'document', document, note: document.note });
@@ -416,6 +426,31 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       return { body, documents: signed, model: 'llama3.2:3b', local: true };
     },
 
+    // The signature as the settings and the placer see it: present, its
+    // measurements, and the picture to draw.
+    signature: async () => ({
+      present: true,
+      content_type: 'image/png',
+      width: 200,
+      height: 60,
+      place: 'Musterstadt',
+      image: btoa(String.fromCharCode(...PIXEL_PNG)),
+    }),
+
+    // How large each page of a document is, in millimetres: A4, portrait.
+    document_pages: async () => [[210, 297]],
+
+    // Signing the original again where the person put it. What the test
+    // reads is the placement it was asked for.
+    place_signature: async ({ id, at }) => {
+      const found = signedDocuments.get(Number(id));
+      if (!found) throw new Error(`no such document: ${id}`);
+      placements.push({ id: Number(id), ...at });
+      const moved = { ...found, placed: { ...found.placed, ...at } };
+      signedDocuments.set(Number(id), moved);
+      return moved;
+    },
+
     // A document's bytes, as the viewer and compose take them: a binary
     // response, which arrives as an ArrayBuffer.
     document: async ({ id }) => {
@@ -423,6 +458,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       return SIGNED_PDF.buffer.slice(SIGNED_PDF.byteOffset, SIGNED_PDF.byteOffset + SIGNED_PDF.byteLength);
     },
     outgoing_log: async () => outgoing,
+    placements_log: async () => placements,
 
     // Who compose suggests: everyone the seeded mail is from, most recent
     // first, and whoever a test adds.

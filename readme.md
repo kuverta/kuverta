@@ -46,7 +46,9 @@ in its header.
 - **Message identity** — one message in several folders is stored once with
   several locations, which is what Gmail's labels-as-folders needs
 - **Send** — compose, reply, reply-all, forward, SMTP submission, and a copy
-  filed in Sent via `APPEND`
+  filed in Sent via `APPEND`; a reply keeps the message it answers on screen
+  above it, and marks it `\Answered` — the list shows a ↩ beside everything
+  you have already answered, whether you answered it here or on your phone
 - **Triage** — archive, delete, move, mark read/unread, with a durable queue,
   an undo window, and conflict checks before anything is written; several at
   once, from the keyboard or the menu under the right button
@@ -87,9 +89,10 @@ in its header.
   an attachment — with the picture of your signature from the settings, only
   when asked; it reads the page for the line the document rules for a
   signature and sits it there, asking which is yours where a contract rules one
-  per party; the signed copy is a card to open, save or attach to a draft, and
-  one click on ✨ Answer answers a "bitte unterschrieben zurück" with the signed
-  contract already attached
+  per party; where it has no line to go on, you drag it onto the page yourself
+  and the original is signed again where you put it; the signed copy is a card
+  to open, save or attach to a draft, and one click on ✨ Answer answers a
+  "bitte unterschrieben zurück" with the signed contract already attached
 - **Profiles** — accounts and postal addresses grouped (private, one company,
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in

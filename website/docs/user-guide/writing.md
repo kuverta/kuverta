@@ -18,9 +18,16 @@ The keys are case-sensitive: <kbd>R</kbd> and <kbd>A</kbd> are capitals
 and every one of them is also a button — a reply should never depend on knowing
 which key it is.
 
-Compose opens in the reading pane. For a reply, kuverta fills in the recipients
-and the subject; **reply all** leaves you out of the recipients and honours the
-original's `Reply-To`. A forward starts with an empty **To**.
+Compose opens under the message rather than over it: a reply or a forward
+leaves what it is about on screen above, to read while you write and to scroll
+back through. For a reply, kuverta fills in the recipients and the subject;
+**reply all** leaves you out of the recipients and honours the original's
+`Reply-To`. A forward starts with an empty **To**.
+
+Once it has gone, the message you answered carries a **↩** in the list, and
+says *answered* when you open it. That is the `\Answered` flag every mail
+program writes, so a reply sent from your phone shows here too, and one sent
+from here shows there.
 
 ### The fields
 

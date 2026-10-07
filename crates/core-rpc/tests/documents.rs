@@ -385,6 +385,79 @@ fn the_signature_lands_on_the_line_the_document_rules_for_it() {
 }
 
 #[test]
+fn a_signature_is_moved_by_signing_the_original_again_into_the_same_document() {
+    let world = world("place");
+    world.core.set_signature_place(Some("Musterstadt")).unwrap();
+    world
+        .core
+        .set_signature(&signature_png(), "image/png")
+        .unwrap();
+    let message = file_with_pdf(&world, &form());
+    let signed = world.core.assistant_tool(
+        world.account,
+        &call("sign_pdf", json!({"message_id": message, "attachment": 0})),
+    );
+    let id = result(&signed)["document_id"].as_i64().unwrap();
+    let was = world.core.document_view(id).unwrap();
+    let placed = was.placed.clone().expect("where it was signed");
+    assert_eq!(
+        placed.source,
+        core_rpc::DocumentSource::Attachment { message, index: 0 }
+    );
+    assert!(placed.with_date);
+    let text = pdf_extract::extract_text_from_mem(&world.core.document(id).unwrap().bytes).unwrap();
+    assert!(text.contains("Musterstadt, "), "{text}");
+
+    // Moved by hand: the same document, and the original signed again —
+    // so the date written under the first one is gone with it rather than
+    // left behind on a page that was stamped twice.
+    let moved = world
+        .core
+        .place_signature(
+            world.account,
+            id,
+            &core_rpc::Placed {
+                page: 1,
+                x_mm: 120.0,
+                above_bottom_mm: 60.0,
+                width_mm: 40.0,
+                with_date: false,
+                ..placed
+            },
+        )
+        .unwrap();
+    assert_eq!(moved.id, id);
+    assert_eq!(moved.name, was.name);
+    assert_eq!(world.core.documents(world.account).unwrap().len(), 1);
+    let now = moved.placed.expect("where it is now");
+    assert_eq!((now.page, now.x_mm, now.above_bottom_mm), (1, 120.0, 60.0));
+    assert!(moved.note.unwrap().contains("moved by hand to page 1"));
+    let text = pdf_extract::extract_text_from_mem(&world.core.document(id).unwrap().bytes).unwrap();
+    assert!(!text.contains("Musterstadt, "), "{text}");
+    assert!(text.contains("Bitte hier unterschreiben"), "{text}");
+
+    // A document written here has no original, so its signature stays where
+    // the text put it.
+    let letter = world
+        .core
+        .write_document(
+            world.account,
+            "Brief",
+            "Hallo\n\n[signature]\nErika",
+            None,
+            true,
+        )
+        .unwrap();
+    assert!(letter.placed.is_none());
+    assert!(world
+        .core
+        .place_signature(world.account, letter.id, &now)
+        .unwrap_err()
+        .to_string()
+        .contains("cannot be moved"));
+}
+
+#[test]
 fn a_contract_that_came_as_an_attachment_is_signed_as_a_copy_and_handed_to_a_draft() {
     let world = world("sign");
     world.core.set_signature_place(Some("Musterstadt")).unwrap();

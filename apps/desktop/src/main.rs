@@ -1878,6 +1878,30 @@ fn document(app: State<'_, App>, id: i64) -> Result<tauri::ipc::Response, String
     Ok(tauri::ipc::Response::new(file.bytes))
 }
 
+/// How large each page of a document is, in millimetres: what the placer
+/// turns a place on a picture of the page into.
+#[tauri::command]
+fn document_pages(app: State<'_, App>, id: i64) -> Result<Vec<(f32, f32)>, String> {
+    app.core.lock().unwrap().document_pages(id).map_err(fail)
+}
+
+/// Moves the signature on a document: the person dragged it where it belongs
+/// in the window's placer, and the original is signed again there. The same
+/// document, with the signature somewhere else.
+#[tauri::command]
+fn place_signature(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    at: core_rpc::Placed,
+) -> Result<core_rpc::DocumentView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .place_signature(account, id, &at)
+        .map_err(fail)
+}
+
 /// Safe preview of a document, like an attachment's: a PDF kuverta wrote is
 /// still drawn in the locked-down worker, because a signed copy of a
 /// stranger's PDF is mostly the stranger's PDF.
@@ -2483,6 +2507,8 @@ fn main() {
             document_view,
             document,
             document_preview,
+            place_signature,
+            document_pages,
             save_document,
             open_document,
             rename_document,

@@ -1118,6 +1118,19 @@ const GERMAN = {
     "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden — ⌘Z holt Ihre Notizen zurück.",
   "Written by {model}. Read it before you send it.": "Geschrieben von {model}. Lesen Sie es, bevor Sie es senden.",
   "signing {name}…": "unterschreibt {name}…",
+  "you answered this": "von Ihnen beantwortet",
+  "Move the signature…": "Unterschrift verschieben…",
+  "Where the signature goes": "Wohin die Unterschrift gehört",
+  "drawing the page…": "zeichnet die Seite…",
+  "this page could not be drawn": "diese Seite konnte nicht gezeichnet werden",
+  "Page {page} of {total}": "Seite {page} von {total}",
+  "signing it again where you put it…": "unterschreibt erneut an der gewählten Stelle…",
+  "the signature is on page {page} now": "die Unterschrift steht jetzt auf Seite {page}",
+  "there is no signature stored — add one under Settings → General":
+    "es ist keine Unterschrift hinterlegt — unter Einstellungen → Allgemein",
+  "the signature on {name} cannot be moved: kuverta no longer has what it was signed from":
+    "die Unterschrift auf {name} lässt sich nicht verschieben: kuverta hat die Vorlage nicht mehr",
+  answered: "beantwortet",
   "Written by {model}, with {name} attached. Read both before you send them.":
     "Geschrieben von {model}, mit {name} im Anhang. Lesen Sie beides, bevor Sie es senden.",
   "⌘/ctrl+enter sends · escape discards": "⌘/Strg+Enter sendet · Escape verwirft",

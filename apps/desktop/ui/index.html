@@ -903,6 +903,35 @@
     </div>
   </div>
 
+  <!-- Where the signature goes: the page as a picture, the signature on top
+       of it, dragged to the line it belongs on. See signature-place.js. -->
+  <div id="place-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel wide">
+      <div class="dialog-head">
+        <h2 id="place-title">Where the signature goes</h2>
+        <p class="hint">Drag it onto the line. The original is signed again where you put it — nothing is sent.</p>
+      </div>
+      <div class="dialog-body">
+        <div id="place-page" class="place-page">
+          <img id="place-sheet-image" alt="The page" draggable="false">
+          <img id="place-signature" alt="Your signature" draggable="false">
+        </div>
+        <p id="place-status" class="hint" aria-live="polite"></p>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" id="place-previous">← Page</button>
+        <span id="place-which" class="hint"></span>
+        <button type="button" id="place-next">Page →</button>
+        <label class="place-size">Size
+          <input id="place-width" type="range" min="20" max="90" step="1">
+        </label>
+        <span class="spacer"></span>
+        <button type="button" id="place-cancel">Cancel</button>
+        <button type="button" id="place-save" class="primary">Put it here</button>
+      </div>
+    </div>
+  </div>
+
   <div id="smart-sheet" class="sheet dialog" hidden>
     <form id="smart-form" class="dialog-panel wide" autocomplete="off">
       <div class="dialog-head">
@@ -1069,6 +1098,7 @@
   <script src="sender.js"></script>
   <script src="profiles.js"></script>
   <script src="signature.js"></script>
+  <script src="signature-place.js"></script>
   <script src="assistant.js"></script>
   <script src="memory.js"></script>
   <script src="usage.js"></script>
