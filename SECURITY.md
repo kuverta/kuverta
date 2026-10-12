@@ -22,6 +22,15 @@ surface:
   the local network. `crates/core-paper`.
 - **The scanner's own HTTP port.** `apps/scannerd` serves a setup page on the
   local network, behind a password. Anything on that network can reach it.
+- **Web pages and skill files, when the person switches them on.** The
+  assistant searches and reads pages as text, and fetches skills — files of
+  instructions — for the person to accept. `crates/core-rpc/src/web.rs` and
+  `skills.rs`: the fetcher reaches nothing on this computer or its network
+  and pins each request to the addresses it checked; the model may open
+  only addresses that were given, never one from inside a message; nothing
+  read from the web may lead to a change in that question, or to a note, a
+  task or a skill in that conversation; and a skill reaches no model until
+  the person has read it and accepted it in the settings.
 
 All of it is fuzzed — `make fuzz-list` — and the rule throughout is that a
 parser refuses rather than guesses. A half-read message reads exactly like a

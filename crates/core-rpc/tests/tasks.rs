@@ -226,6 +226,74 @@ fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
     }
 }
 
+/// "Put the application mail in a new folder and tell me which replies are
+/// positive" reads a folder's worth of mail in one round, not one per
+/// message — and a folder made a moment ago is one a move can go to.
+#[test]
+fn read_messages_reads_a_batch_and_a_new_folder_takes_a_move() {
+    let (core, account, _dir) = mailbox("batch");
+    let listed = core.assistant_tool(account, &call("list_mail", json!({"limit": 50})));
+    let listed: serde_json::Value = serde_json::from_str(&listed.content).unwrap();
+    let ids: Vec<i64> = listed["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["id"].as_i64().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 5);
+
+    let read = core.assistant_tool(account, &call("read_messages", json!({"ids": ids})));
+    let read_json: serde_json::Value = serde_json::from_str(&read.content).unwrap();
+    let subjects: Vec<&str> = read_json["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|m| m["subject"].as_str().unwrap())
+        .collect();
+    assert_eq!(subjects.len(), 5);
+    assert!(subjects.contains(&"Termin am Dienstag"));
+    assert!(read_json["messages"][0]["text"].is_string());
+    assert!(
+        matches!(read.event, Some(AssistantEvent::Looked { ref what }) if what == "read 5 messages")
+    );
+
+    // A missing message is said, the rest are read all the same.
+    let partly = core.assistant_tool(
+        account,
+        &call("read_messages", json!({"ids": [ids[0], 999_999]})),
+    );
+    let partly: serde_json::Value = serde_json::from_str(&partly.content).unwrap();
+    assert_eq!(partly["messages"].as_array().unwrap().len(), 1);
+    assert_eq!(partly["failed"].as_array().unwrap().len(), 1);
+
+    // Too many at once is refused with the way round, not read half.
+    let many: Vec<i64> = (1..=26).collect();
+    let refused = core.assistant_tool(account, &call("read_messages", json!({"ids": many})));
+    assert!(
+        refused.content.contains("at most 25"),
+        "{}",
+        refused.content
+    );
+
+    // The folder the store just learnt of, as create_folder leaves it, is
+    // one move_messages finds by name — in any spelling of its case.
+    core.store()
+        .upsert_folder(account, "Bewerbungen", None)
+        .unwrap();
+    let moved = core.assistant_tool(
+        account,
+        &call(
+            "move_messages",
+            json!({"ids": [ids[0]], "folder": "bewerbungen"}),
+        ),
+    );
+    assert!(
+        matches!(moved.event, Some(AssistantEvent::Changed { ref what, .. }) if what == "1 message moved to bewerbungen"),
+        "{}",
+        moved.content
+    );
+}
+
 #[test]
 fn the_assistant_s_tools_look_and_act_as_the_window_does() {
     let (core, account, _dir) = mailbox("tools");

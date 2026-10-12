@@ -289,6 +289,7 @@
     <span class="keys">
       <span>j/k move</span>
       <span>J/K select</span>
+      <span>⌘A all</span>
       <span>enter read</span>
       <span>e archive</span>
       <span>⌫ trash</span>
@@ -586,6 +587,9 @@
 
           <!-- What the assistant remembers. Filled by memory.js. -->
           <div id="memory-page" class="settings-page" hidden></div>
+
+          <!-- The assistant on the web, and its skills. Filled by skills.js. -->
+          <div id="research-page" class="settings-page" hidden></div>
 
           <!-- Tokens the models used. Filled by usage.js. -->
           <div id="usage-page" class="settings-page" hidden></div>
@@ -1101,6 +1105,7 @@
   <script src="signature-place.js"></script>
   <script src="assistant.js"></script>
   <script src="memory.js"></script>
+  <script src="skills.js"></script>
   <script src="usage.js"></script>
 </body>
 </html>

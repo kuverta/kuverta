@@ -42,12 +42,14 @@ pub mod session;
 pub mod settings;
 pub mod setup;
 pub mod signature;
+pub mod skills;
 pub mod smart;
 pub mod spots;
 pub mod tasks;
 pub mod update;
 pub mod urgency;
 pub mod usage;
+pub mod web;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
 pub use answer::AnswerDraft;
@@ -65,7 +67,7 @@ pub use core_pgp::{
     ImportReport, ImportedKey, KeyView, Keyring, RecipientKey, RecipientKeys, SecurityView,
     SignatureState, SignatureView,
 };
-pub use core_store::{SmartField, SmartOp, SmartQuery, SmartRule};
+pub use core_store::{SearchOrder, SmartField, SmartOp, SmartQuery, SmartRule};
 pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, SignatureSettings};
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
@@ -81,6 +83,7 @@ pub use session::{
     SyncSummary, VerifiedFolder, VerifyReport, MAX_ATTACHMENT_BYTES,
 };
 pub use settings::{AccountInput, AccountSettings};
+pub use skills::{SkillText, SkillView};
 pub use smart::{
     FoundSmartMailbox, SmartImportScan, SmartMailboxInput, SmartMailboxView, SmartPreview,
     SmartSaved,
@@ -88,6 +91,7 @@ pub use smart::{
 pub use tasks::{ProposalView, TaskAction, TaskInput, TaskRun, TaskView};
 pub use urgency::{UrgencyJob, UrgencyView, UrgentRow};
 pub use usage::{UsageDay, UsageShare, UsageStats, UsageTotals};
+pub use web::WebSettings;
 
 use std::path::Path;
 
@@ -511,8 +515,16 @@ impl Core {
     /// two unrelated orderings were one.
     /// The search box: the words typed, each as the start of a word and in
     /// its other spellings, or an exact phrase in double quotes.
-    pub fn search(&self, account: AccountId, query: &str, limit: usize) -> Result<Vec<MessageRow>> {
-        Ok(search_rows(self.store.search_typed(account, query, limit)?))
+    pub fn search(
+        &self,
+        account: AccountId,
+        query: &str,
+        limit: usize,
+        order: SearchOrder,
+    ) -> Result<Vec<MessageRow>> {
+        Ok(search_rows(
+            self.store.search_typed(account, query, limit, order)?,
+        ))
     }
 
     /// A forgiving search: mail matching any of `terms`, each word as the

@@ -84,6 +84,17 @@ in its header.
   tasks — rules plus an action, or a model's instruction — that run after each
   sync, asking first where told to and always for replies; every chat is kept
   and can be opened again, and a failed answer has a Retry
+- **Research online, and skills** — both off until switched on in the
+  settings. On, the assistant searches the web and reads pages when asked to
+  find something out, and says where it looked; it opens only addresses you
+  wrote, a search returned or a page it read links to — never one from inside
+  a message — reaches nothing on this computer or its network, and once it
+  has read from the web in a question can look and draft but not change mail,
+  sign or remember anything. A skill is a file of instructions for one kind
+  of job: the assistant downloads one from an address you give it, and it
+  does nothing until you have read the whole text in the settings and
+  accepted it there, which no tool can do
+  ([why](docs/decisions.md#48-the-assistant-on-the-web-and-the-skills-it-is-handed))
 - **PDFs, written and signed** — the assistant writes a letter or a
   confirmation as a PDF, and signs a PDF — its own, or a contract that came as
   an attachment — with the picture of your signature from the settings, only
