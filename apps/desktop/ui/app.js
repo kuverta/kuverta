@@ -114,8 +114,9 @@ const state = {
   total: 0,
   // Sparse: offset -> row. Only what has been fetched.
   rows: new Map(),
-  // Page offsets already requested, so a slow fetch is not asked for twice.
-  requested: new Set(),
+  // Page offsets already requested, by the fetch under way, so a slow fetch
+  // is not asked for twice and an action on rows not here yet can wait for it.
+  requested: new Map(),
   selected: -1,
   // Rows picked out beside the cursor, by index, for acting on several at
   // once. Empty means "just the one under the cursor".
@@ -172,13 +173,18 @@ function setMailOrder(value) {
 /// its way — is dropped rather than drawn into the new one.
 let listGeneration = 0;
 
-async function loadPage(offset) {
-  if (state.requested.has(offset)) return;
+function loadPage(offset) {
+  if (state.requested.has(offset)) return state.requested.get(offset);
   // A resize or scroll before start has picked an account draws the empty
   // list, and the empty list asks for its first page. There is nothing to ask
   // for yet; choosing the account reloads.
-  if (!state.postbox && state.view === "mail" && state.account === null) return;
-  state.requested.add(offset);
+  if (!state.postbox && state.view === "mail" && state.account === null) return Promise.resolve();
+  const load = fetchPage(offset);
+  state.requested.set(offset, load);
+  return load;
+}
+
+async function fetchPage(offset) {
   const generation = listGeneration;
 
   try {
@@ -262,7 +268,7 @@ async function reload({ keepPosition = false } = {}) {
   // itself when it loads, so there it stays.
   if (state.view !== "people") searchBox.value = "";
   reading.hidden = true;
-  emptyPane.hidden = false;
+  emptyPane.hidden = !compose.pane.hidden;
   // Whatever a sender card said about how much mail there is with somebody,
   // the mail has just moved under it.
   forgetSenders();
@@ -286,6 +292,10 @@ async function reload({ keepPosition = false } = {}) {
   } else {
     select(0);
   }
+  // A reply stays open through a reload. The message it answers was taken
+  // off the screen above it; it comes back when it is still under the cursor.
+  const about = compose.replyTo ?? compose.forward;
+  if (about !== null && state.rows.get(state.selected)?.id === about) await openSelected();
   renderScope();
 }
 
@@ -619,7 +629,8 @@ function renderScope() {
       button.onclick = async () => {
         if (mailOrder === value) return;
         setMailOrder(value);
-        await reload();
+        // A search is a list too; turning it round must not throw it away.
+        await (state.searching ? runSearch(searchBox.value) : reload());
       };
       toggle.append(button);
     }
@@ -642,7 +653,7 @@ function renderScope() {
       button.onclick = async () => {
         if (postOrder === value) return;
         setPostOrder(value);
-        await reload();
+        await (state.searching ? runSearch(searchBox.value) : reload());
       };
       toggle.append(button);
     }
@@ -1271,11 +1282,38 @@ function ensureLoaded(from, to) {
   }
 }
 
+/// The rows among `indexes` the list has not fetched yet, fetched: ⌘A picks
+/// rows far below the screen too, and "archived 300 messages" has to mean all
+/// 300, not the two screens that happened to be loaded.
+async function ensureRows(indexes) {
+  if (state.searching) return;
+  const offsets = new Set(
+    indexes.filter((index) => !state.rows.has(index)).map((index) => Math.floor(index / PAGE) * PAGE),
+  );
+  await Promise.all([...offsets].map((offset) => loadPage(offset)));
+}
+
+/// Where a loaded row with this id is in the list, or -1.
+function indexOfRow(id) {
+  for (const [index, row] of state.rows) if (row.id === id) return index;
+  return -1;
+}
+
 // -- reading ---------------------------------------------------------------
 
 async function openSelected() {
   const row = state.rows.get(state.selected);
   if (!row) return;
+  // A reply or a forward belongs to the message it answers. Opening another
+  // one takes it away — asking first when something has been typed — and
+  // "keep writing" puts the cursor back where the reply is. A new message
+  // is about nothing in particular and stays under whatever is read.
+  const about = compose.replyTo ?? compose.forward;
+  if (about !== null && (about !== row.id || state.postbox) && !(await leaveCompose())) {
+    const back = indexOfRow(about);
+    if (back >= 0 && !state.postbox) select(back, { open: false });
+    return;
+  }
   if (!state.postbox && state.view === "people") {
     await openConversation(row);
     return;
@@ -1580,6 +1618,17 @@ function toggleSelected(index) {
   renderScope();
 }
 
+/// Every row, for ⌘A. The rows below the screen are not fetched yet; whatever
+/// is done to the pick fetches them first (see `ensureRows`).
+function selectAll() {
+  if (state.total === 0) return;
+  state.selection = new Set(Array.from({ length: state.total }, (_, index) => index));
+  state.anchor = 0;
+  if (state.selected < 0) state.selected = 0;
+  render(true);
+  renderScope();
+}
+
 function keepInView() {
   const top = state.selected * ROW_HEIGHT;
   const bottom = top + ROW_HEIGHT;
@@ -1598,6 +1647,7 @@ function select(index, { open = true } = {}) {
   state.selection.clear();
   state.anchor = -1;
   state.selected = Math.max(0, Math.min(index, state.total - 1));
+  pointerIn = "list";
 
   // Keep the selection in view, which is what makes j/k usable at all.
   keepInView();
@@ -1629,6 +1679,7 @@ function say(message, isError = false) {
 /// with the store. The next sync reconciles, and `undo` puts the row back.
 async function act(command, args, describe) {
   const indexes = actingOn();
+  await ensureRows(indexes);
   const rows = indexes.map((index) => state.rows.get(index)).filter(Boolean);
   if (!rows.length) return 0;
 
@@ -1686,13 +1737,19 @@ async function trash() {
   if (!(await offerUnsubscribe(gone[0]))) offerSimilar(gone[0]);
 }
 
+/// Marks what is picked the way the row under the cursor is not: a block with
+/// one unread message in it under the cursor is marked read as a block.
 async function toggleRead() {
   const row = state.rows.get(state.selected);
   if (!row) return;
   if (!state.postbox && state.view === "people") return;
   if (state.postbox) {
-    await markPostRead(row, row.unread);
-    say(row.unread ? t("marked unread") : t("marked read"));
+    const read = row.unread;
+    const letters = actingOn().map((index) => state.rows.get(index)).filter(Boolean);
+    for (const letter of letters) {
+      if (letter.unread === read) await markPostRead(letter, read);
+    }
+    say(read ? t("marked read") : t("marked unread"));
     return;
   }
   await act("set_read", { read: row.unread }, row.unread ? "marked read" : "marked unread");
@@ -1726,7 +1783,56 @@ const compose = {
   replyAll: false,
   forward: null,
   sending: false,
+  // The fields as they were filled in when it opened; see `composeTouched`.
+  opened: null,
+  // While "discard what you are writing?" is on screen.
+  leaving: false,
 };
+
+/// The fields as one string, to compare with how they were when compose
+/// opened. Files count by number: an attached file is something typed.
+function composeFingerprint() {
+  return JSON.stringify([
+    compose.to.value,
+    compose.cc.value,
+    compose.bcc.value,
+    compose.subject.value,
+    compose.body.value,
+    compose.files?.files.length ?? 0,
+  ]);
+}
+
+/// Whether anything has been typed since compose opened — as against the
+/// recipients and quoting it was filled in with, which cost nothing to lose.
+function composeTouched() {
+  return !compose.pane.hidden && composeFingerprint() !== compose.opened;
+}
+
+/// Before compose is taken away for something else: nothing typed goes
+/// quietly, anything typed is asked about. True when it is fine to go on.
+async function leaveCompose() {
+  if (compose.pane.hidden) return true;
+  // A second click while the question is still up is not a second answer.
+  if (compose.leaving) return false;
+  if (composeTouched()) {
+    const question =
+      compose.replyTo !== null
+        ? t("Discard the reply you are writing?")
+        : compose.forward !== null
+          ? t("Discard the forward you are writing?")
+          : t("Discard the message you are writing?");
+    compose.leaving = true;
+    let discard = false;
+    try {
+      discard = await ask(question, { yes: t("Discard"), danger: true });
+    } finally {
+      compose.leaving = false;
+    }
+    if (!discard) return false;
+  }
+  closeCompose();
+  return true;
+}
 
 /// The addresses in a field: split at commas, but not at one inside a quoted
 /// name — "Mustermann, Erika" <erika@example.de> is one address.
@@ -1779,10 +1885,14 @@ function closeCompose() {
   compose.files?.clear();
   // A late answer from the assistant is for compose as it was, not this.
   compose.answering = null;
+  compose.opened = null;
   el("compose-answer-status").textContent = "";
   for (const field of [compose.to, compose.cc, compose.bcc, compose.subject, compose.body]) {
     field.value = "";
   }
+  // A new message had hidden the reading pane; with compose gone too there
+  // would be nothing on the right at all.
+  if (reading.hidden && conversationPane.hidden) emptyPane.hidden = false;
 }
 
 /// Opens compose. With `replyAll`, the recipients and quoted body come from
@@ -1794,7 +1904,9 @@ function closeCompose() {
 /// without the message it answers in front of you is written from memory.
 async function openCompose({ replyAll = null, forward = false } = {}) {
   const row = state.rows.get(state.selected);
-  closeCompose();
+  // Reply pressed with a reply half written: the typed one is not thrown
+  // away for an empty one without asking.
+  if (!(await leaveCompose())) return;
 
   if (replyAll !== null || forward) {
     if (!row) {
@@ -1839,13 +1951,14 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
   emptyPane.hidden = true;
   loadAddressBook();
   (compose.to.value ? compose.body : compose.to).focus();
+  compose.opened = composeFingerprint();
   await refreshEnvelope();
 }
 
 /// Fills compose from a draft the core kept — a scheduled message being
 /// edited again. Replies keep what they reply to, so threading survives.
 async function openComposeWith(draft) {
-  closeCompose();
+  if (!(await leaveCompose())) return;
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
@@ -1864,6 +1977,7 @@ async function openComposeWith(draft) {
   reading.hidden = true;
   emptyPane.hidden = true;
   compose.body.focus();
+  compose.opened = composeFingerprint();
   await refreshEnvelope();
 }
 
@@ -2094,12 +2208,15 @@ async function runSearch(query) {
   }
   try {
     // In a postbox, Paperless's own full-text search, over the scanned text.
+    // In the order the list is in: the toggle above the results still says
+    // newest or oldest, and results that ignore it are results that lie.
     const rows = state.postbox
-      ? (await invoke("paper_documents", { id: state.postbox.id, offset: 0, limit: 200, query })).rows
+      ? (await invoke("paper_documents", { id: state.postbox.id, offset: 0, limit: 200, query, order: postOrder })).rows
       : await invoke("search", {
           account: state.account,
           query,
           limit: 200,
+          order: mailOrder,
         });
     state.rows.clear();
     state.requested.clear();
@@ -2150,6 +2267,17 @@ const KEYS = {
   a: mailOnly(() => answerSelected()),
 };
 
+/// Which side the pointer was last put down on: "list" or "detail". ⌘A
+/// reads it, because a click in a message is not focus the window can see —
+/// a paragraph cannot be focused — and the list is not either.
+let pointerIn = "list";
+el("list").addEventListener("mousedown", () => {
+  pointerIn = "list";
+});
+el("detail").addEventListener("mousedown", () => {
+  pointerIn = "detail";
+});
+
 // Going back to the list takes the keys back with it: while the chat input
 // has focus every key belongs to it, and j, x or e would otherwise do nothing.
 content.addEventListener("mousedown", () => {
@@ -2191,7 +2319,7 @@ document.addEventListener("keydown", async (event) => {
     // The send-later menu is inside compose and has its own keys: ⌘↩ there
     // must not also send the message now.
     if (el("schedule-menu").contains(event.target)) return;
-    if (event.key === "Escape") closeCompose();
+    if (event.key === "Escape") await leaveCompose();
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) await sendDraft();
     if (event.key.toLowerCase() === "j" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
@@ -2219,6 +2347,10 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
+  // Any other field — a sender card, a sheet without a dialog class — keeps
+  // its letters; "e" typed into one is not archive.
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable) return;
+
   if (event.key === "/") {
     event.preventDefault();
     searchBox.focus();
@@ -2226,9 +2358,21 @@ document.addEventListener("keydown", async (event) => {
   }
   if (event.key === "Escape") {
     clearSelection();
+    // With a reply open, Escape in the list is not Escape in the reply: the
+    // pick goes, the message and the answer under it stay together.
+    if (!compose.pane.hidden) return;
     reading.hidden = true;
     hideConversation();
     emptyPane.hidden = false;
+    return;
+  }
+
+  // ⌘A picks every message — unless the pointer was last put in the open
+  // message, where it means the text of that message, as it does anywhere.
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a") {
+    if (pointerIn === "detail" && (!reading.hidden || !conversationPane.hidden)) return;
+    event.preventDefault();
+    selectAll();
     return;
   }
 
@@ -2268,7 +2412,9 @@ content.addEventListener("click", (event) => {
   } else if (event.metaKey || event.ctrlKey) {
     toggleSelected(at);
   } else {
-    select(at);
+    // `select` would open it too when the pane is already showing one;
+    // once is enough.
+    select(at, { open: false });
     openSelected();
   }
 });
@@ -2616,6 +2762,7 @@ const SETTINGS_PAGES = {
   smart: el("smart-page"),
   keys: el("keys-page"),
   memory: el("memory-page"),
+  research: el("research-page"),
   usage: el("usage-page"),
   general: el("general-page"),
   diagnostics: el("diagnostics-page"),
@@ -2631,6 +2778,7 @@ const PAGE_HEADS = {
   smart: ["Smart mailboxes", "Saved searches that live in the sidebar."],
   keys: ["Encryption", "OpenPGP keys for signing and encrypting mail."],
   memory: ["Assistant memory", "What the assistant remembers about each account."],
+  research: ["Research and skills", "The assistant on the web, and the skills it is taught."],
   usage: ["Token usage", "How much the models were asked and answered."],
   general: ["General", ""],
   diagnostics: ["Diagnostics", "A log to attach when something goes wrong."],
@@ -2740,6 +2888,7 @@ function renderSettingsList() {
     navItem({ label: t("Smart mailboxes"), active: settings.mode === "smart", onClick: () => showSettingsPage("smart") }),
     navItem({ label: t("Encryption"), active: settings.mode === "keys", onClick: () => showSettingsPage("keys") }),
     navItem({ label: t("Assistant memory"), active: settings.mode === "memory", onClick: () => showSettingsPage("memory") }),
+    navItem({ label: t("Research and skills"), active: settings.mode === "research", onClick: () => showSettingsPage("research") }),
   );
 
   settings.list.append(settingsHeading("kuverta"));

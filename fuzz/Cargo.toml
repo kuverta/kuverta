@@ -28,6 +28,9 @@ core-store = { path = "../crates/core-store" }
 core-ai = { path = "../crates/core-ai" }
 core-rpc = { path = "../crates/core-rpc" }
 scannerd = { path = "../apps/scannerd" }
+# For the page scanner's base address and SearXNG's JSON.
+url = "2"
+serde_json = "1"
 
 [workspace]
 members = ["."]
@@ -87,3 +90,11 @@ path = "fuzz_targets/text.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "web_page"
+path = "fuzz_targets/web_page.rs"
+test = false
+doc = false
+bench = false
+

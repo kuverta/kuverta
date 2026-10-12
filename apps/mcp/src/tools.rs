@@ -284,7 +284,12 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
 
         Tool::SearchMessages => {
             let query = text(args, "query")?;
-            let rows = core.search(int(args, "account")?, query, limit(args))?;
+            let rows = core.search(
+                int(args, "account")?,
+                query,
+                limit(args),
+                core_rpc::SearchOrder::Rank,
+            )?;
             json!({ "returned": rows.len(), "messages": rows, "untrusted_content": UNTRUSTED })
         }
 
