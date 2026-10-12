@@ -594,6 +594,37 @@ CREATE TABLE memory_sync (
     r#"
 ALTER TABLE document ADD COLUMN signed_from TEXT;
 "#,
+    // v23 — settings that are one value for the whole store, and skills.
+    //
+    // A preference is a named value — whether the assistant may research
+    // online, whether it uses skills, where searches go. In the store rather
+    // than the window's storage because the core enforces them: a tool the
+    // person has not switched on is never offered to a model, whichever
+    // window or command line asks.
+    //
+    // A skill is a text file of instructions for one kind of job, fetched
+    // from an address the person gave. It is kept with where it came from
+    // and a digest of its text, and `accepted_at` stays NULL until the
+    // person has read it in the settings and accepted it there: until then
+    // it is a file waiting to be looked at, and no model sees a word of it.
+    r#"
+CREATE TABLE preference (
+    key        TEXT    PRIMARY KEY,
+    value      TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+CREATE TABLE skill (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT    NOT NULL,
+    description TEXT,
+    source      TEXT    NOT NULL,
+    text        TEXT    NOT NULL,
+    digest      TEXT    NOT NULL,
+    fetched_at  INTEGER NOT NULL,
+    accepted_at INTEGER,
+    enabled     INTEGER NOT NULL DEFAULT 1
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

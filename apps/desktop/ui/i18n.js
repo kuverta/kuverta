@@ -1058,6 +1058,9 @@ const GERMAN = {
   "Sent at its time while kuverta is open. If it is closed then, a message goes the next time kuverta opens.":
     "Geht zu seiner Zeit hinaus, solange kuverta offen ist. Ist es dann geschlossen, geht die Nachricht beim nächsten Start hinaus.",
   Discard: "Verwerfen",
+  "Discard the reply you are writing?": "Die angefangene Antwort verwerfen?",
+  "Discard the forward you are writing?": "Die angefangene Weiterleitung verwerfen?",
+  "Discard the message you are writing?": "Die angefangene Nachricht verwerfen?",
 
   // Questions asked in the window's own sheet, and who sent mail went to
   OK: "OK",
@@ -1218,6 +1221,7 @@ const GERMAN = {
   // The keyboard strip at the foot of the window
   "j/k move": "j/k bewegen",
   "J/K select": "J/K auswählen",
+  "⌘A all": "⌘A alle",
   "enter read": "Enter lesen",
   "e archive": "e archivieren",
   "⌫ trash": "⌫ löschen",
@@ -1309,6 +1313,42 @@ const GERMAN = {
   "Encrypted to key {id}. Last synced {when}.": "Verschlüsselt für Schlüssel {id}. Zuletzt abgeglichen {when}.",
   "Encrypted to key {id}. Not synced yet.": "Verschlüsselt für Schlüssel {id}. Noch nicht abgeglichen.",
   "The last sync failed: {error}": "Der letzte Abgleich ist fehlgeschlagen: {error}",
+
+  // -- research online and skills ------------------------------------------
+  "Research and skills": "Recherche und Skills",
+  "The assistant on the web, and the skills it is taught.":
+    "Der Assistent im Netz, und die Skills, die er beigebracht bekommt.",
+  "Two things the assistant can do beyond your mail, each off until you switch it on here: look things up on the web when you ask it to, and follow skills — files of instructions for one kind of job — that you have read and accepted.":
+    "Zwei Dinge, die der Assistent über deine E-Mails hinaus kann, beide aus, bis du sie hier einschaltest: im Netz nachsehen, wenn du ihn darum bittest, und Skills folgen — Dateien mit Anweisungen für eine Art Aufgabe —, die du gelesen und akzeptiert hast.",
+  "Research online": "Online recherchieren",
+  "Let the assistant search the web and read pages when I ask it to":
+    "Der Assistent darf im Netz suchen und Seiten lesen, wenn ich ihn darum bitte",
+  "What it searches for goes to the search engine; the pages it reads come to this computer as text — no scripts, no pictures — and, with a hosted model, go on to that service. It may open only addresses you wrote, a search returned, or a page it read links to: never one from inside a message, so a link in a mail is opened only when you paste it. Once it has read from the web in a question, it can look and draft but not change mail, sign, or remember anything in that question — and nothing it read online can ever lead to a note, a task or a skill in that conversation.":
+    "Wonach er sucht, geht an die Suchmaschine; die Seiten, die er liest, kommen als Text auf diesen Computer — ohne Skripte, ohne Bilder — und gehen bei einem gehosteten Modell an diesen Dienst weiter. Öffnen darf er nur Adressen, die du geschrieben hast, die eine Suche geliefert hat oder auf die eine gelesene Seite verweist: nie eine aus einer Nachricht, ein Link aus einer E-Mail wird also nur geöffnet, wenn du ihn einfügst. Sobald er in einer Frage aus dem Netz gelesen hat, kann er in dieser Frage nachsehen und entwerfen, aber keine E-Mails ändern, nichts unterschreiben und sich nichts merken — und nichts, was er online gelesen hat, kann in diesem Gespräch je zu einer Notiz, einer Aufgabe oder einem Skill führen.",
+  "Search engine": "Suchmaschine",
+  "Left empty, DuckDuckGo. Or the address of a SearXNG of your own, such as http://192.168.8.5:8080 — then searches go there and nowhere else.":
+    "Leer: DuckDuckGo. Oder die Adresse einer eigenen SearXNG, etwa http://192.168.8.5:8080 — dann gehen Suchen dorthin und nirgends sonst.",
+  Skills: "Skills",
+  "Use skills": "Skills verwenden",
+  "A skill is a text file telling the assistant how to do one kind of job — how a cancellation is worded, what to check on a supplier's invoice. The assistant downloads one when you give it the address, or you add one here. Nothing in a skill takes effect until you have read it here and accepted it: it is instructions the assistant will follow, so read it as you would a program before installing it. Beside the text, words that stood out are listed — addresses, talk of hiding, ignoring rules or sending something somewhere. They are only words that stood out, not a verdict.":
+    "Ein Skill ist eine Textdatei, die dem Assistenten sagt, wie eine Art Aufgabe zu erledigen ist — wie eine Kündigung formuliert wird, was auf der Rechnung eines Lieferanten zu prüfen ist. Der Assistent lädt einen herunter, wenn du ihm die Adresse gibst, oder du fügst hier einen hinzu. Nichts in einem Skill wirkt, bevor du ihn hier gelesen und akzeptiert hast: Es sind Anweisungen, denen der Assistent folgen wird — lies ihn also wie ein Programm, bevor du es installierst. Neben dem Text sind Wörter aufgeführt, die aufgefallen sind — Adressen, Reden vom Verbergen, vom Ignorieren von Regeln oder davon, etwas irgendwohin zu schicken. Es sind nur Wörter, die aufgefallen sind, kein Urteil.",
+  "Downloading…": "Wird heruntergeladen…",
+  "No skills yet.": "Noch keine Skills.",
+  "Waiting for you to read it": "Wartet darauf, dass du ihn liest",
+  "Accepted {when}": "Akzeptiert am {when}",
+  "{count} characters": "{count} Zeichen",
+  Enabled: "Aktiv",
+  Read: "Lesen",
+  Hide: "Ausblenden",
+  "From {source}": "Von {source}",
+  "Worth a second look:": "Zweimal lesen:",
+  "Nothing stood out. Read it anyway: it is instructions the assistant will follow.":
+    "Nichts ist aufgefallen. Lies ihn trotzdem: Es sind Anweisungen, denen der Assistent folgen wird.",
+  Accept: "Akzeptieren",
+  "Skill downloaded: {name}": "Skill heruntergeladen: {name}",
+  "From {source}. It does nothing until you have read and accepted it in the settings.":
+    "Von {source}. Er bewirkt nichts, bis du ihn in den Einstellungen gelesen und akzeptiert hast.",
+  "Read and accept…": "Lesen und akzeptieren…",
 
   // -- token usage ---------------------------------------------------------
   "Token usage": "Token-Verbrauch",

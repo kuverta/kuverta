@@ -223,18 +223,27 @@ fn searching_forgives_spelling_and_word_endings() {
 
     // The search box finds it as typed; only an exact phrase in quotes does not.
     assert_eq!(
-        world.core.search(world.account, "esim", 10).unwrap()[0].id,
+        world
+            .core
+            .search(world.account, "esim", 10, core_rpc::SearchOrder::Rank)
+            .unwrap()[0]
+            .id,
         esim
     );
     assert!(world
         .core
-        .search(world.account, "\"eSIM\"", 10)
+        .search(world.account, "\"eSIM\"", 10, core_rpc::SearchOrder::Rank)
         .unwrap()
         .is_empty());
     assert_eq!(
         world
             .core
-            .search(world.account, "\"e-SIM ist\"", 10)
+            .search(
+                world.account,
+                "\"e-SIM ist\"",
+                10,
+                core_rpc::SearchOrder::Rank
+            )
             .unwrap()
             .len(),
         1

@@ -19,8 +19,10 @@ pub mod memory;
 pub mod model;
 pub mod outbox;
 pub mod people;
+pub mod preferences;
 pub mod profiles;
 mod schema;
+pub mod skills;
 pub mod smart;
 pub mod tasks;
 pub mod usage;
@@ -39,6 +41,7 @@ pub use people::{
     UrgencyCandidate, UrgentMessage,
 };
 pub use profiles::Profile;
+pub use skills::{NewSkill, StoredSkill};
 pub use smart::{SmartField, SmartOp, SmartQuery, SmartRule, StoredSmartMailbox};
 pub use tasks::{NewProposal, Proposal, StoredTask};
 pub use usage::UsageRow;
@@ -68,6 +71,16 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 
 pub struct Store {
     conn: Connection,
+}
+
+/// How search results come back: as FTS5 ranks them, best match first, or by
+/// date the way the list is sorted. A model searching wants the best match;
+/// a person with a list sorted newest-first wants the newest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SearchOrder {
+    Rank,
+    Newest,
+    Oldest,
 }
 
 impl Store {
@@ -1142,48 +1155,83 @@ impl Store {
             .map_err(Into::into)
     }
 
-    /// Full-text search over subject, sender and body.
+    /// Full-text search over subject, sender and body, best match first.
     pub fn search(
         &self,
         account_id: AccountId,
         query: &str,
         limit: usize,
     ) -> Result<Vec<MessageSummary>> {
+        self.search_phrase(account_id, query, limit, SearchOrder::Rank)
+    }
+
+    fn search_phrase(
+        &self,
+        account_id: AccountId,
+        query: &str,
+        limit: usize,
+        order: SearchOrder,
+    ) -> Result<Vec<MessageSummary>> {
         // FTS5 treats a bare string as query syntax; quoting makes user input a
         // literal phrase, so a stray `"` or `*` cannot become an operator.
         let phrase = format!("\"{}\"", query.replace('"', "\"\""));
-
-        let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
-                    m.has_attachments, m.snippet
-             FROM message_fts f
-             JOIN message m ON m.id = f.rowid
-             WHERE message_fts MATCH ?1 AND m.account_id = ?2
-             ORDER BY rank
-             LIMIT ?3",
-        )?;
-        let rows = stmt.query_map(params![phrase, account_id, limit as i64], row_to_summary)?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        self.search_fts(account_id, &phrase, limit, order)
     }
 
     /// What a search box searches for: the words typed, forgivingly, as
     /// [`Store::search_terms`] matches them — or, in double quotes, that exact
-    /// phrase.
+    /// phrase. In the order asked for: the box sits over a list sorted by
+    /// date, and a result in the other order under a toggle that says
+    /// "newest" is a list that does not do what it says.
     pub fn search_typed(
         &self,
         account_id: AccountId,
         query: &str,
         limit: usize,
+        order: SearchOrder,
     ) -> Result<Vec<MessageSummary>> {
         let trimmed = query.trim();
         match trimmed
             .strip_prefix('"')
             .and_then(|rest| rest.strip_suffix('"'))
         {
-            Some(phrase) if !phrase.trim().is_empty() => self.search(account_id, phrase, limit),
-            _ => self.search_terms(account_id, &[trimmed.to_string()], limit),
+            Some(phrase) if !phrase.trim().is_empty() => {
+                self.search_phrase(account_id, phrase, limit, order)
+            }
+            _ => self.search_terms_in(account_id, &[trimmed.to_string()], limit, order),
         }
+    }
+
+    /// The query every search runs, with its order. By date, the ties — the
+    /// same minute twice — fall back to rank, so the order is still a
+    /// definite one.
+    fn search_fts(
+        &self,
+        account_id: AccountId,
+        expression: &str,
+        limit: usize,
+        order: SearchOrder,
+    ) -> Result<Vec<MessageSummary>> {
+        let order_by = match order {
+            SearchOrder::Rank => "rank",
+            SearchOrder::Newest => "m.date_utc DESC, rank",
+            SearchOrder::Oldest => "m.date_utc ASC, rank",
+        };
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+                    m.has_attachments, m.snippet
+             FROM message_fts f
+             JOIN message m ON m.id = f.rowid
+             WHERE message_fts MATCH ?1 AND m.account_id = ?2
+             ORDER BY {order_by}
+             LIMIT ?3"
+        ))?;
+        let rows = stmt.query_map(
+            params![expression, account_id, limit as i64],
+            row_to_summary,
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     /// A forgiving search, for looking for something rather than for an exact
@@ -1200,25 +1248,21 @@ impl Store {
         terms: &[String],
         limit: usize,
     ) -> Result<Vec<MessageSummary>> {
+        self.search_terms_in(account_id, terms, limit, SearchOrder::Rank)
+    }
+
+    fn search_terms_in(
+        &self,
+        account_id: AccountId,
+        terms: &[String],
+        limit: usize,
+        order: SearchOrder,
+    ) -> Result<Vec<MessageSummary>> {
         let expression = fts_terms(terms);
         if expression.is_empty() {
             return Ok(Vec::new());
         }
-        let mut stmt = self.conn.prepare(
-            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
-                    m.has_attachments, m.snippet
-             FROM message_fts f
-             JOIN message m ON m.id = f.rowid
-             WHERE message_fts MATCH ?1 AND m.account_id = ?2
-             ORDER BY rank
-             LIMIT ?3",
-        )?;
-        let rows = stmt.query_map(
-            params![expression, account_id, limit as i64],
-            row_to_summary,
-        )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
+        self.search_fts(account_id, &expression, limit, order)
     }
 
     // -- postal addresses --------------------------------------------------

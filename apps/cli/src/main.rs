@@ -1786,7 +1786,7 @@ fn list_messages(store: &Store, email: Option<&str>, limit: usize) -> Result<()>
 
 fn search(store: &Store, query: &str, email: Option<&str>, limit: usize) -> Result<()> {
     let account = resolve_account(store, email)?;
-    let hits = store.search_typed(account, query, limit)?;
+    let hits = store.search_typed(account, query, limit, core_store::SearchOrder::Rank)?;
     if hits.is_empty() {
         println!("no matches for {query:?}");
     }
@@ -2023,6 +2023,11 @@ fn describe_event(event: &core_rpc::AssistantEvent) -> String {
         E::Looked { what } | E::Failed { what } => what.clone(),
         E::Changed { what, .. } => format!("{what} (queued, undoable)"),
         E::Remembered { id, text } => format!("remembered note {id}: {text}"),
+        E::SkillDownloaded {
+            id, name, source, ..
+        } => format!(
+            "downloaded the skill {name} ({id}) from {source} — accept it under Settings → Research and skills before it is used"
+        ),
         E::Draft {
             to,
             subject,

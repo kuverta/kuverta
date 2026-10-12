@@ -277,6 +277,56 @@ fn max_uid_reports_the_high_water_mark_per_folder() {
 }
 
 #[test]
+fn search_typed_follows_the_date_order_it_is_asked_for() {
+    use core_store::SearchOrder;
+    let (store, account) = store_with_account();
+    // Three matches in a scrambled order of dates, so rank and insertion
+    // order cannot pass for date order by accident.
+    for (n, date) in [(1, 1_756_620_000), (2, 1_756_900_000), (3, 1_756_500_000)] {
+        let mut m = newsletter();
+        m.rfc822_message_id = Some(format!("issue-{n}@news.rustweekly.example"));
+        m.subject = Some(format!("Rust Weekly #{n}"));
+        m.date_utc = Some(date);
+        store.upsert_message(account, &m, None).unwrap();
+    }
+    let dates = |order| {
+        store
+            .search_typed(account, "weekly", 10, order)
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.date_utc)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        dates(SearchOrder::Newest),
+        vec![
+            Some(1_756_900_000),
+            Some(1_756_620_000),
+            Some(1_756_500_000)
+        ]
+    );
+    assert_eq!(
+        dates(SearchOrder::Oldest),
+        vec![
+            Some(1_756_500_000),
+            Some(1_756_620_000),
+            Some(1_756_900_000)
+        ]
+    );
+    // A quoted phrase goes the same way.
+    assert_eq!(
+        dates(SearchOrder::Newest),
+        store
+            .search_typed(account, "\"Rust Weekly\"", 10, SearchOrder::Newest)
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.date_utc)
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(dates(SearchOrder::Rank).len(), 3);
+}
+
+#[test]
 fn search_finds_by_subject_and_body_and_is_scoped_to_the_account() {
     let (store, account) = store_with_account();
     store.upsert_message(account, &newsletter(), None).unwrap();
@@ -1818,6 +1868,8 @@ fn addresses_saved_before_token_keys_get_one_when_the_store_is_opened() {
         conn.execute_batch(
             "DROP TABLE memory_sync;
              DROP TABLE assistant_memory;
+             DROP TABLE skill;
+             DROP TABLE preference;
              DROP TABLE ai_usage;
              DROP TABLE assistant_chat;
              DROP TABLE signature;
@@ -2184,6 +2236,8 @@ fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
              CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
                  DELETE FROM message_fts WHERE rowid = old.id;
              END;
+             DROP TABLE skill;
+             DROP TABLE preference;
              DROP TABLE memory_sync;
              DROP TABLE assistant_memory;
              DROP TABLE ai_usage;

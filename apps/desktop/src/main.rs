@@ -211,11 +211,18 @@ fn search(
     account: i64,
     query: String,
     limit: usize,
+    order: Option<String>,
 ) -> Result<Vec<MessageRow>, String> {
+    // The list's own toggle, by name; without one, the best match first.
+    let order = match order.as_deref() {
+        Some("newest") => core_rpc::SearchOrder::Newest,
+        Some("oldest") => core_rpc::SearchOrder::Oldest,
+        _ => core_rpc::SearchOrder::Rank,
+    };
     app.core
         .lock()
         .unwrap()
-        .search(account, &query, limit)
+        .search(account, &query, limit, order)
         .map_err(fail)
 }
 
@@ -1859,6 +1866,76 @@ fn delete_task(app: State<'_, App>, id: i64) -> Result<(), String> {
     app.core.lock().unwrap().delete_task(id).map_err(fail)
 }
 
+// -- research online and skills -------------------------------------------------
+
+#[tauri::command]
+fn web_settings(app: State<'_, App>) -> Result<core_rpc::WebSettings, String> {
+    app.core.lock().unwrap().web_settings().map_err(fail)
+}
+
+#[tauri::command]
+fn set_web_settings(
+    app: State<'_, App>,
+    settings: core_rpc::WebSettings,
+) -> Result<core_rpc::WebSettings, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_web_settings(&settings)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn skills(app: State<'_, App>) -> Result<Vec<core_rpc::SkillView>, String> {
+    app.core.lock().unwrap().skills().map_err(fail)
+}
+
+/// A skill's text, to read before accepting it, with what stood out in it.
+#[tauri::command]
+fn skill_text(app: State<'_, App>, id: i64) -> Result<core_rpc::SkillText, String> {
+    app.core.lock().unwrap().skill_text(id).map_err(fail)
+}
+
+/// Fetches a skill from an address the person typed, to wait for their
+/// reading. On a thread of its own, like the assistant: it waits on the
+/// network, and the window stays free.
+#[tauri::command]
+async fn add_skill(app: State<'_, App>, url: String) -> Result<core_rpc::SkillView, String> {
+    let data_dir = app.data_dir.clone();
+    on_own_thread("skill", move || async move {
+        let core = Core::open(&data_dir).map_err(fail)?;
+        core_rpc::skills::fetch_skill(&core, &core_rpc::web::Fetcher::guarded(), &url)
+            .await
+            .map_err(fail)
+    })
+    .await
+}
+
+/// The person has read it and accepts it. Only the window calls this: no
+/// tool of the assistant's can.
+#[tauri::command]
+fn accept_skill(app: State<'_, App>, id: i64) -> Result<core_rpc::SkillView, String> {
+    app.core.lock().unwrap().accept_skill(id).map_err(fail)
+}
+
+#[tauri::command]
+fn set_skill_enabled(
+    app: State<'_, App>,
+    id: i64,
+    enabled: bool,
+) -> Result<core_rpc::SkillView, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_skill_enabled(id, enabled)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn delete_skill(app: State<'_, App>, id: i64) -> Result<(), String> {
+    app.core.lock().unwrap().delete_skill(id).map_err(fail)
+}
+
 // -- documents and the signature -----------------------------------------------
 
 #[tauri::command]
@@ -2589,6 +2666,14 @@ fn main() {
             add_memory,
             update_memory,
             forget_memory,
+            web_settings,
+            set_web_settings,
+            skills,
+            skill_text,
+            add_skill,
+            accept_skill,
+            set_skill_enabled,
+            delete_skill,
             memory_sync_status,
             set_memory_sync,
             sync_memory,

@@ -566,6 +566,9 @@ function showEvent(event) {
     case "remembered":
       assistant.log.append(rememberedCard(event));
       break;
+    case "skill_downloaded":
+      assistant.log.append(skillCard(event));
+      break;
   }
   assistant.log.scrollTop = assistant.log.scrollHeight;
 }
@@ -616,6 +619,21 @@ function rememberedCard(event) {
     button.textContent = t("Forgotten");
   });
   cardButton(actions, t("All notes"), async () => openSettings("memory"));
+  return box;
+}
+
+/// A skill the assistant fetched. It is instructions from somebody else, and
+/// it does nothing until the person has read it in the settings and accepted
+/// it there — which is where the one button takes them.
+function skillCard(event) {
+  const { box, actions } = card(
+    t("Skill downloaded: {name}", { name: event.name }),
+    t("From {source}. It does nothing until you have read and accepted it in the settings.", { source: event.source }),
+  );
+  cardButton(actions, t("Read and accept…"), async () => {
+    research.open = event.id;
+    await openSettings("research");
+  });
   return box;
 }
 

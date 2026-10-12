@@ -35,6 +35,9 @@ mail-parser.workspace = true
 tokio = { workspace = true, features = ["time"] }
 getrandom.workspace = true
 reqwest.workspace = true
+# The addresses the assistant may open, compared as parsed: reqwest's own
+# url, named so its host type can be matched on.
+url = "2.5.8"
 rusqlite.workspace = true
 plist = "1.10.1"
 # Reading the passwords Thunderbird saved, in the scheme NSS wrote them with:
