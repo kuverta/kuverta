@@ -309,6 +309,42 @@ const GERMAN = {
   "could not load the scan: {error}": "Der Scan konnte nicht geladen werden: {error}",
   "the vision model could not read the scan: {error}":
     "Das Bildmodell konnte den Scan nicht lesen: {error}",
+  // Mail as the sender designed it, and the links in it (html-view.js).
+  HTML: "HTML",
+  "The message as the sender designed it": "Die Nachricht, wie der Absender sie gestaltet hat",
+  "Show the pictures": "Bilder anzeigen",
+  "could not show the page: {error}": "Die Seite ließ sich nicht anzeigen: {error}",
+  "Pictures from the internet are shown for this message.":
+    "Bilder aus dem Internet werden für diese Nachricht angezeigt.",
+  "One picture from the internet is not shown. Showing it tells the sender this message was opened, and when.":
+    "Ein Bild aus dem Internet wird nicht angezeigt. Es anzuzeigen verrät dem Absender, dass und wann diese Nachricht geöffnet wurde.",
+  "{count} pictures from the internet are not shown. Showing them tells the sender this message was opened, and when.":
+    "{count} Bilder aus dem Internet werden nicht angezeigt. Sie anzuzeigen verrät dem Absender, dass und wann diese Nachricht geöffnet wurde.",
+  "Open this link?": "Diesen Link öffnen?",
+  "It was in the message. kuverta has not looked at where it goes.":
+    "Er stand in der Nachricht. kuverta hat nicht nachgesehen, wohin er führt.",
+  "Open in the browser": "Im Browser öffnen",
+  "Copy address": "Adresse kopieren",
+  "Address copied.": "Adresse kopiert.",
+  "Could not copy — the address is selected; press ⌘C.":
+    "Kopieren ging nicht — die Adresse ist markiert; ⌘C drücken.",
+  "The link says: “{said}”": "Der Link sagt: „{said}“",
+  "The address could not be read as one.": "Die Adresse ließ sich nicht als Adresse lesen.",
+  "Not encrypted: the page, and anything typed on it, can be read on the way.":
+    "Unverschlüsselt: Die Seite, und alles, was dort eingetippt wird, kann unterwegs mitgelesen werden.",
+  "The site's name uses letters that can look like other letters: {host}.":
+    "Der Name der Seite enthält Buchstaben, die wie andere Buchstaben aussehen können: {host}.",
+  "The part before the @ is not the site. It goes to {host}.":
+    "Der Teil vor dem @ ist nicht die Seite. Es geht nach {host}.",
+  "The site is a bare number, not a name.": "Die Seite ist eine bloße Nummer, kein Name.",
+  "The link says {said} but goes to {host}.": "Der Link sagt {said}, führt aber nach {host}.",
+  "Write to {address}?": "An {address} schreiben?",
+  "A mail address in the message. Nothing is sent until you send it.":
+    "Eine E-Mail-Adresse aus der Nachricht. Nichts wird gesendet, bevor du es sendest.",
+  "Write to them": "Schreiben",
+  "A phone number": "Eine Telefonnummer",
+  "The message links to a number. kuverta does not place calls; copy it if you want it.":
+    "Die Nachricht verlinkt eine Nummer. kuverta ruft nicht an; kopiere sie, wenn du sie brauchst.",
   "Mark read": "Als gelesen markieren",
   "marked read": "als gelesen markiert",
   "marked unread": "als ungelesen markiert",

@@ -24,6 +24,8 @@ serde_json.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+# The secret in a message page's links; see src/page.rs.
+getrandom.workspace = true
 
 # Marking saved and opened attachments as come from elsewhere (quarantine).
 [target.'cfg(target_os = "macos")'.dependencies]

@@ -3469,6 +3469,7 @@ dependencies = [
  "core-proto",
  "core-rpc",
  "core-store",
+ "getrandom 0.4.3",
  "libc",
  "serde",
  "serde_json",

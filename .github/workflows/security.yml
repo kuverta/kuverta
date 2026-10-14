@@ -125,7 +125,7 @@ jobs:
       fail-fast: false
       matrix:
         target:
-          [parse_message, backfill_headers, open_pgp, reply_source, text, read_html, scan_picture, web_page]
+          [parse_message, backfill_headers, open_pgp, reply_source, text, read_html, html_page, scan_picture, web_page]
     env:
       # A minute each on a push or pull request, ten at night.
       FUZZ_TIME: ${{ github.event_name == 'schedule' && '600' || '60' }}

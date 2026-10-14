@@ -2989,3 +2989,63 @@ is blank is not kept over the HTML it was made from: when the parser's
 conversion comes to nothing and there is HTML, the HTML is read. The
 list's snippet is made at sync time from the parser's conversion alone,
 so such a message still shows no first line in the list; its body opens.
+
+## 53. HTML mail as a page
+
+The reading pane showed text, and only text: an HTML message was read
+into words by `html.rs` and the words were shown. That is the safe
+answer, and it is the wrong answer for a parcel notice whose buttons are
+pictures, a ticket whose barcode is a picture, and a newsletter whose
+layout *is* the message. So there is an HTML tab now, beside Text, on any
+message that has both. Text stays the default: it is the one of the two
+that cannot be designed to mislead.
+
+What the tab shows is not the sender's HTML. It is a new document, written
+by `html_view.rs` from an allow-list of what mail needs — text, the
+elements that lay it out, their presentation attributes, and style with
+everything that fetches or runs taken out of the CSS. Scripts, frames,
+objects, forms, `<meta>` (a refresh is a navigation), `<link>`, `<base>`,
+SVG and every `on…` attribute are not in the allow-list and so are not in
+the page; an element the list does not know is dropped around its text.
+The same rule as the text reader's holds throughout: too big, too deep,
+unterminated or empty is refused whole, never shown half.
+
+The page goes into an `<iframe sandbox>` with no flags, loaded from the
+app's own scheme, `kuverta-mail://`, which `page.rs` answers. A scheme of
+its own rather than `srcdoc` or a `blob:`, because a document from those
+inherits the window's Content-Security-Policy, and the window's forbids
+inline style — which is all a mail is. A document from a scheme is served
+under a policy written for it: nothing may load but style and the pictures
+the policy names, `sandbox` again in the header, so the frame is held
+twice. A probe of WebKit settled three things before any of this was
+built: a header from a scheme handler is honoured, the parent's policy
+does not reach into the frame, and a frame told `204 No Content` stays
+where it was.
+
+That last one is what makes links work. A link in the page never goes
+where it says: its address becomes `/open/<secret>?to=…&text=…` on the
+app's scheme, with the real address and the link's own words behind it.
+A click navigates the frame there, the app answers 204 and tells the
+window, and the window asks — the real address shown whole, what the link
+said beside it, and a sentence for each thing that is odd: not encrypted,
+letters that look like other letters, a site before an `@` that is not
+the site, a link whose words name one site and whose address names
+another. The secret is made once a start so that a message cannot write
+that address into a picture and have it fetched without a click. A
+`mailto:` opens compose; a `tel:` is shown to copy; anything else —
+`javascript:`, `data:`, `file:` — is not a link.
+
+Pictures from the internet are the sender's way of learning that the
+message was opened, and when. They are not in the page until the person
+says so, for that message: the page is made without them, says how many it
+left out, and is made again with them when asked. A picture inside the
+message (`cid:`) is fetched from the app by the index the attachments list
+gives it, and only if it is a picture; one written into the message
+(`data:image/…`) is kept, since it cannot reach anywhere.
+
+The page maker is fuzzed like the text reader (`html_page`), with one
+claim the text reader could not make: because the page is written rather
+than copied, no element that could run or fetch is ever named in it, and
+that is checked for every input. The claims about particular documents —
+which attribute survives, where a link goes — are in
+`crates/core-rpc/tests/html_view.rs`.

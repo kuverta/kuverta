@@ -134,7 +134,19 @@
         <span id="reading-note" class="file-status"></span>
         <button id="reading-transcribe" type="button" hidden>Read with the vision model</button>
       </div>
+      <!-- Mail with HTML: the text, or the page the sender designed — in a
+           frame that can do nothing (see html-view.js). Pictures from the
+           internet stay out until asked for, per message. -->
+      <div id="mail-tabs" class="tabs" role="tablist" hidden>
+        <button type="button" role="tab" data-mail="text">Text</button>
+        <button type="button" role="tab" data-mail="html">HTML</button>
+      </div>
+      <div id="html-remote" class="html-remote" hidden>
+        <span id="html-remote-note"></span>
+        <button type="button" id="html-remote-show" hidden>Show the pictures</button>
+      </div>
       <pre id="reading-body"></pre>
+      <iframe id="reading-html" title="The message as the sender designed it" sandbox="" referrerpolicy="no-referrer" hidden></iframe>
       <div id="reading-file" hidden>
         <iframe id="reading-pdf" title="The scanned letter" hidden></iframe>
         <img id="reading-image" alt="The scanned letter" hidden>
@@ -1070,6 +1082,28 @@
 
   <!-- A yes-or-no question, above whatever else is open. The webview answers
        window.confirm "no" without showing it; see ask() in app.js. -->
+  <!-- A link in a message's page was clicked: where it really goes, what it
+       said, and what is odd about it, before anything is opened. See
+       html-view.js. -->
+  <div id="link-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel" role="alertdialog" aria-modal="true" aria-labelledby="link-title">
+      <div class="dialog-head">
+        <h2 id="link-title">Open this link?</h2>
+        <p class="hint" id="link-sub">It was in the message. kuverta has not looked at where it goes.</p>
+      </div>
+      <div class="dialog-body">
+        <p id="link-said" class="link-said" hidden></p>
+        <code id="link-address" class="link-address"></code>
+        <ul id="link-warnings" class="link-warnings" hidden></ul>
+      </div>
+      <div class="dialog-foot">
+        <span class="spacer"></span>
+        <button type="button" id="link-cancel">Cancel</button>
+        <button type="button" id="link-copy">Copy address</button>
+        <button type="button" id="link-go" class="primary">Open in the browser</button>
+      </div>
+    </div>
+  </div>
   <div id="ask-sheet" class="sheet dialog ask-sheet" hidden>
     <div class="dialog-panel ask-panel" role="alertdialog" aria-modal="true" aria-labelledby="ask-question">
       <div class="dialog-body">
@@ -1095,6 +1129,7 @@
   <script src="diagnostics.js"></script>
   <script src="encryption.js"></script>
   <script src="attachments.js"></script>
+  <script src="html-view.js"></script>
   <script src="compose-files.js"></script>
   <script src="answer.js"></script>
   <script src="addresses.js"></script>

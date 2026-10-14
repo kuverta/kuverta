@@ -44,9 +44,9 @@ pub enum Refused {
 
 /// The most HTML that will be read. A megabyte of markup is a newsletter with
 /// every image inlined, not a letter.
-const MOST_HTML: usize = 1 << 20;
+pub(crate) const MOST_HTML: usize = 1 << 20;
 /// How deeply elements may nest. Mail templates reach perhaps thirty.
-const MOST_DEPTH: usize = 100;
+pub(crate) const MOST_DEPTH: usize = 100;
 /// The most text that will come out, so a small input cannot make a large
 /// output.
 const MOST_TEXT: usize = 1 << 19;
@@ -225,7 +225,7 @@ pub fn looks_converted_badly(plain: &str) -> bool {
 /// buchen"`, and stopping at that `>` ends the tag in the middle of a quoted
 /// value and spills the rest of it into the message as words. Quotes are
 /// tracked so the tag ends where the tag ends.
-fn tag_end(bytes: &[u8], from: usize) -> Option<usize> {
+pub(crate) fn tag_end(bytes: &[u8], from: usize) -> Option<usize> {
     let mut quote: Option<u8> = None;
     for (at, byte) in bytes.iter().enumerate().skip(from) {
         match (quote, *byte) {
@@ -239,7 +239,7 @@ fn tag_end(bytes: &[u8], from: usize) -> Option<usize> {
     None
 }
 
-fn memchr(bytes: &[u8], looking_for: u8, from: usize) -> Option<usize> {
+pub(crate) fn memchr(bytes: &[u8], looking_for: u8, from: usize) -> Option<usize> {
     // Past the end is "not found", not a panic. `find` below has had this
     // guard all along and this did not, which is the sort of difference
     // between two neighbouring four-line functions that nobody reads twice.
@@ -252,7 +252,7 @@ fn memchr(bytes: &[u8], looking_for: u8, from: usize) -> Option<usize> {
         .map(|at| at + from)
 }
 
-fn find(text: &str, looking_for: &str, from: usize) -> Option<usize> {
+pub(crate) fn find(text: &str, looking_for: &str, from: usize) -> Option<usize> {
     if from > text.len() {
         return None;
     }
@@ -261,7 +261,7 @@ fn find(text: &str, looking_for: &str, from: usize) -> Option<usize> {
 
 /// Where a `<name` tag starts, in any case, or `None`. The name has to end
 /// there: `<body` is not `<bodytext`.
-fn find_tag(html: &str, name: &str, from: usize) -> Option<usize> {
+pub(crate) fn find_tag(html: &str, name: &str, from: usize) -> Option<usize> {
     if from > html.len() {
         return None;
     }
@@ -280,13 +280,13 @@ fn find_tag(html: &str, name: &str, from: usize) -> Option<usize> {
 }
 
 /// Just past the end tag of `name`, whatever is between.
-fn find_close(html: &str, name: &str, from: usize) -> Option<usize> {
+pub(crate) fn find_close(html: &str, name: &str, from: usize) -> Option<usize> {
     let lower = html[from..].to_ascii_lowercase();
     let end = lower.find(&format!("</{name}"))? + from;
     memchr(html.as_bytes(), b'>', end).map(|at| at + 1)
 }
 
-fn tag_name(tag: &str) -> String {
+pub(crate) fn tag_name(tag: &str) -> String {
     tag.trim_start_matches('/')
         .split(|c: char| c.is_whitespace() || c == '/' || c == '>')
         .next()
@@ -324,7 +324,7 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
 /// empty rows and every one of them asked for a newline.
 /// Tags taken out of a string that is meant to be text. No nesting, no
 /// state: an attribute value is not a document.
-fn without_tags(value: &str) -> String {
+pub(crate) fn without_tags(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
     let mut inside = false;
     for c in value.chars() {
@@ -402,7 +402,7 @@ fn worth_showing(href: &str) -> Option<&str> {
 /// The entities mail actually uses, and numeric ones. An entity this does not
 /// know is left as it was written: in text, `&frac12;` is not dangerous, it
 /// is only ugly.
-fn unescape(raw: &str) -> String {
+pub(crate) fn unescape(raw: &str) -> String {
     if !raw.contains('&') {
         return raw.to_string();
     }

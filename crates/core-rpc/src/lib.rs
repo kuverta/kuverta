@@ -28,6 +28,7 @@ pub mod cleanup;
 pub mod conversations;
 pub mod documents;
 pub mod html;
+pub mod html_view;
 pub mod mailboxes;
 pub mod memory;
 pub mod outbox;
@@ -261,6 +262,11 @@ pub struct MessageDetail {
     /// the encryption held. [`Core::attachment`] fetches one.
     #[serde(default)]
     pub attachments: Vec<AttachmentView>,
+    /// The message has an HTML part, so the window can offer it as a page —
+    /// [`Core::message_page`] makes one. For encrypted mail, whether what
+    /// the encryption held has one.
+    #[serde(default)]
+    pub has_html: bool,
 }
 
 /// What a model pass did.
@@ -739,6 +745,17 @@ impl Core {
                 })
                 .map(|plain| Self::better_than(plain, parsed.as_ref())),
         };
+        let has_html = match &opened.decrypted {
+            Some(inner) => mail_parser::MessageParser::default()
+                .parse(inner)
+                .and_then(|inner| inner.body_html(0).map(|html| !html.trim().is_empty()))
+                .unwrap_or(false),
+            None if opened.security.as_ref().is_some_and(|s| s.encrypted) => false,
+            None => parsed
+                .as_ref()
+                .and_then(|p| p.body_html(0))
+                .is_some_and(|html| !html.trim().is_empty()),
+        };
 
         Ok(MessageDetail {
             facts,
@@ -765,7 +782,65 @@ impl Core {
             security: opened.security,
             pgp_keys_attached: !opened.pgp_keys.is_empty(),
             attachments,
+            has_html,
         })
+    }
+
+    /// The message's HTML as a page for the window's frame, made safe by
+    /// [`html_view::to_page`]; `None` for a message without HTML. For
+    /// encrypted mail it is the page of what the encryption held, made in
+    /// memory for this one request like the decrypted text.
+    pub fn message_page(
+        &self,
+        account: AccountId,
+        id: MessageId,
+        remote: bool,
+        open: &str,
+        parts: &str,
+    ) -> Result<Option<html_view::Page>> {
+        let stored = self
+            .store
+            .message_by_id(account, id)?
+            .ok_or(RpcError::UnknownMessage(id))?;
+        let Some(path) = stored.body_path.as_deref() else {
+            return Ok(None);
+        };
+        let raw = self
+            .blobs
+            .get(path)
+            .map_err(|e| RpcError::Rejected(format!("reading the stored body of {id}: {e}")))?;
+        let parser = mail_parser::MessageParser::default();
+        let Some(parsed) = parser.parse(&raw) else {
+            return Ok(None);
+        };
+        let opened = if attachments::is_encrypted(&parsed) {
+            core_pgp::open_parsed(&parsed, self.keyring.as_ref())
+        } else {
+            core_pgp::OpenedMessage::default()
+        };
+        let inner = match &opened.decrypted {
+            Some(bytes) => parser.parse(bytes),
+            None if attachments::is_encrypted(&parsed) => return Ok(None),
+            None => None,
+        };
+        let source = inner.as_ref().unwrap_or(&parsed);
+        let Some(html) = source.body_html(0) else {
+            return Ok(None);
+        };
+        let pictures = attachments::pictures(source);
+        let view = html_view::View {
+            remote,
+            open,
+            parts,
+            pictures: &pictures,
+        };
+        match html_view::to_page(&html, &view) {
+            Ok(page) => Ok(Some(page)),
+            Err(html::Refused::Empty) => Ok(None),
+            Err(why) => Err(RpcError::Rejected(format!(
+                "the message's HTML could not be shown as a page: {why:?}"
+            ))),
+        }
     }
 
     /// How many messages fall in each rules category, for the filter bar.

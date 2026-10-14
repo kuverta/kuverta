@@ -765,6 +765,69 @@ footer .keys {
   background: #fff;
 }
 
+/* Mail as the sender designed it: a frame that can do nothing, scrolling on
+   its own since the window cannot see how tall it is. White, like the mail
+   is — a sender's page is their page, not the window's. */
+#reading-html {
+  display: block;
+  width: 100%;
+  height: calc(100vh - 230px);
+  min-height: 360px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+}
+
+#reading-html[hidden],
+#mail-tabs[hidden],
+.html-remote[hidden] { display: none !important; }
+
+/* Pictures from the internet are not shown: said once, above the page, with
+   the one button that shows them for this message. */
+.html-remote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -6px 0 10px;
+  padding: 7px 11px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12px;
+}
+
+.html-remote button { font-size: 11.5px; padding: 1px 8px; }
+.html-remote button[hidden] { display: none !important; }
+
+/* A link's real address, whole, and what was odd about it. */
+.link-address {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--sidebar-bg);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.link-said { margin: 0; font-size: 12.5px; }
+.link-said[hidden] { display: none !important; }
+
+.link-warnings {
+  margin: 0;
+  padding: 8px 11px 8px 26px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.link-warnings[hidden] { display: none !important; }
+
 #reading-image {
   display: block;
   max-width: 100%;

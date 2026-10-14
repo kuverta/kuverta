@@ -14,8 +14,9 @@ Worth knowing before you go looking, because it is most of the attack
 surface:
 
 - **Mail, whole.** Raw MIME off an IMAP server, PGP packets inside it, and
-  the HTML a letter arrives in. `crates/core-proto`, `crates/core-pgp`,
-  `crates/core-rpc/src/html.rs`.
+  the HTML a letter arrives in — read as text, and rebuilt as a page.
+  `crates/core-proto`, `crates/core-pgp`, `crates/core-rpc/src/html.rs`,
+  `crates/core-rpc/src/html_view.rs`.
 - **A model's replies.** Whatever the local Ollama sends back, treated as
   untrusted text. `crates/core-ai`.
 - **Paperless-ngx.** Documents, their OCR text and their tags, over HTTP on
@@ -44,8 +45,15 @@ well-read one, which is the outcome worth avoiding.
   so in `apps/scannerd/readme.md`.
 - **`SCANNERD_UI_PASSWORD` and the Paperless token live in a file on the Pi.**
   Anyone with a shell there has them.
-- **kuverta does not display remote images or run scripts in mail**, so
-  reports about tracking pixels are about a thing that does not happen.
+- **kuverta never runs scripts in mail, and shows pictures from the
+  internet only when asked to, per message.** The HTML tab is a page
+  rebuilt from an allow-list (`crates/core-rpc/src/html_view.rs`) in a
+  sandboxed frame under a Content-Security-Policy of its own
+  (`apps/desktop/src/page.rs`); every link in it leads back to the app,
+  which asks before opening. A report that a tracking pixel loads *after*
+  the person pressed "Show the pictures" is about the thing they asked for.
+  A page that loads anything before that, or that runs anything ever, is
+  what this is for.
 - **Findings from a scanner with no proof they can be reached.** A crash needs
   an input; a dependency advisory needs a path from kuverta's own code to the
   affected function.
