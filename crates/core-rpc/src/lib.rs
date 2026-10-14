@@ -152,6 +152,10 @@ pub struct AccountView {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageRow {
     pub id: MessageId,
+    /// Whose mail it is. A list over one account knows; a list over several
+    /// — All inboxes — reads it off the row before acting on it.
+    #[serde(default)]
+    pub account: AccountId,
     pub date_utc: Option<i64>,
     pub from: String,
     pub subject: String,
@@ -179,6 +183,7 @@ impl From<ListedMessage> for MessageRow {
         let summary = listed.summary;
         Self {
             id: summary.id,
+            account: listed.account_id,
             date_utc: summary.date_utc,
             from: summary
                 .from_name
@@ -455,8 +460,26 @@ impl Core {
         limit: usize,
         filter: &ListFilter,
     ) -> Result<MessagePage> {
-        let window = self.store.message_window(account, offset, limit, filter)?;
-        let me = self.account_email(account)?.to_lowercase();
+        self.messages_in(&[account], offset, limit, filter)
+    }
+
+    /// One list over several accounts, newest first across all of them —
+    /// All inboxes. Each row says whose it is, which is what every action
+    /// on it reads.
+    pub fn messages_in(
+        &self,
+        accounts: &[AccountId],
+        offset: usize,
+        limit: usize,
+        filter: &ListFilter,
+    ) -> Result<MessagePage> {
+        let window = self
+            .store
+            .message_window_in(accounts, offset, limit, filter)?;
+        let mut mine: std::collections::HashMap<AccountId, String> = Default::default();
+        for account in accounts {
+            mine.insert(*account, self.account_email(*account)?.to_lowercase());
+        }
 
         // What the account sent is named by who it went to: the addresses,
         // then the names those people signed their own mail with.
@@ -464,11 +487,15 @@ impl Core {
             .messages
             .iter()
             .map(|listed| {
+                let me = mine
+                    .get(&listed.account_id)
+                    .map(String::as_str)
+                    .unwrap_or("");
                 let from_me = listed
                     .summary
                     .from_addr
                     .as_deref()
-                    .is_some_and(|from| from.eq_ignore_ascii_case(&me));
+                    .is_some_and(|from| from.eq_ignore_ascii_case(me));
                 from_me.then(|| {
                     listed
                         .recipients
@@ -476,17 +503,26 @@ impl Core {
                         .unwrap_or_default()
                         .split(',')
                         .map(|a| a.trim().to_lowercase())
-                        .filter(|a| !a.is_empty() && *a != me)
+                        .filter(|a| !a.is_empty() && a != me)
                         .collect()
                 })
             })
             .collect();
-        let everyone: Vec<String> = sent_to.iter().flatten().flatten().cloned().collect();
-        let names = if everyone.is_empty() {
-            Default::default()
-        } else {
-            self.store.names_of(account, &everyone)?
-        };
+        // Names are an account's own index of who writes to it, so each
+        // account is asked for the addresses in its rows.
+        let mut names: std::collections::HashMap<String, String> = Default::default();
+        for account in accounts {
+            let asked: Vec<String> = window
+                .messages
+                .iter()
+                .zip(sent_to.iter())
+                .filter(|(listed, _)| listed.account_id == *account)
+                .flat_map(|(_, to)| to.iter().flatten().cloned())
+                .collect();
+            if !asked.is_empty() {
+                names.extend(self.store.names_of(*account, &asked)?);
+            }
+        }
 
         Ok(MessagePage {
             total: window.total,
@@ -523,6 +559,7 @@ impl Core {
         order: SearchOrder,
     ) -> Result<Vec<MessageRow>> {
         Ok(search_rows(
+            account,
             self.store.search_typed(account, query, limit, order)?,
         ))
     }
@@ -536,7 +573,10 @@ impl Core {
         terms: &[String],
         limit: usize,
     ) -> Result<Vec<MessageRow>> {
-        Ok(search_rows(self.store.search_terms(account, terms, limit)?))
+        Ok(search_rows(
+            account,
+            self.store.search_terms(account, terms, limit)?,
+        ))
     }
 
     /// The sender's plain text, unless the sender's own converter made a
@@ -589,7 +629,10 @@ impl Core {
     }
 
     fn better_than(plain: String, parsed: Option<&mail_parser::Message<'_>>) -> String {
-        if !html::looks_converted_badly(&plain) {
+        // The sender's own text, unless it is markup half converted — or
+        // nothing at all: an HTML-only message whose HTML the parser made
+        // nothing of is still a message, and the HTML is still there.
+        if !html::looks_converted_badly(&plain) && !plain.trim().is_empty() {
             return plain;
         }
         let Some(html) = parsed.and_then(|message| message.body_html(0)) else {
@@ -602,6 +645,13 @@ impl Core {
                 plain
             }
         }
+    }
+
+    /// Whose message this is, for a row from a list over several accounts.
+    pub fn account_of_message(&self, id: MessageId) -> Result<AccountId> {
+        self.store
+            .account_of_message(id)?
+            .ok_or(RpcError::UnknownMessage(id))
     }
 
     pub fn message(&self, account: AccountId, id: MessageId) -> Result<MessageDetail> {
@@ -1102,11 +1152,12 @@ pub(crate) fn now_utc() -> i64 {
 }
 
 /// Search results as list rows.
-fn search_rows(found: Vec<core_store::MessageSummary>) -> Vec<MessageRow> {
+fn search_rows(account: AccountId, found: Vec<core_store::MessageSummary>) -> Vec<MessageRow> {
     found
         .into_iter()
         .map(|summary| MessageRow {
             id: summary.id,
+            account,
             date_utc: summary.date_utc,
             from: summary
                 .from_name

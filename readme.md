@@ -54,7 +54,9 @@ in its header.
   once, from the keyboard or the menu under the right button
 - **A desktop window** — three panes, a sidebar of accounts and folders,
   virtualized list (200k rows at 59.8 fps —
-  [findings](docs/spike-tauri-list.md)), compose, search, and settings
+  [findings](docs/spike-tauri-list.md)), compose, search, and settings;
+  *All inboxes* reads every account in the profile as one list, with the
+  accounts' smart mailboxes merged by name
 - **Search and attachments** — search that forgives how things are written
   (word starts, any order, *eSIM* = *e-SIM*; quotes for a phrase); attachments
   listed on each message, pictures, PDFs and text shown in the window, saved to

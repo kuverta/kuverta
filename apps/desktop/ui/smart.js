@@ -85,18 +85,19 @@ ICONS.smart = "M3.5 4.5h13l-5 6v4.2l-3 1.8v-6z";
 
 async function renderSmartMailboxes() {
   const nav = el("smart");
-  if (state.account === null || state.postbox) {
+  if ((state.account === null && !state.allInboxes) || state.postbox) {
     nav.textContent = "";
     return;
   }
   const account = state.account;
+  const all = state.allInboxes;
   let mailboxes = [];
   try {
-    mailboxes = await invoke("smart_mailboxes", { account });
+    mailboxes = all ? await smartMailboxesOfAll() : await invoke("smart_mailboxes", { account });
   } catch {
     mailboxes = [];
   }
-  if (state.account !== account) return; // moved on while asking
+  if (state.account !== account || state.allInboxes !== all) return; // moved on while asking
   state.smartMailboxes = mailboxes;
   nav.textContent = "";
   for (const mailbox of mailboxes) {
@@ -163,17 +164,43 @@ async function deleteSmart(mailbox) {
   }
 }
 
+/// Every account's smart mailboxes as one list, those of the same name
+/// merged: "Bewerbungen" on two accounts is one mailbox over All inboxes,
+/// with the counts added up. The rules shown are the first one's; over all
+/// the accounts its rules are what is listed.
+async function smartMailboxesOfAll() {
+  const byName = new Map();
+  for (const account of visibleAccounts()) {
+    const mailboxes = await invoke("smart_mailboxes", { account: account.id }).catch(() => []);
+    for (const mailbox of mailboxes) {
+      const key = mailbox.name.trim().toLowerCase();
+      const seen = byName.get(key);
+      if (seen) {
+        seen.total += mailbox.total;
+        seen.unread += mailbox.unread;
+        seen.also.push(mailbox);
+      } else {
+        byName.set(key, { ...mailbox, also: [] });
+      }
+    }
+  }
+  return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // -- the editor ----------------------------------------------------------------
 
 /// Opens the editor on a smart mailbox, a suggestion (`{ name, query }` with
 /// no id), or nothing for a new one.
 function openSmartEditor(mailbox = null) {
-  if (state.account === null) {
+  // From All inboxes a new one is kept on the first account shown, and
+  // listed over all of them like any other.
+  const account = state.account ?? (state.allInboxes ? visibleAccounts()[0]?.id : null) ?? null;
+  if (account === null) {
     say(t("choose a mail account first"), true);
     return;
   }
   smartEditing.id = mailbox?.id ?? null;
-  smartEditing.account = mailbox?.account_id ?? state.account;
+  smartEditing.account = mailbox?.account_id ?? account;
   el("smart-form-title").textContent = smartEditing.id
     ? t("Edit “{name}”", { name: mailbox.name })
     : t("New smart mailbox");
@@ -364,7 +391,7 @@ smartForm.addEventListener("submit", async (event) => {
           ? t("saved")
           : t("created {name}", { name }),
     );
-    if (smartEditing.account === state.account) {
+    if (smartEditing.account === state.account || state.allInboxes) {
       state.filter = { ...state.filter, smart: id, folder: null, category: null };
       await reload();
     }

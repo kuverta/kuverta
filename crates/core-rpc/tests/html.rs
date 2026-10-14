@@ -326,3 +326,42 @@ fn the_words_either_side_of_a_tag_are_one_word() {
     let text = to_text("<p>a<b>java</b>script:alert(1)</p>").unwrap();
     assert_eq!(text, "ajavascript:alert(1)");
 }
+
+#[test]
+fn a_head_that_is_never_closed_ends_where_the_body_begins() {
+    // A cable company's appointment notice: <head>, a title, a meta, then
+    // <body> with no </head> in between. A browser shows it; this did not.
+    let html = r#"<html><head><title>Circet Kabel Service GmbH</title><meta charset="UTF-8"><body><table><tr><td>Termin Vodafone Störung</td></tr><tr><td>Ihr Techniker kommt am Montag.</td></tr></table></body></html>"#;
+    let text = to_text(html).unwrap();
+    assert!(text.contains("Termin Vodafone Störung"), "{text}");
+    assert!(text.contains("Ihr Techniker kommt am Montag."), "{text}");
+    assert!(
+        !text.contains("Circet Kabel Service GmbH"),
+        "the title is not text: {text}"
+    );
+    // A closed head still ends at its end tag.
+    assert_eq!(
+        to_text("<head><style>b{}</style></head><p>Hallo</p>")
+            .unwrap()
+            .trim(),
+        "Hallo"
+    );
+    // In capitals too, and `<bodytext>` is not `<body>`.
+    assert_eq!(
+        to_text("<HEAD><TITLE>x</TITLE><BODY><P>Hallo</P>")
+            .unwrap()
+            .trim(),
+        "Hallo"
+    );
+    assert_eq!(
+        to_text("<head><bodytext>no</bodytext><body><p>Hallo</p>")
+            .unwrap()
+            .trim(),
+        "Hallo"
+    );
+    // Neither an end tag nor a body is still a head that never ends.
+    assert_eq!(
+        to_text("<head><title>x</title><p>lost"),
+        Err(Refused::Unterminated)
+    );
+}

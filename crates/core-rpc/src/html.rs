@@ -126,9 +126,20 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
 
         if SILENT.contains(&name.as_str()) && !ending {
             // Unread to its own end tag. Not to the next `>`: a stylesheet is
-            // full of them.
-            let end = find_close(html, &name, at).ok_or(Refused::Unterminated)?;
-            at = end;
+            // full of them. A `<head>` ends where `<body>` begins as well: a
+            // mailer that never writes `</head>` — a cable company's
+            // appointment notice does not — would otherwise have its whole
+            // message read as head and thrown away, where a browser shows it.
+            let closed = find_close(html, &name, at);
+            let end = if name == "head" {
+                match (closed, find_tag(html, "body", at)) {
+                    (Some(closed), Some(body)) => Some(closed.min(body)),
+                    (closed, body) => closed.or(body),
+                }
+            } else {
+                closed
+            };
+            at = end.ok_or(Refused::Unterminated)?;
             continue;
         }
         if !ending && !tag.ends_with('/') {
@@ -246,6 +257,26 @@ fn find(text: &str, looking_for: &str, from: usize) -> Option<usize> {
         return None;
     }
     text[from..].find(looking_for).map(|at| at + from)
+}
+
+/// Where a `<name` tag starts, in any case, or `None`. The name has to end
+/// there: `<body` is not `<bodytext`.
+fn find_tag(html: &str, name: &str, from: usize) -> Option<usize> {
+    if from > html.len() {
+        return None;
+    }
+    let lower = html[from..].to_ascii_lowercase();
+    let wanted = format!("<{name}");
+    let mut search = 0;
+    while let Some(found) = lower[search..].find(&wanted) {
+        let start = search + found;
+        let after = lower.as_bytes().get(start + wanted.len()).copied();
+        if after.is_none_or(|byte| byte == b'>' || byte == b'/' || byte.is_ascii_whitespace()) {
+            return Some(start + from);
+        }
+        search = start + 1;
+    }
+    None
 }
 
 /// Just past the end tag of `name`, whatever is between.

@@ -560,6 +560,8 @@ impl FolderSummary {
 #[derive(Debug, Clone)]
 pub struct ListedMessage {
     pub summary: MessageSummary,
+    /// Whose mail it is: a list over several accounts says for each row.
+    pub account_id: AccountId,
     pub category: Option<String>,
     pub confidence: Option<f64>,
     /// True when no copy of this message anywhere carries `\Seen`.

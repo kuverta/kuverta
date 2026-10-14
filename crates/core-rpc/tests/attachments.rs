@@ -459,3 +459,29 @@ async fn the_assistant_reads_what_is_in_an_attachment_not_only_its_name() {
         message.content
     );
 }
+
+/// A cable company's appointment notice: HTML only, with a <head> that is
+/// never closed. The parser made nothing of it, so the window showed the
+/// headers over an empty pane; the HTML is read instead.
+#[test]
+fn an_html_only_message_with_an_unclosed_head_still_has_a_body() {
+    let world = world("unclosed-head");
+    let raw = "From: noreply@circet.example\r\n\
+               To: dev@kuverta.test\r\n\
+               Subject: Termin\r\n\
+               MIME-Version: 1.0\r\n\
+               Content-Type: multipart/mixed; boundary=\"b\"\r\n\
+               \r\n\
+               --b\r\n\
+               Content-Type: text/html; charset=utf-8\r\n\
+               \r\n\
+               <html><head><title>Circet Kabel Service GmbH</title><meta charset=\"UTF-8\"><body>\
+               <table><tr><td>Ihr Techniker kommt am Montag zwischen 8 und 12 Uhr.</td></tr></table>\
+               </body></html>\r\n\
+               --b--\r\n";
+    let id = file(&world, 1, raw, "Termin");
+    let detail = world.core.message(world.account, id).unwrap();
+    let body = detail.body_text.unwrap_or_default();
+    assert!(body.contains("Ihr Techniker kommt am Montag"), "{body:?}");
+    assert!(!body.contains("Circet Kabel Service GmbH"), "{body:?}");
+}

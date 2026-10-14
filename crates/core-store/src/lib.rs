@@ -662,6 +662,19 @@ impl Store {
     ///
     /// Scoped rather than global so a stale id from another account cannot
     /// silently address someone else's mail.
+    /// Whose message this is, for a caller that has the id and not the
+    /// account — a row in a list over several accounts.
+    pub fn account_of_message(&self, id: MessageId) -> Result<Option<AccountId>> {
+        self.conn
+            .query_row(
+                "SELECT account_id FROM message WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(Into::into)
+    }
+
     pub fn message_by_id(
         &self,
         account_id: AccountId,
@@ -895,13 +908,37 @@ impl Store {
         limit: usize,
         filter: &ListFilter,
     ) -> Result<MessageWindow> {
+        self.message_window_in(&[account_id], offset, limit, filter)
+    }
+
+    /// [`Store::message_window`] over several accounts at once, newest first
+    /// across all of them: what "All inboxes" shows. Each row says whose it
+    /// is. No accounts is an empty list, not everything.
+    pub fn message_window_in(
+        &self,
+        accounts: &[AccountId],
+        offset: usize,
+        limit: usize,
+        filter: &ListFilter,
+    ) -> Result<MessageWindow> {
+        if accounts.is_empty() {
+            return Ok(MessageWindow {
+                total: 0,
+                offset,
+                messages: Vec::new(),
+            });
+        }
         // Built as a list rather than a fixed template because the filters are
         // independent and combine: folder, category and unread are three
         // questions, not one enum. Positional `?` placeholders are numbered in
         // the order they are pushed, so the clause and its parameter are
         // written together and cannot drift apart.
-        let mut clauses = vec!["m.account_id = ?".to_string()];
-        let mut args: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(account_id)];
+        let marks = vec!["?"; accounts.len()].join(", ");
+        let mut clauses = vec![format!("m.account_id IN ({marks})")];
+        let mut args: Vec<Box<dyn rusqlite::ToSql>> = accounts
+            .iter()
+            .map(|account| Box::new(*account) as Box<dyn rusqlite::ToSql>)
+            .collect();
 
         if let Some(category) = &filter.category {
             clauses.push("c.category = ?".into());
@@ -938,7 +975,13 @@ impl Store {
         // All mail is what arrived, not what you wrote or threw away. The ids
         // are the store's own, never anything typed, so they go in the text.
         if filter.incoming_only {
-            if let Some(clause) = Self::incoming_clause(&self.not_incoming(account_id)?) {
+            // Every account's Sent, Trash, Junk and Drafts: folder ids are
+            // the store's own, so one list of them serves all the accounts.
+            let mut not_incoming = Vec::new();
+            for account in accounts {
+                not_incoming.extend(self.not_incoming(*account)?);
+            }
+            if let Some(clause) = Self::incoming_clause(&not_incoming) {
                 clauses.push(format!("({clause})"));
             }
         }
@@ -979,7 +1022,7 @@ impl Store {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
                     m.has_attachments, m.snippet, c.category, c.confidence,
-                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}
+                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}, m.account_id
              {from}
              ORDER BY COALESCE(m.date_utc, 0) {order}, m.id {order}
              LIMIT ? OFFSET ?",
@@ -992,6 +1035,7 @@ impl Store {
         let rows = stmt.query_map(rusqlite::params_from_iter(args.iter()), |row| {
             Ok(ListedMessage {
                 summary: row_to_summary(row)?,
+                account_id: row.get(13)?,
                 category: row.get(8)?,
                 confidence: row.get(9)?,
                 unread: row.get(10)?,
