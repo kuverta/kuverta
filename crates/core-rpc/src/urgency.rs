@@ -262,6 +262,7 @@ impl Core {
             .map(|m| UrgentRow {
                 row: MessageRow {
                     id: m.summary.id,
+                    account,
                     date_utc: m.summary.date_utc,
                     from: m
                         .summary

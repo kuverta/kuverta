@@ -2942,3 +2942,50 @@ one per round; and the loop allows twenty-five rounds instead of ten, which
 no question needs but a job does. A folder created a moment ago is one a
 move can go to because `create_folder` writes it to the store as well as
 the server; the test holds that to be true.
+
+## 51. All inboxes
+
+The window showed one account at a time, and a smart mailbox belonged to
+one account. Two accounts meant looking twice, and "Bewerbungen" on both
+meant two mailboxes with one name.
+
+*All inboxes* is one list over every account the profile shows, newest
+first across all of them. It has no account of its own: each row carries
+the account it came from, and everything done from the list reads it off
+the row — opening, archiving, trashing, marking, moving, replying. The
+desktop's commands that take a message id take the account as optional for
+this reason, and find it from the message when none is named; the ids are
+the store's own and unique across accounts, which is what makes that
+sound. Archive and Trash are each account's, looked up once when the list
+opens, and a row whose account has no such folder says so instead of going
+somewhere else. Undo is still per account, so z undoes on the account the
+last change was queued on.
+
+The accounts' smart mailboxes are listed merged by name, counts added up,
+and one of them over All inboxes is its rules run over every account —
+not its folder, which is one account's. That is a merge in the window, not
+in the store: a smart mailbox still belongs to one account, so nothing
+about tasks, folders or imports changes, and a new one made from here is
+kept on the first account shown and listed over all of them like the rest.
+Search asks every account and sorts the answers together in the list's
+order. People and Needs attention stay per account, since both are
+built on one account's index; the toggle is not offered here. The choice
+is kept across restarts like the profile is.
+
+## 52. A head that is never closed
+
+An appointment notice from a cable company opened to its headers and
+nothing under them. The message was HTML only, and its HTML went
+`<head><title>…</title><meta …><body>` — no `</head>` anywhere. The
+parser's own conversion made nothing of it, and kuverta's converter, which
+reads a `<head>` unread to its end tag, found no end tag and refused the
+whole message as unterminated. Both answers were empty, and an empty
+answer from the sender's own text was taken as the sender's own text.
+
+A browser ends the head where the body begins, so now the converter does
+too: a `<head>` runs to `</head>` or to `<body`, whichever comes first,
+and only a head with neither is still unterminated. And a plain text that
+is blank is not kept over the HTML it was made from: when the parser's
+conversion comes to nothing and there is HTML, the HTML is read. The
+list's snippet is made at sync time from the parser's conversion alone,
+so such a message still shows no first line in the list; its body opens.
