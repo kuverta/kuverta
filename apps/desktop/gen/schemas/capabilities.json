@@ -1,1 +1,1 @@
-{}
+{"main":{"identifier":"main","description":"What the window may ask of Tauri's own plugins. The app's commands need no entry here — with no permission manifest of its own, the app allows them to its own page — but a plugin command is checked against this file even then. The window listens for what the app tells it: the page a message was made into, the link that was clicked, the mail that went out.","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten"]}}

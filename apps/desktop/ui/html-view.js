@@ -309,10 +309,13 @@ linkSheet.addEventListener("close", () => {
 });
 
 // The page's own words arrive from the app: how many pictures it left out,
-// and the links that were clicked.
-window.__TAURI__?.event
-  ?.listen("mail-page", (event) => pageMade(event.payload ?? {}))
-  .catch(() => {});
-window.__TAURI__?.event
-  ?.listen("mail-link", (event) => askAboutLink(event.payload ?? {}))
-  .catch(() => {});
+// and the links that were clicked. Listening is a plugin command, which
+// Tauri checks against capabilities/main.json; a refusal is said, not
+// swallowed, because a window that cannot hear shows a page whose links
+// do nothing.
+for (const [name, heard] of [
+  ["mail-page", (event) => pageMade(event.payload ?? {})],
+  ["mail-link", (event) => askAboutLink(event.payload ?? {})],
+]) {
+  window.__TAURI__?.event?.listen(name, heard).catch((err) => say(String(err), true));
+}
