@@ -229,3 +229,27 @@ fn open(app: &tauri::AppHandle, token: &str, query: &str) -> Reply {
         .body(Cow::Owned(Vec::new()))
         .expect("a response with fixed headers builds")
 }
+
+#[cfg(test)]
+mod tests {
+    /// The window hears the app through Tauri events, and `listen` is a
+    /// plugin command: checked against the capabilities even when the app
+    /// has no permission manifest of its own. Without this file the
+    /// listeners were refused, the refusal was swallowed, and a click on a
+    /// link did nothing.
+    #[test]
+    fn the_window_may_listen() {
+        let capability: serde_json::Value =
+            serde_json::from_str(include_str!("../capabilities/main.json")).unwrap();
+        let has = |key: &str, value: &str| {
+            capability[key]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item == value)
+        };
+        assert!(has("windows", "main"));
+        assert!(has("permissions", "core:event:allow-listen"));
+        assert!(has("permissions", "core:event:allow-unlisten"));
+    }
+}
