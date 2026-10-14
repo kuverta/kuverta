@@ -356,6 +356,26 @@ fn describe(index: usize, part: &MessagePart<'_>) -> AttachmentView {
     }
 }
 
+/// The message's own pictures, for its HTML to show inline: each part's
+/// Content-ID, without the angle brackets it is written in, and the index
+/// [`Core::attachment`] fetches it by. Only pictures — a `cid:` that names
+/// a PDF or a program is a `cid:` that shows nothing.
+pub(crate) fn pictures(parsed: &MimeMessage<'_>) -> Vec<(String, usize)> {
+    attachment_parts(parsed)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, part)| {
+            let cid = part
+                .content_id()?
+                .trim()
+                .trim_matches(|c| c == '<' || c == '>');
+            let described = describe(index, part);
+            (!cid.is_empty() && described.preview == "image" && !described.risky)
+                .then(|| (cid.to_string(), index))
+        })
+        .collect()
+}
+
 /// Lists a parsed message's attachments.
 pub fn list(parsed: &MimeMessage<'_>) -> Vec<AttachmentView> {
     attachment_parts(parsed)

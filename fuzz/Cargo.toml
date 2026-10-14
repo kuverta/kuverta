@@ -1,6 +1,7 @@
 # Fuzz targets for the code that reads bytes someone else wrote: raw mail off
-# an IMAP server, PGP packets inside it, the HTML a letter arrives in, text a
-# model sent back, and the scanner's arithmetic over raw pixels.
+# an IMAP server, PGP packets inside it, the HTML a letter arrives in (as text
+# and as a page), text a model sent back, and the scanner's arithmetic over
+# raw pixels.
 #
 # Its own workspace, so the main build and `cargo test --workspace` never see
 # it: libFuzzer needs a nightly compiler and the rest of the tree is pinned to
@@ -73,6 +74,13 @@ bench = false
 [[bin]]
 name = "read_html"
 path = "fuzz_targets/read_html.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "html_page"
+path = "fuzz_targets/html_page.rs"
 test = false
 doc = false
 bench = false
