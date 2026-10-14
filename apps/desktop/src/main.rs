@@ -104,9 +104,48 @@ fn messages(
     core.messages(account, offset, limit, &filter).map_err(fail)
 }
 
+/// All inboxes: one list over the accounts given, newest first across them.
+/// A smart mailbox here is its rules over every account — its folder, when it
+/// has one, is one account's, and the rules are what the others share.
 #[tauri::command]
-fn message(app: State<'_, App>, account: i64, id: i64) -> Result<MessageDetail, String> {
-    app.core.lock().unwrap().message(account, id).map_err(fail)
+fn messages_in(
+    app: State<'_, App>,
+    accounts: Vec<i64>,
+    offset: usize,
+    limit: usize,
+    filter: ListQuery,
+) -> Result<MessagePage, String> {
+    let core = app.core.lock().unwrap();
+    let smart = match filter.smart {
+        Some(id) => Some(core.smart_query(id).map_err(fail)?),
+        None => None,
+    };
+    let filter = ListFilter {
+        category: filter.category,
+        unread_only: filter.unread_only,
+        folder: None,
+        oldest_first: filter.oldest_first,
+        incoming_only: smart.is_none(),
+        smart,
+    };
+    core.messages_in(&accounts, offset, limit, &filter)
+        .map_err(fail)
+}
+
+/// The account a command is about: the one named, or — from a list over
+/// several accounts, which names none — the one the message belongs to.
+fn account_for(core: &core_rpc::Core, account: Option<i64>, id: i64) -> Result<i64, String> {
+    match account {
+        Some(account) => Ok(account),
+        None => core.account_of_message(id).map_err(fail),
+    }
+}
+
+#[tauri::command]
+fn message(app: State<'_, App>, account: Option<i64>, id: i64) -> Result<MessageDetail, String> {
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    core.message(account, id).map_err(fail)
 }
 
 /// An attachment's bytes, for the window to show: a binary response, since
@@ -114,16 +153,15 @@ fn message(app: State<'_, App>, account: i64, id: i64) -> Result<MessageDetail, 
 #[tauri::command]
 fn attachment(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: i64,
     index: usize,
 ) -> Result<tauri::ipc::Response, String> {
-    let found = app
-        .core
-        .lock()
-        .unwrap()
-        .attachment(account, id, index)
-        .map_err(fail)?;
+    let found = {
+        let core = app.core.lock().unwrap();
+        let account = account_for(&core, account, id)?;
+        core.attachment(account, id, index).map_err(fail)?
+    };
     Ok(tauri::ipc::Response::new(found.bytes))
 }
 
@@ -133,18 +171,17 @@ fn attachment(
 #[tauri::command]
 async fn attachment_preview(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: i64,
     index: usize,
     first: usize,
     count: usize,
 ) -> Result<core_rpc::preview::SafePreview, String> {
-    let found = app
-        .core
-        .lock()
-        .unwrap()
-        .attachment(account, id, index)
-        .map_err(fail)?;
+    let found = {
+        let core = app.core.lock().unwrap();
+        let account = account_for(&core, account, id)?;
+        core.attachment(account, id, index).map_err(fail)?
+    };
     let worker = core_rpc::preview::worker()
         .cloned()
         .ok_or("safe preview is not available: its worker could not be found")?;
@@ -166,16 +203,15 @@ async fn attachment_preview(
 #[tauri::command]
 fn save_attachment(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: i64,
     index: usize,
 ) -> Result<String, String> {
-    let found = app
-        .core
-        .lock()
-        .unwrap()
-        .attachment(account, id, index)
-        .map_err(fail)?;
+    let found = {
+        let core = app.core.lock().unwrap();
+        let account = account_for(&core, account, id)?;
+        core.attachment(account, id, index).map_err(fail)?
+    };
     let dir = files::downloads().ok_or("there is no Downloads folder to save to")?;
     let path = files::save_new(&dir, &found.view.name, &found.bytes)?;
     tracing::info!(id, index, "saved an attachment");
@@ -187,13 +223,17 @@ fn save_attachment(
 /// could run something: those are saved, and opening them is the person's
 /// own deliberate step.
 #[tauri::command]
-fn open_attachment(app: State<'_, App>, account: i64, id: i64, index: usize) -> Result<(), String> {
-    let found = app
-        .core
-        .lock()
-        .unwrap()
-        .attachment(account, id, index)
-        .map_err(fail)?;
+fn open_attachment(
+    app: State<'_, App>,
+    account: Option<i64>,
+    id: i64,
+    index: usize,
+) -> Result<(), String> {
+    let found = {
+        let core = app.core.lock().unwrap();
+        let account = account_for(&core, account, id)?;
+        core.attachment(account, id, index).map_err(fail)?
+    };
     if found.view.risky {
         return Err(format!(
             "{} could run something when opened; save it instead if you trust it",
@@ -245,20 +285,23 @@ fn category_counts(
 }
 
 #[tauri::command]
-fn move_to(app: State<'_, App>, account: i64, id: i64, target: String) -> Result<i64, String> {
-    app.core
-        .lock()
-        .unwrap()
-        .move_to(account, id, &target, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
+fn move_to(
+    app: State<'_, App>,
+    account: Option<i64>,
+    id: i64,
+    target: String,
+) -> Result<i64, String> {
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    core.move_to(account, id, &target, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
         .map_err(fail)
 }
 
 #[tauri::command]
-fn set_read(app: State<'_, App>, account: i64, id: i64, read: bool) -> Result<i64, String> {
-    app.core
-        .lock()
-        .unwrap()
-        .set_read(account, id, read, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
+fn set_read(app: State<'_, App>, account: Option<i64>, id: i64, read: bool) -> Result<i64, String> {
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    core.set_read(account, id, read, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
         .map_err(fail)
 }
 
@@ -266,15 +309,13 @@ fn set_read(app: State<'_, App>, account: i64, id: i64, read: bool) -> Result<i6
 #[tauri::command]
 fn set_category(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: i64,
     category: String,
 ) -> Result<(), String> {
-    app.core
-        .lock()
-        .unwrap()
-        .set_category(account, id, &category)
-        .map_err(fail)
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    core.set_category(account, id, &category).map_err(fail)
 }
 
 // -- postal addresses -------------------------------------------------------
@@ -1492,14 +1533,12 @@ fn unsubscribe_senders(
 #[tauri::command]
 fn unsubscribe_for_message(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: i64,
 ) -> Result<Option<core_rpc::UnsubscribeSenderView>, String> {
-    app.core
-        .lock()
-        .unwrap()
-        .unsubscribe_for_message(account, id)
-        .map_err(fail)
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    core.unsubscribe_for_message(account, id).map_err(fail)
 }
 
 /// Reads headers back out of mail synced before they were kept; returns how
@@ -1561,8 +1600,13 @@ fn trash_from_sender(app: State<'_, App>, account: i64, key: String) -> Result<u
 
 /// Messages like `id`: for asking, after it is deleted, whether they should go too.
 #[tauri::command]
-fn similar(app: State<'_, App>, account: i64, id: i64) -> Result<core_rpc::SimilarReport, String> {
+fn similar(
+    app: State<'_, App>,
+    account: Option<i64>,
+    id: i64,
+) -> Result<core_rpc::SimilarReport, String> {
     let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
     let trash = core.special_folders(account).map_err(fail)?.trash;
     core.similar(account, id, trash.as_deref()).map_err(fail)
 }
@@ -1721,15 +1765,17 @@ fn conversation(
 #[tauri::command]
 fn sender(
     app: State<'_, App>,
-    account: i64,
+    account: Option<i64>,
     id: Option<i64>,
     address: Option<String>,
 ) -> Result<core_rpc::SenderView, String> {
-    app.core
-        .lock()
-        .unwrap()
-        .sender(account, id, address.as_deref())
-        .map_err(fail)
+    let core = app.core.lock().unwrap();
+    let account = match (account, id) {
+        (Some(account), _) => account,
+        (None, Some(id)) => account_for(&core, None, id)?,
+        (None, None) => return Err("an address's card needs an account".into()),
+    };
+    core.sender(account, id, address.as_deref()).map_err(fail)
 }
 
 /// The same card for a scanned letter, which comes from Paperless rather than
@@ -2510,6 +2556,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             accounts,
             messages,
+            messages_in,
             message,
             attachment,
             save_attachment,

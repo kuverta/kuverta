@@ -126,11 +126,12 @@ encryptBox.addEventListener("change", () => {
 
 /// Called whenever the recipients change (see `refreshEnvelope`).
 async function refreshComposeSecurity() {
-  if (compose.pane.hidden || !state.email) return;
+  const email = compose.email ?? state.email;
+  if (compose.pane.hidden || !email) return;
   const recipients = [...addresses(compose.to), ...addresses(compose.cc)];
   let keys;
   try {
-    keys = await invoke("pgp_recipients", { email: state.email, recipients });
+    keys = await invoke("pgp_recipients", { email, recipients });
   } catch {
     composeSecurity.hidden = true;
     return;

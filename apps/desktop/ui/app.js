@@ -101,6 +101,13 @@ const state = {
   postboxTotals: new Map(),
   postboxUnread: new Map(),
   email: null,
+  // All inboxes: one list over every account the profile shows, with no
+  // account of its own. Rows say whose they are, and the actions read it.
+  allInboxes: false,
+  // Each account's Archive and Trash, by account id, for acting from there.
+  specials: new Map(),
+  // The account the last change was queued on, which is what z undoes.
+  lastActed: null,
   syncing: false,
   archive: null,
   trash: null,
@@ -178,7 +185,9 @@ function loadPage(offset) {
   // A resize or scroll before start has picked an account draws the empty
   // list, and the empty list asks for its first page. There is nothing to ask
   // for yet; choosing the account reloads.
-  if (!state.postbox && state.view === "mail" && state.account === null) return Promise.resolve();
+  if (!state.postbox && state.view === "mail" && state.account === null && !state.allInboxes) {
+    return Promise.resolve();
+  }
   const load = fetchPage(offset);
   state.requested.set(offset, load);
   return load;
@@ -201,18 +210,19 @@ async function fetchPage(offset) {
         })
       : state.view !== "mail"
         ? await viewPage(offset, PAGE)
-        : await invoke("messages", {
-          account: state.account,
-          offset,
-          limit: PAGE,
-          filter: {
-            category: state.filter.category,
-            unreadOnly: state.filter.unreadOnly,
-            folder: state.filter.folder,
-            oldestFirst: mailOrder === "oldest",
-            smart: state.filter.smart,
-          },
-        });
+        : state.allInboxes
+          ? await invoke("messages_in", {
+            accounts: visibleAccounts().map((account) => account.id),
+            offset,
+            limit: PAGE,
+            filter: listQuery(),
+          })
+          : await invoke("messages", {
+            account: state.account,
+            offset,
+            limit: PAGE,
+            filter: listQuery(),
+          });
 
     if (generation !== listGeneration) return;
     // Post arrived, so whatever the token was refused for before is over.
@@ -251,6 +261,17 @@ async function fetchPage(offset) {
 /// cursor and the next one slides into its place, rather than the list jumping
 /// back to the top and making you find your way again. A filter change is the
 /// other case — there the old position means nothing, so it resets.
+/// The filter as the core takes it.
+function listQuery() {
+  return {
+    category: state.filter.category,
+    unreadOnly: state.filter.unreadOnly,
+    folder: state.filter.folder,
+    oldestFirst: mailOrder === "oldest",
+    smart: state.filter.smart,
+  };
+}
+
 async function reload({ keepPosition = false } = {}) {
   const wasAt = state.selected;
   listGeneration += 1;
@@ -385,6 +406,18 @@ async function refreshSidebar() {
   // account is the way back to mail.
   renderProfileBar();
   sidebar.accounts.textContent = "";
+  if (visibleAccounts().length > 1) {
+    sidebar.accounts.append(
+      navItem({
+        label: t("All inboxes"),
+        icon: "inbox",
+        className: "account",
+        title: t("Every account's mail as one list, newest first"),
+        active: state.allInboxes && !state.postbox,
+        onClick: selectAllInboxes,
+      }),
+    );
+  }
   if (visibleAccounts().length > 1 || visiblePostboxes().length) {
     for (const account of visibleAccounts()) {
       sidebar.accounts.append(
@@ -441,6 +474,16 @@ async function refreshSidebar() {
   }
 
   await renderAttentionNav();
+  if (state.allInboxes) {
+    // Folders are each account's own; what the accounts share is their
+    // smart mailboxes, by name, and the categories.
+    state.folders = [];
+    sidebar.folders.textContent = "";
+    await renderSmartMailboxes();
+    await renderOutboxNav();
+    renderCategories(await categoryCountsOfAll());
+    return;
+  }
   state.folders = await invoke("folders", { account: state.account });
   // Smart mailboxes first: one that takes its mail into a folder is where
   // that folder is shown, and the folder is not listed a second time.
@@ -495,6 +538,16 @@ async function refreshSidebar() {
       folder: state.filter.folder,
     }),
   );
+}
+
+/// The categories over every account shown, added up.
+async function categoryCountsOfAll() {
+  const sum = new Map();
+  for (const account of visibleAccounts()) {
+    const counts = await invoke("category_counts", { account: account.id, folder: null }).catch(() => []);
+    for (const [category, count] of counts) sum.set(category, (sum.get(category) ?? 0) + count);
+  }
+  return [...sum].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 }
 
 /// What the categories are counted over, so a count that changed with the
@@ -615,7 +668,7 @@ function renderScope() {
 
   // Mail is sorted by date; which end it starts at is the choice.
   if (!state.postbox) {
-    scopeBar.append(viewToggle());
+    if (!state.allInboxes) scopeBar.append(viewToggle());
     const toggle = document.createElement("span");
     toggle.className = "order";
     for (const [value, text, title] of [
@@ -987,6 +1040,8 @@ setInterval(checkForPost, POST_POLL_MS);
 
 async function selectAccount(account) {
   state.postbox = null;
+  state.allInboxes = false;
+  rememberAllInboxes(false);
   if (assistantOpen()) queueMicrotask(() => {
     ensureConversation();
     if (currentTab() === "tasks") refreshTasks();
@@ -1018,6 +1073,61 @@ const COLUMNS = {
   list: { variable: "--list-w", fallback: 350, least: 240, most: 680, towards: 1 },
   aside: { variable: "--aside-w", fallback: 360, least: 260, most: 640, towards: -1 },
 };
+
+/// One list over every account the profile shows. Nothing is "the account"
+/// here: each row carries its own, and the keys and menus read it from
+/// there. Each account's Archive and Trash are looked up once, for e and ⌫.
+async function selectAllInboxes() {
+  state.postbox = null;
+  state.view = "mail";
+  hideConversation();
+  state.allInboxes = true;
+  state.account = null;
+  state.email = null;
+  state.archive = null;
+  state.trash = null;
+  state.filter = { ...NO_FILTER };
+  statusBar.textContent = t("All inboxes");
+  state.specials = new Map();
+  for (const account of visibleAccounts()) {
+    const special = await invoke("special_folders", { account: account.id }).catch(() => ({ archive: null, trash: null }));
+    state.specials.set(account.id, special);
+  }
+  rememberAllInboxes(true);
+  await reload();
+}
+
+/// Kept across restarts, like the profile: the window opens where it was.
+function rememberAllInboxes(on) {
+  try {
+    localStorage.setItem("allInboxes", on ? "1" : "");
+  } catch {
+    // Lasts until the window closes.
+  }
+}
+
+function wantsAllInboxes() {
+  try {
+    return localStorage.getItem("allInboxes") === "1";
+  } catch {
+    return false;
+  }
+}
+
+/// The account of a row, or the open one: a row from All inboxes says.
+function accountOf(row) {
+  return row?.account ?? state.account;
+}
+
+function emailOf(accountId) {
+  return state.accounts.find((a) => a.id === accountId)?.email ?? null;
+}
+
+/// Which Archive and Trash a row's account has.
+function specialsOf(row) {
+  if (!state.allInboxes) return { archive: state.archive, trash: state.trash };
+  return state.specials.get(accountOf(row)) ?? { archive: null, trash: null };
+}
 
 function columnWidth(name) {
   const column = COLUMNS[name];
@@ -1361,13 +1471,14 @@ async function openSelected() {
 
     clearScan();
     showReadingView();
-    const detail = await invoke("message", { account: state.account, id: row.id });
+    const account = accountOf(row);
+    const detail = await invoke("message", { account, id: row.id });
     reading.hidden = false;
     emptyPane.hidden = true;
     el("reading-actions").hidden = false;
     showSecurity(detail);
     showUrgency(row.id);
-    showSender({ id: row.id });
+    showSender({ id: row.id, account });
     el("reading-shelf").hidden = true;
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     fillMeta(
@@ -1385,7 +1496,7 @@ async function openSelected() {
     // means an empty body — an attachment-only message, or one whose stored
     // copy has gone.
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
-    showAttachments(detail);
+    showAttachments(detail, account);
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
   }
@@ -1688,8 +1799,16 @@ async function act(command, args, describe) {
   // One at a time: each is its own queued change with its own undo, and a
   // server that refuses the third should not lose the first two.
   for (const row of rows) {
+    // From All inboxes the rows are of several accounts, and what Archive
+    // means differs from one to the next: `args` may be asked per row.
+    const extra = typeof args === "function" ? args(row) : args;
+    if (extra === null) {
+      failed = t("{email} has no folder for that", { email: emailOf(accountOf(row)) ?? "?" });
+      break;
+    }
     try {
-      await invoke(command, { account: state.account, id: row.id, ...args });
+      await invoke(command, { account: accountOf(row), id: row.id, ...extra });
+      state.lastActed = accountOf(row);
       done += 1;
     } catch (err) {
       failed = err;
@@ -1710,15 +1829,15 @@ async function act(command, args, describe) {
 }
 
 async function archive() {
-  if (!state.archive) {
+  if (!state.allInboxes && !state.archive) {
     say(t("this account has no Archive folder"), true);
     return;
   }
-  await act("move_to", { target: state.archive }, `archived`);
+  await act("move_to", (row) => (specialsOf(row).archive ? { target: specialsOf(row).archive } : null), `archived`);
 }
 
 async function trash() {
-  if (!state.trash) {
+  if (!state.allInboxes && !state.trash) {
     say(t("this account has no Trash folder"), true);
     return;
   }
@@ -1727,7 +1846,11 @@ async function trash() {
   const gone = actingOn()
     .map((index) => state.rows.get(index))
     .filter(Boolean);
-  const moved = await act("move_to", { target: state.trash }, `moved to ${state.trash}`);
+  const moved = await act(
+    "move_to",
+    (row) => (specialsOf(row).trash ? { target: specialsOf(row).trash } : null),
+    state.allInboxes ? t("moved to Trash") : `moved to ${state.trash}`,
+  );
   // Only after a delete that happened: "more like the one you deleted" about
   // one that is still there would be a question about nothing.
   if (gone.length !== 1 || moved !== 1) return;
@@ -1757,7 +1880,12 @@ async function toggleRead() {
 
 async function undo() {
   try {
-    const change = await invoke("undo", { account: state.account });
+    const account = state.lastActed ?? state.account;
+    if (account === null) {
+      say(t("nothing to undo"));
+      return;
+    }
+    const change = await invoke("undo", { account });
     say(change ? t("undone: {what}", { what: change.what }) : t("nothing to undo"));
     if (change) await reload({ keepPosition: true });
   } catch (err) {
@@ -1785,6 +1913,9 @@ const compose = {
   sending: false,
   // The fields as they were filled in when it opened; see `composeTouched`.
   opened: null,
+  // Which account writes it: the open one, or from All inboxes the account
+  // of the message answered — a reply goes from the address it came to.
+  email: null,
   // While "discard what you are writing?" is on screen.
   leaving: false,
 };
@@ -1886,6 +2017,7 @@ function closeCompose() {
   // A late answer from the assistant is for compose as it was, not this.
   compose.answering = null;
   compose.opened = null;
+  compose.email = null;
   el("compose-answer-status").textContent = "";
   for (const field of [compose.to, compose.cc, compose.bcc, compose.subject, compose.body]) {
     field.value = "";
@@ -1907,6 +2039,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
   // Reply pressed with a reply half written: the typed one is not thrown
   // away for an empty one without asking.
   if (!(await leaveCompose())) return;
+  compose.email = (replyAll !== null || forward ? emailOf(accountOf(row)) : null) ?? state.email ?? visibleAccounts()[0]?.email ?? null;
 
   if (replyAll !== null || forward) {
     if (!row) {
@@ -1926,7 +2059,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
     // quoting shown are the ones that would actually be sent.
     try {
       const preview = await invoke("preview", {
-        email: state.email,
+        email: compose.email,
         draft: draftInput({ files: false }),
       });
       compose.subject.value = preview.subject;
@@ -1959,6 +2092,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
 /// edited again. Replies keep what they reply to, so threading survives.
 async function openComposeWith(draft) {
   if (!(await leaveCompose())) return;
+  compose.email = state.email ?? visibleAccounts()[0]?.email ?? null;
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
@@ -1989,7 +2123,7 @@ async function refreshEnvelope() {
   if (compose.pane.hidden) return;
   try {
     const preview = await invoke("preview", {
-      email: state.email,
+      email: compose.email,
       draft: draftInput({ files: false }),
     });
     compose.envelope.textContent = `${preview.recipients.length} recipient(s): ${preview.recipients.join(", ")}`;
@@ -2007,7 +2141,7 @@ async function sendDraft() {
   compose.send.textContent = t("Sending…");
 
   try {
-    const sent = await invoke("send", { email: state.email, draft: draftInput() });
+    const sent = await invoke("send", { email: compose.email, draft: draftInput() });
     if (sent.filing_error) {
       // Sent is sent. Saying it failed would invite sending it twice.
       say(t("sent to {count} — but not filed: {error}", { count: sent.recipients.length, error: sent.filing_error }), true);
@@ -2081,8 +2215,15 @@ for (const field of [compose.to, compose.cc, compose.bcc]) {
 async function sync(account = null, { background = false } = {}) {
   // From the sidebar: that account, wherever the window happens to be.
   // From the keyboard: whatever is open.
+  // From All inboxes with nothing named, every account.
+  if (account === null && state.allInboxes) {
+    await syncEverything();
+    return;
+  }
   const email = account?.email ?? state.email;
-  const mine = email === state.email && !state.postbox;
+  const mine = state.allInboxes
+    ? visibleAccounts().some((a) => a.email === email)
+    : email === state.email && !state.postbox;
   if (account === null && state.postbox) {
     // Post is read from Paperless as it is shown, so syncing is asking again.
     await reload({ keepPosition: true });
@@ -2143,7 +2284,7 @@ async function sync(account = null, { background = false } = {}) {
   } finally {
     state.syncing = false;
     syncProgress.hidden = true;
-    statusBar.textContent = state.postbox ? state.postbox.label : state.email;
+    statusBar.textContent = state.postbox ? state.postbox.label : (state.email ?? t("All inboxes"));
   }
 }
 
@@ -2212,7 +2353,9 @@ async function runSearch(query) {
     // newest or oldest, and results that ignore it are results that lie.
     const rows = state.postbox
       ? (await invoke("paper_documents", { id: state.postbox.id, offset: 0, limit: 200, query, order: postOrder })).rows
-      : await invoke("search", {
+      : state.allInboxes
+        ? await searchAll(query)
+        : await invoke("search", {
           account: state.account,
           query,
           limit: 200,
@@ -2232,6 +2375,18 @@ async function runSearch(query) {
   } catch (err) {
     say(String(err), true);
   }
+}
+
+/// Every account searched, the results in one list in the list's order.
+async function searchAll(query) {
+  const found = [];
+  for (const account of visibleAccounts()) {
+    const rows = await invoke("search", { account: account.id, query, limit: 200, order: mailOrder });
+    found.push(...rows);
+  }
+  const sign = mailOrder === "oldest" ? 1 : -1;
+  found.sort((a, b) => sign * ((a.date_utc ?? 0) - (b.date_utc ?? 0)));
+  return found.slice(0, 200);
 }
 
 // -- keys ------------------------------------------------------------------
@@ -2453,16 +2608,17 @@ function showMessageMenu(event) {
   if (rows.length === 1) items.push([t("Open"), openSelected]);
   items.push([rows[0].unread ? t("Mark as read") : t("Mark as unread"), toggleRead]);
   items.push(null);
+  const can = state.allInboxes ? { archive: true, trash: true } : { archive: state.archive, trash: state.trash };
   items.push([
     t("Archive"),
     archive,
-    { disabled: !state.archive, title: state.archive ? "" : t("this account has no Archive folder") },
+    { disabled: !can.archive, title: can.archive ? "" : t("this account has no Archive folder") },
   ]);
   items.push([t("Move to mailbox…"), () => showMoveMenu(event)]);
   items.push([
     t("Move to Trash"),
     trash,
-    { danger: true, disabled: !state.trash, title: state.trash ? "" : t("this account has no Trash folder") },
+    { danger: true, disabled: !can.trash, title: can.trash ? "" : t("this account has no Trash folder") },
   ]);
 
   // Several messages that are alike are a rule waiting to be written, and the
@@ -2484,9 +2640,23 @@ function showMessageMenu(event) {
 /// A page rather than a submenu — the menu has none — and the whole path
 /// rather than the leaf, because two accounts' worth of mailboxes called
 /// "2024" is a choice nobody can make from the label alone.
-function showMoveMenu(event) {
+async function showMoveMenu(event) {
   const items = [[t("← Back"), () => showMessageMenu(event)], null];
-  for (const folder of state.folders) {
+  // From All inboxes the mailboxes are those of the rows' account — one
+  // account's, because a folder is one account's, and rows of two cannot go
+  // to the same one.
+  let folders = state.folders;
+  if (state.allInboxes) {
+    const accounts = new Set(actingOn().map((index) => accountOf(state.rows.get(index))).filter((a) => a != null));
+    if (accounts.size !== 1) {
+      items.push([t("pick messages of one account to move them"), () => {}, { disabled: true }]);
+      showMenu(event, items);
+      return;
+    }
+    const [account] = accounts;
+    folders = await invoke("folders", { account }).catch(() => []);
+  }
+  for (const folder of folders) {
     const here = folder.id === state.filter.folder;
     items.push([
       folder.name,
@@ -2494,7 +2664,7 @@ function showMoveMenu(event) {
       { disabled: here, title: here ? t("they are already here") : "" },
     ]);
   }
-  if (state.folders.length === 0) items.push([t("no mailboxes yet"), () => {}, { disabled: true }]);
+  if (folders.length === 0) items.push([t("no mailboxes yet"), () => {}, { disabled: true }]);
   showMenu(event, items);
 }
 
@@ -2621,7 +2791,8 @@ async function start() {
   buildPool();
   // The profile shown last time, and its first account.
   const first = visibleAccounts()[0];
-  if (first) await selectAccount(first);
+  if (wantsAllInboxes() && visibleAccounts().length > 1) await selectAllInboxes();
+  else if (first) await selectAccount(first);
   else if (visiblePostboxes().length) await selectPostbox(visiblePostboxes()[0]);
   else await selectAccount(accounts[0]);
 
@@ -2946,6 +3117,10 @@ async function closeSettings() {
       return;
     }
     statusBar.textContent = t("no accounts — add one in settings");
+    return;
+  }
+  if (state.allInboxes && visibleAccounts().length > 1) {
+    await selectAllInboxes();
     return;
   }
   const still = visibleAccounts().find((a) => a.id === state.account);

@@ -54,15 +54,17 @@ const sinceDate = new Intl.DateTimeFormat(undefined, { month: "long", year: "num
 ///
 /// Post goes to Paperless rather than to the store, and comes back in the
 /// same shape: the card itself never learns which it is looking at.
-async function senderSummary({ id = null, address = null, postbox = null }) {
-  if (postbox === null && state.account === null) return null;
+async function senderSummary({ id = null, address = null, postbox = null, account = state.account }) {
+  // A message's card can do without an account — the core finds it from
+  // the message, which a row from All inboxes relies on; an address's cannot.
+  if (postbox === null && account === null && id === null) return null;
   const key = postbox
     ? `post:${postbox}|${id}`
-    : `${state.account}|${address ? `@${address.toLowerCase()}` : id}`;
+    : `${account}|${address ? `@${address.toLowerCase()}` : id}`;
   if (senderCache.has(key)) return senderCache.get(key);
   const view = postbox
     ? await invoke("paper_sender", { id: postbox, documentId: id })
-    : await invoke("sender", { account: state.account, id, address });
+    : await invoke("sender", { account, id, address });
   senderCache.set(key, view);
   return view;
 }
@@ -318,7 +320,7 @@ async function trashFromCard(id, row, address) {
 /// Shows the card for the message that has just been opened. Quiet on
 /// failure: the message opened, and a card that could not be built is not a
 /// reason to put an error over it.
-async function showSender({ id = null, address = null, postbox = null, asked = false }) {
+async function showSender({ id = null, address = null, postbox = null, account = state.account, asked = false }) {
   if (asked) senderWanted = true;
   // Following the cursor, not opening on it.
   if (!senderWanted) return;
@@ -326,7 +328,7 @@ async function showSender({ id = null, address = null, postbox = null, asked = f
   senderPanel.dataset.asked = asking;
   let view;
   try {
-    view = await senderSummary({ id, address, postbox });
+    view = await senderSummary({ id, address, postbox, account });
   } catch (err) {
     invoke("log_ui", { level: "warn", message: `sender card: ${err}` }).catch(() => {});
     hideSender();
@@ -387,13 +389,13 @@ function senderName(label, about, { className = "sender-link" } = {}) {
 /// What the row under the cursor is about, or `null` when it is something the
 /// core cannot summarise — a scanned letter, or a row still in flight.
 function hoverTarget(element) {
-  if (state.account === null && !state.postbox) return null;
+  if (state.account === null && !state.postbox && !state.allInboxes) return null;
   const node = element?.closest?.(".row");
   if (!node || node.hidden || node.classList.contains("pending")) return null;
   const row = state.rows.get(Number(node.dataset.index));
   if (!row) return null;
   if (state.postbox) return { node, id: row.id, postbox: state.postbox.id };
-  return state.view === "people" ? { node, address: row.key } : { node, id: row.id };
+  return state.view === "people" ? { node, address: row.key } : { node, id: row.id, account: accountOf(row) };
 }
 
 viewport.addEventListener("mousemove", (event) => {
@@ -423,6 +425,7 @@ async function showHover(target) {
       id: target.id ?? null,
       address: target.address ?? null,
       postbox: target.postbox ?? null,
+      account: target.account ?? state.account,
     });
   } catch {
     // Nothing was asked for out loud, so nothing is said out loud.

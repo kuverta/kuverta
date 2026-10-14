@@ -87,6 +87,12 @@ async function switchProfile(id) {
     await refreshSidebar();
     return;
   }
+  // All inboxes follows the profile: the same list over the accounts now
+  // shown, or the one account when that is all there is.
+  if (!state.postbox && state.allInboxes && accounts.length > 1) {
+    await selectAllInboxes();
+    return;
+  }
   if (accounts.length) await selectAccount(accounts[0]);
   else if (postboxes.length) await selectPostbox(postboxes[0]);
   else {
