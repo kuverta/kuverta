@@ -3049,3 +3049,18 @@ than copied, no element that could run or fetch is ever named in it, and
 that is checked for every input. The claims about particular documents —
 which attribute survives, where a link goes — are in
 `crates/core-rpc/tests/html_view.rs`.
+
+**0.5.44: the window hears nothing without a capability.** A link in the
+page did nothing when clicked. The click reached the app — the frame
+navigated to `/open/<secret>`, the scheme handler answered 204 and told the
+window — but the window was not listening: `listen` is a command of
+Tauri's event plugin, and a plugin command is checked against the app's
+capabilities even when the app has none, while the app's own commands pass
+to its own page without any. The window had no capabilities at all, so
+every `listen` was refused, and the refusal went into a `.catch(() => {})`.
+The same silence hid the pictures bar and the outbox's "sent" report.
+`apps/desktop/capabilities/main.json` grants `core:event:allow-listen` and
+`allow-unlisten` to the main window and nothing else; a test in `page.rs`
+keeps it there, and a refused `listen` is now said in the window rather
+than swallowed. The jsdom harness could not see this: its stubbed bridge
+answers every `listen`, which is one of the things it stubs.

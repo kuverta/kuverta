@@ -460,4 +460,4 @@ window.__TAURI__?.event
     await renderOutboxNav();
     if (!outboxSheet.hidden) await openOutbox();
   })
-  .catch(() => {});
+  .catch((err) => say(String(err), true));
