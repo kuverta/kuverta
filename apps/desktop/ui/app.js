@@ -1443,6 +1443,7 @@ async function openSelected() {
       el("reading-urgency").hidden = true;
       showSecurity(null);
       hideAttachments();
+      hideMailView();
       el("reading-subject").textContent = detail.row.subject || t("(untitled)");
       fillMeta(el("reading-meta"), detail.row.from, { id: row.id, postbox: state.postbox.id }, [
         formatDate(detail.row.date_utc),
@@ -1497,6 +1498,7 @@ async function openSelected() {
     // copy has gone.
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
     showAttachments(detail, account);
+    showMailView(detail, account);
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
   }
@@ -2089,14 +2091,15 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
 }
 
 /// Fills compose from a draft the core kept — a scheduled message being
-/// edited again. Replies keep what they reply to, so threading survives.
-async function openComposeWith(draft) {
+/// edited again, or, with `what` naming it, a message a link asked for.
+/// Replies keep what they reply to, so threading survives.
+async function openComposeWith(draft, { what = null } = {}) {
   if (!(await leaveCompose())) return;
   compose.email = state.email ?? visibleAccounts()[0]?.email ?? null;
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
-  compose.what.textContent = t("Scheduled message");
+  compose.what.textContent = what ?? t("Scheduled message");
   compose.to.value = (draft.to ?? []).join(", ");
   compose.cc.value = (draft.cc ?? []).join(", ");
   compose.bcc.value = (draft.bcc ?? []).join(", ");

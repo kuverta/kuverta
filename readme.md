@@ -61,6 +61,12 @@ in its header.
   (word starts, any order, *eSIM* = *e-SIM*; quotes for a phrase); attachments
   listed on each message, pictures, PDFs and text shown in the window, saved to
   Downloads or opened in another app — never a file that could run something
+- **HTML mail, as a page** — a Text and an HTML tab on every message that
+  has both; the page is rebuilt from an allow-list and shown in a frame that
+  can run nothing and reach nothing, pictures from the internet stay out
+  until asked for on that message, and a link opens nothing until its real
+  address has been shown and what is odd about it said
+  ([why](docs/decisions.md#53-html-mail-as-a-page))
 - **Auth** — app passwords in the OS keychain, the OAuth2 device flow
   (RFC 8628) for Microsoft 365, and the loopback flow (RFC 8252, with PKCE)
   for Gmail, which does not accept the device grant
@@ -125,8 +131,8 @@ in its header.
 - **A Docker dev stack** — a seeded Dovecot, an SMTP sink, and a second Dovecot
   wearing Gmail's folder layout, so none of it needs a real mailbox
 
-Not yet: the local model, IDLE, QRESYNC, attachments in compose, HTML
-rendering, and the Paperless half.
+Not yet: the local model, IDLE, QRESYNC, attachments in compose, and the
+Paperless half.
 
 ## Installing
 

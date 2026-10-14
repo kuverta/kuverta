@@ -20,6 +20,7 @@
 
 mod files;
 mod logging;
+mod page;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -39,6 +40,8 @@ struct App {
     /// goes on being served from the other connection while this one writes.
     data_dir: PathBuf,
     logs: logging::Logs,
+    /// The secret in every link of a message's page; see `page.rs`.
+    link_token: String,
 }
 
 /// Tauri needs a serialisable error; `RpcError` is not one.
@@ -1246,6 +1249,21 @@ async fn lookup_account(
     core_rpc::setup::lookup(&email, &existing)
         .await
         .map_err(fail)
+}
+
+/// Where the window's frame loads a message's HTML from, as a page: see
+/// `page.rs`. `remote` is whether pictures from the internet are shown,
+/// which the person says per message.
+#[tauri::command]
+fn mail_page_url(
+    app: State<'_, App>,
+    account: Option<i64>,
+    id: i64,
+    remote: bool,
+) -> Result<String, String> {
+    let core = app.core.lock().unwrap();
+    let account = account_for(&core, account, id)?;
+    Ok(page::page_url(account, id, remote))
 }
 
 /// Opens a web page, or the System Settings pane the assistant points at, in
@@ -2552,12 +2570,16 @@ fn main() {
             core: Mutex::new(core),
             data_dir,
             logs,
+            link_token: page::link_token(),
         })
+        // HTML mail as a page, in a frame that can reach nothing but this.
+        .register_uri_scheme_protocol(page::SCHEME, page::handle)
         .invoke_handler(tauri::generate_handler![
             accounts,
             messages,
             messages_in,
             message,
+            mail_page_url,
             attachment,
             save_attachment,
             open_attachment,
