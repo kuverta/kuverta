@@ -1,4 +1,5 @@
-//! Where a model runs: Ollama, or a hosted service that speaks OpenAI's API.
+//! Where a model runs: Ollama, a hosted service that speaks OpenAI's API, or
+//! Claude over Anthropic's own (see `anthropic.rs`).
 //!
 //! Most hosted services — DeepSeek, OpenAI itself, OpenRouter, Mistral, Groq —
 //! take the same `/chat/completions` request, so one client covers them given
@@ -15,6 +16,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+use crate::anthropic::Anthropic;
 use crate::ollama::{AiError, ChatReply, Ollama, TRANSCRIBE};
 use crate::usage::{self, Meter};
 
@@ -275,18 +277,20 @@ impl Chat for OpenAiCompatible {
     }
 }
 
-/// A provider as configured: either kind, used the same way.
+/// A provider as configured: any kind, used the same way.
 pub enum Provider {
     Ollama(Ollama),
     OpenAi(OpenAiCompatible),
+    Anthropic(Anthropic),
 }
 
 impl Provider {
-    /// `kind` as the store keeps it: `ollama` or `openai`.
+    /// `kind` as the store keeps it: `ollama`, `openai` or `anthropic`.
     pub fn connect(kind: &str, base_url: &str, key: Option<String>) -> Result<Self, AiError> {
         match kind {
             "ollama" => Ok(Self::Ollama(Ollama::new(base_url.trim())?)),
             "openai" => Ok(Self::OpenAi(OpenAiCompatible::new(base_url, key)?)),
+            "anthropic" => Ok(Self::Anthropic(Anthropic::new(base_url, key)?)),
             other => Err(AiError::Kind(other.to_string())),
         }
     }
@@ -296,6 +300,7 @@ impl Provider {
         match &mut self {
             Self::Ollama(ollama) => ollama.meter = Some(meter),
             Self::OpenAi(service) => service.meter = Some(meter),
+            Self::Anthropic(claude) => claude.meter = Some(meter),
         }
         self
     }
@@ -304,6 +309,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.base_url(),
             Self::OpenAi(service) => service.base_url(),
+            Self::Anthropic(claude) => claude.base_url(),
         }
     }
 
@@ -311,6 +317,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.models().await,
             Self::OpenAi(service) => service.models().await,
+            Self::Anthropic(claude) => claude.models().await,
         }
     }
 
@@ -318,6 +325,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.chat(model, system, user).await,
             Self::OpenAi(service) => service.chat(model, system, user).await,
+            Self::Anthropic(claude) => claude.chat(model, system, user).await,
         }
     }
 
@@ -332,6 +340,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.chat_up_to(model, system, user, max_tokens).await,
             Self::OpenAi(service) => service.chat_up_to(model, system, user, max_tokens).await,
+            Self::Anthropic(claude) => claude.chat_up_to(model, system, user, max_tokens).await,
         }
     }
 
@@ -339,6 +348,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.transcribe(model, jpeg).await,
             Self::OpenAi(service) => service.transcribe(model, jpeg).await,
+            Self::Anthropic(claude) => claude.transcribe(model, jpeg).await,
         }
     }
 
@@ -352,7 +362,7 @@ impl Provider {
     ) -> Result<Option<ChatReply>, AiError> {
         match self {
             Self::Ollama(ollama) => ollama.transcribe_guarded(model, jpeg).await.map(Some),
-            Self::OpenAi(_) => Ok(None),
+            Self::OpenAi(_) | Self::Anthropic(_) => Ok(None),
         }
     }
 }

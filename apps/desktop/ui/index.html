@@ -532,13 +532,15 @@
           </form>
 
           <!--
-            One place models run: an Ollama, or a hosted service with an
-            OpenAI-compatible API — DeepSeek, OpenAI, OpenRouter and most others.
+            One place models run: an Ollama, Claude over Anthropic's API, or a
+            hosted service with an OpenAI-compatible API — DeepSeek, OpenAI,
+            OpenRouter and most others.
           -->
           <form id="provider-form" class="settings-page" autocomplete="off" hidden>
             <section class="card">
               <h3>Provider</h3>
               <label id="provider-preset">Service<select name="preset">
+                <option value="claude">Claude (Anthropic)</option>
                 <option value="deepseek">DeepSeek</option>
                 <option value="openai">OpenAI</option>
                 <option value="openrouter">OpenRouter</option>

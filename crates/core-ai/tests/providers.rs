@@ -266,7 +266,7 @@ async fn ollama_lists_its_models_with_what_each_can_do() {
 }
 
 #[test]
-fn a_provider_is_ollama_or_openai_compatible_and_nothing_else() {
+fn a_provider_is_ollama_openai_compatible_or_claude_and_nothing_else() {
     assert!(matches!(
         Provider::connect("ollama", "http://127.0.0.1:11434", None),
         Ok(Provider::Ollama(_))
@@ -387,4 +387,137 @@ async fn a_model_that_answers_is_not_told_anything() {
         .unwrap();
     assert!(seen.recv().unwrap().body.get("reasoning_effort").is_none());
     assert!(seen.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn claude_is_asked_with_its_own_headers_and_answers_from_its_text_blocks() {
+    let (base, seen) = serve(|_, _, _| {
+        (
+            200,
+            json!({
+                "content": [
+                    { "type": "thinking", "thinking": "", "signature": "sig" },
+                    { "type": "text", "text": "transactional" },
+                ],
+                "stop_reason": "end_turn",
+                "usage": { "input_tokens": 120, "output_tokens": 30 },
+            }),
+        )
+    });
+    let claude = Provider::connect(
+        "anthropic",
+        &format!("{base}/v1/"),
+        Some("sk-ant-test".into()),
+    )
+    .unwrap();
+    assert!(matches!(claude, Provider::Anthropic(_)));
+
+    let reply = claude
+        .chat("claude-haiku-5-5", "system words", "user words")
+        .await
+        .unwrap();
+    assert_eq!(reply.content, "transactional");
+    assert!(!reply.truncated);
+
+    let request = seen.recv().unwrap();
+    assert_eq!(request.method, "POST");
+    assert_eq!(request.path, "/v1/messages");
+    assert_eq!(request.authorization, None, "the key goes in x-api-key");
+    assert_eq!(request.body["system"], "system words");
+    assert_eq!(
+        request.body["messages"][0],
+        json!({ "role": "user", "content": "user words" })
+    );
+    // Room to think before one word, and no sampling settings Claude refuses.
+    assert!(request.body["max_tokens"].as_u64().unwrap() >= 1024);
+    assert!(request.body.get("temperature").is_none());
+    assert_eq!(request.body["output_config"]["effort"], "low");
+}
+
+#[tokio::test]
+async fn a_claude_model_that_takes_no_effort_level_is_asked_again_without_one() {
+    let (base, seen) = serve(|_, _, body| {
+        if body.get("output_config").is_some() {
+            (
+                400,
+                json!({ "type": "error", "error": { "type": "invalid_request_error", "message": "effort is not supported on this model" } }),
+            )
+        } else {
+            (
+                200,
+                json!({ "content": [{ "type": "text", "text": "ok" }], "stop_reason": "end_turn" }),
+            )
+        }
+    });
+    let claude = Provider::connect("anthropic", &base, Some("k".into())).unwrap();
+    for _ in 0..2 {
+        let reply = claude.chat("claude-haiku-4-5", "s", "u").await.unwrap();
+        assert_eq!(reply.content, "ok");
+    }
+    let tries: Vec<bool> = seen
+        .try_iter()
+        .map(|request| request.body.get("output_config").is_some())
+        .collect();
+    assert_eq!(
+        tries,
+        vec![true, false, false],
+        "told once, then remembered"
+    );
+}
+
+#[tokio::test]
+async fn claude_lists_its_models_with_what_they_can_see() {
+    let (base, seen) = serve(|_, path, _| {
+        let page = if path.contains("after_id") {
+            json!({ "data": [
+                { "id": "claude-opus-5-5", "capabilities": { "image_input": { "supported": true } } },
+            ], "has_more": false, "last_id": "claude-opus-5-5" })
+        } else {
+            json!({ "data": [
+                { "id": "claude-haiku-5-5", "capabilities": { "image_input": { "supported": true } } },
+                { "id": "claude-text-only", "capabilities": { "image_input": { "supported": false } } },
+            ], "has_more": true, "last_id": "claude-text-only" })
+        };
+        (200, page)
+    });
+    let models = Provider::connect("anthropic", &base, Some("k".into()))
+        .unwrap()
+        .models()
+        .await
+        .unwrap();
+    let names: Vec<_> = models.iter().map(|m| (m.name.as_str(), m.vision)).collect();
+    assert_eq!(
+        names,
+        vec![
+            ("claude-haiku-5-5", Some(true)),
+            ("claude-opus-5-5", Some(true)),
+            ("claude-text-only", Some(false)),
+        ]
+    );
+    let first = seen.recv().unwrap();
+    assert_eq!(first.method, "GET");
+    assert!(first.path.starts_with("/models"), "{}", first.path);
+}
+
+#[tokio::test]
+async fn a_page_goes_to_claude_as_an_image_block() {
+    let (base, seen) = serve(|_, _, _| {
+        (
+            200,
+            json!({ "content": [{ "type": "text", "text": "Stadtwerke Musterstadt" }], "stop_reason": "max_tokens" }),
+        )
+    });
+    let reply = Provider::connect("anthropic", &base, Some("k".into()))
+        .unwrap()
+        .transcribe("claude-opus-5-5", b"\xff\xd8a photographed page")
+        .await
+        .unwrap();
+    assert_eq!(reply.content, "Stadtwerke Musterstadt");
+    assert!(reply.truncated);
+    let body = seen.recv().unwrap().body;
+    assert_eq!(body["system"], TRANSCRIBE);
+    let image = &body["messages"][0]["content"][0];
+    assert_eq!(image["type"], "image");
+    assert_eq!(image["source"]["media_type"], "image/jpeg");
+    assert_eq!(image["source"]["data"], "/9hhIHBob3RvZ3JhcGhlZCBwYWdl");
 }

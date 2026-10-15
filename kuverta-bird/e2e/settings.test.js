@@ -215,6 +215,11 @@ test('a hosted service is added with its key, lists its models, and a job sent t
   // Choosing another service fills in its address.
   await page.locator('#provider-form select[name="preset"]').selectOption('openrouter');
   assert.equal(await page.locator('#provider-form input[name="base_url"]').inputValue(), 'https://openrouter.ai/api/v1');
+  // Claude is asked over Anthropic's own API, and says where its key comes from.
+  await page.locator('#provider-form select[name="preset"]').selectOption('claude');
+  assert.equal(await page.locator('#provider-form input[name="base_url"]').inputValue(), 'https://api.anthropic.com/v1');
+  assert.equal(await page.locator('#provider-key').isVisible(), true);
+  assert.match(await page.locator('#provider-key-state').innerText(), /console\.anthropic\.com/);
   await page.locator('#provider-form select[name="preset"]').selectOption('deepseek');
 
   await page.locator('#provider-form input[name="key"]').fill('sk-test');

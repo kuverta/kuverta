@@ -309,13 +309,13 @@ fn view(provider: &StoredAiProvider) -> AiProviderView {
         base_url: provider.base_url.clone(),
         // Only a hosted service has a key to look for; asking the keychain
         // about an Ollama would be a keychain read for nothing.
-        has_key: provider.kind == "openai" && matches!(key_entry(provider).peek(), Ok(Some(_))),
+        has_key: provider.kind != "ollama" && matches!(key_entry(provider).peek(), Ok(Some(_))),
         local: is_loopback(&provider.base_url),
     }
 }
 
 fn connect(provider: &StoredAiProvider) -> Result<core_ai::Provider> {
-    let key = if provider.kind == "openai" {
+    let key = if provider.kind != "ollama" {
         key_entry(provider)
             .peek()
             .map_err(|err| RpcError::Auth(err.to_string()))?

@@ -3045,7 +3045,7 @@ function renderSettingsList() {
         active: settings.mode === "provider" && provider.id === models.editing,
         onClick: () => fillProvider(provider),
         title:
-          provider.kind === "openai" && !provider.has_key
+          provider.kind !== "ollama" && !provider.has_key
             ? `${provider.base_url} — no key stored`
             : provider.base_url,
       }),
@@ -3508,8 +3508,8 @@ const models = {
   offered: new Map(),
   // Which provider the provider form is editing. Null means a new one.
   editing: null,
-  // The kind of provider being edited: `ollama`, or `openai` for a service
-  // with an OpenAI-compatible API.
+  // The kind of provider being edited: `ollama`, `openai` for a service with
+  // an OpenAI-compatible API, or `anthropic` for Claude.
   kind: "openai",
 };
 
@@ -3518,8 +3518,9 @@ const TASKS = ["vision", "chat", "assistant"];
 const TASK_NAMES = { vision: "reading scans", chat: "sorting mail", assistant: "the assistant" };
 
 /// Where a new provider starts. Each address is the service's own documented
-/// base for its OpenAI-compatible API.
+/// base for its API: Anthropic's own for Claude, OpenAI-compatible for the rest.
 const PRESETS = {
+  claude: { kind: "anthropic", label: "Claude", base_url: "https://api.anthropic.com/v1" },
   deepseek: { kind: "openai", label: "DeepSeek", base_url: "https://api.deepseek.com" },
   openai: { kind: "openai", label: "OpenAI", base_url: "https://api.openai.com/v1" },
   openrouter: { kind: "openai", label: "OpenRouter", base_url: "https://openrouter.ai/api/v1" },
@@ -3730,7 +3731,9 @@ function syncProviderKind(provider) {
     ? "Ollama needs no key."
     : provider?.has_key
       ? "A key is stored in the keychain. It is sent only to this address."
-      : "No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.";
+      : models.kind === "anthropic"
+        ? "No key stored yet. Create an API key at console.anthropic.com (a Claude.ai subscription is not an API key); it is kept in the keychain."
+        : "No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.";
 }
 
 async function listProviderModels(id) {

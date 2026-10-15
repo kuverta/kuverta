@@ -10,7 +10,8 @@
 //! Ollama and OpenAI's API both take tools as JSON Schema functions and give
 //! calls back on the assistant's message; they differ in detail — Ollama hands
 //! arguments over as an object and matches results by position, OpenAI as a
-//! JSON string and by call id — and that difference stays in here.
+//! JSON string and by call id — and that difference stays in here. Claude's
+//! API differs more, and its half is in `anthropic.rs`.
 
 use std::time::Instant;
 
@@ -86,6 +87,7 @@ impl Provider {
         match self {
             Self::Ollama(ollama) => ollama.converse(model, turns, tools).await,
             Self::OpenAi(service) => service.converse(model, turns, tools).await,
+            Self::Anthropic(claude) => claude.converse(model, turns, tools).await,
         }
     }
 }

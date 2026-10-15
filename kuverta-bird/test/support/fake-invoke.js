@@ -531,7 +531,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     ai_providers: async () => aiProviders.map((p) => ({ ...p })),
 
     save_ai_provider: async ({ input }) => {
-      if (!['ollama', 'openai'].includes(input.kind)) {
+      if (!['ollama', 'openai', 'anthropic'].includes(input.kind)) {
         throw new Error(`${input.kind} is not a kind of model provider kuverta knows`);
       }
       if (!/^https?:\/\/[^/]/.test(input.base_url)) {

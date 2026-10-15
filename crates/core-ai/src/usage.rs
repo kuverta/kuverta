@@ -1,7 +1,7 @@
 //! How many tokens a model was sent and wrote back.
 //!
 //! Each provider says so in its reply — Ollama as `prompt_eval_count` and
-//! `eval_count`, OpenAI's API as `usage` — and the count is handed to a
+//! `eval_count`, OpenAI's and Anthropic's APIs as `usage`, each its own way — and the count is handed to a
 //! [`Meter`] the caller attached, if any. Counting is the caller's business:
 //! this crate does not know where a tally is kept, or which job asked.
 
@@ -40,6 +40,26 @@ pub(crate) fn from_openai(reply: &Value) -> Option<Usage> {
     let usage = reply.get("usage")?;
     let input = usage.get("prompt_tokens").and_then(Value::as_u64);
     let output = usage.get("completion_tokens").and_then(Value::as_u64);
+    (input.is_some() || output.is_some()).then(|| Usage {
+        input_tokens: input.unwrap_or(0),
+        output_tokens: output.unwrap_or(0),
+    })
+}
+
+/// Usage in a reply from Anthropic's Messages API. What was read from or
+/// written to the prompt cache is input too.
+pub(crate) fn from_anthropic(reply: &Value) -> Option<Usage> {
+    let usage = reply.get("usage")?;
+    let count = |field: &str| usage.get(field).and_then(Value::as_u64);
+    let output = count("output_tokens");
+    let input = [
+        "input_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+    ]
+    .iter()
+    .filter_map(|field| count(field))
+    .reduce(|a, b| a + b);
     (input.is_some() || output.is_some()).then(|| Usage {
         input_tokens: input.unwrap_or(0),
         output_tokens: output.unwrap_or(0),
@@ -86,5 +106,16 @@ mod tests {
             })
         );
         assert_eq!(from_openai(&json!({"choices": []})), None);
+        assert_eq!(
+            from_anthropic(&json!({"usage": {
+                "input_tokens": 40,
+                "cache_read_input_tokens": 900,
+                "output_tokens": 12
+            }})),
+            Some(Usage {
+                input_tokens: 940,
+                output_tokens: 12
+            })
+        );
     }
 }
