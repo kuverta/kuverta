@@ -66,8 +66,9 @@ after(async () => {
   server?.close();
 });
 
-async function openSettings() {
-  const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+async function openSettings({ hostedModels, holdModels = false, modelError } = {}) {
+  // Assertions use English regardless of the Windows account's language.
+  const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, locale: 'en-US' });
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
@@ -81,14 +82,22 @@ async function openSettings() {
     if (message.type() === 'error') problems.push(message.text());
   });
 
-  await page.addInitScript((fake) => {
+  await page.addInitScript(({ fake, hostedModels, holdModels, modelError }) => {
     let bridge;
+    window.modelRequests = [];
     window.__TAURI__ = {
       core: {
         invoke: async (command, args) => {
           bridge ??= import(fake).then((module) =>
             module.fakeInvoke({ paper: { paperMailboxes: [], documents: [] } }),
           );
+          if (command === 'ai_models' && args.providerId !== 1) {
+            if (holdModels) {
+              return new Promise((resolve) => window.modelRequests.push(resolve));
+            }
+            if (modelError) throw new Error(modelError);
+            if (hostedModels) return hostedModels;
+          }
           return (await bridge)(command, args);
         },
         // Progress arrives on a channel in the real bridge, and the window
@@ -98,7 +107,7 @@ async function openSettings() {
         },
       },
     };
-  }, FAKE);
+  }, { fake: FAKE, hostedModels, holdModels, modelError });
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -160,6 +169,109 @@ test('the list says where addresses go, even before there are any', async () => 
 // -- models ------------------------------------------------------------------
 
 const noteOf = (page, task) => page.locator(`[data-note="${task}"]`);
+
+const CLAUDE_MODELS = [
+  { name: 'claude-haiku-4-5', size_bytes: null, vision: true, embedding: false },
+  { name: 'claude-sonnet-4-5', size_bytes: null, vision: true, embedding: false },
+];
+
+async function addClaude(page) {
+  await page.evaluate(async () => {
+    const { invoke } = window.__TAURI__.core;
+    const id = await invoke('save_ai_provider', { input: {
+      id: null, kind: 'anthropic', label: 'Claude', base_url: 'https://api.anthropic.com/v1',
+    } });
+    await invoke('set_ai_key', { id, key: 'test-key-never-sent' });
+  });
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('select[name="chat_provider"]')?.options.length === 2);
+}
+
+test('changing provider replaces the old model for every job and keeps the choices after saving', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: CLAUDE_MODELS });
+  t.after(() => context.close());
+  await addClaude(page);
+  for (const task of ['vision', 'chat', 'assistant']) {
+    await page.locator(`select[name="${task}_provider"]`).selectOption({ label: 'Claude' });
+    await page.waitForFunction((task) => document.querySelector(`#${task}-models option`)?.value.startsWith('claude-'), task);
+    assert.equal(await page.locator(`input[name="${task}_model"]`).inputValue(), 'claude-haiku-4-5');
+    assert.doesNotMatch(await noteOf(page, task).textContent(), /does not list/);
+  }
+  // A deliberate choice wins over the initial suggestion, including on reopening.
+  await page.locator('input[name="assistant_model"]').fill('claude-sonnet-4-5');
+  await page.locator('#ai-save').click();
+  await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'saved');
+  await page.locator('#settings-add').click();
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('select[name="assistant_provider"] option:checked')?.textContent === 'Claude');
+  const saved = await page.evaluate(() => window.__TAURI__.core.invoke('ai_tasks'));
+  assert.deepEqual(saved.map(({ task, provider_id, model }) => ({ task, provider_id, model })), [
+    { task: 'vision', provider_id: 2, model: 'claude-haiku-4-5' },
+    { task: 'chat', provider_id: 2, model: 'claude-haiku-4-5' },
+    { task: 'assistant', provider_id: 2, model: 'claude-sonnet-4-5' },
+  ]);
+  assert.equal(await page.locator('input[name="assistant_model"]').inputValue(), 'claude-sonnet-4-5');
+  // Returning to Ollama must select a model it actually has; scans need vision.
+  await page.locator('select[name="vision_provider"]').selectOption('1');
+  await page.waitForFunction(() => document.querySelector('input[name="vision_model"]').value === 'qwen2.5vl:3b');
+  assert.deepEqual(problems, []);
+});
+
+test('a provider change never chooses an embedding or a known text-only model for scans', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: [
+    { name: 'embedding-only', embedding: true, vision: false },
+    { name: 'text-only', embedding: false, vision: false },
+    { name: 'unspecified', embedding: false, vision: null },
+    { name: 'sees-images', embedding: false, vision: true },
+  ] });
+  t.after(() => context.close());
+  await addClaude(page);
+  await page.locator('select[name="vision_provider"]').selectOption('2');
+  await page.waitForFunction(() => document.querySelectorAll('#vision-models option').length === 3);
+  assert.equal(await page.locator('input[name="vision_model"]').inputValue(), 'sees-images');
+  await page.locator('select[name="chat_provider"]').selectOption('2');
+  await page.waitForFunction(() => document.querySelectorAll('#chat-models option').length === 3);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'text-only');
+  assert.deepEqual(problems, []);
+});
+
+for (const failure of ['empty', 'unavailable']) {
+  test(`a provider change clears the old model when the new model list is ${failure}`, async (t) => {
+    const { page, context, problems } = await openSettings({
+      hostedModels: [], modelError: failure === 'unavailable' ? 'test model server unavailable' : undefined,
+    });
+    t.after(() => context.close());
+    await addClaude(page);
+    await page.locator('select[name="chat_provider"]').selectOption('2');
+    await page.waitForFunction(() => document.querySelector('[data-note="chat"]').textContent.includes('Claude'));
+    assert.equal(await page.locator('input[name="chat_model"]').inputValue(), '');
+    assert.equal(await page.locator('#ai-form').evaluate((form) => form.checkValidity()), false);
+    // Providers can omit a usable model from their list, so explicit names remain possible.
+    await page.locator('input[name="chat_model"]').fill('my-custom-model');
+    await page.locator('#ai-save').click();
+    await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'saved');
+    assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'my-custom-model');
+    assert.deepEqual(problems, []);
+  });
+}
+
+test('a delayed model list cannot overwrite typing or a newer provider choice', async (t) => {
+  const { page, context, problems } = await openSettings({ holdModels: true });
+  t.after(() => context.close());
+  await addClaude(page);
+  await page.locator('select[name="chat_provider"]').selectOption('2');
+  await page.waitForFunction(() => window.modelRequests.length === 1);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), '');
+  await page.locator('input[name="chat_model"]').fill('my-explicit-model');
+  await page.locator('select[name="vision_provider"]').selectOption('2');
+  await page.locator('select[name="vision_provider"]').selectOption('1');
+  await page.evaluate((offered) => window.modelRequests.shift()(offered), CLAUDE_MODELS);
+  await page.waitForFunction(() => document.querySelector('#chat-models option')?.value.startsWith('claude-'));
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'my-explicit-model');
+  assert.equal(await page.locator('input[name="vision_model"]').inputValue(), 'qwen2.5vl:3b');
+  assert.equal(await page.locator('#vision-models option').first().getAttribute('value'), 'llama3.2:3b');
+  assert.deepEqual(problems, []);
+});
 
 test('the models page says which model each job uses and what the provider has', async () => {
   const { page, context, problems } = await openSettings();
