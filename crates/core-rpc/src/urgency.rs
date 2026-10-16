@@ -385,7 +385,8 @@ Rate how soon the reader must act:\n\
 0 = nothing for the reader to do\n\
 Answer with one line of JSON and nothing else, in this shape:\n\
 {\"urgency\": 2, \"action\": \"reply\", \"deadline\": \"2026-09-25\", \"reason\": \"one short sentence\"}\n\
-action is one of reply, pay, attend, decide, read, none. deadline is a date in YYYY-MM-DD \
+action is one of reply, pay, attend, decide, read, none. If action is none, urgency must be 0 \
+and deadline must be null: nothing to do cannot be urgent. deadline is a date in YYYY-MM-DD \
 only when the message states one; never invent one, and use null otherwise. Write the reason in the language of the \
 message.";
 
@@ -489,8 +490,15 @@ pub fn parse_answer(reply: &str, model: &str) -> Option<Urgency> {
 /// small model calls a bill due in two weeks "today" as readily as one due
 /// tomorrow, and a date is something that can be counted. Overdue or within a
 /// day is 3, within a week 2, later 1. Without a deadline the model's
-/// judgement stands.
+/// judgement stands, except that an explicit `none` action always means
+/// nothing to do. Models can recognise phishing in their reason and action
+/// while still assigning the sender's claimed urgency to it.
 pub fn calibrate(mut urgency: Urgency, today: chrono::NaiveDate) -> Urgency {
+    if urgency.action.as_deref() == Some("none") {
+        urgency.score = 0;
+        urgency.deadline = None;
+        return urgency;
+    }
     let due = urgency
         .deadline
         .as_deref()
@@ -642,6 +650,36 @@ mod tests {
         assert_eq!(at("2026-09-19", 1), 3, "tomorrow is tomorrow");
         assert_eq!(at("2026-09-10", 2), 3, "overdue");
         assert_eq!(at("2026-09-19", 0), 0, "nothing to do stays nothing");
+    }
+
+    #[test]
+    fn no_action_cannot_be_urgent_even_when_the_model_claims_a_deadline() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 16).unwrap();
+        for deadline in [serde_json::Value::Null, serde_json::json!("2026-10-16")] {
+            let reply = serde_json::json!({
+                "urgency": 3,
+                "action": " None ",
+                "deadline": deadline,
+                "reason": "This is a phishing scam; do not provide banking details."
+            });
+            let verdict = calibrate(
+                parse_answer(&reply.to_string(), "test-model").unwrap(),
+                today,
+            );
+            assert_eq!(verdict.score, 0, "no action means nothing to do");
+            assert_eq!(verdict.deadline, None, "no action has no due date");
+            assert!(verdict.reason.contains("phishing"));
+        }
+    }
+
+    #[test]
+    fn an_actionable_security_warning_can_still_need_attention_today() {
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 10, 16).unwrap();
+        let verdict = parse_answer(
+            r#"{"urgency":3,"action":"read","deadline":null,"reason":"Read the security report about a phishing attempt."}"#,
+            "test-model",
+        ).unwrap();
+        assert_eq!(calibrate(verdict, today).score, 3);
     }
 
     #[test]
