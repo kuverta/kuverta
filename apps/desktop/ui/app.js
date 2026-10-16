@@ -3508,6 +3508,8 @@ const models = {
   offered: new Map(),
   // Only the latest request for a job may update its field or suggestions.
   filling: new Map(),
+  // Keep the explicit-name field open while the person is typing in it.
+  manual: new Set(),
   // Which provider the provider form is editing. Null means a new one.
   editing: null,
   // The kind of provider being edited: `ollama`, `openai` for a service with
@@ -3578,6 +3580,8 @@ async function showModels() {
       for (const provider of providers) select.append(new Option(provider.label, String(provider.id)));
       select.value = String(task.provider_id);
       models.form[`${task.task}_model`].value = task.model;
+      models.manual.delete(task.task);
+      renderModelChoices(task.task, []);
       fillOffered(task.task);
     }
     renderSettingsList();
@@ -3595,12 +3599,12 @@ async function fillOffered(task, { changedProvider = false } = {}) {
   const previous = modelField.value.trim();
   const request = Symbol();
   models.filling.set(task, request);
-  const list = el(`${task}-models`);
   if (changedProvider) {
     // A name from the old provider must not be saved or tried while the new
     // list is loading, or if that list fails. Explicit names remain possible.
     modelField.value = "";
-    list.textContent = "";
+    models.manual.delete(task);
+    renderModelChoices(task, []);
     noteFor(task, [], null);
   }
   let offered = [];
@@ -3622,16 +3626,27 @@ async function fillOffered(task, { changedProvider = false } = {}) {
       ?? suitable[0];
     modelField.value = chosen?.name ?? "";
   }
+  renderModelChoices(task, offered);
+  noteFor(task, offered, failed);
+}
+
+// A native select always offers the whole list. A datalist filters by the
+// field's current value, hiding every alternative to an already chosen model.
+function renderModelChoices(task, offered) {
+  const list = el(`${task}-models`);
+  const field = models.form[`${task}_model`];
   list.textContent = "";
   for (const model of offered) {
     // An embedding model can be asked nothing, so it is no answer to either job.
     if (model.embedding) continue;
-    const option = document.createElement("option");
-    option.value = model.name;
-    option.label = describeModel(model);
-    list.append(option);
+    const label = [model.name, describeModel(model)].filter(Boolean).join(" · ");
+    list.append(new Option(label, model.name));
   }
-  noteFor(task, offered, failed);
+  const listed = [...list.options].some((option) => option.value === field.value.trim());
+  const manual = models.manual.has(task) || !listed;
+  list.append(new Option(t("Enter model name…"), ""));
+  list.value = manual ? "" : field.value.trim();
+  field.hidden = !manual;
 }
 
 function noteFor(task, offered, failed) {
@@ -3673,7 +3688,24 @@ function noteFor(task, offered, failed) {
 
 for (const task of TASKS) {
   models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task, { changedProvider: true }));
-  models.form[`${task}_model`].addEventListener("input", () => fillOffered(task));
+  const field = models.form[`${task}_model`];
+  el(`${task}-models`).addEventListener("change", (event) => {
+    if (event.target.value) {
+      models.manual.delete(task);
+      field.value = event.target.value;
+      field.hidden = true;
+      fillOffered(task);
+    } else {
+      models.manual.add(task);
+      field.hidden = false;
+      field.focus();
+      field.select();
+    }
+  });
+  field.addEventListener("input", () => {
+    models.manual.add(task);
+    fillOffered(task);
+  });
 }
 
 models.form.addEventListener("submit", async (event) => {
