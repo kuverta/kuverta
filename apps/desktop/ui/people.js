@@ -80,7 +80,7 @@ async function viewPage(offset, limit) {
       // The reason is the line worth reading here, and the level and action
       // go where the category usually is.
       snippet: urgency.reason,
-      category: [t(LEVELS[urgency.score]), t(ACTIONS[urgency.action]), urgency.deadline ? t("by {day}", { day: shortDay(urgency.deadline) }) : ""]
+      category: [t(LEVELS[urgency.score]), ACTIONS[urgency.action] ? t(ACTIONS[urgency.action]) : "", urgency.deadline ? t("by {day}", { day: shortDay(urgency.deadline) }) : ""]
         .filter(Boolean)
         .join(" · "),
     }));

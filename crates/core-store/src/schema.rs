@@ -646,6 +646,15 @@ DROP TABLE ai_provider;
 ALTER TABLE ai_provider_new RENAME TO ai_provider;
 PRAGMA foreign_keys = ON;
 "#,
+    // v25 — older model replies could say both "no action" and "today".
+    // They are cached, so fixing new replies alone would leave those false
+    // alarms in the attention list indefinitely. Keep the explanation and
+    // provenance; there is no action to schedule and no mail needs moving.
+    r#"
+UPDATE urgency SET score = 0, deadline = NULL
+WHERE source = 'model' AND action = 'none'
+  AND (score <> 0 OR deadline IS NOT NULL);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

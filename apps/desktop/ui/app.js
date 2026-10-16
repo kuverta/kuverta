@@ -3506,6 +3506,10 @@ const models = {
   // What each provider offers, by id, as a promise: two jobs on one provider
   // ask it once, and a provider's own page asks again.
   offered: new Map(),
+  // Only the latest request for a job may update its field or suggestions.
+  filling: new Map(),
+  // Keep the explicit-name field open while the person is typing in it.
+  manual: new Set(),
   // Which provider the provider form is editing. Null means a new one.
   editing: null,
   // The kind of provider being edited: `ollama`, `openai` for a service with
@@ -3576,6 +3580,8 @@ async function showModels() {
       for (const provider of providers) select.append(new Option(provider.label, String(provider.id)));
       select.value = String(task.provider_id);
       models.form[`${task.task}_model`].value = task.model;
+      models.manual.delete(task.task);
+      renderModelChoices(task.task, []);
       fillOffered(task.task);
     }
     renderSettingsList();
@@ -3586,9 +3592,21 @@ async function showModels() {
 
 /// Offers the chosen provider's models under a job's model field, and says
 /// what the chosen model can do and what the job would send where.
-async function fillOffered(task) {
+async function fillOffered(task, { changedProvider = false } = {}) {
   const providerField = models.form[`${task}_provider`];
+  const modelField = models.form[`${task}_model`];
   const providerId = Number(providerField.value);
+  const previous = modelField.value.trim();
+  const request = Symbol();
+  models.filling.set(task, request);
+  if (changedProvider) {
+    // A name from the old provider must not be saved or tried while the new
+    // list is loading, or if that list fails. Explicit names remain possible.
+    modelField.value = "";
+    models.manual.delete(task);
+    renderModelChoices(task, []);
+    noteFor(task, [], null);
+  }
   let offered = [];
   let failed = null;
   try {
@@ -3596,19 +3614,39 @@ async function fillOffered(task) {
   } catch (err) {
     failed = String(err);
   }
-  if (Number(providerField.value) !== providerId) return; // changed while asking
+  if (models.filling.get(task) !== request || Number(providerField.value) !== providerId) return;
 
+  if (changedProvider && !failed && !modelField.value.trim()) {
+    const suitable = offered.filter((model) => !model.embedding && (task !== "vision" || model.vision !== false));
+    // Keep a name shared by both providers. Otherwise prefer known vision for
+    // scans, then the first offered chat model. Price and tool support are not
+    // part of ModelInfo, so neither is inferred from a model's name.
+    const chosen = suitable.find((model) => model.name === previous)
+      ?? (task === "vision" ? suitable.find((model) => model.vision === true) : null)
+      ?? suitable[0];
+    modelField.value = chosen?.name ?? "";
+  }
+  renderModelChoices(task, offered);
+  noteFor(task, offered, failed);
+}
+
+// A native select always offers the whole list. A datalist filters by the
+// field's current value, hiding every alternative to an already chosen model.
+function renderModelChoices(task, offered) {
   const list = el(`${task}-models`);
+  const field = models.form[`${task}_model`];
   list.textContent = "";
   for (const model of offered) {
     // An embedding model can be asked nothing, so it is no answer to either job.
     if (model.embedding) continue;
-    const option = document.createElement("option");
-    option.value = model.name;
-    option.label = describeModel(model);
-    list.append(option);
+    const label = [model.name, describeModel(model)].filter(Boolean).join(" · ");
+    list.append(new Option(label, model.name));
   }
-  noteFor(task, offered, failed);
+  const listed = [...list.options].some((option) => option.value === field.value.trim());
+  const manual = models.manual.has(task) || !listed;
+  list.append(new Option(t("Enter model name…"), ""));
+  list.value = manual ? "" : field.value.trim();
+  field.hidden = !manual;
 }
 
 function noteFor(task, offered, failed) {
@@ -3649,8 +3687,25 @@ function noteFor(task, offered, failed) {
 }
 
 for (const task of TASKS) {
-  models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task));
-  models.form[`${task}_model`].addEventListener("input", () => fillOffered(task));
+  models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task, { changedProvider: true }));
+  const field = models.form[`${task}_model`];
+  el(`${task}-models`).addEventListener("change", (event) => {
+    if (event.target.value) {
+      models.manual.delete(task);
+      field.value = event.target.value;
+      field.hidden = true;
+      fillOffered(task);
+    } else {
+      models.manual.add(task);
+      field.hidden = false;
+      field.focus();
+      field.select();
+    }
+  });
+  field.addEventListener("input", () => {
+    models.manual.add(task);
+    fillOffered(task);
+  });
 }
 
 models.form.addEventListener("submit", async (event) => {
@@ -3673,6 +3728,7 @@ models.form.addEventListener("submit", async (event) => {
 /// Each job once, on a sample rather than anyone's mail — the only way to know
 /// whether a service's model can see, since most services do not say.
 el("ai-try").onclick = async () => {
+  if (!models.form.reportValidity()) return;
   const button = el("ai-try");
   button.disabled = true;
   button.textContent = t("Trying…");
