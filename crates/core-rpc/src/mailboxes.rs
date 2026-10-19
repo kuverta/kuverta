@@ -7,6 +7,7 @@
 //! before, and never when it is one the account depends on (the Inbox, Sent,
 //! Drafts, Archive, Junk, Trash) or has folders inside it.
 
+use core_proto::client::{FolderRoot, RemoteFolder};
 use serde::{Deserialize, Serialize};
 
 use crate::session::Session;
@@ -29,6 +30,68 @@ const ESSENTIAL: &[&str] = &[
     "\\All",
 ];
 
+/// Resolve a leaf name without guessing a namespace from unrelated folders.
+fn folder_name(
+    name: &str,
+    parent: Option<&str>,
+    folders: &[RemoteFolder],
+    root: Option<&FolderRoot>,
+) -> Result<String> {
+    let (prefix, delimiter) = if let Some(parent) = parent {
+        let folder = folders
+            .iter()
+            .find(|f| {
+                f.name == parent
+                    || (parent.eq_ignore_ascii_case("INBOX") && f.name.eq_ignore_ascii_case("INBOX"))
+            })
+            .ok_or_else(|| {
+                RpcError::Rejected(format!(
+                    "parent folder {parent:?} does not exist; use its full name from the folder list"
+                ))
+            })?;
+        let delimiter = folder
+            .delimiter
+            .as_deref()
+            .filter(|d| !d.is_empty())
+            .ok_or_else(|| {
+                RpcError::Rejected(format!(
+                    "{} cannot contain subfolders on this server",
+                    folder.name
+                ))
+            })?;
+        (format!("{}{delimiter}", folder.name), Some(delimiter))
+    } else {
+        let root =
+            root.ok_or_else(|| RpcError::Rejected("the server's folder root is unknown".into()))?;
+        (
+            root.prefix.clone(),
+            root.delimiter.as_deref().filter(|d| !d.is_empty()),
+        )
+    };
+    // Also tolerate a top-level name already qualified with the server's root,
+    // e.g. INBOX.Wichtig from an earlier assistant conversation.
+    let leaf = if parent.is_none() && !prefix.is_empty() {
+        name.strip_prefix(&prefix).unwrap_or(name)
+    } else {
+        name
+    };
+    if leaf.trim().is_empty() {
+        return Err(RpcError::Rejected("a folder needs a name".into()));
+    }
+    if let Some(delimiter) = delimiter {
+        if leaf.contains(delimiter) {
+            return Err(RpcError::Rejected(format!(
+                "a folder name cannot contain {delimiter:?} on this server — pass only the new folder's name and choose its parent separately"
+            )));
+        }
+    }
+    let full = format!("{prefix}{leaf}");
+    if folders.iter().any(|f| f.name.eq_ignore_ascii_case(&full)) {
+        return Err(RpcError::Rejected(format!("{full} already exists")));
+    }
+    Ok(full)
+}
+
 impl Session {
     /// Creates a folder, inside `parent` when one is named.
     pub async fn create_folder(
@@ -48,25 +111,13 @@ impl Session {
 
         let mut client = self.connect(&account).await?;
         let folders = client.folders().await?;
-        let delimiter = folders
-            .iter()
-            .find_map(|folder| folder.delimiter.clone())
-            .unwrap_or_else(|| "/".into());
-        if name.contains(delimiter.as_str()) {
-            return Err(RpcError::Rejected(format!(
-                "a folder name cannot contain {delimiter:?} on this server — choose where it goes instead"
-            )));
-        }
-        let full = match parent.map(str::trim).filter(|p| !p.is_empty()) {
-            Some(parent) => format!("{parent}{delimiter}{name}"),
-            None => name.to_string(),
+        let parent = parent.map(str::trim).filter(|p| !p.is_empty());
+        let root = if parent.is_none() {
+            Some(client.personal_folder_root().await?)
+        } else {
+            None
         };
-        if folders
-            .iter()
-            .any(|folder| folder.name.eq_ignore_ascii_case(&full))
-        {
-            return Err(RpcError::Rejected(format!("{full} already exists")));
-        }
+        let full = folder_name(name, parent, &folders, root.as_ref())?;
 
         client.create_folder(&full, None).await?;
         client.logout().await.ok();
@@ -156,5 +207,75 @@ impl Session {
             username: account.username.clone(),
         };
         Ok(core_proto::ImapClient::connect(&config, auth.as_ref()).await?)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn root(prefix: &str, delimiter: Option<&str>) -> FolderRoot {
+        FolderRoot {
+            prefix: prefix.into(),
+            delimiter: delimiter.map(str::to_string),
+        }
+    }
+
+    fn folder(name: &str, delimiter: Option<&str>) -> RemoteFolder {
+        RemoteFolder {
+            name: name.into(),
+            delimiter: delimiter.map(str::to_string),
+            special_use: None,
+            selectable: true,
+        }
+    }
+
+    #[test]
+    fn personal_prefix_works_without_any_existing_children() {
+        let root = root("INBOX.", Some("."));
+        for name in ["Wichtig", "INBOX.Wichtig"] {
+            assert_eq!(
+                folder_name(name, None, &[], Some(&root)).unwrap(),
+                "INBOX.Wichtig"
+            );
+        }
+        assert!(folder_name("INBOX.", None, &[], Some(&root)).is_err());
+        assert!(folder_name("Wichtig.2026", None, &[], Some(&root)).is_err());
+    }
+
+    #[test]
+    fn root_and_flat_namespaces_do_not_invent_an_inbox_prefix_or_separator() {
+        assert_eq!(
+            folder_name("Wichtig", None, &[], Some(&root("", Some("/")))).unwrap(),
+            "Wichtig"
+        );
+        assert_eq!(
+            folder_name("Invoices.2026/10", None, &[], Some(&root("", None))).unwrap(),
+            "Invoices.2026/10"
+        );
+    }
+
+    #[test]
+    fn parent_uses_its_own_namespace_delimiter() {
+        let folders = [folder("INBOX", Some(".")), folder("Shared/Team", Some("/"))];
+        assert_eq!(
+            folder_name("Invoices.2026", Some("Shared/Team"), &folders, None).unwrap(),
+            "Shared/Team/Invoices.2026"
+        );
+        assert_eq!(
+            folder_name("Wichtig", Some("inbox"), &folders, None).unwrap(),
+            "INBOX.Wichtig"
+        );
+        assert!(folder_name("One/Two", Some("Shared/Team"), &folders, None).is_err());
+    }
+
+    #[test]
+    fn invalid_parents_and_duplicates_are_rejected_before_create() {
+        let folders = [folder("INBOX", None), folder("INBOX.Wichtig", Some("."))];
+        assert!(folder_name("New", Some("missing"), &folders, None).is_err());
+        assert!(folder_name("New", Some("INBOX"), &folders, None).is_err());
+        let error =
+            folder_name("Wichtig", None, &folders, Some(&root("INBOX.", Some(".")))).unwrap_err();
+        assert!(error.to_string().contains("INBOX.Wichtig already exists"));
     }
 }

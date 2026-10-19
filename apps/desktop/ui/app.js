@@ -19,7 +19,8 @@ const el = (id) => document.getElementById(id);
 
 /// The list with nothing narrowing it. A smart mailbox is one more filter, and
 /// like a folder it is replaced rather than combined when another is chosen.
-const NO_FILTER = Object.freeze({ category: null, unreadOnly: false, folder: null, smart: null });
+const NO_FILTER = Object.freeze({ category: null, unreadOnly: false, folder: null, smart: null, thread: null });
+let threadBack = null;
 
 /// Sidebar glyphs, as inline SVG.
 ///
@@ -45,17 +46,7 @@ const ICONS = {
 /// The attribute first, because it is what the server actually asserts; the
 /// name only as a fallback for the many servers that assert nothing.
 function iconFor(folder) {
-  const byUse = {
-    "\\Drafts": "drafts",
-    "\\Sent": "sent",
-    "\\Archive": "archive",
-    "\\All": "archive",
-    "\\Junk": "junk",
-    "\\Trash": "trash",
-  }[folder.special_use];
-  if (byUse) return byUse;
-  if (folder.name.toUpperCase() === "INBOX") return "inbox";
-  return "folder";
+  return folderPresentation(folder).icon;
 }
 
 function iconSvg(name) {
@@ -264,6 +255,8 @@ async function fetchPage(offset) {
 /// The filter as the core takes it.
 function listQuery() {
   return {
+    threaded: threadOverview(),
+    threadId: state.filter.thread,
     category: state.filter.category,
     unreadOnly: state.filter.unreadOnly,
     folder: state.filter.folder,
@@ -273,7 +266,9 @@ function listQuery() {
 }
 
 async function reload({ keepPosition = false } = {}) {
+  clearThreadMailViews();
   const wasAt = state.selected;
+  const wasThread = keepPosition && !el("mail-thread").hidden ? state.rows.get(wasAt)?.id : null;
   listGeneration += 1;
   state.rows.clear();
   state.requested.clear();
@@ -290,6 +285,7 @@ async function reload({ keepPosition = false } = {}) {
   if (state.view !== "people") searchBox.value = "";
   reading.hidden = true;
   emptyPane.hidden = !compose.pane.hidden;
+  el("mail-thread").hidden = true;
   // Whatever a sender card said about how much mail there is with somebody,
   // the mail has just moved under it.
   forgetSenders();
@@ -317,6 +313,7 @@ async function reload({ keepPosition = false } = {}) {
   // off the screen above it; it comes back when it is still under the cursor.
   const about = compose.replyTo ?? compose.forward;
   if (about !== null && state.rows.get(state.selected)?.id === about) await openSelected();
+  else if (wasThread != null && state.rows.get(state.selected)?.id === wasThread && threadOverview()) await openMailThread(state.rows.get(state.selected));
   renderScope();
 }
 
@@ -350,7 +347,11 @@ function navItem({ label, count, unread, active, className, onClick, title, icon
     button.append(badge);
   }
 
-  if (onClick) button.onclick = onClick;
+  if (onClick) button.onclick = async (...args) => {
+    navigationRemember();
+    await onClick(...args);
+    navigationRemember();
+  };
   return button;
 }
 
@@ -500,7 +501,7 @@ async function refreshSidebar() {
       active: state.view === "mail" && state.filter.folder === null && state.filter.smart === null,
       onClick: async () => {
         state.view = "mail";
-        state.filter = { ...state.filter, folder: null, smart: null };
+        state.filter = { ...state.filter, folder: null, smart: null, thread: null };
         await reload();
       },
     }),
@@ -508,7 +509,7 @@ async function refreshSidebar() {
   for (const folder of state.folders) {
     if (smartFolders.has(folder.name.toLowerCase())) continue;
     const item = navItem({
-      label: folder.label,
+      label: folderDisplayName(folder),
       icon: iconFor(folder),
       count: folder.total,
       unread: folder.unread,
@@ -517,7 +518,7 @@ async function refreshSidebar() {
       onClick: async () => {
         state.view = "mail";
         const next = state.filter.folder === folder.id && state.filter.smart === null ? null : folder.id;
-        state.filter = { ...state.filter, folder: next, smart: null };
+        state.filter = { ...state.filter, folder: next, smart: null, thread: null };
         await reload();
       },
     });
@@ -557,11 +558,16 @@ function categoriesHeading() {
   const smart = state.smartMailboxes.find((m) => m.id === state.filter.smart);
   if (smart) return t("Categories in {where}", { where: smart.name });
   const folder = state.folders.find((f) => f.id === state.filter.folder);
-  return folder ? t("Categories in {where}", { where: folder.label }) : t("Categories");
+  return folder ? t("Categories in {where}", { where: folderDisplayName(folder) }) : t("Categories");
 }
 
 /// The categories, with counts, as filters — for mail or for post.
 function renderCategories(counts) {
+  if (!state.postbox && !el("pref-show-categories").checked) {
+    sidebar.categoriesHeading.hidden = true;
+    sidebar.categories.hidden = true;
+    return;
+  }
   sidebar.categoriesHeading.textContent = categoriesHeading();
   sidebar.categories.textContent = "";
   // Unread-only filters mail in the store. Post's read state is kuverta's own
@@ -573,11 +579,7 @@ function renderCategories(counts) {
         label: t("Unread only"),
         icon: "inbox",
         active: state.filter.unreadOnly,
-        onClick: async () => {
-          state.view = "mail";
-          state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
-          await reload();
-        },
+        onClick: toggleUnreadOnly,
       }),
     );
   }
@@ -591,7 +593,7 @@ function renderCategories(counts) {
         onClick: async () => {
           if (!state.postbox) state.view = "mail";
           const next = state.filter.category === category ? null : category;
-          state.filter = { ...state.filter, category: next };
+          state.filter = { ...state.filter, category: next, thread: null };
           await reload();
         },
       }),
@@ -603,6 +605,54 @@ function renderCategories(counts) {
 ///
 /// A filtered list that does not announce itself looks exactly like mail going
 /// missing, so the narrowing is always on screen with a way out of it.
+async function toggleUnreadOnly() {
+  state.filter = { ...state.filter, unreadOnly: !state.filter.unreadOnly };
+  if (state.searching) {
+    await runSearch(searchBox.value);
+    await refreshSidebar();
+  } else await reload();
+}
+
+function unreadFilterButton() {
+  const button = document.createElement("button");
+  button.id = "list-unread-filter";
+  button.type = "button";
+  button.textContent = t("Unread only");
+  button.setAttribute("aria-pressed", String(state.filter.unreadOnly));
+  button.classList.toggle("active", state.filter.unreadOnly);
+  button.onclick = toggleUnreadOnly;
+  return button;
+}
+
+function threadOverview() {
+  return !state.postbox && state.view === "mail" && !state.searching &&
+    state.filter.thread == null && el("pref-thread-messages").checked;
+}
+
+function threadButton() {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.id = "list-threads";
+  if (state.filter.thread != null) {
+    button.textContent = t("Back to threads");
+    button.onclick = async () => {
+      state.filter = threadBack ?? { ...NO_FILTER };
+      threadBack = null;
+      await reload();
+    };
+  } else {
+    button.textContent = t("Threads");
+    button.setAttribute("aria-pressed", String(threadOverview()));
+    button.classList.toggle("active", threadOverview());
+    button.onclick = () => {
+      const pref = el("pref-thread-messages");
+      pref.checked = !pref.checked;
+      pref.dispatchEvent(new Event("change"));
+    };
+  }
+  return button;
+}
+
 function renderScope() {
   scopeBar.textContent = "";
   const parts = [];
@@ -613,7 +663,7 @@ function renderScope() {
   }
   if (state.filter.folder !== null) {
     const folder = state.folders.find((f) => f.id === state.filter.folder);
-    if (folder) parts.push(folder.label);
+    if (folder) parts.push(folderDisplayName(folder));
   }
   if (state.filter.category) parts.push(t(state.filter.category));
   if (state.filter.unreadOnly) parts.push(t("unread"));
@@ -631,7 +681,9 @@ function renderScope() {
   }
 
   const label = document.createElement("span");
-  if (!state.postbox && state.view === "urgent") {
+  if (!state.postbox) scopeBar.append(unreadFilterButton());
+  if (!state.postbox && state.view === "mail" && !state.searching) scopeBar.append(threadButton());
+  if (!state.postbox && state.view === "urgent" && !state.searching) {
     label.textContent =
       state.total === 1
         ? t("one needs attention")
@@ -652,7 +704,7 @@ function renderScope() {
       ? state.total === 1
         ? t("one letter to {name}", { name: state.postbox.label })
         : t("{count} letters to {name}", { count: state.total, name: state.postbox.label })
-      : t("{count} messages", { count: state.total });
+      : t(threadOverview() ? "{count} threads" : "{count} messages", { count: state.total });
   scopeBar.append(label);
 
   if (parts.length) {
@@ -739,6 +791,8 @@ function mailOnly(action) {
       ? say(t("{name} is post — that is done in Paperless", { name: state.postbox.label }), true)
       : state.view === "people" && action !== openCompose
         ? say(t("People lists people, not messages — open one, or switch to Messages"), true)
+        : threadOverview() && action !== openCompose && action !== undo
+          ? say(t("Open a thread to act on its individual messages."))
         : action();
 }
 
@@ -1360,9 +1414,10 @@ function render(force = false) {
     // marked it: what you dealt with yesterday is readable at a glance.
     node.row.classList.toggle("answered", Boolean(row.answered));
     node.tag.textContent = [
+      row.thread_id != null ? t("{count} messages", { count: row.thread_count }) : "",
       row.answered ? "↩" : "",
       row.has_attachments ? "📎" : "",
-      row.category ? t(row.category) : "",
+      row.category && (state.postbox || el("pref-show-categories").checked) ? t(row.category) : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -1411,9 +1466,10 @@ function indexOfRow(id) {
 
 // -- reading ---------------------------------------------------------------
 
-async function openSelected() {
+async function openSelected({ markRead = false } = {}) {
   const row = state.rows.get(state.selected);
   if (!row) return;
+  const generation = listGeneration;
   // A reply or a forward belongs to the message it answers. Opening another
   // one takes it away — asking first when something has been typed — and
   // "keep writing" puts the cursor back where the reply is. A new message
@@ -1426,6 +1482,12 @@ async function openSelected() {
   }
   if (!state.postbox && state.view === "people") {
     await openConversation(row);
+    navigationRemember();
+    return;
+  }
+  if (row.thread_id != null && threadOverview()) {
+    await openMailThread(row, { autoOpen: markRead });
+    navigationRemember();
     return;
   }
   hideConversation();
@@ -1474,6 +1536,7 @@ async function openSelected() {
     showReadingView();
     const account = accountOf(row);
     const detail = await invoke("message", { account, id: row.id });
+    if (generation !== listGeneration || state.rows.get(state.selected)?.id !== row.id) return;
     reading.hidden = false;
     emptyPane.hidden = true;
     el("reading-actions").hidden = false;
@@ -1499,8 +1562,31 @@ async function openSelected() {
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
     showAttachments(detail, account);
     showMailView(detail, account);
+    if (markRead) await markOpenedRead(row);
+    navigationRemember();
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
+  }
+}
+
+const markingOpened = new Set();
+async function markOpenedRead(row) {
+  if (!el("pref-read-on-open").checked || !row.unread || markingOpened.has(row.id)) return;
+  markingOpened.add(row.id);
+  try {
+    const account = accountOf(row);
+    await invoke("set_read", { account, id: row.id, read: true });
+    row.unread = false;
+    for (const shown of state.rows.values()) if (shown.id === row.id && !threadOverview()) shown.unread = false;
+    state.lastActed = account;
+    render(true);
+    // Keep the opened mail on screen, even in unread-only mode. A refresh
+    // removes it; never open/mark the next unread mail as a side effect.
+    await refreshSidebar();
+  } catch (err) {
+    say(t("Could not mark this message read: {error}", { error: err }), true);
+  } finally {
+    markingOpened.delete(row.id);
   }
 }
 
@@ -1755,7 +1841,7 @@ function keepInView() {
 ///
 /// `open` is how the right button differs from the left: a menu asks what can
 /// be done to a message, which is not the same as asking to read it.
-function select(index, { open = true } = {}) {
+function select(index, { open = true, markRead = false } = {}) {
   if (state.total === 0) return;
   state.selection.clear();
   state.anchor = -1;
@@ -1766,7 +1852,7 @@ function select(index, { open = true } = {}) {
   keepInView();
   render(true);
   renderScope();
-  if (open && (!reading.hidden || !conversationPane.hidden)) openSelected();
+  if (open && (!reading.hidden || !conversationPane.hidden || !el("mail-thread").hidden)) openSelected({ markRead });
 }
 
 // -- changes ---------------------------------------------------------------
@@ -1791,6 +1877,10 @@ function say(message, isError = false) {
 /// window — so this is the list agreeing with what was asked for rather than
 /// with the store. The next sync reconciles, and `undo` puts the row back.
 async function act(command, args, describe) {
+  if (threadOverview()) {
+    say(t("Open a thread to act on its individual messages."));
+    return 0;
+  }
   const indexes = actingOn();
   await ensureRows(indexes);
   const rows = indexes.map((index) => state.rows.get(index)).filter(Boolean);
@@ -1867,7 +1957,7 @@ async function trash() {
 async function toggleRead() {
   const row = state.rows.get(state.selected);
   if (!row) return;
-  if (!state.postbox && state.view === "people") return;
+  if (!state.postbox && (state.view === "people" || threadOverview())) return;
   if (state.postbox) {
     const read = row.unread;
     const letters = actingOn().map((index) => state.rows.get(index)).filter(Boolean);
@@ -2026,7 +2116,7 @@ function closeCompose() {
   }
   // A new message had hidden the reading pane; with compose gone too there
   // would be nothing on the right at all.
-  if (reading.hidden && conversationPane.hidden) emptyPane.hidden = false;
+  if (reading.hidden && conversationPane.hidden && el("mail-thread").hidden) emptyPane.hidden = false;
 }
 
 /// Opens compose. With `replyAll`, the recipients and quoted body come from
@@ -2188,6 +2278,7 @@ for (const button of el("reading-actions").querySelectorAll("[data-act]")) {
 async function refreshCleanupCount() {
   const badge = el("cleanup-count");
   const link = el("cleanup-link");
+  link.href = `kuverta-bird/hosts/kuverta/ui/triage.html${state.account == null ? "" : `?account=${encodeURIComponent(state.account)}`}`;
   if (state.account === null) {
     badge.hidden = true;
     return;
@@ -2351,6 +2442,7 @@ async function runSearch(query) {
     return;
   }
   try {
+    state.filter = { ...state.filter, thread: null };
     // In a postbox, Paperless's own full-text search, over the scanned text.
     // In the order the list is in: the toggle above the results still says
     // newest or oldest, and results that ignore it are results that lie.
@@ -2363,6 +2455,7 @@ async function runSearch(query) {
           query,
           limit: 200,
           order: mailOrder,
+          unreadOnly: state.filter.unreadOnly,
         });
     state.rows.clear();
     state.requested.clear();
@@ -2384,7 +2477,7 @@ async function runSearch(query) {
 async function searchAll(query) {
   const found = [];
   for (const account of visibleAccounts()) {
-    const rows = await invoke("search", { account: account.id, query, limit: 200, order: mailOrder });
+    const rows = await invoke("search", { account: account.id, query, limit: 200, order: mailOrder, unreadOnly: state.filter.unreadOnly });
     found.push(...rows);
   }
   const sign = mailOrder === "oldest" ? 1 : -1;
@@ -2395,16 +2488,16 @@ async function searchAll(query) {
 // -- keys ------------------------------------------------------------------
 
 const KEYS = {
-  j: () => select(state.selected + 1),
-  ArrowDown: () => select(state.selected + 1),
-  k: () => select(state.selected - 1),
-  ArrowUp: () => select(state.selected - 1),
+  j: () => select(state.selected + 1, { markRead: true }),
+  ArrowDown: () => select(state.selected + 1, { markRead: true }),
+  k: () => select(state.selected - 1, { markRead: true }),
+  ArrowUp: () => select(state.selected - 1, { markRead: true }),
   // Shift with the same keys picks a block, as it does in a file list.
   J: () => selectRange(state.selected + 1),
   K: () => selectRange(state.selected - 1),
   x: () => toggleSelected(state.selected),
-  Enter: openSelected,
-  o: openSelected,
+  Enter: () => openSelected({ markRead: true }),
+  o: () => openSelected({ markRead: true }),
   e: mailOnly(archive),
   "#": mailOnly(trash),
   Delete: mailOnly(trash),
@@ -2415,7 +2508,7 @@ const KEYS = {
   v: () => {
     if (state.postbox) setReadingView(readingView === "pdf" ? "text" : "pdf");
   },
-  c: mailOnly(() => openCompose()),
+  c: mailOnly(openCompose),
   ",": openSettings,
   i: () => setAssistantOpen(!assistantOpen()),
   I: mailOnly(() => askAboutMessages(actingOn().map((index) => state.rows.get(index)).filter(Boolean))),
@@ -2573,7 +2666,7 @@ content.addEventListener("click", (event) => {
     // `select` would open it too when the pane is already showing one;
     // once is enough.
     select(at, { open: false });
-    openSelected();
+    openSelected({ markRead: true });
   }
 });
 
@@ -2605,10 +2698,10 @@ function showMessageMenu(event) {
     return;
   }
   // People lists people, and none of this is about a person.
-  if (state.view === "people") return;
+  if (state.view === "people" || threadOverview()) return;
 
   const items = [];
-  if (rows.length === 1) items.push([t("Open"), openSelected]);
+  if (rows.length === 1) items.push([t("Open"), () => openSelected({ markRead: true })]);
   items.push([rows[0].unread ? t("Mark as read") : t("Mark as unread"), toggleRead]);
   items.push(null);
   const can = state.allInboxes ? { archive: true, trash: true } : { archive: state.archive, trash: state.trash };
@@ -2662,8 +2755,8 @@ async function showMoveMenu(event) {
   for (const folder of folders) {
     const here = folder.id === state.filter.folder;
     items.push([
-      folder.name,
-      () => act("move_to", { target: folder.name }, `moved to ${folder.label}`),
+      folderDisplayName(folder),
+      () => act("move_to", { target: folder.name }, `moved to ${folderDisplayName(folder)}`),
       { disabled: here, title: here ? t("they are already here") : "" },
     ]);
   }
@@ -2910,6 +3003,8 @@ function fillForm(account) {
   setPageHead("account", account.id === null ? "New account" : account.email);
   syncAuthFields();
   renderSettingsList();
+  resetAccountDomainCheck();
+  fillFilingSettings(account.id);
 }
 
 /// OAuth2 and app passwords need different fields, and showing both invites
@@ -3440,6 +3535,37 @@ el("paper-show-sign-in").onclick = async (event) => {
   }
 };
 
+// A local display preference, like column widths and the reading view.
+try {
+  el("pref-highlight-unread").checked = localStorage.getItem("highlightUnread") === "yes";
+} catch { /* Lasts until the window closes when storage is unavailable. */ }
+document.documentElement.classList.toggle("highlight-unread", el("pref-highlight-unread").checked);
+el("pref-highlight-unread").onchange = (event) => {
+  const on = event.target.checked;
+  document.documentElement.classList.toggle("highlight-unread", on);
+  try { localStorage.setItem("highlightUnread", on ? "yes" : "no"); } catch { /* Session only. */ }
+};
+
+for (const [id, key] of [["pref-read-on-open", "readOnOpen"], ["pref-thread-messages", "threadMessages"], ["pref-thread-open-latest", "threadOpenLatest"]]) {
+  const pref = el(id);
+  try { pref.checked = localStorage.getItem(key) === "yes"; } catch { /* Session only. */ }
+  pref.onchange = async () => {
+    try { localStorage.setItem(key, pref.checked ? "yes" : "no"); } catch { /* Session only. */ }
+    if (key === "threadMessages") {
+      state.filter = { ...state.filter, thread: null };
+      threadBack = null;
+      await reload();
+    }
+  };
+}
+
+try { el("pref-show-categories").checked = localStorage.getItem("showCategories") !== "no"; } catch { /* Default: shown. */ }
+el("pref-show-categories").onchange = async event => {
+  try { localStorage.setItem("showCategories", event.target.checked ? "yes" : "no"); } catch { /* Session only. */ }
+  if (!event.target.checked && !state.postbox) state.filter = {...state.filter, category:null};
+  await reload();
+};
+
 /// Language, changed without reloading: the sidebar and the list are drawn
 /// again, and the static text is walked over where it stands.
 el("pref-language").onchange = async (event) => {
@@ -3506,6 +3632,10 @@ const models = {
   // What each provider offers, by id, as a promise: two jobs on one provider
   // ask it once, and a provider's own page asks again.
   offered: new Map(),
+  // Only the latest request for a job may update its field or suggestions.
+  filling: new Map(),
+  // Keep the explicit-name field open while the person is typing in it.
+  manual: new Set(),
   // Which provider the provider form is editing. Null means a new one.
   editing: null,
   // The kind of provider being edited: `ollama`, `openai` for a service with
@@ -3576,6 +3706,8 @@ async function showModels() {
       for (const provider of providers) select.append(new Option(provider.label, String(provider.id)));
       select.value = String(task.provider_id);
       models.form[`${task.task}_model`].value = task.model;
+      models.manual.delete(task.task);
+      renderModelChoices(task.task, []);
       fillOffered(task.task);
     }
     renderSettingsList();
@@ -3586,9 +3718,21 @@ async function showModels() {
 
 /// Offers the chosen provider's models under a job's model field, and says
 /// what the chosen model can do and what the job would send where.
-async function fillOffered(task) {
+async function fillOffered(task, { changedProvider = false } = {}) {
   const providerField = models.form[`${task}_provider`];
+  const modelField = models.form[`${task}_model`];
   const providerId = Number(providerField.value);
+  const previous = modelField.value.trim();
+  const request = Symbol();
+  models.filling.set(task, request);
+  if (changedProvider) {
+    // A name from the old provider must not be saved or tried while the new
+    // list is loading, or if that list fails. Explicit names remain possible.
+    modelField.value = "";
+    models.manual.delete(task);
+    renderModelChoices(task, []);
+    noteFor(task, [], null);
+  }
   let offered = [];
   let failed = null;
   try {
@@ -3596,19 +3740,39 @@ async function fillOffered(task) {
   } catch (err) {
     failed = String(err);
   }
-  if (Number(providerField.value) !== providerId) return; // changed while asking
+  if (models.filling.get(task) !== request || Number(providerField.value) !== providerId) return;
 
+  if (changedProvider && !failed && !modelField.value.trim()) {
+    const suitable = offered.filter((model) => !model.embedding && (task !== "vision" || model.vision !== false));
+    // Keep a name shared by both providers. Otherwise prefer known vision for
+    // scans, then the first offered chat model. Price and tool support are not
+    // part of ModelInfo, so neither is inferred from a model's name.
+    const chosen = suitable.find((model) => model.name === previous)
+      ?? (task === "vision" ? suitable.find((model) => model.vision === true) : null)
+      ?? suitable[0];
+    modelField.value = chosen?.name ?? "";
+  }
+  renderModelChoices(task, offered);
+  noteFor(task, offered, failed);
+}
+
+// A native select always offers the whole list. A datalist filters by the
+// field's current value, hiding every alternative to an already chosen model.
+function renderModelChoices(task, offered) {
   const list = el(`${task}-models`);
+  const field = models.form[`${task}_model`];
   list.textContent = "";
   for (const model of offered) {
     // An embedding model can be asked nothing, so it is no answer to either job.
     if (model.embedding) continue;
-    const option = document.createElement("option");
-    option.value = model.name;
-    option.label = describeModel(model);
-    list.append(option);
+    const label = [model.name, describeModel(model)].filter(Boolean).join(" · ");
+    list.append(new Option(label, model.name));
   }
-  noteFor(task, offered, failed);
+  const listed = [...list.options].some((option) => option.value === field.value.trim());
+  const manual = models.manual.has(task) || !listed;
+  list.append(new Option(t("Enter model name…"), ""));
+  list.value = manual ? "" : field.value.trim();
+  field.hidden = !manual;
 }
 
 function noteFor(task, offered, failed) {
@@ -3649,8 +3813,25 @@ function noteFor(task, offered, failed) {
 }
 
 for (const task of TASKS) {
-  models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task));
-  models.form[`${task}_model`].addEventListener("input", () => fillOffered(task));
+  models.form[`${task}_provider`].addEventListener("change", () => fillOffered(task, { changedProvider: true }));
+  const field = models.form[`${task}_model`];
+  el(`${task}-models`).addEventListener("change", (event) => {
+    if (event.target.value) {
+      models.manual.delete(task);
+      field.value = event.target.value;
+      field.hidden = true;
+      fillOffered(task);
+    } else {
+      models.manual.add(task);
+      field.hidden = false;
+      field.focus();
+      field.select();
+    }
+  });
+  field.addEventListener("input", () => {
+    models.manual.add(task);
+    fillOffered(task);
+  });
 }
 
 models.form.addEventListener("submit", async (event) => {
@@ -3673,6 +3854,7 @@ models.form.addEventListener("submit", async (event) => {
 /// Each job once, on a sample rather than anyone's mail — the only way to know
 /// whether a service's model can see, since most services do not say.
 el("ai-try").onclick = async () => {
+  if (!models.form.reportValidity()) return;
   const button = el("ai-try");
   button.disabled = true;
   button.textContent = t("Trying…");

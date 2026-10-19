@@ -19,6 +19,10 @@ let attention = [];
 const thread = { key: null, replyTo: null, subject: "" };
 /// Whether an urgency pass is running, so a second is not started.
 let judging = false;
+// A stopped background model is reported once, then retried after a pause.
+// Rules still run; an explicit request always retries immediately.
+let urgencyRetryAt = 0;
+let urgencyFailure = null;
 
 const ACTIONS = { reply: "reply", pay: "pay", attend: "attend", decide: "decide", read: "read" };
 const LEVELS = { 3: "today", 2: "this week", 1: "can wait", 0: "nothing to do" };
@@ -39,15 +43,20 @@ function askModelForUrgency() {
 /// "Needs attention", above the mailboxes, with how many need you this week.
 async function renderAttentionNav() {
   const nav = el("attention-nav");
-  nav.textContent = "";
-  if (state.postbox || state.account === null) return;
+  if (state.postbox || state.account === null) {
+    nav.replaceChildren();
+    return;
+  }
+  const account = state.account;
   let count = null;
   try {
-    count = (await invoke("urgent_messages", { account: state.account })).length;
+    count = (await invoke("urgent_messages", { account })).length;
   } catch {
     count = null;
   }
-  nav.append(
+  if (state.postbox || state.account !== account) return;
+  // Keep the current entry visible while the next count is loading.
+  nav.replaceChildren(
     navItem({
       label: t("Needs attention"),
       icon: "attention",
@@ -62,7 +71,7 @@ async function renderAttentionNav() {
 /// Switches between the ordinary list, Needs attention and People.
 async function showView(view) {
   state.view = view;
-  if (view !== "mail") state.filter = { ...NO_FILTER };
+  if (view !== "mail") state.filter = { ...NO_FILTER, unreadOnly: state.filter.unreadOnly };
   hideConversation();
   closeCompose();
   await reload();
@@ -74,13 +83,16 @@ async function showView(view) {
 async function viewPage(offset, limit) {
   if (state.view === "urgent") {
     // Asked again on every reload, so what was archived or answered leaves.
-    if (offset === 0) attention = await invoke("urgent_messages", { account: state.account });
+    if (offset === 0) {
+      attention = await invoke("urgent_messages", { account: state.account });
+      if (state.filter.unreadOnly) attention = attention.filter(({ row }) => row.unread);
+    }
     const slice = attention.slice(offset, offset + limit).map(({ row, urgency }) => ({
       ...row,
       // The reason is the line worth reading here, and the level and action
       // go where the category usually is.
       snippet: urgency.reason,
-      category: [t(LEVELS[urgency.score]), t(ACTIONS[urgency.action]), urgency.deadline ? t("by {day}", { day: shortDay(urgency.deadline) }) : ""]
+      category: [t(LEVELS[urgency.score]), ACTIONS[urgency.action] ? t(ACTIONS[urgency.action]) : "", urgency.deadline ? t("by {day}", { day: shortDay(urgency.deadline) }) : ""]
         .filter(Boolean)
         .join(" · "),
     }));
@@ -91,6 +103,7 @@ async function viewPage(offset, limit) {
     offset,
     limit,
     includeBulk: showBulkPeople(),
+    unreadOnly: state.filter.unreadOnly,
     query: searchBox.value.trim() || null,
   });
   return {
@@ -150,6 +163,11 @@ function viewToggle() {
 function viewTools() {
   const tools = [];
   if (state.view === "urgent") {
+    const criteria = document.createElement("button");
+    criteria.textContent = t("Criteria…");
+    criteria.title = t("Recent Inbox mail only — configure keywords in General settings");
+    criteria.onclick = () => openSettings("general").then(() => el("attention-account").scrollIntoView({block:"center"}));
+    tools.push(criteria);
     const run = document.createElement("button");
     run.textContent = judging ? t("Asking…") : t("Ask the model");
     run.title = t("Let the model chosen for sorting mail judge the mail the rules have judged so far");
@@ -182,6 +200,7 @@ async function judgeUrgency({ useModel = askModelForUrgency(), loud = false } = 
   if (judging || state.account === null || state.postbox) return;
   judging = true;
   const account = state.account;
+  const attemptedModel = useModel && (loud || Date.now() >= urgencyRetryAt);
   renderScope();
   try {
     const channel = new window.__TAURI__.core.Channel();
@@ -193,8 +212,16 @@ async function judgeUrgency({ useModel = askModelForUrgency(), loud = false } = 
         total: at.total,
       });
     };
-    const pass = await invoke("find_urgent", { account, useModel, onProgress: channel });
-    if (loud || pass.stopped) {
+    const pass = await invoke("find_urgent", { account, useModel: attemptedModel, onProgress: channel });
+    const newFailure = pass.stopped && pass.stopped !== urgencyFailure;
+    if (pass.stopped) {
+      urgencyFailure = pass.stopped;
+      urgencyRetryAt = Date.now() + 30 * 60 * 1000;
+    } else if (attemptedModel) {
+      urgencyFailure = null;
+      urgencyRetryAt = 0;
+    }
+    if (loud || newFailure) {
       const parts = [];
       if (pass.by_model) parts.push(t("{model} judged {count}", { model: pass.model, count: pass.by_model }));
       if (pass.by_rules) parts.push(t("the rules judged {count}", { count: pass.by_rules }));
@@ -252,8 +279,125 @@ const bubbleTime = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute:
 const bubbleDay = new Intl.DateTimeFormat(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 
 function hideConversation() {
+  clearThreadMailViews();
   conversationPane.hidden = true;
+  el("mail-thread").hidden = true;
   thread.key = null;
+}
+
+// A subject/reply thread is distinct from People: it may have many participants.
+// Keep one group in the Inbox list; show its individual messages in the reader.
+let mailThreadTicket = 0;
+async function openMailThread(group, { autoOpen = false } = {}) {
+  const ticket = ++mailThreadTicket;
+  const generation = listGeneration;
+  const account = accountOf(group);
+  const current = () => ticket === mailThreadTicket && generation === listGeneration &&
+    state.rows.get(state.selected)?.id === group.id && threadOverview();
+  hideConversation();
+  reading.hidden = true;
+  emptyPane.hidden = true;
+  const pane = el("mail-thread");
+  pane.hidden = false;
+  el("mail-thread-title").textContent = group.subject;
+  el("mail-thread-count").textContent = "";
+  const messages = el("mail-thread-messages");
+  messages.replaceChildren();
+  const more = el("mail-thread-more");
+  let offset = 0;
+  let openedLatest = false;
+  let unreadTicket = 0;
+  async function refreshGroupUnread() {
+    const latest = ++unreadTicket;
+    try {
+      // Do not clear the group dot while an unread reply remains on a later
+      // page. Ask only for the remaining count, without reading any bodies.
+      const remaining = await invoke("messages", {account, offset:0, limit:1,
+        filter:{threadId:group.thread_id, threaded:false, unreadOnly:true}});
+      if (current() && latest === unreadTicket) {
+        group.unread = remaining.total > 0;
+        render(true);
+      }
+    } catch (_) { /* The mail was read successfully; keep the last group state. */ }
+  }
+  async function loadMore() {
+    more.disabled = true;
+    try {
+      const page = await invoke("messages", {account, offset, limit:50,
+        filter:{threadId:group.thread_id, threaded:false, unreadOnly:false}});
+      if (!current()) return;
+      for (const row of page.rows) {
+        row.account = account;
+        const entry = document.createElement("details");
+        entry.className = "mail-thread-entry";
+        const summary = document.createElement("summary");
+        const head = document.createElement("strong");
+        const meta = document.createElement("span");
+        const preview = document.createElement("span");
+        const updateHeader = () => { head.textContent = `${row.unread ? "● " : ""}${row.from}`; };
+        updateHeader();
+        meta.className = "hint";
+        meta.textContent = [formatDate(row.date_utc), row.to ? t("Sent") : ""].filter(Boolean).join(" · ");
+        preview.className = "mail-thread-preview hint";
+        preview.textContent = row.snippet || row.subject;
+        summary.append(head, meta, preview);
+        const body = document.createElement("div");
+        body.className = "mail-thread-body";
+        const open = document.createElement("button");
+        open.textContent = t("Open individual message");
+        open.onclick = async () => {
+          if (!(await leaveCompose()) || !current()) return;
+          threadBack = {...state.filter};
+          state.filter = {...NO_FILTER, thread:group.thread_id};
+          await reload();
+          let index = indexOfRow(row.id);
+          for (let at = PAGE; index < 0 && at < state.total; at += PAGE) {
+            await loadPage(at);
+            index = indexOfRow(row.id);
+          }
+          if (index >= 0) {
+            select(index,{open:false});
+            await openSelected({markRead:true});
+          }
+        };
+        let loaded = false;
+        let loading = false;
+        entry.ontoggle = async () => {
+          if (!entry.open || loading || !current()) return;
+          loading = true;
+          try {
+            if (!loaded) {
+              const detail = await invoke("message",{account,id:row.id});
+              if (!current()) return;
+              meta.textContent = `${formatDate(detail.date_utc)} · ${detail.folders.join(", ")}`;
+              row.from = detail.from;
+              body.replaceChildren(threadMailView(detail, account));
+              loaded = true;
+            }
+            if (entry.open) {
+              const wasUnread = row.unread;
+              await markOpenedRead(row);
+              if (wasUnread && !row.unread && current()) await refreshGroupUnread();
+            }
+          } catch (err) { body.textContent = String(err); }
+          finally { loading = false; updateHeader(); }
+        };
+        entry.append(summary, body, open);
+        messages.append(entry);
+        if (autoOpen && !openedLatest && el("pref-thread-open-latest").checked) {
+          openedLatest = true;
+          entry.open = true;
+        }
+      }
+      offset += page.rows.length;
+      el("mail-thread-count").textContent = t("{shown} of {total} messages",{shown:offset,total:page.total});
+      more.hidden = offset >= page.total || !page.rows.length;
+    } catch (err) { if (current()) el("mail-thread-count").textContent = String(err); }
+    finally { if (current()) more.disabled = false; }
+  }
+  more.hidden = true;
+  more.onclick = loadMore;
+  await loadMore();
 }
 
 function initials(name) {
@@ -404,6 +548,69 @@ async function sendInConversation() {
 }
 
 el("conversation-send").onclick = sendInConversation;
+
+// Criteria belong to an account, not the currently selected window/profile.
+const attentionForm = { ticket: 0, account: null, defaults: null };
+const attentionGroups = { priority_words: "attention-priority", due_words: "attention-due", pay_words: "attention-pay" };
+function fillAttentionCriteria(value) {
+  for (const [group, id] of Object.entries(attentionGroups)) el(id).value = value[group].join("\n");
+}
+async function loadAttentionCriteria() {
+  const ticket = ++attentionForm.ticket;
+  const account = Number(el("attention-account").value) || null;
+  attentionForm.account = null;
+  el("attention-fields").hidden = true;
+  el("attention-status").textContent = "";
+  if (!account) return;
+  try {
+    const data = await invoke("attention_settings", {account});
+    if (ticket !== attentionForm.ticket) return;
+    attentionForm.account = account;
+    attentionForm.defaults = data.defaults;
+    fillAttentionCriteria(data.settings);
+    el("attention-fields").hidden = false;
+  } catch (err) {
+    if (ticket === attentionForm.ticket) el("attention-status").textContent = String(err);
+  }
+}
+SETTINGS_PAGES.general.addEventListener("show", () => {
+  const select = el("attention-account");
+  select.replaceChildren(...state.accounts.map(account => new Option(account.email, account.id)));
+  if (state.account !== null) select.value = String(state.account);
+  loadAttentionCriteria();
+});
+el("attention-account").onchange = loadAttentionCriteria;
+el("attention-defaults").onclick = () => {
+  if (attentionForm.defaults) fillAttentionCriteria(attentionForm.defaults);
+  el("attention-status").textContent = t("Original suggestions loaded. Save to apply them.");
+};
+async function saveAttentionCriteria(account, settings) {
+  const saved = await invoke("set_attention_settings", {account, settings});
+  // Re-evaluate local rules now, without triggering paid model calls.
+  await invoke("find_urgent", {account, useModel:false, onProgress:new window.__TAURI__.core.Channel()});
+  if (state.account === account) await reload({keepPosition:true});
+  return saved;
+}
+el("attention-save").onclick = async () => {
+  const account = attentionForm.account;
+  if (!account) return;
+  const button = el("attention-save");
+  button.disabled = true;
+  el("attention-account").disabled = true;
+  try {
+    const settings = Object.fromEntries(Object.entries(attentionGroups).map(([group,id]) => [group,el(id).value.split("\n").map(s=>s.trim()).filter(Boolean)]));
+    const saved = await saveAttentionCriteria(account, settings);
+    if (attentionForm.account === account) {
+      fillAttentionCriteria(saved);
+      el("attention-status").textContent = t("Attention criteria saved for this account.");
+    }
+  } catch (err) {
+    el("attention-status").textContent = String(err);
+  } finally {
+    button.disabled = false;
+    el("attention-account").disabled = false;
+  }
+};
 
 // Files for the reply: dropped anywhere on the conversation, or picked.
 const conversationFiles = fileTray(el("conversation-files"));

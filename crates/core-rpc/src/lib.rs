@@ -27,8 +27,11 @@ pub mod chats;
 pub mod cleanup;
 pub mod conversations;
 pub mod documents;
+pub mod domain_check;
+pub mod filing;
 pub mod html;
 pub mod html_view;
+pub mod invoices;
 pub mod mailboxes;
 pub mod memory;
 pub mod outbox;
@@ -152,6 +155,10 @@ pub struct AccountView {
 /// formatting it in the shell costs nothing and keeps locale out of the core.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageRow {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<MessageId>,
+    #[serde(default)]
+    pub thread_count: usize,
     pub id: MessageId,
     /// Whose mail it is. A list over one account knows; a list over several
     /// — All inboxes — reads it off the row before acting on it.
@@ -183,6 +190,8 @@ impl From<ListedMessage> for MessageRow {
     fn from(listed: ListedMessage) -> Self {
         let summary = listed.summary;
         Self {
+            thread_id: listed.thread_id,
+            thread_count: listed.thread_count,
             id: summary.id,
             account: listed.account_id,
             date_utc: summary.date_utc,
@@ -564,10 +573,23 @@ impl Core {
         limit: usize,
         order: SearchOrder,
     ) -> Result<Vec<MessageRow>> {
-        Ok(search_rows(
-            account,
-            self.store.search_typed(account, query, limit, order)?,
-        ))
+        self.search_filtered(account, query, limit, order, false)
+    }
+
+    pub fn search_filtered(
+        &self,
+        account: AccountId,
+        query: &str,
+        limit: usize,
+        order: SearchOrder,
+        unread_only: bool,
+    ) -> Result<Vec<MessageRow>> {
+        Ok(self
+            .store
+            .search_typed_filtered(account, query, limit, order, unread_only)?
+            .into_iter()
+            .map(MessageRow::from)
+            .collect())
     }
 
     /// A forgiving search: mail matching any of `terms`, each word as the
@@ -1231,6 +1253,8 @@ fn search_rows(account: AccountId, found: Vec<core_store::MessageSummary>) -> Ve
     found
         .into_iter()
         .map(|summary| MessageRow {
+            thread_id: None,
+            thread_count: 1,
             id: summary.id,
             account,
             date_utc: summary.date_utc,

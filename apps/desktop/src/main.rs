@@ -19,15 +19,17 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod files;
+mod folder_picker;
 mod logging;
 mod page;
+mod startup;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 use core_rpc::{AccountView, Core, MessageDetail, MessagePage, MessageRow, QueuedChange};
 use core_store::model::ListFilter;
-use tauri::State;
+use tauri::{Manager, State};
 
 /// `rusqlite`'s connection is `Send` but not `Sync`, so the one store this app
 /// owns is behind a lock. At personal-mailbox scale every query here is well
@@ -57,11 +59,23 @@ fn accounts(app: State<'_, App>) -> Result<Vec<AccountView>, String> {
     app.core.lock().unwrap().accounts().map_err(fail)
 }
 
+#[tauri::command]
+fn startup_enabled() -> Result<Option<bool>, String> {
+    startup::enabled()
+}
+#[tauri::command]
+fn set_startup_enabled(enabled: bool) -> Result<(), String> {
+    startup::set(enabled)
+}
+
 /// How the list is narrowed and ordered, as the window sends it: one value,
 /// because they are asked and answered together.
 #[derive(Debug, Default, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ListQuery {
+    #[serde(default)]
+    threaded: bool,
+    thread_id: Option<i64>,
     category: Option<String>,
     #[serde(default)]
     unread_only: bool,
@@ -92,6 +106,8 @@ fn messages(
     };
     let folder = filter.folder.or(smart_folder);
     let filter = ListFilter {
+        threaded: filter.threaded,
+        thread_id: filter.thread_id,
         category: filter.category,
         unread_only: filter.unread_only,
         folder,
@@ -101,7 +117,7 @@ fn messages(
         // search, but not in the list you read top to bottom. A smart mailbox
         // says for itself what it wants, and a folder listing is of that
         // folder whatever is in it.
-        incoming_only: folder.is_none() && smart.is_none(),
+        incoming_only: folder.is_none() && smart.is_none() && filter.thread_id.is_none(),
         smart,
     };
     core.messages(account, offset, limit, &filter).map_err(fail)
@@ -124,11 +140,13 @@ fn messages_in(
         None => None,
     };
     let filter = ListFilter {
+        threaded: filter.threaded,
+        thread_id: filter.thread_id,
         category: filter.category,
         unread_only: filter.unread_only,
         folder: None,
         oldest_first: filter.oldest_first,
-        incoming_only: smart.is_none(),
+        incoming_only: smart.is_none() && filter.thread_id.is_none(),
         smart,
     };
     core.messages_in(&accounts, offset, limit, &filter)
@@ -222,6 +240,160 @@ fn save_attachment(
     Ok(path.display().to_string())
 }
 
+#[tauri::command]
+fn filing_tree(app: State<'_, App>, account: i64) -> Result<core_rpc::filing::FilingTree, String> {
+    app.core.lock().unwrap().filing_tree(account).map_err(fail)
+}
+#[tauri::command]
+fn invoice_settings(
+    app: State<'_, App>,
+    profile: i64,
+) -> Result<core_rpc::invoices::InvoiceSettings, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .invoice_settings(profile)
+        .map_err(fail)
+}
+#[tauri::command]
+fn start_invoice_collection(
+    app: State<'_, App>,
+    request: core_rpc::invoices::InvoiceRequest,
+) -> Result<core_rpc::invoices::InvoicePreview, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .start_invoice_collection(request)
+        .map_err(fail)
+}
+#[tauri::command]
+fn save_invoice_setup(
+    app: State<'_, App>,
+    profile: i64,
+    setup: core_rpc::invoices::InvoiceSetup,
+    expected_revision: i64,
+    confirm: bool,
+) -> Result<core_rpc::invoices::InvoiceSetupState, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_invoice_setup(profile, setup, expected_revision, confirm)
+        .map_err(fail)
+}
+#[tauri::command]
+fn save_invoice_review(
+    app: State<'_, App>,
+    token: String,
+    row: usize,
+    review: Option<core_rpc::invoices::InvoiceReview>,
+) -> Result<core_rpc::invoices::InvoicePreview, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_invoice_review(&token, row, review)
+        .map_err(fail)
+}
+#[tauri::command]
+async fn scan_invoice_collection(
+    app: tauri::AppHandle,
+    token: String,
+) -> Result<core_rpc::invoices::InvoicePreview, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<App>()
+            .core
+            .lock()
+            .unwrap()
+            .scan_invoice_collection(&token)
+            .map_err(fail)
+    })
+    .await
+    .map_err(fail)?
+}
+#[tauri::command]
+async fn analyze_invoice_document(
+    app: State<'_, App>,
+    token: String,
+    row: usize,
+) -> Result<core_rpc::invoices::InvoicePreview, String> {
+    let job = app
+        .core
+        .lock()
+        .unwrap()
+        .invoice_analysis_job(&token, row)
+        .map_err(fail)?;
+    let Some(job) = job else {
+        return app
+            .core
+            .lock()
+            .unwrap()
+            .invoice_analysis_preview(&token)
+            .map_err(fail);
+    };
+    let choice = ai_choice(&app, core_rpc::Task::Assistant)?;
+    let hash = job.digest.clone();
+    let result = on_own_thread("invoice analysis", move || async move {
+        core_rpc::invoices::analysis::analyze(&job, &choice)
+            .await
+            .map_err(fail)
+    })
+    .await;
+    app.core
+        .lock()
+        .unwrap()
+        .record_invoice_analysis(&token, row, &hash, result)
+        .map_err(fail)
+}
+
+#[tauri::command]
+async fn confirm_invoice_collection(
+    app: tauri::AppHandle,
+    token: String,
+    selection: Vec<core_rpc::invoices::InvoiceSelection>,
+) -> Result<core_rpc::invoices::InvoiceExport, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        app.state::<App>()
+            .core
+            .lock()
+            .unwrap()
+            .confirm_invoice_collection(&token, &selection, files::save_invoice)
+            .map_err(fail)
+    })
+    .await
+    .map_err(fail)?
+}
+#[tauri::command]
+fn set_filing_root(app: State<'_, App>, account: i64, root: String) -> Result<(), String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_filing_root(account, &root)
+        .map_err(fail)
+}
+#[tauri::command]
+fn propose_attachment_filing(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    index: usize,
+    folder: String,
+) -> Result<core_rpc::filing::FilingProposal, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .propose_attachment_filing(account, id, index, &folder, "")
+        .map_err(fail)
+}
+#[tauri::command]
+fn confirm_attachment_filing(
+    app: State<'_, App>,
+    proposal: core_rpc::filing::FilingProposal,
+) -> Result<String, String> {
+    let core = app.core.lock().unwrap();
+    let (dir, attachment) = core.confirm_attachment_filing(&proposal).map_err(fail)?;
+    let path = files::save_new(&dir, &attachment.view.name, &attachment.bytes)?;
+    Ok(path.display().to_string())
+}
+
 /// Opens an attachment in the program the system has for it. Not one that
 /// could run something: those are saved, and opening them is the person's
 /// own deliberate step.
@@ -255,6 +427,7 @@ fn search(
     query: String,
     limit: usize,
     order: Option<String>,
+    unread_only: Option<bool>,
 ) -> Result<Vec<MessageRow>, String> {
     // The list's own toggle, by name; without one, the best match first.
     let order = match order.as_deref() {
@@ -265,7 +438,7 @@ fn search(
     app.core
         .lock()
         .unwrap()
-        .search(account, &query, limit, order)
+        .search_filtered(account, &query, limit, order, unread_only.unwrap_or(false))
         .map_err(fail)
 }
 
@@ -1225,15 +1398,19 @@ fn save_account_with_found_password(
     app: State<'_, App>,
     input: core_rpc::AccountInput,
     primary_password: Option<String>,
+    source: Option<String>,
 ) -> Result<i64, String> {
-    let password =
-        core_rpc::setup::stored_password(&input, primary_password.as_deref().unwrap_or_default())
-            .ok_or_else(|| {
-            format!(
-                "no saved password was found for {} — enter it here",
-                input.email
-            )
-        })?;
+    let password = core_rpc::setup::stored_password_from(
+        source.as_deref(),
+        &input,
+        primary_password.as_deref().unwrap_or_default(),
+    )
+    .ok_or_else(|| {
+        format!(
+            "no saved password was found for {} — enter it here",
+            input.email
+        )
+    })?;
     let core = app.core.lock().unwrap();
     let id = core.save_account(&input).map_err(fail)?;
     core.set_password(&input.email, &password).map_err(fail)?;
@@ -1249,6 +1426,14 @@ async fn lookup_account(
     core_rpc::setup::lookup(&email, &existing)
         .await
         .map_err(fail)
+}
+
+#[tauri::command]
+async fn check_mail_domain(
+    domain: String,
+    selector: Option<String>,
+) -> Result<core_rpc::domain_check::Report, String> {
+    core_rpc::domain_check::check(&domain, selector.as_deref()).await
 }
 
 /// Where the window's frame loads a message's HTML from, as a page: see
@@ -1693,6 +1878,17 @@ async fn find_urgent(
     let total = jobs.len();
     let mut failures = 0;
     for (done, job) in jobs.into_iter().enumerate() {
+        if app
+            .core
+            .lock()
+            .unwrap()
+            .attention_settings(account)
+            .map_err(fail)?
+            != job.criteria
+        {
+            pass.stopped = Some("Attention criteria changed; start a new assessment.".into());
+            break;
+        }
         let _ = on_progress.send(UrgencyProgress {
             done,
             total,
@@ -1701,12 +1897,15 @@ async fn find_urgent(
         match core_rpc::urgency::ask_model(&choice.provider, &choice.model, &job).await {
             Ok(urgency) => {
                 failures = 0;
-                app.core
+                let recorded = app
+                    .core
                     .lock()
                     .unwrap()
-                    .record_urgency(job.id, &urgency)
+                    .record_current_urgency(account, &job, &urgency)
                     .map_err(fail)?;
-                pass.by_model += 1;
+                if recorded {
+                    pass.by_model += 1;
+                }
             }
             Err(err) => {
                 tracing::warn!(message = job.id, %err, "the model could not judge urgency");
@@ -1740,6 +1939,32 @@ fn urgency_of(app: State<'_, App>, id: i64) -> Result<Option<core_rpc::UrgencyVi
     app.core.lock().unwrap().urgency_of(id).map_err(fail)
 }
 
+#[tauri::command]
+fn attention_settings(app: State<'_, App>, account: i64) -> Result<serde_json::Value, String> {
+    let settings = app
+        .core
+        .lock()
+        .unwrap()
+        .attention_settings(account)
+        .map_err(fail)?;
+    Ok(
+        serde_json::json!({"settings": settings, "defaults": core_rpc::urgency::AttentionSettings::default()}),
+    )
+}
+
+#[tauri::command]
+fn set_attention_settings(
+    app: State<'_, App>,
+    account: i64,
+    settings: core_rpc::urgency::AttentionSettings,
+) -> Result<core_rpc::urgency::AttentionSettings, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .set_attention_settings(account, &settings)
+        .map_err(fail)
+}
+
 // -- conversations ---------------------------------------------------------------
 
 /// Who the account writes to and hears from, most likely first, for the
@@ -1756,12 +1981,20 @@ fn conversations(
     offset: usize,
     limit: usize,
     include_bulk: bool,
+    unread_only: Option<bool>,
     query: Option<String>,
 ) -> Result<core_rpc::ConversationPage, String> {
     app.core
         .lock()
         .unwrap()
-        .conversations(account, include_bulk, query.as_deref(), offset, limit)
+        .conversations(
+            account,
+            include_bulk,
+            unread_only.unwrap_or(false),
+            query.as_deref(),
+            offset,
+            limit,
+        )
         .map_err(fail)
 }
 
@@ -2582,6 +2815,20 @@ fn main() {
             mail_page_url,
             attachment,
             save_attachment,
+            startup_enabled,
+            set_startup_enabled,
+            filing_tree,
+            invoice_settings,
+            save_invoice_setup,
+            folder_picker::pick_invoice_folder,
+            save_invoice_review,
+            start_invoice_collection,
+            scan_invoice_collection,
+            analyze_invoice_document,
+            confirm_invoice_collection,
+            set_filing_root,
+            propose_attachment_filing,
+            confirm_attachment_filing,
             open_attachment,
             attachment_preview,
             search,
@@ -2650,6 +2897,7 @@ fn main() {
             import_accounts,
             save_account_with_found_password,
             lookup_account,
+            check_mail_domain,
             open_external,
             check_for_update,
             create_folder,
@@ -2682,6 +2930,8 @@ fn main() {
             find_urgent,
             urgent_messages,
             urgency_of,
+            attention_settings,
+            set_attention_settings,
             conversations,
             address_book,
             sender,

@@ -76,15 +76,23 @@ impl Core {
         &self,
         account: AccountId,
         include_bulk: bool,
+        unread_only: bool,
         query: Option<&str>,
         offset: usize,
         limit: usize,
     ) -> Result<ConversationPage> {
         let me = self.account_email(account)?;
         let skip = self.folders_to_leave_out(account)?;
-        let window =
-            self.store()
-                .conversations(account, &me, &skip, include_bulk, query, offset, limit)?;
+        let window = self.store().conversations(
+            account,
+            &me,
+            &skip,
+            include_bulk,
+            unread_only,
+            query,
+            offset,
+            limit,
+        )?;
         Ok(ConversationPage {
             total: window.total,
             offset: window.offset,

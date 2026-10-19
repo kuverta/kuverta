@@ -27,6 +27,9 @@ tracing-subscriber.workspace = true
 # The secret in a message page's links; see src/page.rs.
 getrandom.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61.3", features = ["Win32_UI_Shell", "Win32_System_Com"] }
+
 # Marking saved and opened attachments as come from elsewhere (quarantine).
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"

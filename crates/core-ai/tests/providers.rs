@@ -74,6 +74,77 @@ fn completion(content: &str) -> Value {
 }
 
 #[tokio::test]
+async fn local_assistant_overrides_small_server_context_and_preserves_tool_history() {
+    use core_ai::{ToolSpec, Turn};
+    let (base, seen) = serve(|_, _, body| {
+        if body["options"]["num_ctx"].as_u64().unwrap_or(4096) < 6705 + 2048 {
+            return (
+                400,
+                json!({"error":"request (6705 tokens) exceeds the available context size (4096 tokens)"}),
+            );
+        }
+        (
+            200,
+            json!({"message":{"content":"Synthetic summary"},"done_reason":"stop"}),
+        )
+    });
+    let provider = Provider::connect("ollama", &base, None).unwrap();
+    let turns = vec![
+        Turn::System {
+            content: "Keep user instructions".into(),
+        },
+        Turn::User {
+            content: "Review synthetic headers".into(),
+        },
+        Turn::Tool {
+            call_id: "test".into(),
+            name: "headers".into(),
+            content: "Synthetic headers".repeat(1200),
+        },
+    ];
+    let tools = vec![ToolSpec {
+        name: "headers".into(),
+        description: "Read synthetic headers".into(),
+        parameters: json!({"type":"object"}),
+    }];
+    assert_eq!(
+        provider
+            .converse("test-local", &turns, &tools)
+            .await
+            .unwrap()
+            .content,
+        "Synthetic summary"
+    );
+    let request = seen.recv().unwrap();
+    assert_eq!(
+        request.body["messages"][0]["content"],
+        "Keep user instructions"
+    );
+    assert_eq!(
+        request.body["messages"][2]["content"],
+        "Synthetic headers".repeat(1200)
+    );
+    assert_eq!(request.body["tools"][0]["function"]["name"], "headers");
+    assert!(request.body["options"]["num_ctx"].as_u64().unwrap() <= 16384);
+    assert!(request.body["options"]["num_predict"].as_u64().unwrap() <= 2048);
+}
+
+#[tokio::test]
+async fn local_context_overflow_is_actionable_and_is_not_retried() {
+    let (base, seen) = serve(|_, _, _| {
+        (
+            400,
+            json!({"error":"{\"error\":{\"type\":\"exceed_context_size_error\"}}"}),
+        )
+    });
+    let provider = Provider::connect("ollama", &base, None).unwrap();
+    let error = provider.converse("test-local", &[], &[]).await.unwrap_err();
+    assert!(matches!(error, AiError::ContextLimit(16384)));
+    seen.recv().unwrap();
+    assert!(seen.try_recv().is_err());
+}
+
+#[tokio::test]
 async fn a_hosted_model_is_asked_with_the_key_and_answers_from_its_choices() {
     let (base, seen) = serve(|_, _, _| (200, completion("transactional")));
     let service = OpenAiCompatible::new(&format!("{base}/v1/"), Some("sk-test".into())).unwrap();

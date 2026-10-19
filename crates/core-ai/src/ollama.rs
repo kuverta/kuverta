@@ -29,6 +29,9 @@ pub enum AiError {
     /// so as a reply rather than an error status.
     #[error("the model refused to work on this (refusal, category {0})")]
     Refused(String),
+
+    #[error("This conversation exceeds the local model's {0}-token context. Start a new chat or ask about fewer messages.")]
+    ContextLimit(u32),
 }
 
 /// What a vision model is told before it is shown a page.

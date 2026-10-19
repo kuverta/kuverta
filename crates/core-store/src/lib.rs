@@ -25,6 +25,7 @@ mod schema;
 pub mod skills;
 pub mod smart;
 pub mod tasks;
+mod threads;
 pub mod usage;
 
 pub use blobs::Blobs;
@@ -71,6 +72,7 @@ pub type Result<T> = std::result::Result<T, StoreError>;
 
 pub struct Store {
     conn: Connection,
+    thread_cache: std::cell::RefCell<Option<threads::ThreadCache>>,
 }
 
 /// How search results come back: as FTS5 ranks them, best match first, or by
@@ -116,7 +118,10 @@ impl Store {
         schema::migrate(&conn)?;
         register_functions(&conn)?;
 
-        Ok(Self { conn })
+        Ok(Self {
+            conn,
+            thread_cache: Default::default(),
+        })
     }
 
     /// Escape hatch for callers that need raw SQL (reporting, one-off queries).
@@ -940,6 +945,15 @@ impl Store {
             .map(|account| Box::new(*account) as Box<dyn rusqlite::ToSql>)
             .collect();
 
+        let grouped = filter.threaded && filter.thread_id.is_none();
+        if grouped || filter.thread_id.is_some() {
+            self.prepare_threads(accounts)?;
+        }
+        if let Some(thread) = filter.thread_id {
+            clauses.push("kuverta_thread(m.id) = kuverta_thread(?)".into());
+            args.push(Box::new(thread));
+        }
+
         if let Some(category) = &filter.category {
             clauses.push("c.category = ?".into());
             args.push(Box::new(category.clone()));
@@ -1013,21 +1027,48 @@ impl Store {
             clauses.join(" AND ")
         );
 
+        let count = if grouped {
+            "COUNT(DISTINCT kuverta_thread(m.id))"
+        } else {
+            "COUNT(*)"
+        };
         let total: i64 = self.conn.query_row(
-            &format!("SELECT COUNT(*) {from}"),
+            &format!("SELECT {count} {from}"),
             rusqlite::params_from_iter(args.iter()),
             |row| row.get(0),
         )?;
 
-        let mut stmt = self.conn.prepare(&format!(
-            "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
+        let order = if filter.oldest_first { "ASC" } else { "DESC" };
+        let query = if grouped {
+            format!(
+                "SELECT id, subject, from_name, from_addr, date_utc, list_id,
+                        has_attachments, snippet, category, confidence, unread,
+                        recipients, answered, account_id, thread_id, thread_count
+                 FROM (SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc,
+                         m.list_id, m.has_attachments, m.snippet, c.category, c.confidence,
+                         MAX({UNREAD_PREDICATE}) OVER (PARTITION BY kuverta_thread(m.id)) AS unread,
+                         m.recipients, {ANSWERED_PREDICATE} AS answered, m.account_id,
+                         kuverta_thread(m.id) AS thread_id,
+                         COUNT(*) OVER (PARTITION BY kuverta_thread(m.id)) AS thread_count,
+                         ROW_NUMBER() OVER (PARTITION BY kuverta_thread(m.id)
+                             ORDER BY COALESCE(m.date_utc, 0) DESC, m.id DESC) AS position
+                       {from})
+                 WHERE position = 1
+                 ORDER BY COALESCE(date_utc, 0) {order}, id {order}
+                 LIMIT ? OFFSET ?"
+            )
+        } else {
+            format!(
+                "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
                     m.has_attachments, m.snippet, c.category, c.confidence,
-                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}, m.account_id
+                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}, m.account_id,
+                    NULL, 1
              {from}
              ORDER BY COALESCE(m.date_utc, 0) {order}, m.id {order}
              LIMIT ? OFFSET ?",
-            order = if filter.oldest_first { "ASC" } else { "DESC" }
-        ))?;
+            )
+        };
+        let mut stmt = self.conn.prepare(&query)?;
 
         args.push(Box::new(limit as i64));
         args.push(Box::new(offset as i64));
@@ -1041,6 +1082,8 @@ impl Store {
                 unread: row.get(10)?,
                 recipients: row.get(11)?,
                 answered: row.get(12)?,
+                thread_id: row.get(14)?,
+                thread_count: row.get::<_, i64>(15)? as usize,
             })
         })?;
 
@@ -1234,16 +1277,37 @@ impl Store {
         limit: usize,
         order: SearchOrder,
     ) -> Result<Vec<MessageSummary>> {
+        Ok(self
+            .search_typed_filtered(account_id, query, limit, order, false)?
+            .into_iter()
+            .map(|row| row.summary)
+            .collect())
+    }
+
+    /// Search with real read flags, filtering before LIMIT rather than hiding
+    /// read hits from an already truncated result page.
+    pub fn search_typed_filtered(
+        &self,
+        account_id: AccountId,
+        query: &str,
+        limit: usize,
+        order: SearchOrder,
+        unread_only: bool,
+    ) -> Result<Vec<ListedMessage>> {
         let trimmed = query.trim();
-        match trimmed
+        let expression = match trimmed
             .strip_prefix('"')
             .and_then(|rest| rest.strip_suffix('"'))
         {
             Some(phrase) if !phrase.trim().is_empty() => {
-                self.search_phrase(account_id, phrase, limit, order)
+                format!("\"{}\"", phrase.replace('"', "\"\""))
             }
-            _ => self.search_terms_in(account_id, &[trimmed.to_string()], limit, order),
+            _ => fts_terms(&[trimmed.to_string()]),
+        };
+        if expression.is_empty() {
+            return Ok(Vec::new());
         }
+        self.search_fts_filtered(account_id, &expression, limit, order, unread_only)
     }
 
     /// The query every search runs, with its order. By date, the ties — the
@@ -1256,6 +1320,21 @@ impl Store {
         limit: usize,
         order: SearchOrder,
     ) -> Result<Vec<MessageSummary>> {
+        Ok(self
+            .search_fts_filtered(account_id, expression, limit, order, false)?
+            .into_iter()
+            .map(|row| row.summary)
+            .collect())
+    }
+
+    fn search_fts_filtered(
+        &self,
+        account_id: AccountId,
+        expression: &str,
+        limit: usize,
+        order: SearchOrder,
+        unread_only: bool,
+    ) -> Result<Vec<ListedMessage>> {
         let order_by = match order {
             SearchOrder::Rank => "rank",
             SearchOrder::Newest => "m.date_utc DESC, rank",
@@ -1263,16 +1342,31 @@ impl Store {
         };
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.subject, m.from_name, m.from_addr, m.date_utc, m.list_id,
-                    m.has_attachments, m.snippet
+                    m.has_attachments, m.snippet, c.category, c.confidence,
+                    {UNREAD_PREDICATE}, m.recipients, {ANSWERED_PREDICATE}
              FROM message_fts f
              JOIN message m ON m.id = f.rowid
+             {CURRENT_CATEGORY_JOIN}
              WHERE message_fts MATCH ?1 AND m.account_id = ?2
+               AND (NOT ?4 OR {UNREAD_PREDICATE})
              ORDER BY {order_by}
              LIMIT ?3"
         ))?;
         let rows = stmt.query_map(
-            params![expression, account_id, limit as i64],
-            row_to_summary,
+            params![expression, account_id, limit as i64, unread_only],
+            |row| {
+                Ok(ListedMessage {
+                    summary: row_to_summary(row)?,
+                    account_id,
+                    category: row.get(8)?,
+                    confidence: row.get(9)?,
+                    unread: row.get(10)?,
+                    recipients: row.get(11)?,
+                    answered: row.get(12)?,
+                    thread_id: None,
+                    thread_count: 1,
+                })
+            },
         )?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)

@@ -9,6 +9,7 @@
 *.db-wal
 .DS_Store
 /.devdata
+/.devtools
 
 # The shared triage surface, copied in from the kuverta-bird repository by
 # `make triage-ui`. Generated, so it is not source here — keeping a second

@@ -44,6 +44,32 @@ deletes its stored password. The mail on the server is not touched.
 Passwords go to the system keychain and are never shown again: the field says
 whether one is stored, and leaving it blank keeps it.
 
+### SPF, DKIM and DMARC
+
+**Mail domain check** runs automatically for a new address or a selected import
+card. For an existing account, choose **Check domain**. The check uses
+[Google Public DNS over HTTPS](https://developers.google.com/speed/public-dns/docs/doh/json)
+and sends only the domain and optional DKIM selector. It does not send the full
+address, credentials or mail content, change DNS, or send a test message.
+
+The results distinguish published records, common configuration problems,
+missing records and failed lookups. Enter the **DKIM selector** from your mail
+provider to check its public key. Without it, DKIM is **Not checked**; a domain
+alone cannot identify the provider's selector.
+
+This is an initial publication diagnostic, not a complete authentication test.
+It does not evaluate SPF include/redirect chains or sending IPs, DKIM key strength
+or signatures, or DMARC alignment and parent-domain inheritance. Those limits
+are shown in the results. In particular, **Record found** does not mean that
+outgoing mail passes authentication. A DMARC `p=none` policy is monitoring mode,
+not a request to block unauthenticated mail. Domain warnings do not prevent
+adding or receiving mail through the account.
+
+The checks follow the publication formats in
+[SPF (RFC 7208)](https://www.rfc-editor.org/rfc/rfc7208),
+[DKIM (RFC 6376)](https://www.rfc-editor.org/rfc/rfc6376) and
+[DMARC (RFC 9989)](https://www.rfc-editor.org/rfc/rfc9989).
+
 ### Gmail and Microsoft 365
 
 - **Gmail** takes an **app password** (turn on 2-Step Verification, then create
@@ -91,6 +117,21 @@ one, or **Forget** it. See [Memory](assistant.md#memory) for how notes are
 kept and synced to your other devices.
 
 ## General
+
+The setup's first page offers **Email only** (the default) or **Email and paper
+post**. Email-only setup skips Paperless and vision-model setup. This choice
+does not remove existing postal addresses. On Windows, **Start with Windows**
+is available during setup and in General settings; it is off until selected.
+
+Message-list preferences include **Show categories** and **Open the latest message
+when opening a thread**. Hiding categories removes their sidebar/list labels and
+clears an active category filter, while leaving the independent unread filter
+available. Categories remain stored; they are a single coarse classification per
+message, not multiple synchronized IMAP tags. The latest-message option opens
+only one message on an explicit thread click. Automatic refresh never advances
+through unread mail; marking read still depends on **Mark read when opened**.
+
+Each account can also connect an existing [attachment filing directory](filing.md).
 
 ![Settings → General](../assets/screens/settings-general-light.webp#only-light)
 ![Settings → General](../assets/screens/settings-general-dark.webp#only-dark)

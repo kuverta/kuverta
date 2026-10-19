@@ -4,6 +4,16 @@ description: Cleanup in kuverta — dealing with newsletters, marketing and noti
 
 # Cleanup and unsubscribing
 
+Cleanup opens the account selected in the main window; its account picker can
+switch to another mailbox. The main **Show categories** preference also controls
+category scopes here. Folder and all-mail views remain available when hidden.
+
+**Unread mail only** in the header narrows all-mail, folder, category and search
+results. It stays selected when switching scopes or accounts during this Cleanup
+session; uncheck it to include read mail again. Filtering happens before paging.
+Paperless documents have no mail read flag and are excluded while it is on.
+The separate Unsubscribe sender list has its own controls.
+
 Most of a mailbox was not written to you. Newsletters, receipts, alerts and
 adverts arrive in the same list as the few messages that need an answer, and in
 an Inbox they all look equally like work. **Cleanup** is for dealing with them a

@@ -68,10 +68,10 @@ window.addEventListener("blur", () => (contextMenu.hidden = true));
 function showFolderMenu(event, folder) {
   const essential = isEssential(folder);
   showMenu(event, [
-    [t("New mailbox inside “{name}”…", { name: folder.label }), () => openFolderDialog(folder.name)],
+    [t("New mailbox inside “{name}”…", { name: folderDisplayName(folder) }), () => openFolderDialog(folder.name)],
     null,
     [
-      t("Delete “{name}”…", { name: folder.label }),
+      t("Delete “{name}”…", { name: folderDisplayName(folder) }),
       () => deleteFolder(folder),
       {
         danger: true,
@@ -92,7 +92,7 @@ function openFolderDialog(parent = null) {
   const select = folderForm.parent;
   select.textContent = "";
   select.append(new Option(t("Nowhere — at the top"), ""));
-  for (const folder of state.folders) select.append(new Option(folder.name, folder.name));
+  for (const folder of state.folders) select.append(new Option(folderDisplayName(folder), folder.name));
   select.value = parent ?? "";
   folderSheet.hidden = false;
   folderForm.name.focus();

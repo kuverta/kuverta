@@ -66,8 +66,9 @@ after(async () => {
   server?.close();
 });
 
-async function openSettings() {
-  const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+async function openSettings({ hostedModels, holdModels = false, modelError, importedAccounts, folderRows, locale = 'en-US' } = {}) {
+  // Assertions use English regardless of the Windows account's language.
+  const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, locale });
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
@@ -81,14 +82,36 @@ async function openSettings() {
     if (message.type() === 'error') problems.push(message.text());
   });
 
-  await page.addInitScript((fake) => {
+  await page.addInitScript(({ fake, hostedModels, holdModels, modelError, importedAccounts, folderRows }) => {
     let bridge;
+    window.modelRequests = [];
+    window.importWrites = [];
+    window.folderRequests = [];
     window.__TAURI__ = {
       core: {
         invoke: async (command, args) => {
+          if(window.setupTest) {
+            if(command==='ollama_status') return {local:true,installed:true,running:true,version:'test',needed:[{task:'chat',model:'mail-test',present:true},{task:'vision',model:'scan-test',present:false}]};
+            if(command==='import_accounts') return {accounts:[],sources:[],passwords_locked:false};
+            if(command==='lookup_account') return {input:{email:args.email,label:args.email,imap_host:'imap.example.org',imap_port:993,imap_security:'tls',smtp_host:'smtp.example.org',smtp_port:465,smtp_security:'tls',auth_method:'app_password',excluded_folders:[]},complete:true,already_added:false,password_known:false,notes:[]};
+          }
           bridge ??= import(fake).then((module) =>
             module.fakeInvoke({ paper: { paperMailboxes: [], documents: [] } }),
           );
+          if (command === 'folders' && folderRows) return folderRows;
+          if (command === 'messages') window.folderRequests.push(args);
+          if (command === 'import_accounts' && importedAccounts) return {accounts: importedAccounts, sources: [{name:'eM Client', state:'found', detail:'7 IMAP accounts'}], passwords_locked:false};
+          if ((command === 'save_account_with_found_password' || command === 'save_account') && importedAccounts) {
+            window.importWrites.push({...args, command});
+            return (await bridge)('save_account', {input:args.input});
+          }
+          if (command === 'ai_models' && args.providerId !== 1) {
+            if (holdModels) {
+              return new Promise((resolve) => window.modelRequests.push(resolve));
+            }
+            if (modelError) throw new Error(modelError);
+            if (hostedModels) return hostedModels;
+          }
           return (await bridge)(command, args);
         },
         // Progress arrives on a channel in the real bridge, and the window
@@ -98,7 +121,7 @@ async function openSettings() {
         },
       },
     };
-  }, FAKE);
+  }, { fake: FAKE, hostedModels, holdModels, modelError, importedAccounts, folderRows });
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -107,6 +130,29 @@ async function openSettings() {
   await page.waitForSelector('#settings', { state: 'visible' });
   return { page, context, problems };
 }
+
+test('email-only setup skips paper and vision and account lookup remains usable', async () => {
+  const {page,context,problems}=await openSettings();
+  await page.evaluate(()=>{window.setupTest=true; return openSetup();});
+  assert.equal(await page.locator('#setup-email-only').isChecked(),true);
+  assert.equal(await page.locator('#setup-steps [data-step=paper]').isVisible(),false);
+  await page.locator('#setup-next').click();
+  await page.locator('#ollama-card').getByText('mail-test for sorting mail is ready.').waitFor();
+  assert.doesNotMatch(await page.locator('#ollama-card').innerText(),/scan-test/);
+  await page.locator('#setup-next').click();
+  await page.locator('#lookup-form input[name=email]').fill('new@example.org');
+  await page.locator('#lookup-form button').click();
+  await page.locator('#import-accounts .import-account').waitFor();
+  assert.equal(await page.locator('#import-accounts input[name=password]').isVisible(),true);
+  await page.locator('#setup-back').click();
+  await page.locator('#setup-back').click();
+  await page.locator('#setup-email-paper').check();
+  await page.locator('#setup-next').click();
+  await page.waitForFunction(()=>document.querySelector('#ollama-card').textContent.includes('scan-test'));
+  assert.equal(await page.locator('#setup-steps [data-step=paper]').isVisible(),true);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
 
 test('the settings sheet opens on the account form alone', async () => {
   const { page, context } = await openSettings();
@@ -161,6 +207,153 @@ test('the list says where addresses go, even before there are any', async () => 
 
 const noteOf = (page, task) => page.locator(`[data-note="${task}"]`);
 
+const CLAUDE_MODELS = [
+  { name: 'claude-haiku-4-5', size_bytes: null, vision: true, embedding: false },
+  { name: 'claude-sonnet-4-5', size_bytes: null, vision: true, embedding: false },
+];
+
+async function addClaude(page) {
+  await page.evaluate(async () => {
+    const { invoke } = window.__TAURI__.core;
+    const id = await invoke('save_ai_provider', { input: {
+      id: null, kind: 'anthropic', label: 'Claude', base_url: 'https://api.anthropic.com/v1',
+    } });
+    await invoke('set_ai_key', { id, key: 'test-key-never-sent' });
+  });
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('select[name="chat_provider"]')?.options.length === 2);
+}
+
+test('changing provider replaces the old model for every job and keeps the choices after saving', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: CLAUDE_MODELS });
+  t.after(() => context.close());
+  await addClaude(page);
+  for (const task of ['vision', 'chat', 'assistant']) {
+    await page.locator(`select[name="${task}_provider"]`).selectOption({ label: 'Claude' });
+    await page.waitForFunction((task) => document.querySelector(`#${task}-models option`)?.value.startsWith('claude-'), task);
+    assert.equal(await page.locator(`input[name="${task}_model"]`).inputValue(), 'claude-haiku-4-5');
+    assert.doesNotMatch(await noteOf(page, task).textContent(), /does not list/);
+  }
+  // A deliberate choice wins over the initial suggestion, including on reopening.
+  await page.locator('#assistant-models').selectOption('claude-sonnet-4-5');
+  await page.locator('#ai-save').click();
+  await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'saved');
+  await page.locator('#settings-add').click();
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('select[name="assistant_provider"] option:checked')?.textContent === 'Claude');
+  const saved = await page.evaluate(() => window.__TAURI__.core.invoke('ai_tasks'));
+  assert.deepEqual(saved.map(({ task, provider_id, model }) => ({ task, provider_id, model })), [
+    { task: 'vision', provider_id: 2, model: 'claude-haiku-4-5' },
+    { task: 'chat', provider_id: 2, model: 'claude-haiku-4-5' },
+    { task: 'assistant', provider_id: 2, model: 'claude-sonnet-4-5' },
+  ]);
+  assert.equal(await page.locator('input[name="assistant_model"]').inputValue(), 'claude-sonnet-4-5');
+  // Returning to Ollama must select a model it actually has; scans need vision.
+  await page.locator('select[name="vision_provider"]').selectOption('1');
+  await page.waitForFunction(() => document.querySelector('input[name="vision_model"]').value === 'qwen2.5vl:3b');
+  assert.deepEqual(problems, []);
+});
+
+test('a provider change never chooses an embedding or a known text-only model for scans', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: [
+    { name: 'embedding-only', embedding: true, vision: false },
+    { name: 'text-only', embedding: false, vision: false },
+    { name: 'unspecified', embedding: false, vision: null },
+    { name: 'sees-images', embedding: false, vision: true },
+  ] });
+  t.after(() => context.close());
+  await addClaude(page);
+  await page.locator('select[name="vision_provider"]').selectOption('2');
+  await page.waitForFunction(() => document.querySelectorAll('#vision-models option').length === 4);
+  assert.equal(await page.locator('input[name="vision_model"]').inputValue(), 'sees-images');
+  await page.locator('select[name="chat_provider"]').selectOption('2');
+  await page.waitForFunction(() => document.querySelectorAll('#chat-models option').length === 4);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'text-only');
+  assert.deepEqual(problems, []);
+});
+
+for (const failure of ['empty', 'unavailable']) {
+  test(`a provider change clears the old model when the new model list is ${failure}`, async (t) => {
+    const { page, context, problems } = await openSettings({
+      hostedModels: [], modelError: failure === 'unavailable' ? 'test model server unavailable' : undefined,
+    });
+    t.after(() => context.close());
+    await addClaude(page);
+    await page.locator('select[name="chat_provider"]').selectOption('2');
+    await page.waitForFunction(() => document.querySelector('[data-note="chat"]').textContent.includes('Claude'));
+    assert.equal(await page.locator('input[name="chat_model"]').inputValue(), '');
+    assert.equal(await page.locator('#ai-form').evaluate((form) => form.checkValidity()), false);
+    // Providers can omit a usable model from their list, so explicit names remain possible.
+    await page.locator('input[name="chat_model"]').fill('my-custom-model');
+    await page.locator('#ai-save').click();
+    await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'saved');
+    assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'my-custom-model');
+    assert.deepEqual(problems, []);
+  });
+}
+
+test('a delayed model list cannot overwrite typing or a newer provider choice', async (t) => {
+  const { page, context, problems } = await openSettings({ holdModels: true });
+  t.after(() => context.close());
+  await addClaude(page);
+  await page.locator('select[name="chat_provider"]').selectOption('2');
+  await page.waitForFunction(() => window.modelRequests.length === 1);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), '');
+  await page.locator('input[name="chat_model"]').fill('my-explicit-model');
+  await page.locator('select[name="vision_provider"]').selectOption('2');
+  await page.locator('select[name="vision_provider"]').selectOption('1');
+  await page.evaluate((offered) => window.modelRequests.shift()(offered), CLAUDE_MODELS);
+  await page.waitForFunction(() => document.querySelector('#chat-models option')?.value.startsWith('claude-'));
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'my-explicit-model');
+  assert.equal(await page.locator('input[name="vision_model"]').inputValue(), 'qwen2.5vl:3b');
+  assert.equal(await page.locator('#vision-models option').first().getAttribute('value'), 'llama3.2:3b');
+  assert.deepEqual(problems, []);
+});
+
+test('the model dropdown keeps every offered model available after a selection', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: CLAUDE_MODELS });
+  t.after(() => context.close());
+  await addClaude(page);
+  for (const task of ['vision', 'chat', 'assistant']) {
+    await page.locator(`select[name="${task}_provider"]`).selectOption('2');
+    const choice = page.locator(`#${task}-models`);
+    await page.waitForFunction((task) => document.querySelector(`#${task}-models`)?.value === 'claude-haiku-4-5', task);
+    assert.equal(await page.locator(`input[name="${task}_model"]`).isVisible(), false);
+    // Choose another model directly, without erasing the current name first.
+    await choice.selectOption('claude-sonnet-4-5');
+    assert.deepEqual(await choice.locator('option').evaluateAll((options) => options.map((o) => o.value)),
+      ['claude-haiku-4-5', 'claude-sonnet-4-5', '']);
+    await choice.focus();
+    await choice.press('Home');
+    await page.waitForFunction((task) => document.querySelector(`input[name="${task}_model"]`).value === 'claude-haiku-4-5', task);
+    await choice.press('ArrowDown');
+    await page.waitForFunction((task) => document.querySelector(`input[name="${task}_model"]`).value === 'claude-sonnet-4-5', task);
+  }
+  assert.deepEqual(problems, []);
+});
+
+test('an explicit model name survives reopening and can be replaced from the full list', async (t) => {
+  const { page, context, problems } = await openSettings({ hostedModels: CLAUDE_MODELS });
+  t.after(() => context.close());
+  await addClaude(page);
+  await page.locator('select[name="chat_provider"]').selectOption('2');
+  await page.waitForFunction(() => document.querySelector('#chat-models').value === 'claude-haiku-4-5');
+  await page.locator('#chat-models').selectOption('');
+  await page.locator('input[name="chat_model"]').fill('my-unlisted-model');
+  await page.locator('#ai-save').click();
+  await page.waitForFunction(() => document.querySelector('#toast')?.textContent === 'saved');
+  await page.locator('#settings-add').click();
+  await page.locator('#settings-models').click();
+  await page.waitForFunction(() => document.querySelector('#chat-models option')?.value === 'claude-haiku-4-5');
+  assert.equal(await page.locator('#chat-models').inputValue(), '');
+  assert.equal(await page.locator('input[name="chat_model"]').isVisible(), true);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'my-unlisted-model');
+  await page.locator('#chat-models').selectOption('claude-sonnet-4-5');
+  assert.equal(await page.locator('input[name="chat_model"]').isVisible(), false);
+  assert.equal(await page.locator('input[name="chat_model"]').inputValue(), 'claude-sonnet-4-5');
+  assert.deepEqual(problems, []);
+});
+
 test('the models page says which model each job uses and what the provider has', async () => {
   const { page, context, problems } = await openSettings();
   await page.locator('#settings-models').click();
@@ -171,23 +364,25 @@ test('the models page says which model each job uses and what the provider has',
   assert.equal(await page.locator('#ai-form input[name="vision_model"]').inputValue(), 'qwen2.5vl:3b');
   assert.equal(await page.locator('#ai-form input[name="chat_model"]').inputValue(), 'llama3.2:3b');
 
-  await page.waitForFunction(() => document.querySelectorAll('#vision-models option').length === 2);
+  await page.waitForFunction(() => document.querySelectorAll('#vision-models option').length === 3);
   const offered = await page.locator('#vision-models option').evaluateAll((options) => options.map((o) => [o.value, o.label]));
   assert.deepEqual(
     offered,
     [
-      ['llama3.2:3b', 'text only · 2.0 GB'],
-      ['qwen2.5vl:3b', 'sees images · 3.2 GB'],
+      ['llama3.2:3b', 'llama3.2:3b · text only · 2.0 GB'],
+      ['qwen2.5vl:3b', 'qwen2.5vl:3b · sees images · 3.2 GB'],
+      ['', 'Enter model name…'],
     ],
     'an embedding model is no answer to either job',
   );
   assert.equal(await noteOf(page, 'vision').textContent(), '', 'a local model that sees needs no note');
 
   // A model that cannot see is no use for scans, and the page says so.
-  await page.locator('#ai-form input[name="vision_model"]').fill('llama3.2:3b');
+  await page.locator('#vision-models').selectOption('llama3.2:3b');
   await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('cannot see images'));
 
   // One that is not pulled says how to get it.
+  await page.locator('#vision-models').selectOption('');
   await page.locator('#ai-form input[name="vision_model"]').fill('qwen2.5vl:7b');
   await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('ollama pull qwen2.5vl:7b'));
 
@@ -239,13 +434,13 @@ test('a hosted service is added with its key, lists its models, and a job sent t
   await page.locator('#settings-models').click();
   await page.waitForSelector('#ai-form', { state: 'visible' });
   await page.locator('#ai-form select[name="chat_provider"]').selectOption({ label: 'DeepSeek' });
-  await page.locator('#ai-form input[name="chat_model"]').fill('deepseek-chat');
+  await page.locator('#chat-models').selectOption('deepseek-chat');
   await page.waitForFunction(() => document.querySelector('[data-note="chat"]').textContent.includes('will be sent to DeepSeek'));
   assert.equal(await noteOf(page, 'chat').evaluate((note) => note.classList.contains('warn')), true);
 
   // Reading scans there too: DeepSeek does not say whether its model can see.
   await page.locator('#ai-form select[name="vision_provider"]').selectOption({ label: 'DeepSeek' });
-  await page.locator('#ai-form input[name="vision_model"]').fill('deepseek-chat');
+  await page.locator('#vision-models').selectOption('deepseek-chat');
   await page.waitForFunction(() => document.querySelector('[data-note="vision"]').textContent.includes('does not say whether deepseek-chat can see images'));
   assert.match(await noteOf(page, 'vision').textContent(), /Scans of your letters will be sent to DeepSeek/);
 
@@ -274,6 +469,62 @@ test('the Ollama on this computer needs no key and cannot be removed', async () 
   const sees = await page.locator('#provider-models tbody tr').evaluateAll((trs) => trs.map((tr) => tr.cells[1].textContent));
   assert.deepEqual(sees, ['no', 'embeddings only', 'yes']);
 
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+
+test('eM Client import detects all accounts and requires a password instead of reusing ciphertext', async () => {
+  const importedAccounts = Array.from({length:7}, (_, i) => ({
+    source:'eM Client', input:{email:`account${i}@example.org`, label:`Account ${i}`, username:`account${i}@example.org`, imap_host:'imap.example.org', imap_port:993, imap_security:'tls', smtp_host:'smtp.example.org', smtp_port:465, smtp_security:'tls', auth_method:'app_password', excluded_folders:[]},
+    full_name:null, already_added:i === 0, complete:true, password_known:false, password_help:null, notes:['eM Client encrypts saved passwords. Enter the password or app password once; OAuth sign-ins cannot be transferred.'],
+  }));
+  const {page, context, problems} = await openSettings({importedAccounts});
+  await page.locator('#settings-import-accounts').click();
+  await page.waitForSelector('#import-accounts .import-account');
+  assert.equal(await page.locator('#import-accounts .import-account').count(), 7);
+  assert.equal(await page.locator('#import-accounts .import-account').first().locator('.import-head input').isDisabled(), true);
+  const account = page.locator('#import-accounts .import-account').nth(1);
+  await account.locator('.import-head input').check();
+  assert.equal(await account.locator('[name=use_found_password]').count(), 0);
+  assert.equal(await account.locator('[name=password]').isVisible(), true);
+  assert.equal(await account.locator('[name=password]').inputValue(), '');
+  await page.locator('#setup-next').click();
+  await page.waitForFunction(() => document.querySelector('#import-accounts')?.textContent.includes('Enter the password first.'));
+  assert.equal(await page.evaluate(() => window.importWrites.length), 0);
+  await account.locator('[name=password]').fill('synthetic-test-password');
+  await page.locator('#setup-next').click();
+  await page.waitForFunction(() => window.importWrites.length === 1);
+  const writes = await page.evaluate(() => window.importWrites);
+  assert.equal(writes[0].input.email, 'account1@example.org');
+  assert.equal(writes[0].command, 'save_account');
+  assert.equal(Object.hasOwn(writes[0], 'password'), false);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('German folder names hide IMAP prefixes while the server identity stays intact', async () => {
+  const folderRows = [
+    {id:101,name:'INBOX',label:'INBOX',special_use:null,total:2,unread:1},
+    {id:102,name:'INBOX.Drafts',label:'INBOX.Drafts',special_use:'\\Drafts',total:0,unread:0},
+    {id:103,name:'INBOX.Sent',label:'INBOX.Sent',special_use:'\\Sent',total:5,unread:0},
+    {id:104,name:'INBOX.Archives.2020',label:'INBOX.Archives.2020',special_use:null,total:1,unread:0},
+    {id:105,name:'INBOX.Trash',label:'INBOX.Trash',special_use:'\\Trash',total:1,unread:0},
+  ];
+  const {page, context, problems} = await openSettings({folderRows, locale:'de-DE'});
+  await page.keyboard.press('Escape');
+  const text = await page.locator('#folders').innerText();
+  assert.match(text, /Posteingang/);
+  assert.match(text, /Entwürfe/);
+  assert.match(text, /Gesendet/);
+  assert.match(text, /Archive › 2020/);
+  assert.match(text, /Papierkorb/);
+  assert.doesNotMatch(text, /INBOX/);
+  const sent = page.locator('#folders button').filter({hasText:'Gesendet'});
+  assert.match(await sent.getAttribute('title'), /INBOX.Sent/);
+  await sent.click();
+  assert.deepEqual(await page.evaluate(() => state.filter.folder), 103);
+  assert.deepEqual(await page.evaluate(() => state.folders.find(f => f.id === 103).name), 'INBOX.Sent');
   assert.deepEqual(problems, []);
   await context.close();
 });

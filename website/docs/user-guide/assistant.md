@@ -196,6 +196,11 @@ checkbox, or change or delete it with **Edit**.
 
 ## Which model
 
+For saving attachment copies into an existing per-account directory, see
+[Attachment filing](filing.md). Proposals require your confirmation. This is
+separate from moving mail into IMAP folders and is not an automatic recurring
+invoice export across accounts.
+
 The assistant needs a model that can call tools, and does better the larger it
 is. It uses the model for sorting mail until you give it its own in
 **Settings → Models → The assistant**; **Try them** checks that the model you

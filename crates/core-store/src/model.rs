@@ -417,6 +417,10 @@ pub fn folder_is_excluded(patterns: &[String], name: &str, special_use: Option<&
 /// three independent questions and a sidebar asks several at once.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ListFilter {
+    /// Optional subject/reply grouping; never changes stored messages.
+    pub threaded: bool,
+    /// Members of one group, identified by a message in it.
+    pub thread_id: Option<MessageId>,
     /// A rules category, e.g. `"transactional"`.
     pub category: Option<String>,
     pub unread_only: bool,
@@ -559,6 +563,8 @@ impl FolderSummary {
 /// A message as the list shows it.
 #[derive(Debug, Clone)]
 pub struct ListedMessage {
+    pub thread_id: Option<MessageId>,
+    pub thread_count: usize,
     pub summary: MessageSummary,
     /// Whose mail it is: a list over several accounts says for each row.
     pub account_id: AccountId,

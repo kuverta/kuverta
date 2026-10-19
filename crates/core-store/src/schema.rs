@@ -646,6 +646,72 @@ DROP TABLE ai_provider;
 ALTER TABLE ai_provider_new RENAME TO ai_provider;
 PRAGMA foreign_keys = ON;
 "#,
+    // v25 — older model replies could say both "no action" and "today".
+    // They are cached, so fixing new replies alone would leave those false
+    // alarms in the attention list indefinitely. Keep the explanation and
+    // provenance; there is no action to schedule and no mail needs moving.
+    r#"
+UPDATE urgency SET score = 0, deadline = NULL
+WHERE source = 'model' AND action = 'none'
+  AND (score <> 0 OR deadline IS NOT NULL);
+"#,
+    // v26 — invoice collections and durable copy receipts belong to a profile.
+    // A pending receipt is written BEFORE a file, so retrying after a crash
+    // checks that exact path instead of producing another copy.
+    r#"
+CREATE TABLE IF NOT EXISTS invoice_draft (
+    token TEXT PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS invoice_copy (
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    digest TEXT NOT NULL,
+    path TEXT NOT NULL,
+    invoice_date TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    saved INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (profile_id, digest)
+);
+CREATE TABLE IF NOT EXISTS invoice_export (
+    token TEXT PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL,
+    json TEXT NOT NULL
+);
+"#,
+    // v27 — extracted document facts are cached per profile and exact bytes.
+    // Repeated previews and cross-account copies do not repeat model calls.
+    r#"
+CREATE TABLE IF NOT EXISTS invoice_analysis (
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    digest TEXT NOT NULL,
+    json TEXT NOT NULL,
+    PRIMARY KEY (profile_id, digest)
+);
+"#,
+    // v28 — explicit profile setup and durable, document-specific review.
+    r#"
+CREATE TABLE IF NOT EXISTS invoice_setup (
+    profile_id INTEGER PRIMARY KEY REFERENCES profile(id) ON DELETE CASCADE,
+    revision INTEGER NOT NULL DEFAULT 0,
+    json TEXT,
+    draft_json TEXT
+);
+CREATE TABLE IF NOT EXISTS invoice_review (
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    digest TEXT NOT NULL,
+    json TEXT NOT NULL,
+    PRIMARY KEY (profile_id, digest)
+);
+CREATE TABLE IF NOT EXISTS invoice_review_event (
+    id INTEGER PRIMARY KEY,
+    profile_id INTEGER NOT NULL REFERENCES profile(id) ON DELETE CASCADE,
+    digest TEXT NOT NULL,
+    json TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

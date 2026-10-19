@@ -218,7 +218,7 @@ export class Triage {
       // A page that will not load is worth saying out loud — silently showing
       // an empty list is the "mail going missing" failure again.
       this.#requested.delete(offset);
-      this.#say(`could not load messages: ${error.message}`, 'error');
+      this.#say(`could not load messages: ${error?.message ?? String(error)}`, 'error');
     }
   }
 

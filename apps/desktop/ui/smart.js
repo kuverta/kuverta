@@ -115,7 +115,7 @@ async function renderSmartMailboxes() {
       onClick: async () => {
         const next = state.filter.smart === mailbox.id ? null : mailbox.id;
         state.view = "mail";
-        state.filter = { ...state.filter, smart: next, folder: null, category: null };
+        state.filter = { ...state.filter, smart: next, folder: null, category: null, thread: null };
         await reload();
       },
     });
@@ -392,7 +392,7 @@ smartForm.addEventListener("submit", async (event) => {
           : t("created {name}", { name }),
     );
     if (smartEditing.account === state.account || state.allInboxes) {
-      state.filter = { ...state.filter, smart: id, folder: null, category: null };
+      state.filter = { ...state.filter, smart: id, folder: null, category: null, thread: null };
       await reload();
     }
     if (!SETTINGS_PAGES.smart.hidden) fillSmartPage();

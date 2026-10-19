@@ -29,6 +29,8 @@ export class KuvertaHost extends MailHost {
   #invoke;
   #account;
   #email;
+  #showCategories;
+  #unreadOnly;
   #special = { archive: null, trash: null };
   /** Configured physical addresses that have a token, so they can be read. */
   #paper = [];
@@ -37,11 +39,17 @@ export class KuvertaHost extends MailHost {
    * @param {Function} invoke  `(command, args) => Promise<any>`, Tauri's.
    * @param {{id: number, email: string}} account
    */
-  constructor(invoke, account) {
+  constructor(invoke, account, {showCategories = true, unreadOnly = false} = {}) {
     super();
     this.#invoke = invoke;
     this.#account = account.id;
     this.#email = account.email;
+    this.#showCategories = showCategories;
+    this.#unreadOnly = Boolean(unreadOnly);
+  }
+
+  setUnreadOnly(value) {
+    this.#unreadOnly = Boolean(value);
   }
 
   /**
@@ -100,7 +108,7 @@ export class KuvertaHost extends MailHost {
         label: folder.label || folder.name,
         count: folder.unread || null,
       })),
-      ...ALL_CATEGORIES.map((category) => ({
+      ...(this.#showCategories ? ALL_CATEGORIES : []).map((category) => ({
         kind: 'category',
         value: category,
         label: CATEGORY_LABELS[category],
@@ -117,6 +125,12 @@ export class KuvertaHost extends MailHost {
   }
 
   async page({ scope, offset, limit }) {
+    // Paperless documents have no mail read flag. Keep this explicitly an
+    // unread-mail filter, and filter in the store before paging, not afterwards.
+    if (this.#unreadOnly) {
+      if (scope?.kind === 'paper') return {total: 0, rows: []};
+      return this.#mailPage(scope, offset, limit);
+    }
     // One address on its own.
     if (scope?.kind === 'paper') {
       return this.#paperPage(scope.value, offset, limit, null);
@@ -148,6 +162,7 @@ export class KuvertaHost extends MailHost {
         account: this.#account,
         query: String(scope.value),
         limit: 200,
+        unreadOnly: this.#unreadOnly,
       })) ?? [];
       return { total: rows.length, rows: rows.slice(offset, offset + limit).map(toRow) };
     }
@@ -156,9 +171,12 @@ export class KuvertaHost extends MailHost {
       account: this.#account,
       offset,
       limit,
-      category: scope?.kind === 'category' ? scope.value : null,
-      folder: scope?.kind === 'folder' ? scope.value : null,
-      unreadOnly: false,
+      filter: {
+        category: scope?.kind === 'category' ? scope.value : null,
+        folder: scope?.kind === 'folder' ? scope.value : null,
+        unreadOnly: this.#unreadOnly,
+        threaded: false,
+      },
     });
 
     return { total: page.total, rows: page.rows.map(toRow) };

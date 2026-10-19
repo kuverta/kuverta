@@ -45,8 +45,11 @@ pub fn save_new(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
             .open(&candidate)
         {
             Ok(mut file) => {
-                file.write_all(bytes)
-                    .map_err(|err| format!("cannot write {}: {err}", candidate.display()))?;
+                if let Err(err) = file.write_all(bytes) {
+                    drop(file);
+                    let _ = std::fs::remove_file(&candidate);
+                    return Err(format!("cannot write {}: {err}", candidate.display()));
+                }
                 drop(file);
                 if let Err(err) = mark_from_elsewhere(&candidate) {
                     let _ = std::fs::remove_file(&candidate);
@@ -65,6 +68,49 @@ pub fn save_new(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
         "{name} already exists too many times in {}",
         dir.display()
     ))
+}
+
+/// Durable invoice copies use a reserved, deterministic path. A retry after an
+/// interrupted export verifies the existing bytes; it never adds a suffix or
+/// overwrites a file. Links and junctions are not recovery receipts.
+pub fn save_invoice(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    match OpenOptions::new().write(true).create_new(true).open(path) {
+        Ok(mut file) => {
+            if let Err(err) = file.write_all(bytes).and_then(|()| file.sync_all()) {
+                drop(file);
+                let _ = std::fs::remove_file(path);
+                return Err(err.to_string());
+            }
+            drop(file);
+            if let Err(err) = mark_from_elsewhere(path) {
+                let _ = std::fs::remove_file(path);
+                return Err(err);
+            }
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::AlreadyExists => {
+            let meta = std::fs::symlink_metadata(path).map_err(|e| e.to_string())?;
+            let mut linked = meta.file_type().is_symlink();
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                linked |= meta.file_attributes() & 0x400 != 0;
+            }
+            if linked || !meta.is_file() || meta.len() != bytes.len() as u64 {
+                return Err(
+                    "The reserved invoice path is already occupied by a different file.".into(),
+                );
+            }
+            if std::fs::read(path).map_err(|e| e.to_string())? != bytes {
+                return Err(
+                    "The reserved invoice file has different contents; nothing was overwritten."
+                        .into(),
+                );
+            }
+            mark_from_elsewhere(path)?;
+        }
+        Err(err) => return Err(err.to_string()),
+    }
+    Ok(())
 }
 
 /// Marks a file as downloaded from somewhere else, for the system's checks.
@@ -169,6 +215,12 @@ mod tests {
         assert_eq!(bare2.file_name().unwrap(), "README (2)");
         assert_eq!(std::fs::read(&first).unwrap(), b"one");
         assert_eq!(std::fs::read(&bare).unwrap(), b"x");
+        #[cfg(windows)]
+        assert!(
+            std::fs::read_to_string(format!("{}:Zone.Identifier", first.display()))
+                .unwrap()
+                .contains("ZoneId=3")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

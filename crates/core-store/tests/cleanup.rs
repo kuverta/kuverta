@@ -506,7 +506,7 @@ fn conversations_pair_what_came_with_what_went() {
     );
 
     let page = store
-        .conversations(account, "dev@kuverta.test", &[], false, None, 0, 50)
+        .conversations(account, "dev@kuverta.test", &[], false, false, None, 0, 50)
         .unwrap();
     // Erika (one from her, one to her); the shop and the list are bulk.
     assert_eq!(page.total, 1);
@@ -517,11 +517,20 @@ fn conversations_pair_what_came_with_what_went() {
     assert!(erika.last_from_me);
 
     let with_bulk = store
-        .conversations(account, "dev@kuverta.test", &[], true, None, 0, 50)
+        .conversations(account, "dev@kuverta.test", &[], true, false, None, 0, 50)
         .unwrap();
     assert_eq!(with_bulk.total, 3);
     let found = store
-        .conversations(account, "dev@kuverta.test", &[], true, Some("SHOP"), 0, 50)
+        .conversations(
+            account,
+            "dev@kuverta.test",
+            &[],
+            true,
+            false,
+            Some("SHOP"),
+            0,
+            50,
+        )
         .unwrap();
     assert_eq!(found.conversations[0].key, "news@shop.example");
 

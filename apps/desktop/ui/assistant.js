@@ -24,6 +24,7 @@ const assistant = {
   turns: [],
   account: null,
   busy: false,
+  modelChanging: false,
   // The messages this question is about: id and a line to show, in the order
   // they were picked. Emptied once the question has been asked — from then on
   // they are part of the conversation.
@@ -46,9 +47,7 @@ const SUGGESTIONS = [
   t("What needs my attention today?"),
   t("Summarise my unread mail from people."),
   t("Find my invoices from this month."),
-  t("From now on, move invoices into a folder called Rechnungen."),
   t("Draft replies to the support requests from this week — I'll check them."),
-  t("Write a letter cancelling my gym membership, signed, as a PDF."),
 ];
 
 /// A channel for a command to report on as it goes. Outside the app — in the
@@ -196,24 +195,38 @@ function showSuggestionsInto(suggestions) {
     assistant.log.querySelector(".chat-suggestions")?.remove();
     const box = document.createElement("div");
     box.className = "chat-suggestions";
-    const hint = document.createElement("div");
-    hint.className = "hint";
-    hint.textContent = state.email
-      ? t(
-          "Ask about the mail on {email}, or say what to do with it. Everything it changes can be undone, and it never sends mail itself.",
-          { email: state.email },
-        )
-      : t("Choose a mail account first.");
-    box.append(hint);
-    for (const text of suggestions) {
+    const title = document.createElement("h3");
+    title.textContent = t("Your mail at a glance");
+    const account = document.createElement("p");
+    account.className = "chat-account";
+    account.textContent = state.email || t("Choose a mail account first.");
+    box.append(title, account);
+    const add = (parent, label, prompt) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = text;
+      button.textContent = label;
+      button.disabled = !state.email;
       button.onclick = () => {
-        assistant.input.value = text;
-        sendToAssistant();
+        assistant.input.value = prompt;
+        assistant.input.focus();
       };
-      box.append(button);
+      parent.append(button);
+    };
+    if (suggestions === SUGGESTIONS) {
+      const actions = document.createElement("div");
+      actions.className = "chat-start-actions";
+      add(actions, t("Find what matters"), t("Show important messages and open requests with reasons. Do not change anything yet."));
+      add(actions, t("Prepare replies"), t("Draft replies to the support requests from this week — I'll check them."));
+      add(actions, t("Tidy up"), t("Suggest messages to archive or review as spam. Show your reasons; do not move or delete anything yet."));
+      const more = document.createElement("details");
+      more.className = "chat-more";
+      const summary = document.createElement("summary");
+      summary.textContent = t("More suggestions");
+      more.append(summary);
+      for (const prompt of suggestions) add(more, prompt, prompt);
+      box.append(actions, more);
+    } else {
+      for (const prompt of suggestions) add(box, prompt, prompt);
     }
     assistant.log.append(box);
   }
@@ -243,13 +256,121 @@ async function showAssistantModel(reply = null) {
     }
   }
   if (!model) return;
-  note.textContent = local
-    ? t(
-        "{model}, on this computer. A small model may miss things; a larger one (Settings → Models → Assistant) does better.",
-        { model },
-      )
+  const details = document.createElement("details");
+  const summary = document.createElement("summary");
+  const label = model.startsWith("claude-") ? "Claude" : model;
+  summary.textContent = `${label} · ${local ? t("Local") : t("Online")}`;
+  const explanation = document.createElement("p");
+  explanation.textContent = local
+    ? t("{model} runs on this computer. Mail processed here stays local.", { model })
     : t("{model}, hosted: what the assistant reads is sent to that service.", { model });
+  details.append(summary, explanation);
+  let loaded = false;
+  details.addEventListener("toggle", () => {
+    if (details.open && !loaded) {
+      loaded = true;
+      assistantModelPicker(details);
+    }
+  });
+  note.replaceChildren(details);
   note.classList.toggle("warn", !local);
+}
+
+/// Changes only the assistant's saved choice. Loading a list never changes it.
+async function assistantModelPicker(details) {
+  const box = document.createElement("fieldset");
+  box.className = "chat-model-picker";
+  box.disabled = assistant.busy || assistant.modelChanging;
+  const status = document.createElement("p");
+  status.setAttribute("role", "status");
+  status.textContent = t("Loading…");
+  details.append(box, status);
+  try {
+    const [providers, tasks] = await Promise.all([invoke("ai_providers"), invoke("ai_tasks")]);
+    if (!details.isConnected) return;
+    const current = tasks.find((job) => job.task === "assistant");
+    const provider = document.createElement("select");
+    provider.id = "chat-provider";
+    const choice = document.createElement("select");
+    choice.id = "chat-model-choice";
+    const manual = document.createElement("input");
+    manual.id = "chat-model-name";
+    manual.setAttribute("aria-label", t("Model name"));
+    manual.placeholder = t("Model name");
+    manual.hidden = true;
+    const save = document.createElement("button");
+    save.id = "chat-model-save";
+    save.type = "button";
+    save.textContent = t("Use model");
+    save.disabled = true;
+    const privacy = document.createElement("p");
+    const label = (text, field) => {
+      const node = document.createElement("label");
+      node.textContent = t(text);
+      node.append(field);
+      return node;
+    };
+    box.append(label("Provider", provider), label("Model", choice), manual, privacy, save);
+    for (const item of providers) provider.append(new Option(`${item.label} · ${item.local ? t("Local") : t("Online")}`, String(item.id)));
+    provider.value = String(current?.provider_id ?? providers[0]?.id);
+    let request = 0;
+    const selectedModel = () => choice.value || manual.value.trim();
+    const load = async (keep = "") => {
+      const ticket = ++request;
+      const id = Number(provider.value);
+      choice.replaceChildren();
+      choice.disabled = true;
+      manual.value = "";
+      manual.hidden = true;
+      save.disabled = true;
+      status.textContent = t("Loading…");
+      const local = providers.find((item) => item.id === id)?.local === true;
+      privacy.textContent = local ? t("Mail processed here stays on this computer.") : t("Chat history and mail the assistant reads are sent to this service.");
+      privacy.classList.toggle("warn", !local);
+      try {
+        const offered = await offeredBy(id, { fresh: true });
+        if (ticket !== request || !details.isConnected) return;
+        for (const model of offered) {
+          if (!model.embedding) choice.append(new Option(model.name, model.name));
+        }
+        status.textContent = t("Applies to the assistant from the next message.");
+      } catch (err) {
+        if (ticket !== request || !details.isConnected) return;
+        status.textContent = String(err);
+      }
+      choice.append(new Option(t("Enter model name…"), ""));
+      choice.value = keep && [...choice.options].some((option) => option.value === keep) ? keep : "";
+      manual.value = keep;
+      manual.hidden = Boolean(choice.value);
+      choice.disabled = false;
+      save.disabled = !selectedModel();
+    };
+    provider.onchange = () => load();
+    choice.onchange = () => {
+      manual.hidden = Boolean(choice.value);
+      save.disabled = !selectedModel();
+    };
+    manual.oninput = () => { save.disabled = !selectedModel(); };
+    save.onclick = async () => {
+      if (assistant.busy || assistant.modelChanging || !selectedModel()) return;
+      assistant.modelChanging = true;
+      box.disabled = true;
+      el("chat-send").disabled = true;
+      try {
+        await invoke("set_ai_task", { task: "assistant", providerId: Number(provider.value), model: selectedModel() });
+        await showAssistantModel();
+      } catch (err) {
+        status.textContent = String(err);
+      } finally {
+        assistant.modelChanging = false;
+        box.disabled = assistant.busy;
+        el("chat-send").disabled = assistant.busy;
+      }
+    };
+    await load(current?.model ?? "");
+  } catch (err) {
+    status.textContent = String(err);
+  }
 }
 
 function appendChat(className, text) {
@@ -327,7 +448,7 @@ function inline(text) {
 /// the messages it was about.
 async function sendToAssistant(again = null) {
   const text = again ? again.text : assistant.input.value.trim();
-  if (!text || assistant.busy) return;
+  if (!text || assistant.busy || assistant.modelChanging) return;
   if (state.account === null || state.postbox) {
     say(t("choose a mail account first"), true);
     return;
@@ -336,6 +457,7 @@ async function sendToAssistant(again = null) {
   hideHistory();
   assistant.busy = true;
   el("chat-send").disabled = true;
+  assistant.panel.querySelectorAll(".chat-model-picker").forEach((box) => { box.disabled = true; });
   if (!again) assistant.input.value = "";
   // Asked with the messages that were attached; from now on they are part of
   // the conversation, so the bar empties.
@@ -360,6 +482,7 @@ async function sendToAssistant(again = null) {
     assistant.log.scrollTop = assistant.log.scrollHeight;
   });
   const account = state.account;
+  let invoiceProposal=null;
   try {
     const result = await invoke("assistant_ask", {
       account,
@@ -389,6 +512,9 @@ async function sendToAssistant(again = null) {
       await reload({ keepPosition: true });
       await refreshAssistantBadge();
     }
+    const collections=result.events.filter(e=>e.kind==="invoice_collection_suggested");
+    // A live answer can open one preview. Replaying history only renders cards.
+    if(collections.length===1 && assistant.account===account && state.account===account)invoiceProposal=collections[0].proposal;
   } catch (err) {
     thinking.remove();
     // The question stays asked and the conversation as it was, so Retry
@@ -404,7 +530,12 @@ async function sendToAssistant(again = null) {
   } finally {
     assistant.busy = false;
     el("chat-send").disabled = false;
+    assistant.panel.querySelectorAll(".chat-model-picker").forEach((box) => { box.disabled = false; });
     assistant.input.focus();
+  }
+  if(invoiceProposal && ![...document.querySelectorAll(".sheet")].some(sheet=>!sheet.hidden)) {
+    try { await openAssistantInvoiceCollection(invoiceProposal); }
+    catch(error) { say(String(error),true); }
   }
 }
 
@@ -566,6 +697,15 @@ function showEvent(event) {
     case "remembered":
       assistant.log.append(rememberedCard(event));
       break;
+    case "filing_suggested":
+      assistant.log.append(filingSuggestionCard(event.proposal));
+      break;
+    case "invoice_collection_suggested":
+      assistant.log.append(invoiceCollectionCard(event.proposal));
+      break;
+    case "attention_suggested":
+      assistant.log.append(attentionSuggestionCard(event));
+      break;
     case "skill_downloaded":
       assistant.log.append(skillCard(event));
       break;
@@ -610,6 +750,17 @@ function cardButton(actions, label, action, className = "") {
   return button;
 }
 
+function invoiceCollectionCard(proposal) {
+  const {box,actions}=card(`${t("Collect invoices")} · ${proposal.profile_name}`,
+    t("Invoice dates {from} to {to}. One joint preview for this profile; files are saved only after your approval.",{from:proposal.from,to:proposal.to}));
+  box.classList.add("invoice-collection-card");
+  cardButton(actions,t("Open joint preview"),async button=>{
+    try { await openAssistantInvoiceCollection(proposal); }
+    finally { button.disabled=false; }
+  });
+  return box;
+}
+
 /// A note the assistant kept, with the way to take it back.
 function rememberedCard(event) {
   const { box, actions } = card(t("Remembered"), event.text);
@@ -619,6 +770,21 @@ function rememberedCard(event) {
     button.textContent = t("Forgotten");
   });
   cardButton(actions, t("All notes"), async () => openSettings("memory"));
+  return box;
+}
+
+function attentionSuggestionCard(event) {
+  const email = state.accounts.find(a => a.id === event.account)?.email ?? String(event.account);
+  const labels = {priority_words:"Personal topics to review",due_words:"Deadline terms",pay_words:"Payment terms"};
+  const {box, actions} = card(t("Suggested attention criteria"), `${email} · ${t(labels[event.group] ?? event.group)}: ${event.words.join(", ")} — ${event.reason}`);
+  cardButton(actions, t("Apply suggestion"), async button => {
+    if (!Object.hasOwn(labels, event.group)) throw new Error("Unknown keyword group");
+    const {settings} = await invoke("attention_settings", {account:event.account});
+    settings[event.group] = [...new Set([...settings[event.group], ...event.words])];
+    await saveAttentionCriteria(event.account, settings);
+    button.textContent = t("Applied");
+    box.classList.add("done");
+  });
   return box;
 }
 
@@ -917,7 +1083,8 @@ async function openReplyInCompose(messageId, body) {
   await refreshEnvelope();
 }
 
-el("chat-send").onclick = sendToAssistant;
+// A click event is not the saved { text, about, error } used by Retry.
+el("chat-send").onclick = () => sendToAssistant();
 assistant.input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();

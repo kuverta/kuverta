@@ -11,6 +11,7 @@ body { display: grid; grid-template-rows: auto 1fr; }
 
 #bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 7px 12px;
@@ -20,6 +21,9 @@ body { display: grid; grid-template-rows: auto 1fr; }
 #bar a { color: inherit; text-decoration: none; }
 #bar a:hover { text-decoration: underline; }
 #bar .bar-hint { flex: 1; color: GrayText; font-size: 12px; }
+#bar .ku-unread { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+#bar .ku-unread:has(:checked) { color: #1d6b6f; font-weight: 600; }
+#bar .ku-unread[hidden] { display: none; }
 #root { min-height: 0; position: relative; }
 
 /* Over the list and the reading pane, leaving the sidebar — where the entry

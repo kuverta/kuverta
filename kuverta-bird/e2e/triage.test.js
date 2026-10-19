@@ -176,6 +176,28 @@ test('hidden things are off screen, not merely marked hidden', async () => {
 
 // -- keys --------------------------------------------------------------------
 
+test('unread filter stays active across folders and search, and can be cleared without losing the search', async () => {
+  const { page, context, problems } = await open();
+  await page.locator('#unread-only').check();
+  await page.waitForFunction(() => document.querySelectorAll('.fb-row:not([hidden])').length === 3);
+  await page.getByRole('button', {name:'Inbox',exact:true}).click();
+  await page.waitForFunction(() => document.querySelectorAll('.fb-row:not([hidden])').length === 3);
+  assert.equal(await page.locator('#unread-only').isChecked(), true);
+  await page.locator('#fb-search').fill('Message 01');
+  await page.locator('#fb-search').press('Enter');
+  await page.waitForSelector('#fb-empty-list', {state:'visible'});
+  await page.locator('#unread-only').uncheck();
+  await page.waitForFunction(() => document.querySelectorAll('.fb-row:not([hidden])').length === 1);
+  assert.match(await selectedSubject(page), /Message 01/);
+  assert.equal(await page.locator('#fb-search').inputValue(), 'Message 01');
+  await page.locator('.fb-extra').click();
+  assert.equal(await page.locator('#unread-only').isVisible(), false);
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('#unread-only').isVisible(), true);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
 test('the cursor stays on screen as it moves through a long list', async () => {
   // Needs real element heights, which jsdom reports as zero.
   const { page, context } = await open({ count: 120 });
