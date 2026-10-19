@@ -1,0 +1,5 @@
+[all]
+# SPI for the LCD and its touch controller.
+dtparam=spi=on
+# The 3.5" ILI9486 panel. rotate=90 is upside down in the rig's case.
+dtoverlay=piscreen,speed=24000000,rotate=270

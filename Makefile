@@ -7,7 +7,7 @@ DEV_ENV := KUVERTA_INSTANCE=dev KUVERTA_DATA_DIR=.devdata
 .PHONY: help dev-up dev-down dev-reset dev-logs dev-shell ai-up ai-model \
         paperless-up build test test-all lint fmt check e2e app app-real \
         triage-ui triage test-js test-e2e audit fuzz fuzz-list \
-        fill-mailbox fill-dev scannerd-pi scannerd-to-pi bundle release clean audit-workflows
+        fill-mailbox fill-dev scannerd-pi scannerd-to-pi rig-setup rig-backup bundle release clean audit-workflows
 
 help: ## Show this help
 	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) | sort | \
@@ -215,6 +215,25 @@ scannerd-to-pi: scannerd-pi ## Copy scannerd and its unit file to ~/scannerd on 
 	scp apps/scannerd/scannerd.service apps/scannerd/scannerd.env.example $(PI_HOST):scannerd/
 	ssh $(PI_HOST) 'mv scannerd/scannerd.new scannerd/scannerd'
 	@echo "  -> on the Pi: ~/scannerd/scannerd --help; installing is in apps/scannerd/readme.md"
+
+# The rig: a Pi 4 on 64-bit Raspberry Pi OS running scannerd and Paperless.
+# Everything on it but its data and secrets is in apps/scannerd/rig.
+RIG_HOST ?= pi@scannerpi.local
+RIG_TARGET = aarch64-unknown-linux-gnu.2.36
+RIG_BACKUPS ?= $(HOME)/Backups/kuverta-rig
+
+rig-setup: ## Build scannerd and set the rig up from apps/scannerd/rig (RIG_HOST=)
+	$(MAKE) scannerd-pi PI_TARGET=$(RIG_TARGET)
+	ssh $(RIG_HOST) 'rm -rf kuverta-rig'
+	scp -r apps/scannerd/rig $(RIG_HOST):kuverta-rig
+	scp target/aarch64-unknown-linux-gnu/release/scannerd apps/scannerd/scannerd.service $(RIG_HOST):kuverta-rig/
+	ssh -t $(RIG_HOST) 'sudo sh kuverta-rig/setup.sh'
+
+rig-backup: ## Copy the rig's data and logs (spool, Paperless export) to RIG_BACKUPS
+	mkdir -p $(RIG_BACKUPS) && chmod 700 $(RIG_BACKUPS)
+	scp apps/scannerd/rig/backup.sh $(RIG_HOST):kuverta-rig-backup.sh
+	ssh $(RIG_HOST) 'sudo sh kuverta-rig-backup.sh' >$(RIG_BACKUPS)/rig-$$(date +%Y-%m-%d-%H%M).tar.gz
+	@ls -l $(RIG_BACKUPS) | tail -3
 
 clean: ## Remove build output and the scratch store
 	cargo clean
