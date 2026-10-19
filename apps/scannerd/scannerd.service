@@ -20,6 +20,9 @@ User=scannerd
 # e-paper display; nothing else is needed.
 SupplementaryGroups=video input spi gpio
 EnvironmentFile=/etc/scannerd.env
+# The token and the setup page's password, if they are kept apart from the
+# settings — as on the rig, whose settings are in the repo (rig/).
+EnvironmentFile=-/etc/scannerd.secrets
 # The URL, token, tags, button, crop and spool come from the environment;
 # anything else from SCANNERD_ARGS, which systemd splits on spaces. It used to
 # be left off this line, and the crop was not read from the environment at all,

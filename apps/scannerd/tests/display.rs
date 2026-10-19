@@ -598,7 +598,7 @@ fn scanning_shows_the_camera_and_the_last_page_and_offers_to_finish() {
         last: Some(&last),
         ..facts("photographed")
     });
-    assert_eq!(screen.headline, "Scanned - next page?");
+    assert_eq!(screen.headline, "Page 2 added - next page?");
     assert_eq!(
         screen.buttons,
         vec![
@@ -614,13 +614,46 @@ fn scanning_shows_the_camera_and_the_last_page_and_offers_to_finish() {
 }
 
 #[test]
+fn the_first_page_of_a_letter_says_a_new_letter_started() {
+    let last = photographed(990, vec![]);
+    let filings = filed(Outcome::Folders(vec![Folder::named("Car")]));
+    let screen = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 1,
+        last: Some(&last),
+        filing: filings.latest(),
+        ..facts("photographed")
+    });
+    assert_eq!(screen.headline, "New letter started - page 1");
+    // And the one before is still where it went, so the two are not one.
+    assert_eq!(
+        screen.last_letter,
+        Some((scannerd::display::Tone::Folder, "Last letter: Car".into()))
+    );
+}
+
+#[test]
+fn a_page_to_check_says_which_page_it_is() {
+    let last = photographed(990, vec![Problem::Blurry]);
+    let screen = Screen::for_facts(&Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 3,
+        last: Some(&last),
+        ..facts("photographed")
+    });
+    assert_eq!(screen.headline, "Check page 3 - next page?");
+}
+
+#[test]
 fn scanning_with_nothing_photographed_yet_only_offers_to_stop() {
     let screen = Screen::for_facts(&Facts {
         touch: true,
         scanning: true,
         ..facts("waiting")
     });
-    assert_eq!(screen.headline, "Put a page down");
+    assert_eq!(screen.headline, "New letter: put page 1 down");
     assert_eq!(screen.buttons, vec![Action::StopScanning]);
     assert_eq!(Action::FinishLetter(1).label(), "Finish letter (1 page)");
 }
@@ -661,7 +694,7 @@ fn an_envelope_says_so_and_the_last_letter_stays_in_sight() {
         filing: filings.latest(),
         ..facts("photographed")
     });
-    assert_eq!(screen.headline, "Envelope - now the letter in it");
+    assert_eq!(screen.headline, "New letter: its envelope");
     assert_eq!(
         screen.verdict,
         Some((true, "Envelope: a new letter".into()))
