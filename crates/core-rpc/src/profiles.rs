@@ -68,7 +68,8 @@ impl Core {
     }
 
     pub fn delete_profile(&self, id: i64) -> Result<()> {
-        self.store().set_preference(&format!("invoice.root.{id}"), "")?;
+        self.store()
+            .set_preference(&format!("invoice.root.{id}"), "")?;
         Ok(self.store().delete_profile(id)?)
     }
 

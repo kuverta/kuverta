@@ -467,7 +467,11 @@ fn date_folder_junction_cannot_redirect_invoice_exports() {
         .arg(&outside)
         .output()
         .unwrap();
-    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
     let p = preview(&w, w.profile);
     assert!(w
         .core
