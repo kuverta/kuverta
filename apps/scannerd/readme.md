@@ -498,6 +498,10 @@ sudo systemctl enable --now scannerd
 journalctl -u scannerd -f
 ```
 
+The rig itself — a Pi 4 with the LCD, and Paperless on the same Pi — is set up
+from [`rig/`](rig/readme.md) with `make rig-setup` instead, and nothing on it
+but its data and secrets is kept anywhere else.
+
 ## Without a Pi
 
 `tools/rpicam-still-ffmpeg` answers the two `rpicam-still` calls `scannerd`

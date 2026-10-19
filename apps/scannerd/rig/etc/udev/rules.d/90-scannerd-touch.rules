@@ -1,0 +1,2 @@
+# The touch controller on SPI0 CS1 goes to spidev, for scannerd to poll.
+ACTION=="add", SUBSYSTEM=="spi", KERNEL=="spi0.1", ATTR{driver_override}="spidev", RUN+="/sbin/modprobe spidev", RUN+="/bin/sh -c 'echo spi0.1 > /sys/bus/spi/drivers/spidev/bind || true'"

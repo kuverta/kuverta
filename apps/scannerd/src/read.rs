@@ -164,8 +164,12 @@ fn read_page(program: &str, languages: &str, page: &PathBuf, how: Layout) -> Res
         .arg("stdout")
         .args(["-l", languages])
         .args(["--psm", how.psm()])
-        // Three of the Pi's four cores: the fourth keeps watching the table.
-        .env("OMP_THREAD_LIMIT", "3")
+        // One thread. More are a second faster on an idle Pi, but the rig
+        // runs Paperless too, and while it reads the last letter a page took
+        // 26 s with tesseract's threads waiting on each other for cores —
+        // or a minute, and was given up on, and the letter matched no folder.
+        // On one thread it is 5 s either way.
+        .env("OMP_THREAD_LIMIT", "1")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()

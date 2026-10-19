@@ -230,7 +230,10 @@ impl Screen {
                     Some(seconds) => format!("Next page? Finishing in {seconds}s"),
                     None => "Next page, or finish".into(),
                 },
-                ("waiting", _) => "Put a page down".into(),
+                // Where one letter ends and the next begins is said in so
+                // many words: "Scanned" on every page left it to be worked
+                // out from a page count, and two letters ran into one.
+                ("waiting", _) => "New letter: put page 1 down".into(),
                 // The last page left lying: the letter finishes all the same.
                 ("photographed", _) if facts.open_pages > 0 && facts.finishing_in.is_some() => {
                     format!(
@@ -242,8 +245,14 @@ impl Screen {
                 ("photographed", _) if facts.last.is_some_and(|last| !last.kept) => {
                     "That was the table - not kept".into()
                 }
-                ("photographed", _) if envelope => "Envelope - now the letter in it".into(),
-                ("photographed", _) => format!("{} - next page?", screen.headline),
+                ("photographed", _) if envelope => "New letter: its envelope".into(),
+                ("photographed", "Check scan") => {
+                    format!("Check page {} - next page?", facts.open_pages)
+                }
+                ("photographed", _) if facts.open_pages <= 1 => {
+                    "New letter started - page 1".into()
+                }
+                ("photographed", _) => format!("Page {} added - next page?", facts.open_pages),
                 (_, headline) => headline.to_string(),
             };
             screen.detail.clear();
