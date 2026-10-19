@@ -740,8 +740,10 @@ mod tests {
                 .is_empty(),
             "default bulk exclusion"
         );
-        let mut settings = AttentionSettings::default();
-        settings.priority_words = vec!["  ÜBERPRÜFUNG ".into(), "überprüfung".into()];
+        let mut settings = AttentionSettings {
+            priority_words: vec!["  ÜBERPRÜFUNG ".into(), "überprüfung".into()],
+            ..AttentionSettings::default()
+        };
         let saved = core.set_attention_settings(accounts[0], &settings).unwrap();
         assert_eq!(saved.priority_words, ["überprüfung"]);
         assert_eq!(

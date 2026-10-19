@@ -325,19 +325,17 @@ fn dkim(name: String, records: Vec<String>) -> Check {
             Ok(values) => {
                 if values.get("v").is_some_and(|v| *v != "DKIM1")
                     || (values.contains_key("v")
-                        && !record
+                        && record
                             .split(';')
                             .next()
                             .and_then(|v| v.trim().split_once('='))
-                            .is_some_and(|(k, _)| k.trim() == "v"))
+                            .is_none_or(|(k, _)| k.trim() != "v"))
                 {
                     result.note("error", "Invalid DKIM version tag or tag order.");
                 }
                 match values.get("p") {
                     None => result.note("error", "The DKIM public key (p) is missing."),
-                    Some(key) if key.is_empty() => {
-                        result.note("error", "This DKIM key has been revoked (empty p).")
-                    }
+                    Some(&"") => result.note("error", "This DKIM key has been revoked (empty p)."),
                     Some(key) => {
                         let compact: String =
                             key.chars().filter(|c| !c.is_ascii_whitespace()).collect();

@@ -2,7 +2,9 @@
 //! locked down before it looks, and that a worker that hangs, dies or lies
 //! gets nothing past the caller.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+#[cfg(unix)]
+use std::time::Instant;
 
 use core_rpc::preview::{self, SafePreview, Worker};
 
