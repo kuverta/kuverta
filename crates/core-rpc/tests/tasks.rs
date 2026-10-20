@@ -226,6 +226,101 @@ fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
     }
 }
 
+#[test]
+fn headers_scan_pages_a_large_unread_backlog_without_exposing_body_or_snippet() {
+    let (core, account, _dir) = mailbox("header-scan");
+    let folder = core
+        .store()
+        .upsert_folder(account, "Backlog", None)
+        .unwrap();
+    for n in 0..1003 {
+        core.store()
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("scan-{n}@example.test")),
+                    subject: Some(format!("Subject {n}")),
+                    from_name: Some("Sender name".into()),
+                    from_addr: Some("actual-address@example.test".into()),
+                    date_utc: Some(1_000_000 + n),
+                    snippet: Some("PRIVATE SNIPPET MUST NOT BE SENT".into()),
+                    search_text: Some("PRIVATE BODY MUST NOT BE SENT".into()),
+                    body_path: Some("not-present.eml".into()),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: folder,
+                    uid: n as u32 + 1,
+                    flags: if n < 3 {
+                        "\\Seen".into()
+                    } else {
+                        String::new()
+                    },
+                }),
+            )
+            .unwrap();
+    }
+    let mut offset = 0;
+    let mut seen = std::collections::HashSet::new();
+    loop {
+        let result = core.assistant_tool(
+            account,
+            &call(
+                "scan_mail_headers",
+                json!({"folder":"Backlog","offset":offset,"limit":9999}),
+            ),
+        );
+        assert!(!result.content.contains("PRIVATE"));
+        assert!(!result.content.contains("first_line"));
+        assert!(!result.content.contains("not-present.eml"));
+        let page: serde_json::Value = serde_json::from_str(&result.content).unwrap();
+        assert_eq!(page["total"], 1000);
+        assert_eq!(page["body_reads"], 0);
+        assert_eq!(page["returned"], 200);
+        for row in page["messages"].as_array().unwrap() {
+            assert!(
+                seen.insert(row["id"].as_i64().unwrap()),
+                "no duplicate pages"
+            );
+            assert_eq!(row["from_address"], "actual-address@example.test");
+            assert_eq!(row["unread"], true);
+        }
+        let Some(next) = page["next_offset"].as_u64() else {
+            break;
+        };
+        offset = next;
+    }
+    assert_eq!(seen.len(), 1000);
+    let invalid = core.assistant_tool(
+        account,
+        &call("scan_mail_headers", json!({"folder":"Missing"})),
+    );
+    assert!(matches!(invalid.event, Some(AssistantEvent::Failed { .. })));
+}
+
+#[test]
+fn attention_proposals_do_not_change_settings_until_applied() {
+    let (core, account, _dir) = mailbox("attention-proposal");
+    let original = core.attention_settings(account).unwrap();
+    let result = core.assistant_tool(account, &call("suggest_attention_words",json!({
+        "group":"priority_words","words":["  Shopify  ","shopify"],"reason":"Shop outages need a review."
+    })));
+    assert!(
+        matches!(result.event, Some(AssistantEvent::AttentionSuggested { account:a, words, .. }) if a == account && words == ["shopify"])
+    );
+    assert_eq!(core.attention_settings(account).unwrap(), original);
+    let invalid = core.assistant_tool(
+        account,
+        &call(
+            "suggest_attention_words",
+            json!({
+                "group":"invalid","words":["shopify"],"reason":"x"
+            }),
+        ),
+    );
+    assert!(matches!(invalid.event, Some(AssistantEvent::Failed { .. })));
+}
+
 /// "Put the application mail in a new folder and tell me which replies are
 /// positive" reads a folder's worth of mail in one round, not one per
 /// message — and a folder made a moment ago is one a move can go to.

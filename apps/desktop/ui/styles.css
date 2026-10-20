@@ -31,6 +31,7 @@
   --amber: #e9a23b;
   --amber-fg: #3a2606;
   --selected: #e2e0db;
+  --unread-bg: #eef0f0;
   --error: #c2362c;
   --ok: #2e8b57;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 8px 24px rgb(0 0 0 / 0.08);
@@ -53,6 +54,7 @@
     --amber: #eaa843;
     --amber-fg: #2b1c03;
     --selected: #2b3234;
+    --unread-bg: #292f30;
     --error: #ff6b61;
     --ok: #5cc98a;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
@@ -491,6 +493,7 @@ footer .keys {
 }
 
 #scope .scope-name { color: var(--fg); font-weight: 600; }
+#scope #list-unread-filter.active, #scope #list-threads.active { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
 
 #viewport {
   position: relative;
@@ -533,6 +536,7 @@ footer .keys {
 /* Pool rows past the end of a short list are hidden, and `display: grid`
    would otherwise beat the attribute and leave the last list's rows showing. */
 .row[hidden] { display: none; }
+.highlight-unread .row:has(.dot.on):not(.selected):not(.picked) { background: var(--unread-bg); }
 .row.selected { background: var(--accent); color: var(--accent-fg); }
 .row.pending { opacity: 0.4; }
 
@@ -614,6 +618,16 @@ footer .keys {
   min-height: 0;
 }
 
+#mail-thread { padding: 14px 20px; overflow-y: auto; min-height: 0; }
+#mail-thread[hidden] { display: none; }
+#mail-thread-title { font-size: 16px; overflow-wrap: anywhere; }
+.mail-thread-entry { border: 1px solid var(--line); border-radius: 8px; margin: 12px 0; padding: 12px; background: var(--raised); }
+.mail-thread-entry summary { cursor: pointer; overflow-wrap: anywhere; }
+.mail-thread-entry summary strong { margin-right: 12px; }
+.mail-thread-preview { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 6px; }
+.mail-thread-entry[open] .mail-thread-preview { display: none; }
+.mail-thread-body { white-space: pre-wrap; overflow-wrap: anywhere; margin: 16px 0; }
+
 .reading-actions {
   display: flex;
   /* Wraps rather than clipping: with the assistant open the pane is narrow,
@@ -671,7 +685,8 @@ footer .keys {
 .attachment-chip.risky .name { color: var(--error); }
 .attachment-more { font-size: 12px; }
 
-.viewer-panel { width: min(860px, 94vw); height: min(760px, 90vh); }
+.dialog-panel.viewer-panel { width: min(860px, 94vw); height: min(760px, 90vh); }
+.viewer-panel .dialog-foot { flex-wrap: wrap; }
 .viewer-panel .dialog-head h2 { overflow-wrap: anywhere; }
 
 .viewer-body {
@@ -1503,6 +1518,9 @@ label.check.hint { color: var(--muted); font-size: 11.5px; white-space: nowrap; 
    this computer is worth noticing, so that note is not grey. */
 #ai-form p.ai-note:empty { display: none; }
 #ai-form p.ai-note.warn { color: var(--error); }
+#ai-form input[hidden] { display: none !important; }
+#ai-form .row3 > label { min-width: 0; }
+#ai-form select { width: 100%; }
 
 #provider-models { border-collapse: collapse; font-size: 12px; }
 #provider-models[hidden] { display: none; }
@@ -1965,6 +1983,11 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 #conversation-files { padding: 8px 16px 0; }
 .conversation-hint { padding: 2px 20px 10px; }
 
+.filing-structure { max-height: 180px; overflow: auto; white-space: pre-wrap; }
+.filing-proposal .card-sub { white-space: pre-wrap; overflow-wrap: anywhere; }
+#attachment-filing { width: 100%; padding: 12px; border-top: 1px solid var(--line); }
+#filing-root, #attachment-filing-folder { width: 100%; }
+
 /* -- profiles ------------------------------------------------------------- */
 
 .profile-bar {
@@ -2024,6 +2047,8 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 
 #assistant {
   flex: 1;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 0;
@@ -2033,6 +2058,7 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 
 .assistant-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
@@ -2050,7 +2076,7 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 
 .assistant-tabs button.active { background: var(--raised); border-color: var(--line-strong); font-weight: 600; }
 
-.assistant-pane { display: grid; grid-template-rows: 1fr auto auto; min-height: 0; }
+.assistant-pane { min-width: 0; grid-template-columns: minmax(0, 1fr); display: grid; grid-template-rows: 1fr auto auto; min-height: 0; }
 .assistant-pane[hidden] { display: none !important; }
 #assistant-tasks { grid-template-rows: 1fr; }
 
@@ -2155,7 +2181,13 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 .signature-paper img { max-height: 96px; max-width: 100%; align-self: flex-start; }
 .signature-caption { font-size: 11px; font-family: Helvetica, Arial, sans-serif; }
 
-.chat-suggestions { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+.chat-suggestions { display: flex; flex-direction: column; gap: 16px; margin: auto 0; padding: 24px 4px; }
+.chat-suggestions h3 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -.3px; }
+.chat-account { margin: -8px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.chat-start-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.chat-start-actions button { border-radius: 10px; padding: 11px 13px; background: var(--bg); }
+.chat-more summary { color: var(--muted); cursor: pointer; font-size: 12px; }
+.chat-more button { display: block; width: 100%; margin-top: 8px; padding: 9px 12px; }
 .chat-suggestions .hint { margin-bottom: 2px; }
 .chat-suggestions button { text-align: left; white-space: normal; font-size: 12.5px; }
 
@@ -2167,10 +2199,18 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
   border-top: 1px solid var(--line);
 }
 
-.chat-compose textarea { flex: 1; resize: none; border-radius: 14px; padding: 7px 12px; max-height: 140px; background: var(--bg); }
+.chat-compose textarea { min-width: 0; flex: 1; resize: none; border-radius: 14px; padding: 12px 14px; min-height: 88px; max-height: 160px; background: var(--bg); }
 .chat-compose button { border-radius: 14px; }
 .chat-model { padding: 2px 12px 8px; }
 .chat-model.warn { color: var(--error); }
+.chat-model summary { cursor: pointer; width: fit-content; font-size: 11.5px; }
+.chat-model p { margin: 8px 0 0; line-height: 1.5; overflow-wrap: anywhere; }
+.chat-model-picker { border: 0; padding: 8px 0 0; margin: 0; display: grid; gap: 8px; min-width: 0; color: var(--fg); }
+.chat-model-picker label { display: grid; gap: 3px; min-width: 0; }
+.chat-model-picker select, .chat-model-picker input { width: 100%; min-width: 0; }
+.chat-model-picker input[hidden] { display: none; }
+.chat-model-picker .warn { color: var(--error); }
+.chat-model-picker button { justify-self: start; }
 
 .assistant-scroll { overflow-y: auto; min-height: 0; padding: 10px 12px 16px; }
 .assistant-section { margin-bottom: 18px; }
@@ -2409,5 +2449,49 @@ button.sender-msg:hover { background: var(--selected); border-color: transparent
 
 /* A question asked over whatever is open, a settings sheet included. */
 .sheet.dialog.ask-sheet { z-index: 60; }
+#invoice-sheet { z-index: 29; }
+.dialog-panel.invoice-panel { width: min(1040px, 96vw); height: min(900px, 94vh); }
+.invoice-panel .dialog-foot { flex-wrap: wrap; gap: 10px; }
+.invoice-panel .dialog-body { overflow-y: auto; }
+.invoice-panel label { display: flex; flex-direction: column; gap: 5px; }
+.invoice-panel label.check { flex-direction: row; justify-content: flex-start; gap: 8px; }
+.invoice-panel label.check input { order: -1; width: auto; }
+.invoice-panel .error { color: var(--error); }
+.invoice-panel input[type="text"], .invoice-panel input[type="search"] { min-width: 180px; width: 100%; }
+.invoice-fields { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 12px 0; }
+.invoice-row, .invoice-receipt { padding: 16px; margin: 12px 0; border: 1px solid var(--line); border-radius: 9px; }
+.invoice-row p, .invoice-destination, .invoice-receipt p, #invoice-accounts { white-space: pre-wrap; overflow-wrap: anywhere; }
+.invoice-warning { color: #935415; }
+.invoice-mail { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+#invoice-rows { margin-top: 12px; }
 .ask-panel { width: min(440px, 92vw); }
 #ask-question { margin: 4px 0 0; line-height: 1.5; white-space: pre-line; }
+/* DNS publication is not a successful sending test. Keep presence neutral. */
+.domain-check > label { display: block; margin: .7rem 0; }
+.domain-check > label input { display: block; width: 100%; margin-top: .25rem; }
+.domain-check-results { margin-top: .75rem; }
+.domain-checked-name { font-weight: 600; }
+.domain-check-item { border-top: 1px solid var(--line); padding: .65rem 0; }
+.domain-check-item p { margin: .3rem 0; }
+.domain-check-item code, .domain-check-item pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85em; }
+.domain-check-item.error > strong { color: #a32626; }
+.domain-check-item.warning > strong, .domain-check-item.missing > strong { color: #865600; }
+.mail-thread-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.thread-mail-view { white-space: normal; }
+.thread-mail-html { display: block; width: 100%; height: 65vh; min-height: 320px; border: 0; background: white; }
+.thread-mail-html[hidden] { display: none; }
+#mail-navigation { display: inline-flex; gap: 4px; }
+#mail-navigation[hidden] { display: none; }
+#mail-navigation button { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 34px; padding: 6px; }
+#mail-navigation svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.invoice-panel .card-actions { flex-wrap: wrap; }
+#invoice-search { flex: 1 1 240px; width: auto; }
+#invoice-filter { flex: 0 1 auto; max-width: 100%; }
+#invoice-setup-form { display: grid; gap: 16px; max-width: 820px; }
+#invoice-setup-form [hidden] { display: none; }
+.invoice-folder-picker { justify-self: start; margin-top: 6px; }
+.invoice-row-destination { overflow-wrap: anywhere; }
+#invoice-setup-form textarea { min-height: 64px; resize: vertical; }
+.invoice-setup-summary dt { font-weight: 600; margin-top: 12px; }
+.invoice-setup-summary dd { margin: 4px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.invoice-parties { font-weight: 600; }

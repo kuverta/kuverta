@@ -2023,6 +2023,8 @@ fn describe_event(event: &core_rpc::AssistantEvent) -> String {
         E::Looked { what } | E::Failed { what } => what.clone(),
         E::Changed { what, .. } => format!("{what} (queued, undoable)"),
         E::Remembered { id, text } => format!("remembered note {id}: {text}"),
+        E::AttentionSuggested { account, group, words, reason } => format!("suggested {group} for account {account}: {} — {reason}; apply in desktop settings", words.join(", ")),
+        E::FilingSuggested { proposal } => format!("proposed filing {} in {} / {} — confirm in the desktop app; nothing saved", proposal.name, proposal.root, proposal.folder),
         E::SkillDownloaded {
             id, name, source, ..
         } => format!(

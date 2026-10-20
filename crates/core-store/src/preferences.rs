@@ -11,6 +11,14 @@ use rusqlite::{params, OptionalExtension};
 use crate::{Result, Store};
 
 impl Store {
+    /// Criteria and invalidation are atomic, so a failed save keeps the old view.
+    pub fn set_attention_preference(&self, account: crate::AccountId, value: &str) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        self.set_preference(&format!("attention.{account}"), value)?;
+        tx.execute("DELETE FROM urgency WHERE message_id IN (SELECT id FROM message WHERE account_id = ?1)", [account])?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn preference(&self, key: &str) -> Result<Option<String>> {
         self.conn
             .query_row(

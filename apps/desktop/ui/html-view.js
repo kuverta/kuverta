@@ -40,6 +40,55 @@ let mailView = (() => {
 /// The message the frame is about, and what has been allowed for it.
 const mailPage = { account: null, id: null, hasHtml: false, remote: false, loading: 0 };
 
+// Each expanded thread message owns its frame and remote-image consent.
+// It uses the same native sanitizer, sandbox and guarded link events as the
+// individual reader. No sender HTML is inserted into the application DOM.
+const threadPages = new Set();
+function clearThreadMailViews() {
+  for (const page of threadPages) page.dispose();
+  threadPages.clear();
+}
+function threadMailView(detail, account) {
+  const wrap = node("div", {className:"thread-mail-view"});
+  const text = node("div", {className:"mail-thread-text", textContent:detail.body_text ?? t("(no readable body)")});
+  wrap.append(text);
+  if (!detail.has_html) return wrap;
+  const tabs = node("div", {className:"card-actions", role:"tablist"});
+  const frame = node("iframe", {className:"thread-mail-html", title:t("HTML message"), hidden:true});
+  frame.setAttribute("sandbox", "");
+  frame.setAttribute("referrerpolicy", "no-referrer");
+  const remote = node("div", {className:"hint", hidden:true});
+  const note = node("span");
+  let mode = "text", allowed = false, ticket = 0;
+  const load = async () => {
+    const generation = ++ticket;
+    try {
+      const url = await invoke("mail_page_url", {account, id:detail.id, remote:allowed});
+      if (generation === ticket && wrap.isConnected && mode === "html") frame.src = url;
+    } catch (error) { if (generation === ticket) say(String(error), true); }
+  };
+  const pictures = button(t("Show pictures"), () => { allowed = true; remote.hidden = true; load(); });
+  remote.append(note, pictures);
+  for (const value of ["text", "html"]) {
+    const tab = button(value === "html" ? "HTML" : t("Text"), () => {
+      mode = value; text.hidden = mode === "html"; frame.hidden = mode !== "html";
+      for (const b of tabs.children) { b.classList.toggle("active", b === tab); b.setAttribute("aria-selected", String(b === tab)); }
+      if (mode === "html") load();
+      else { ticket++; frame.src = "about:blank"; remote.hidden = true; }
+    });
+    tab.setAttribute("role", "tab");tab.setAttribute("aria-selected", String(value === "text"));
+    tabs.append(tab);
+  }
+  wrap.prepend(tabs);wrap.append(remote, frame);
+  threadPages.add({element:wrap, dispose() {ticket++;mode="text";frame.src="about:blank";}, made(made) {
+    if (made.id !== detail.id || (made.account != null && made.account !== account) || made.remote !== allowed || mode !== "html") return;
+    note.textContent = made.remote ? t("Pictures from the internet are shown for this message.") : t("{count} pictures from the internet are not shown. Showing them tells the sender this message was opened, and when.", {count:made.remote_blocked});
+    pictures.hidden = made.remote;
+    remote.hidden = !made.remote && !made.remote_blocked;
+  }});
+  return wrap;
+}
+
 /// Called with the open message. Shows the tabs when there is a page to
 /// show, and the page when that is the tab chosen.
 function showMailView(detail, account) {
@@ -120,6 +169,10 @@ for (const tab of mailTabs.querySelectorAll("[data-mail]")) {
 
 /// A page was made, and it says how many pictures it left out.
 function pageMade(made) {
+  for (const page of threadPages) {
+    if (!page.element.isConnected) threadPages.delete(page);
+    else page.made(made);
+  }
   if (made.id !== mailPage.id || made.remote !== mailPage.remote) return;
   const note = el("html-remote-note");
   const show = el("html-remote-show");

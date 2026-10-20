@@ -222,6 +222,8 @@ function hideAttachments() {
 }
 
 function clearViewer() {
+  el("attachment-filing").hidden = true;
+  el("attachment-filing").replaceChildren();
   if (viewer.url) URL.revokeObjectURL(viewer.url);
   viewer.url = null;
   for (const id of ["attachment-image", "attachment-pdf"]) {
@@ -281,6 +283,7 @@ async function showSafePreview(generation, first) {
 async function openAttachment(account, messageId, attachment) {
   const generation = ++viewer.generation;
   Object.assign(viewer, { account, messageId, attachment });
+  el("attachment-file").hidden = attachment.document != null || Boolean(attachment.outgoing);
   clearViewer();
   el("attachment-title").textContent = attachment.name;
   el("attachment-sub").textContent = [

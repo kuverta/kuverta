@@ -63,8 +63,8 @@ after(async () => {
   server?.close();
 });
 
-async function openWindow() {
-  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+async function openWindow({ threadSeed = false } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: 'en-US' });
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
@@ -78,21 +78,67 @@ async function openWindow() {
     if (message.type() === 'error') problems.push(message.text());
   });
 
-  await page.addInitScript((fake) => {
+  await page.addInitScript(({fake, threadSeed}) => {
+    // Only the app window needs a bridge, not its sandboxed attachment frames.
+    if (window !== window.top || location.protocol !== 'http:') return;
     try {
       localStorage.clear();
     } catch {
       // A fresh context has nothing to clear.
     }
-    window.__fakeBridge = import(fake).then((module) =>
-      module.fakeInvoke({
-        seed: [...module.defaultSeed(), module.esimMessage()],
+    window.__fakeBridge = import(fake).then((module) => {
+      const seed = [...module.defaultSeed(), module.esimMessage()];
+      if (threadSeed) seed[1].subject = `Re: ${seed[0].subject}`;
+      return module.fakeInvoke({
+        seed,
         paper: { paperMailboxes: [], documents: [] },
-      }),
-    );
+      });
+    });
     window.__TAURI__ = {
       core: {
-        invoke: async (command, args) => (await window.__fakeBridge)(command, args),
+        invoke: async (command, args) => {
+          if (window.threadHtml && command === 'message') return {...await (await window.__fakeBridge)(command,args),has_html:true};
+          if (window.threadHtml && command === 'mail_page_url') {
+            (window.htmlRequests??=[]).push(args);
+            return 'data:text/html,<p>Safe thread preview</p>';
+          }
+          if (window.modelStopped && command === 'find_urgent') {
+            (window.urgencyRequests??=[]).push(args.useModel);
+            return {by_rules:0,by_model:0,model:'local',stopped:args.useModel?'Ollama unavailable':null};
+          }
+          if (window.filingTest && command === 'filing_tree') return {root:'C:/Test filing',folders:['','Contracts'],skipped:0,truncated:false};
+          if (window.filingTest && command === 'propose_attachment_filing') return {...args,root:'C:/Test filing',name:'eSIM QR.png',size:12,reason:''};
+          if (window.filingTest && command === 'confirm_attachment_filing') {
+            (window.filingSaves ??= []).push(args.proposal);
+            return 'C:/Test filing/Contracts/eSIM QR.png';
+          }
+          if (command === 'check_mail_domain') {
+            (window.domainRequests ??= []).push(args);
+            if (window.holdDomainCheck) return new Promise(resolve => { window.releaseDomainCheck = resolve; });
+            if (window.failDomainCheck) throw new Error('DNS temporarily unavailable');
+            return {domain:args.domain, checks:[
+              {protocol:'SPF',name:args.domain,status:'present',notes:['SPF is published. Sending IPs, include/redirect chains and their lookup limits still need a real sending check.'],records:['v=spf1 -all']},
+              {protocol:'DMARC',name:`_dmarc.${args.domain}`,status:'warning',notes:['DMARC p=none monitors mail but does not request quarantine or rejection.'],records:['v=DMARC1; p=none']},
+              {protocol:'DKIM',name:'',status:'not_checked',notes:['Enter the DKIM selector supplied by your mail provider. Without it, DKIM cannot be checked.'],records:[]},
+            ]};
+          }
+          if (command === 'set_read') {
+            if (window.failRead) throw new Error('Test read update failed');
+            (window.readChanges ??= []).push(args);
+          }
+          if (command === 'urgent_messages' && window.holdUrgency) {
+            return new Promise(resolve => { window.releaseUrgency = resolve; });
+          }
+          if (command === 'urgent_messages' && window.testUrgency) return window.testUrgency;
+          if (command === 'assistant_ask') {
+            (window.assistantRequests ??= []).push(args.message);
+            if (window.failNextAssistant) {
+              window.failNextAssistant = false;
+              throw new Error('Test provider unavailable');
+            }
+          }
+          return (await window.__fakeBridge)(command, args);
+        },
         // Progress arrives on a channel in the real bridge, and the window
         // makes one for every sync, so without this nothing syncs here.
         Channel: class {
@@ -100,7 +146,7 @@ async function openWindow() {
         },
       },
     };
-  }, FAKE);
+  }, {fake:FAKE, threadSeed});
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -108,6 +154,406 @@ async function openWindow() {
 }
 
 const log = (page) => page.evaluate(async () => (await window.__fakeBridge)('attachment_log', {}));
+
+test('optional navigation restores messages and folders, branches forward history and never undoes mail',async()=>{
+  const {page,context,problems}=await openWindow();
+  assert.equal(await page.locator('#mail-navigation').isVisible(),false);
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item',{hasText:/^General$/}).click();
+  await page.locator('#pref-mail-navigation').check();await page.locator('#settings-close').click();
+  await page.evaluate(()=>setLanguageChoice('de'));
+  assert.equal(await page.locator('#mail-back').getAttribute('aria-label'),'Zurück');
+  assert.equal(await page.locator('#mail-forward').getAttribute('aria-label'),'Vor');
+  await page.evaluate(()=>setLanguageChoice('en'));
+  await page.locator('#content .row').nth(0).click();
+  const first=await page.locator('#reading-subject').innerText();
+  await page.locator('#content .row').nth(1).click();
+  const second=await page.locator('#reading-subject').innerText();assert.notEqual(first,second);
+  await page.locator('#mail-back').click();
+  await page.waitForFunction(s=>document.getElementById('reading-subject').textContent===s,first);
+  await page.locator('#mail-forward').click();
+  await page.waitForFunction(s=>document.getElementById('reading-subject').textContent===s,second);
+  await page.locator('#folders .nav-item',{hasText:/^Inbox/}).click();
+  await page.waitForFunction(()=>state.filter.folder!==null);
+  await page.locator('#mail-back').click();
+  await page.waitForFunction(s=>!document.getElementById('reading').hidden&&document.getElementById('reading-subject').textContent===s,second);
+  assert.equal(await page.evaluate(()=>state.filter.folder),null);
+  await page.locator('#content .row').nth(2).click();
+  assert.equal(await page.locator('#mail-forward').isDisabled(),true);
+  assert.deepEqual(await page.evaluate(()=>window.readChanges??[]),[]);
+  assert.deepEqual(problems,[]);await context.close();
+});
+
+test('thread HTML uses an empty sandbox, blocks remote images by default and switches back to text',async()=>{
+  const {page,context,problems}=await openWindow({threadSeed:true});
+  await page.evaluate(()=>{window.threadHtml=true;});
+  await page.locator('#list-threads').click();
+  await page.locator('#content .row',{hasText:'2 messages'}).click();
+  await page.locator('.mail-thread-entry summary').first().click();
+  const entry=page.locator('.mail-thread-entry[open]');
+  await entry.getByRole('tab',{name:'HTML',exact:true}).click();
+  await page.waitForFunction(()=>window.htmlRequests?.length===1);
+  assert.equal(await entry.locator('iframe').getAttribute('sandbox'),'');
+  assert.equal((await page.evaluate(()=>window.htmlRequests))[0].remote,false);
+  await page.evaluate(()=>pageMade({id:window.htmlRequests[0].id,remote:false,remote_blocked:2}));
+  await entry.getByRole('button',{name:'Show pictures',exact:true}).click();
+  await page.waitForFunction(()=>window.htmlRequests?.length===2);
+  assert.equal((await page.evaluate(()=>window.htmlRequests))[1].remote,true);
+  await entry.getByRole('tab',{name:'Text',exact:true}).click();
+  assert.equal(await entry.locator('iframe').isVisible(),false);
+  assert.equal(await entry.locator('iframe').getAttribute('src'),'about:blank');
+  assert.deepEqual(problems,[]);await context.close();
+});
+
+test('stopped automatic urgency analysis backs off but a manual retry runs immediately',async()=>{
+  const {page,context,problems}=await openWindow();
+  await page.evaluate(async()=>{window.modelStopped=true;await judgeUrgency({useModel:true});await judgeUrgency({useModel:true});await judgeUrgency({useModel:true,loud:true});});
+  assert.deepEqual(await page.evaluate(()=>window.urgencyRequests),[true,false,true]);
+  assert.deepEqual(problems,[]);await context.close();
+});
+
+test('categories can be hidden independently of unread filtering and clear an active category', async () => {
+  const {page,context,problems}=await openWindow();
+  await page.locator('#categories .nav-item').nth(1).click();
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item',{hasText:/^General$/}).click();
+  await page.locator('#pref-show-categories').uncheck();
+  await page.locator('#settings-close').click();
+  assert.equal(await page.locator('#categories').isVisible(),false);
+  assert.equal(await page.evaluate(()=>state.filter.category),null);
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(()=>state.filter.unreadOnly);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('showCategories')),'no');
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('attachment filing requires preview and confirmation and cancellation saves nothing', async () => {
+  const {page,context,problems}=await openWindow();
+  await page.evaluate(()=>{window.filingTest=true;});
+  await page.locator('#content .row',{hasText:'Ihre neue e-SIM ist da'}).click();
+  await page.locator('#reading-attachments .attachment-chip',{hasText:'eSIM QR.png'}).click();
+  // Translated buttons must fit without hidden horizontal overflow. Playwright
+  // would otherwise scroll a clipped button into view, unlike a normal click.
+  await page.evaluate(()=>setLanguageChoice('de'));
+  for (const width of [1200, 600]) {
+    await page.setViewportSize({width,height:850});
+    assert.equal(await page.locator('#attachment-sheet .dialog-foot').evaluate(foot => {
+      const bounds=foot.getBoundingClientRect();
+      return [...foot.querySelectorAll('button')].filter(b=>!b.hidden).every(button=>{
+        const r=button.getBoundingClientRect();
+        return r.left>=bounds.left && r.right<=bounds.right && r.bottom<=innerHeight;
+      });
+    }),true,`German attachment actions fit at ${width}px`);
+  }
+  await page.setViewportSize({width:1200,height:850});
+  await page.evaluate(()=>setLanguageChoice('en'));
+  await page.locator('#attachment-file').click();
+  await page.locator('#attachment-filing-folder').selectOption('Contracts');
+  await page.getByRole('button',{name:'Preview destination',exact:true}).click();
+  assert.deepEqual(await page.evaluate(()=>window.filingSaves ?? []),[]);
+  await page.getByRole('button',{name:'Confirm and save',exact:true}).click();
+  await page.locator('#ask-no').click();
+  assert.deepEqual(await page.evaluate(()=>window.filingSaves ?? []),[]);
+  await page.getByRole('button',{name:'Confirm and save',exact:true}).click();
+  await page.locator('#ask-yes').click();
+  await page.waitForFunction(()=>window.filingSaves?.length===1);
+  assert.equal(await page.evaluate(()=>window.filingSaves[0].folder),'Contracts');
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('optional thread opening reads only the newest message and never cascades on reload', async () => {
+  const {page,context,problems}=await openWindow({threadSeed:true});
+  await readOnOpen(page,true);
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item',{hasText:/^General$/}).click();
+  await page.locator('#pref-thread-open-latest').check();
+  await page.locator('#settings-close').click();
+  await page.locator('#list-threads').click();
+  await page.locator('#content .row',{hasText:'2 messages'}).click();
+  await page.locator('.mail-thread-entry[open]').waitFor();
+  assert.equal(await page.locator('.mail-thread-entry[open]').count(),1);
+  await page.waitForFunction(()=>window.readChanges?.length===1);
+  await page.evaluate(()=>reload({keepPosition:true}));
+  assert.equal(await page.evaluate(()=>window.readChanges.length),1);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+async function readOnOpen(page, enabled) {
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item', {hasText:/^General$/}).click();
+  await page.locator('#pref-read-on-open').setChecked(enabled);
+  await page.keyboard.press('Escape');
+}
+
+test('attention keywords persist, defaults need saving, and assistant proposals require a click', async () => {
+  const {page,context,problems} = await openWindow();
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-nav .nav-item', {hasText:/^General$/}).click();
+  await page.locator('#attention-fields:not([hidden])').waitFor();
+  const account = await page.evaluate(()=>state.account);
+  await page.locator('#attention-priority').fill('shop outage\ncustomer complaint');
+  await page.locator('#attention-save').click();
+  await page.waitForFunction(()=>document.querySelector('#attention-status').textContent.includes('saved'));
+  let settings = await page.evaluate(async account=>(await invoke('attention_settings',{account})).settings, account);
+  assert.deepEqual(settings.priority_words,['shop outage','customer complaint']);
+  await page.locator('#attention-defaults').click();
+  assert.equal(await page.locator('#attention-priority').inputValue(),'');
+  settings = await page.evaluate(async account=>(await invoke('attention_settings',{account})).settings, account);
+  assert.equal(settings.priority_words.length,2,'loading defaults does not save');
+  await page.keyboard.press('Escape');
+  await page.locator('#assistant-toggle').click();
+  await page.evaluate(account=>showEvent({kind:'attention_suggested',account,group:'priority_words',words:['failed payment'],reason:'Review failed payments.'}),account);
+  settings = await page.evaluate(async account=>(await invoke('attention_settings',{account})).settings, account);
+  assert.equal(settings.priority_words.length,2,'a model proposal changes nothing');
+  await page.getByRole('button',{name:'Apply suggestion',exact:true}).click();
+  await page.getByRole('button',{name:'Applied',exact:true}).waitFor();
+  settings = await page.evaluate(async account=>(await invoke('attention_settings',{account})).settings, account);
+  assert.deepEqual(settings.priority_words,['shop outage','customer complaint','failed payment']);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('read-on-open is opt-in and never cascades through unread mail on refresh', async () => {
+  const {page,context,problems} = await openWindow();
+  const unread = page.locator('#content .row:has(.dot.on)').first();
+  await unread.click();
+  await page.locator('#reading:not([hidden])').waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.readChanges ?? []),[]);
+  await readOnOpen(page,true);
+  await page.evaluate(()=>openSelected());
+  assert.deepEqual(await page.evaluate(()=>window.readChanges ?? []),[],'background redraw must not mark read');
+  await page.locator('#list-unread-filter').click();
+  await page.locator('#content .row:has(.dot.on)').first().click();
+  await page.waitForFunction(()=>window.readChanges?.length===1);
+  const id = await page.evaluate(()=>state.rows.get(state.selected).id);
+  assert.equal(await page.evaluate(()=>state.rows.get(state.selected).unread),false);
+  await page.evaluate(()=>reload({keepPosition:true}));
+  assert.equal(await page.evaluate(()=>window.readChanges.length),1,'refresh must not open the next unread message');
+  assert.equal(await page.evaluate(id=>[...state.rows.values()].some(r=>r.id===id),id),false);
+  await readOnOpen(page,false);
+  await page.locator('#content .row:has(.dot.on)').first().click();
+  assert.equal(await page.evaluate(()=>window.readChanges.length),1);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('failed read-on-open retains unread state and can be retried', async () => {
+  const {page,context,problems} = await openWindow();
+  await readOnOpen(page,true);
+  await page.evaluate(()=>{window.failRead=true;});
+  await page.locator('#content .row:has(.dot.on)').first().click();
+  await page.waitForFunction(()=>document.querySelector('#toast')?.textContent.includes('Could not mark'));
+  assert.equal(await page.evaluate(()=>state.rows.get(state.selected).unread),true);
+  await page.evaluate(()=>{window.failRead=false;});
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(()=>window.readChanges?.length===1);
+  assert.equal(await page.evaluate(()=>state.rows.get(state.selected).unread),false);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('clicking successive unread messages clears their dots and grey backgrounds', async () => {
+  const {page,context,problems} = await openWindow();
+  await readOnOpen(page,true);
+  for (let n=1;n<=2;n++) {
+    await page.locator('#content .row:has(.dot.on)').first().click();
+    await page.waitForFunction(n=>window.readChanges?.length===n,n);
+    assert.equal(await page.evaluate(()=>state.rows.get(state.selected).unread),false);
+    assert.equal(await page.locator('#content .row.selected .dot.on').count(),0);
+  }
+  assert.equal(new Set((await page.evaluate(()=>window.readChanges)).map(r=>r.id)).size,2);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('readOnOpen')),'yes');
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('domain diagnostics send only a domain/selector, show limits, and recover from lookup failure', async () => {
+  const {page,context,problems} = await openWindow();
+  await page.locator('#open-settings').click();
+  const box = page.locator('#account-domain-check');
+  assert.deepEqual(await page.evaluate(()=>window.domainRequests ?? []),[],'existing account is checked on demand');
+  await box.getByRole('button',{name:'Check domain',exact:true}).click();
+  await box.getByText('SPF · Record found',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.domainRequests),[{domain:'example.com',selector:null}]);
+  assert.equal(await box.getByText('DKIM · Not checked',{exact:true}).count(),1);
+  assert.match(await box.textContent(),/does not test delivery/);
+  await box.getByLabel('DKIM selector').fill('mail2026');
+  await page.evaluate(()=>{window.failDomainCheck=true;});
+  await box.getByRole('button',{name:'Check domain',exact:true}).click();
+  await box.getByText('Lookup unavailable: Error: DNS temporarily unavailable',{exact:true}).waitFor();
+  assert.equal(await page.locator('#settings-save').isEnabled(),true);
+  await page.evaluate(()=>{window.failDomainCheck=false;});
+  await box.getByRole('button',{name:'Check domain',exact:true}).click();
+  await box.getByText('SPF · Record found',{exact:true}).waitFor();
+  assert.deepEqual(await page.evaluate(()=>window.domainRequests.at(-1)),{domain:'example.com',selector:'mail2026'});
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('new-account domain check runs automatically and never mixes late results between accounts', async () => {
+  const {page,context,problems} = await openWindow();
+  await page.locator('#open-settings').click();
+  await page.locator('#settings-add').click();
+  await page.evaluate(()=>{window.holdDomainCheck=true;});
+  await page.locator('#settings-form input[name=email]').fill('new@first.example');
+  await page.locator('#settings-form input[name=email]').press('Tab');
+  await page.waitForFunction(()=>window.domainRequests?.length===1);
+  await page.evaluate(()=>{window.holdDomainCheck=false;});
+  await page.locator('#settings-form input[name=email]').fill('new@second.example');
+  await page.locator('#settings-form input[name=email]').press('Tab');
+  await page.locator('#account-domain-check .domain-checked-name').getByText('second.example',{exact:true}).waitFor();
+  await page.evaluate(()=>window.releaseDomainCheck({domain:'first.example',checks:[]}));
+  assert.equal(await page.locator('#account-domain-check .domain-checked-name').textContent(),'second.example');
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('optional threads keep one Inbox row and show read replies in an expandable conversation', async () => {
+  const {page,context,problems} = await openWindow({threadSeed:true});
+  await readOnOpen(page,true);
+  const total = await page.evaluate(()=>state.total);
+  await page.locator('#list-threads').click();
+  await page.waitForFunction(()=>[...state.rows.values()].some(r=>r.thread_count===2));
+  assert.equal(await page.evaluate(()=>state.total),total-1);
+  assert.equal(await page.evaluate(()=>localStorage.getItem('threadMessages')),'yes');
+  const group = page.locator('#content .row', {hasText:'2 messages'});
+  await group.click();
+  await page.locator('#mail-thread:not([hidden])').waitFor();
+  assert.equal(await page.locator('.mail-thread-entry').count(),2);
+  assert.equal(await page.evaluate(()=>state.total),total-1,'the list remains grouped');
+  assert.deepEqual(await page.evaluate(()=>window.readChanges ?? []),[],'opening a group must not mark its members');
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(()=>state.filter.unreadOnly);
+  await page.locator('#content .row', {hasText:'Message 03 about Rechnung'}).click();
+  await page.locator('#mail-thread:not([hidden])').waitFor();
+  assert.equal(await page.locator('.mail-thread-entry').count(),2,'read replies stay visible even from an unread-only group');
+  const unread = page.locator('.mail-thread-entry').filter({has:page.locator('summary strong',{hasText:'●'})});
+  await unread.locator('summary').click();
+  await page.waitForFunction(()=>window.readChanges?.length===1);
+  assert.ok((await page.locator('.mail-thread-entry[open] .mail-thread-body').innerText()).length > 0);
+  await page.waitForFunction(()=>!state.rows.get(state.selected).unread);
+  assert.equal(await page.locator('#content .row.selected .dot.on').count(),0,'the group dot clears after its final unread message');
+  await page.locator('.mail-thread-entry[open] button').click();
+  await page.locator('#reading:not([hidden])').waitFor();
+  assert.equal(await page.locator('#list-threads').innerText(),'Back to threads');
+  await page.locator('#list-threads').click();
+  await page.waitForFunction(()=>state.filter.thread===null && state.filter.unreadOnly);
+  await page.locator('#list-unread-filter').click();
+  await page.locator('#list-threads').click();
+  await page.waitForFunction(()=>!document.querySelector('#pref-thread-messages').checked && state.total===7);
+  assert.deepEqual(problems,[]);
+  await context.close();
+});
+
+test('unread filtering stays in mail, search, people and attention views', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(() => state.filter.unreadOnly && [...state.rows.values()].every(row => row.unread));
+  await page.locator('#folders .nav-item', {hasText:'Inbox'}).click();
+  assert.equal(await page.locator('#list-unread-filter').getAttribute('aria-pressed'), 'true');
+  await page.locator('#search').fill('Message');
+  await page.locator('#search').press('Enter');
+  await page.waitForFunction(() => state.searching && state.total > 0);
+  assert.equal(await page.evaluate(() => [...state.rows.values()].every(row => row.unread)), true);
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(() => state.searching && !state.filter.unreadOnly && [...state.rows.values()].some(row => !row.unread));
+  assert.equal(await page.locator('#search').inputValue(), 'Message');
+
+  await page.locator('#search').fill('');
+  await page.locator('#scope .view-toggle button', {hasText:'People'}).click();
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(() => state.view === 'people' && state.filter.unreadOnly && [...state.rows.values()].every(row => row.unread));
+  await page.evaluate(() => {
+    const row = [...state.rows.values()][0];
+    window.testUrgency = [true, false].map((unread,i) => ({row:{...row,id:100+i,unread},urgency:{score:3,reason:'test',action:'read'}}));
+    return showView('urgent');
+  });
+  assert.equal(await page.evaluate(() => state.total), 1);
+  await page.locator('#list-unread-filter').click();
+  await page.waitForFunction(() => state.view === 'urgent' && state.total === 2);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('attention navigation remains visible while its next count is loading', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.locator('#attention-nav button').waitFor();
+  await page.evaluate(() => { window.holdUrgency = true; window.attentionRefresh = renderAttentionNav(); });
+  assert.equal(await page.locator('#attention-nav button').isVisible(), true);
+  await page.evaluate(async () => { window.holdUrgency = false; window.releaseUrgency([{},{}]); await window.attentionRefresh; });
+  assert.match(await page.locator('#attention-nav button').innerText(), /2/);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('assistant starter, Send, Enter and Retry submit the intended text', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.locator('#assistant-toggle').click();
+  await page.getByRole('button', { name: 'Find what matters', exact: true }).click();
+  const prompt = await page.locator('#chat-input').inputValue();
+  assert.ok(prompt.length > 0);
+  assert.deepEqual(await page.evaluate(() => window.assistantRequests ?? []), []);
+  await page.locator('#chat-send').click();
+  await page.locator('.chat-msg.assistant').waitFor();
+  assert.equal(await page.locator('#chat-input').inputValue(), '');
+  assert.deepEqual(await page.evaluate(() => window.assistantRequests), [prompt]);
+
+  await page.locator('#chat-input').fill('Follow up');
+  await page.locator('#chat-input').press('Shift+Enter');
+  assert.equal(await page.locator('.chat-msg.user').count(), 1);
+  await page.evaluate(() => { window.failNextAssistant = true; });
+  await page.locator('#chat-input').press('Enter');
+  await page.locator('.chat-msg.error .retry').waitFor();
+  await page.locator('.chat-msg.error .retry').click();
+  await page.waitForFunction(() => document.querySelectorAll('.chat-msg.assistant').length === 2);
+  assert.deepEqual(await page.evaluate(() => window.assistantRequests), [prompt, 'Follow up', 'Follow up']);
+  assert.equal(await page.locator('.chat-msg.user').count(), 2);
+  assert.equal(await page.locator('#chat-send').isEnabled(), true);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
+
+test('chat model picker saves only the assistant choice and marks hosted models red', async () => {
+  const { page, context, problems } = await openWindow();
+  await page.evaluate(async () => {
+    const invoke = await window.__fakeBridge;
+    window.tasksBefore = await invoke('ai_tasks');
+    window.hostedId = await invoke('save_ai_provider', { input: {id:null,kind:'anthropic',label:'Claude',base_url:'https://api.anthropic.com/v1'} });
+    await invoke('set_ai_key', {id:window.hostedId,key:'test-only'});
+  });
+  await page.locator('#assistant-toggle').click();
+  await page.locator('#chat-model summary').click();
+  await page.locator('#chat-model-choice:not([disabled])').waitFor();
+  const hosted = await page.evaluate(() => String(window.hostedId));
+  await page.locator('#chat-provider').selectOption(hosted);
+  await page.waitForFunction(() => document.querySelector('#chat-model-choice')?.options.length > 1 && !document.querySelector('#chat-model-choice').disabled);
+  assert.equal(await page.locator('#chat-model-save').isDisabled(), true);
+  const offered = await page.locator('#chat-model-choice option').evaluateAll(options => options.map(o => o.value).filter(Boolean));
+  assert.ok(offered.length > 1);
+  await page.locator('#chat-model-choice').selectOption(offered[1]);
+  await page.locator('#chat-model-save').click();
+  await page.locator('#chat-model.warn summary').waitFor();
+  assert.match(await page.locator('#chat-model summary').innerText(), /Online/);
+  const result = await page.evaluate(async () => ({before:window.tasksBefore,after:await (await window.__fakeBridge)('ai_tasks')}));
+  assert.deepEqual(result.after.filter(t => t.task !== 'assistant'), result.before.filter(t => t.task !== 'assistant'));
+  assert.equal(result.after.find(t => t.task === 'assistant').model, offered[1]);
+  assert.equal(await page.locator('#chat-model').evaluate(node => getComputedStyle(node).color), 'rgb(194, 54, 44)');
+
+  await page.locator('#chat-model summary').click();
+  await page.locator('#chat-model-choice:not([disabled])').waitFor();
+  await page.locator('#chat-provider').selectOption('1');
+  await page.waitForFunction(() => document.querySelector('#chat-model-choice')?.options.length > 1 && !document.querySelector('#chat-model-choice').disabled);
+  const local = await page.locator('#chat-model-choice option').first().getAttribute('value');
+  await page.locator('#chat-model-choice').selectOption(local);
+  await page.locator('#chat-model-save').click();
+  await page.waitForFunction(() => document.querySelector('#chat-model summary')?.textContent.includes('Local'));
+  assert.equal(await page.locator('#chat-model.warn').count(), 0);
+  assert.deepEqual(problems, []);
+  await context.close();
+});
 
 test('an open message lists its attachments, and a picture shows in safe preview', async () => {
   const { page, context, problems } = await openWindow();

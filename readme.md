@@ -443,6 +443,31 @@ into a settings view, which carries `has_password` and no secret.
 table until the model lands; it is being filled now so there is training data
 when that happens.
 
+## Importing existing mail accounts
+
+Settings → Accounts → Import from other mail programs also detects eM Client 11
+in its default Windows or macOS data directory. It imports IMAP identities,
+TLS/STARTTLS server settings and usernames. eM Client's stored passwords are
+encrypted and are **not** transferred automatically: enter each password or app
+password once during import. Existing addresses are marked so they can be skipped.
+eM Client's live SQLite WAL is read
+in a consistent read-only transaction.
+
+This imports account settings and fetches mail from the server, not eM Client's
+local archives, contacts, calendars, aliases or rules. Unsupported/disabled account
+records are reported. Older database formats, POP/Exchange-only accounts, OAuth
+sign-ins and separate SMTP credentials are not migrated automatically. Review the
+import notes and use manual setup where required.
+
+The desktop shows translated standard folder names and readable nested paths;
+the original IMAP names and ids still identify every operation on the server.
+
+## Product ideas
+
+- [A shared filing structure using IMAP folders](docs/folder-workspace-idea.md)
+  — A proposal for filing that remains visible across mail clients,
+  with a path toward connected tasks and documents (German, 16 October 2026).
+
 ## Licence
 
 Not yet licensed. Intended to be AGPL-3.0 when first published — see decision 8

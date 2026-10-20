@@ -49,6 +49,13 @@ pub struct RemoteFolder {
     pub delimiter: Option<String>,
 }
 
+/// The root of the Inbox's namespace, where new personal folders belong.
+#[derive(Debug, Clone)]
+pub struct FolderRoot {
+    pub prefix: String,
+    pub delimiter: Option<String>,
+}
+
 /// State reported when a folder is opened.
 #[derive(Debug, Clone)]
 pub struct FolderState {
@@ -237,6 +244,31 @@ impl ImapClient {
                 delimiter: name.delimiter().map(str::to_string),
             })
             .collect())
+    }
+
+    /// RFC 3501 §6.3.8: an empty LIST pattern asks for a reference's root
+    /// and delimiter, even when it has no children. Use INBOX as the reference:
+    /// Dovecot can return an empty root for `LIST "" ""` even when personal
+    /// folders must be prefixed with `INBOX.`. No folder-name guessing, and no
+    /// NAMESPACE extension (which our IMAP parser does not support) required.
+    pub async fn personal_folder_root(&mut self) -> Result<FolderRoot, ProtoError> {
+        let names: Vec<_> = self
+            .session
+            // async-imap takes a raw pattern; None emits the quoted empty string.
+            .list(Some("INBOX"), None)
+            .await?
+            .try_collect()
+            .await?;
+        if names.len() != 1 {
+            return Err(ProtoError::Refused(
+                "the server did not identify a unique folder root; choose a parent folder instead"
+                    .into(),
+            ));
+        }
+        Ok(FolderRoot {
+            prefix: names[0].name().to_string(),
+            delimiter: names[0].delimiter().map(str::to_string),
+        })
     }
 
     /// Deletes a folder.

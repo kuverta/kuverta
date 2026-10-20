@@ -15,6 +15,13 @@ import { UnsubscribePanel } from './unsubscribe.js';
 
 const root = document.getElementById('root');
 const picker = document.getElementById('account');
+const unread = document.getElementById('unread-only');
+let language = navigator.language;
+try {
+  const chosen = localStorage.getItem('language');
+  if (chosen && chosen !== 'system') language = chosen;
+} catch { /* Use the system language. */ }
+if (language?.startsWith('de')) document.getElementById('unread-label').textContent = 'Nur ungelesene E-Mails';
 
 /** Undoes the last mount, so switching accounts does not stack key handlers. */
 let unmount = null;
@@ -26,6 +33,7 @@ let unsubscribe = null;
 root.addEventListener('click', (event) => {
   if (unsubscribe?.open && event.target.closest('.fb-scope:not(.fb-extra)')) {
     unsubscribe.hide();
+    unread.parentElement.hidden = false;
     unmount?.redrawSidebar();
   }
 });
@@ -54,21 +62,42 @@ try {
     if (chosen) open(invoke, chosen);
   });
 
-  await open(invoke, accounts[0]);
+  const requested = new URLSearchParams(location.search).get('account');
+  const initial = accounts.find(account => String(account.id) === requested) ?? accounts[0];
+  picker.value = String(initial.id);
+  await open(invoke, initial);
 } catch (error) {
   fail(error);
 }
 
 async function open(invoke, account) {
+  unread.disabled = true;
+  unread.parentElement.hidden = false;
   try {
     // The previous surface has to let go of the document first — two mounts
     // would both be listening for keys, and every keystroke would act twice.
     unmount?.();
 
-    const host = await new KuvertaHost(invoke, account).open();
+    let showCategories = true;
+    try { showCategories = localStorage.getItem('showCategories') !== 'no'; } catch { /* Default: shown. */ }
+    const host = await new KuvertaHost(invoke, account, {showCategories, unreadOnly:unread.checked}).open();
     const triage = new Triage(host);
+    unread.onchange = async () => {
+      unread.disabled = true;
+      try {
+        unsubscribe?.hide();
+        host.setUnreadOnly(unread.checked);
+        await triage.setScope(triage.scope);
+        unmount?.redrawSidebar();
+      } finally {
+        unread.disabled = false;
+      }
+    };
 
-    unsubscribe ??= new UnsubscribePanel(invoke, () => unmount?.redrawSidebar());
+    unsubscribe ??= new UnsubscribePanel(invoke, () => {
+      unread.parentElement.hidden = unsubscribe.open;
+      unmount?.redrawSidebar();
+    });
     unsubscribe.hide();
     await unsubscribe.refreshCount(account);
 
@@ -89,6 +118,7 @@ async function open(invoke, account) {
           active: unsubscribe.open,
           title: 'Senders whose mail can be unsubscribed from',
           onClick: async () => {
+            unread.parentElement.hidden = true;
             await unsubscribe.show(account);
             await unsubscribe.refreshCount(account);
             unmount.redrawSidebar();
@@ -99,6 +129,7 @@ async function open(invoke, account) {
     root.append(unsubscribe.node);
 
     await triage.start();
+    unread.disabled = false;
   } catch (error) {
     fail(error);
   }
@@ -116,7 +147,7 @@ function fail(error) {
   root.replaceChildren();
   const said = document.createElement('pre');
   said.style.cssText = 'padding:24px;white-space:pre-wrap;color:#b3261e';
-  said.textContent = `kuverta-bird could not start:\n\n${error.stack ?? error.message}`;
+  said.textContent = `kuverta-bird could not start:\n\n${error?.stack ?? error?.message ?? String(error)}`;
   root.append(said);
   console.error('kuverta-bird: failed to start', error);
 }

@@ -22,6 +22,9 @@ use core_rpc::html::Refused;
 use core_rpc::html_view::{to_page, View};
 use libfuzzer_sys::fuzz_target;
 
+#[path = "../support/html_page.rs"]
+mod checks;
+
 /// Mirrors `MOST_PAGE`, which is private: see `read_html`'s note on why a
 /// copy is right.
 const MOST_PAGE: usize = 4 << 20;
@@ -54,72 +57,9 @@ fuzz_target!(|html: &str| {
         );
         assert_eq!(Ok(&page), to_page(html, &view).as_ref());
 
-        let lower = page.html.to_ascii_lowercase();
-        for forbidden in [
-            "<script", "<iframe", "<object", "<embed", "<form", "<input", "<link", "<base",
-            "<meta http-equiv=\"refresh", "<svg", "<frame", "<applet", "<textarea", "<button",
-            "<select", "<video", "<audio", "<source", "<template",
-        ] {
-            for (at, _) in lower.match_indices(forbidden) {
-                let after = lower.as_bytes().get(at + forbidden.len()).copied();
-                let starts_an_element = after
-                    .is_none_or(|byte| byte == b'>' || byte == b'/' || byte.is_ascii_whitespace());
-                assert!(
-                    !starts_an_element || forbidden.starts_with("<meta"),
-                    "{forbidden} in the page at {at}"
-                );
-                if forbidden.starts_with("<meta") {
-                    panic!("a refresh in the page at {at}");
-                }
-            }
-        }
-        // No `on…=` attribute inside any tag the page wrote. Tags are the
-        // page's own, so each runs from `<` to the next `>` outside quotes
-        // — which is how the page wrote them.
-        for tag in tags_of(&page.html) {
-            let lower = tag.to_ascii_lowercase();
-            for (at, _) in lower.match_indices(" on") {
-                let rest = &lower[at + 3..];
-                let name_end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
-                assert!(
-                    !rest[name_end..].trim_start().starts_with('='),
-                    "an on… attribute in {tag:?}"
-                );
-            }
-            assert!(!lower.contains("javascript:"), "a javascript: address in {tag:?}");
-            assert!(!lower.contains("srcdoc"), "a srcdoc in {tag:?}");
-        }
+        checks::assert_safe_page(&page.html);
     }
 });
-
-/// Every tag in a page the page maker wrote, quotes respected.
-fn tags_of(html: &str) -> Vec<&str> {
-    let bytes = html.as_bytes();
-    let mut out = Vec::new();
-    let mut at = 0;
-    while let Some(open) = bytes[at..].iter().position(|b| *b == b'<').map(|i| i + at) {
-        let mut quote: Option<u8> = None;
-        let mut close = None;
-        for (i, byte) in bytes.iter().enumerate().skip(open + 1) {
-            match (quote, *byte) {
-                (Some(q), b) if b == q => quote = None,
-                (Some(_), _) => {}
-                (None, b'"' | b'\'') => quote = Some(*byte),
-                (None, b'>') => {
-                    close = Some(i);
-                    break;
-                }
-                _ => {}
-            }
-        }
-        let Some(close) = close else { break };
-        if let Some(tag) = html.get(open..=close) {
-            out.push(tag);
-        }
-        at = close + 1;
-    }
-    out
-}
 
 #[allow(dead_code)]
 fn every_refusal_is_accounted_for(why: Refused) {

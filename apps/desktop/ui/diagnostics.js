@@ -3,6 +3,7 @@
 // unexpected errors to it, so a log has both halves of what went wrong.
 
 const logView = el("log-view");
+el("report-problem").onclick = () => openLink("https://github.com/kuverta/kuverta/issues/new");
 
 async function fillDiagnostics() {
   try {

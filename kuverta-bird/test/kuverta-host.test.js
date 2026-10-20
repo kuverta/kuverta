@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { runConformance } from './support/conformance.js';
-import { fakeInvoke } from './support/fake-invoke.js';
+import { fakeInvoke, defaultSeed } from './support/fake-invoke.js';
 import { KuvertaHost } from '../hosts/kuverta/host.js';
 import { Triage } from '../core/triage.js';
 import { ACTIONS } from '../core/host.js';
@@ -25,6 +25,62 @@ const account = { id: 1, email: 'you@example.com' };
 runConformance('kuverta', () => new KuvertaHost(fakeInvoke(), account).open());
 
 // -- things specific to this host ---------------------------------------
+
+test('kuverta: hiding categories leaves folders and all-mail available', async () => {
+  const host = await new KuvertaHost(fakeInvoke(), account, {showCategories:false}).open();
+  const scopes = await host.scopes();
+  assert.ok(scopes.some(s => s.kind === 'all'));
+  assert.ok(scopes.some(s => s.kind === 'folder'));
+  assert.ok(!scopes.some(s => s.kind === 'category'));
+});
+
+test('kuverta: unread filtering applies before paging in every mail scope', async () => {
+  const seed = defaultSeed().map(m => ({...m, category:'personal'}));
+  seed.push({...seed[1], folder:'Archive', subject:'Archived invoice', unread:true});
+  const invoke = fakeInvoke({seed});
+  const host = await new KuvertaHost(invoke, account, {unreadOnly:true}).open();
+  for (const scope of [{kind:'all'}, {kind:'folder',value:1}, {kind:'category',value:'personal'}, {kind:'search',value:'Message'}]) {
+    const first = await host.page({scope,offset:0,limit:2});
+    const second = await host.page({scope,offset:2,limit:2});
+    assert.equal(first.total, 3);
+    assert.equal(first.rows.length, 2);
+    assert.equal(second.rows.length, 1);
+    const rows = [...first.rows,...second.rows];
+    assert.ok(rows.every(row => row.unread && !row.id.startsWith('paper:')));
+    assert.equal(new Set(rows.map(row => row.id)).size, 3);
+  }
+  const archive = await host.page({scope:{kind:'folder',value:2},offset:0,limit:10});
+  assert.equal(archive.total, 1);
+  assert.equal(archive.rows[0].subject, 'Archived invoice');
+  assert.equal((await host.page({scope:{kind:'paper',value:1},offset:0,limit:10})).total, 0);
+  host.setUnreadOnly(false);
+  const all = await host.page({scope:{kind:'all'},offset:0,limit:20});
+  assert.ok(all.rows.some(row => !row.unread));
+  assert.ok(all.rows.some(row => row.id.startsWith('paper:')));
+});
+
+test('kuverta: cleanup sends the required desktop filter for all, folder and category views', async () => {
+  const invoke = fakeInvoke();
+  const calls = [];
+  const native = async (command, args) => {
+    if (command === 'messages') {
+      if (!args.filter || typeof args.filter !== 'object') throw 'missing required key filter';
+      calls.push(args);
+    }
+    return invoke(command, args);
+  };
+  const host = await new KuvertaHost(native, account).open();
+  for (const scope of [{kind:'all'}, {kind:'category',value:'marketing'}, {kind:'folder',value:1}]) {
+    await host.page({scope,offset:0,limit:20});
+    const args = calls.at(-1);
+    assert.equal(args.account, 1);
+    assert.equal(args.filter.category, scope.kind === 'category' ? scope.value : null);
+    assert.equal(args.filter.folder, scope.kind === 'folder' ? scope.value : null);
+    assert.equal(args.filter.threaded, false);
+  }
+  const page = await host.page({scope:{kind:'all'},offset:0,limit:20});
+  assert.ok(page.rows.length > 0);
+});
 
 test('kuverta: undo is queued, which is a different promise from compensating', async () => {
   const host = await new KuvertaHost(fakeInvoke(), account).open();

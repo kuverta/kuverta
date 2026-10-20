@@ -29,6 +29,8 @@ const CATEGORIES = [
 export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), contacts = [] } = {}) {
   const { paperMailboxes, documents } = paper;
   const messages = new Map();
+  const attentionPreferences = new Map();
+  const attentionDefaults = {due_words:['deadline', 'frist'], pay_words:['invoice','rechnung'], priority_words:[]};
   const queue = [];
   const saved = [];
   const previewed = [];
@@ -93,6 +95,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     snippet: m.snippet ?? null,
     // Who what the account sent went to; the list names those rows by it.
     to: m.to ?? null,
+    thread_id: m.thread_id ?? null,
+    thread_count: m.thread_count ?? 1,
   });
 
   // Models: the Ollama every store starts with, and what it has pulled.
@@ -135,6 +139,8 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
   let lastSynced = null;
 
   const commands = {
+    startup_enabled: async () => null,
+    filing_tree: async () => ({root:null,folders:[],truncated:false,skipped:0}),
     // The first thing the real mount asks. One account, so the picker stays
     // hidden — a second would be a test of the picker.
     accounts: async () => [
@@ -186,7 +192,9 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       return [...counts];
     },
 
-    messages: async ({ offset, limit, category, folder }) => {
+    messages: async ({ offset, limit, filter, category, folder }) => {
+      category = filter?.category ?? category;
+      folder = filter?.folder ?? folder;
       let rows = visible();
       if (category) rows = rows.filter((m) => m.category === category);
       if (folder) {
@@ -195,12 +203,25 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
           .filter((m) => m.folder === name)
           .sort((a, b) => b.date_utc - a.date_utc || b.id - a.id);
       }
+      if (filter?.unreadOnly) rows = rows.filter((m) => m.unread);
+      const subject = m => (m.subject ?? '').replace(/^(?:(?:re|aw|fw|fwd|wg):\s*)+/i, '').trim().toLowerCase();
+      if (filter?.threadId != null) rows = rows.filter(m => subject(m) === subject(need(filter.threadId)));
+      if (filter?.threaded && filter.threadId == null) {
+        const groups = new Map();
+        for (const m of rows) {
+          const key = subject(m) || String(m.id);
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(m);
+        }
+        rows = [...groups.values()].map(group => ({...group[0],thread_id:group[0].id,thread_count:group.length,unread:group.some(m => m.unread)}));
+      }
       return { total: rows.length, offset, rows: rows.slice(offset, offset + limit).map(asRow) };
     },
 
-    search: async ({ query, limit }) => {
+    search: async ({ query, limit, unreadOnly }) => {
       const needle = String(query).toLowerCase();
       return visible()
+        .filter((m) => !unreadOnly || m.unread)
         .filter(
           (m) =>
             (m.subject ?? '').toLowerCase().includes(needle) ||
@@ -773,8 +794,13 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     set_postbox_profile: async () => null,
     urgent_messages: async () => [],
     urgency_of: async () => null,
+    attention_settings: async ({account}) => ({settings:structuredClone(attentionPreferences.get(account) ?? attentionDefaults), defaults:structuredClone(attentionDefaults)}),
+    set_attention_settings: async ({account,settings}) => {
+      attentionPreferences.set(account, structuredClone(settings));
+      return structuredClone(settings);
+    },
     find_urgent: async () => ({ by_rules: 0, by_model: 0, model: null, local: true, stopped: null }),
-    conversations: async ({ offset }) => {
+    conversations: async ({ offset, unreadOnly }) => {
       const people = new Map();
       for (const m of visible()) {
         const key = (m.from.match(/<(.+)>/)?.[1] ?? m.from).toLowerCase();
@@ -786,7 +812,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
         person.unread += m.unread ? 1 : 0;
         people.set(key, person);
       }
-      const rows = [...people.values()];
+      const rows = [...people.values()].filter((person) => !unreadOnly || person.unread > 0);
       return { total: rows.length, offset, rows: rows.slice(offset, offset + 200) };
     },
     // Who a message is with, for the card beside the assistant. The same

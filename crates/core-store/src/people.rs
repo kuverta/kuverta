@@ -230,6 +230,7 @@ impl Store {
         me: &str,
         skip_folders: &[String],
         include_bulk: bool,
+        unread_only: bool,
         query: Option<&str>,
         offset: usize,
         limit: usize,
@@ -250,7 +251,8 @@ impl Store {
              WHERE {filter}
              GROUP BY who
              HAVING who IS NOT NULL AND who <> ''
-                AND (?5 IS NULL OR instr(kuverta_lower(who || ' ' || COALESCE(name, '')), ?5) > 0)",
+                AND (?5 IS NULL OR instr(kuverta_lower(who || ' ' || COALESCE(name, '')), ?5) > 0)
+                AND (NOT ?6 OR unread > 0)",
             unread = crate::UNREAD_PREDICATE,
             join = crate::CURRENT_CATEGORY_JOIN,
             filter = conversation_filter(),
@@ -258,14 +260,14 @@ impl Store {
 
         let total: i64 = self.conn.query_row(
             &format!("SELECT COUNT(*) FROM ({grouped})"),
-            params![me, account_id, skip, include_bulk, needle],
+            params![me, account_id, skip, include_bulk, needle, unread_only],
             |row| row.get(0),
         )?;
 
         let mut stmt = self.conn.prepare(&format!(
             "{grouped}
              ORDER BY last_utc DESC, who
-             LIMIT ?6 OFFSET ?7"
+             LIMIT ?7 OFFSET ?8"
         ))?;
         let rows = stmt.query_map(
             params![
@@ -274,6 +276,7 @@ impl Store {
                 skip,
                 include_bulk,
                 needle,
+                unread_only,
                 limit as i64,
                 offset as i64
             ],
@@ -505,6 +508,18 @@ impl Store {
         want_model: bool,
         limit: usize,
     ) -> Result<Vec<UrgencyCandidate>> {
+        self.urgency_candidates_with_topics(account_id, me, since_utc, want_model, limit, &[])
+    }
+
+    pub fn urgency_candidates_with_topics(
+        &self,
+        account_id: AccountId,
+        me: &str,
+        since_utc: i64,
+        want_model: bool,
+        limit: usize,
+        topics: &[String],
+    ) -> Result<Vec<UrgencyCandidate>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.from_name, m.from_addr, m.subject, m.snippet, m.date_utc,
                     c.category, m.recipients, m.rfc822_message_id, m.in_reply_to, m.body_path,
@@ -514,7 +529,10 @@ impl Store {
              LEFT JOIN urgency u ON u.message_id = m.id
              WHERE m.account_id = ?1 AND lower(COALESCE(m.from_addr, '')) <> ?2
                AND COALESCE(m.date_utc, 0) >= ?3
-               AND COALESCE(c.category, 'unknown') NOT IN ({bulk})
+               AND (COALESCE(c.category, 'unknown') NOT IN ({bulk})
+                    OR EXISTS (SELECT 1 FROM json_each(?6) topic
+                        WHERE instr(kuverta_lower(COALESCE(m.subject, '') || ' ' ||
+                            COALESCE(m.from_name, '') || ' ' || COALESCE(m.from_addr, '')), topic.value) > 0))
                AND EXISTS (SELECT 1 FROM message_location l JOIN folder f ON f.id = l.folder_id
                            WHERE l.message_id = m.id AND upper(f.name) = 'INBOX')
                AND (u.message_id IS NULL OR (?4 AND u.source = 'rules'))
@@ -534,7 +552,8 @@ impl Store {
                 me.to_lowercase(),
                 since_utc,
                 want_model,
-                limit as i64
+                limit as i64,
+                serde_json::to_string(topics).unwrap()
             ],
             |row| {
                 Ok(UrgencyCandidate {

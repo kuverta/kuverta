@@ -74,6 +74,10 @@ pub struct AssistantReply {
 /// How long one answer may be: a summary of a busy inbox runs to pages. A
 /// longer one is continued rather than cut (see `truncated`).
 const MAX_TOKENS: u32 = 8_000;
+// Tool definitions plus the system prompt already exceed a 4k server default.
+// Keep the local allocation bounded rather than requesting a model's maximum.
+const LOCAL_CONTEXT: u32 = 16_384;
+const LOCAL_REPLY: u32 = 2_048;
 
 impl Provider {
     /// One exchange: the conversation so far and the tools, in; an answer or
@@ -136,10 +140,14 @@ impl Ollama {
                     "stream": false,
                     "messages": messages,
                     "tools": tools.iter().map(function).collect::<Vec<_>>(),
-                    "options": { "temperature": 0.2, "num_predict": MAX_TOKENS },
+                    "options": { "temperature": 0.2, "num_predict": LOCAL_REPLY, "num_ctx": LOCAL_CONTEXT },
                 }),
             )
-            .await?;
+            .await.map_err(|error| match error {
+                AiError::Status { status: 400, ref body }
+                    if body.contains("exceed_context_size_error") || body.contains("exceeds the available context size") => AiError::ContextLimit(LOCAL_CONTEXT),
+                other => other,
+            })?;
         usage::note(&self.meter, model, usage::from_ollama(&reply));
         let message = reply
             .get("message")

@@ -89,6 +89,8 @@ const LASTING: &[&str] = &["remember", "forget", "create_task", SKILL_TOOL];
 /// Tools that change something: refused in a question in which anything
 /// from the web was read.
 const CHANGING: &[&str] = &[
+    // A native hand-off may start document analysis, though never filing.
+    "prepare_invoice_collection",
     "move_messages",
     "archive_messages",
     "trash_messages",
@@ -1140,6 +1142,8 @@ mod tests {
             .unwrap()
             .contains("this question"));
         assert!(refusal("sign_pdf", &on, &now).is_some());
+        assert!(refusal("prepare_invoice_collection", &on, &now).is_some());
+        assert!(refusal("invoice_profiles", &on, &now).is_none());
         assert!(refusal("remember", &on, &now)
             .unwrap()
             .contains("this conversation"));

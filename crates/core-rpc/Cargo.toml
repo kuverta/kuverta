@@ -60,7 +60,7 @@ pdf-extract = "0.12.1"
 # a page of one: the same crate pdf-extract already reads them with, without
 # its default date and threading dependencies.
 lopdf = { version = "0.42.0", default-features = false }
-zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.0.4", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Safe preview: attachments drawn by decoders written in Rust, in a worker
 # process locked down before it reads a byte of them — never by the system's
 # image and PDF frameworks. hayro forbids unsafe code; 0.5 is the last that

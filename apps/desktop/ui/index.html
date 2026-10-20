@@ -15,6 +15,10 @@
     </span>
     <!-- What the window is showing, and how far a sync has got, live in the
          bar along the bottom. -->
+    <span id="mail-navigation" hidden>
+      <button id="mail-back" type="button" title="Back (Alt+Left)" aria-label="Go back"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button>
+      <button id="mail-forward" type="button" title="Forward (Alt+Right)" aria-label="Go forward"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button>
+    </span>
     <span class="spacer"></span>
     <!-- A newer release, when there is one. Shown until it is installed or
          put aside; put aside, it stays quiet until the next release. -->
@@ -55,6 +59,8 @@
   <aside id="sidebar">
     <!-- Private, one company, another: one profile at a time, or all. -->
     <div id="profile-bar" class="profile-bar" hidden></div>
+    <!-- Mail ranked by how soon it needs you. See people.js. -->
+    <nav id="attention-nav"></nav>
     <div id="accounts"></div>
     <!-- Postal addresses, each an inbox of its own: post scanned into
          Paperless-ngx, read beside the mail. -->
@@ -62,8 +68,6 @@
     <nav id="postboxes"></nav>
     <!-- Whether Paperless is up, and a way to start the one kuverta installed. -->
     <div id="paper-status" class="paper-status" hidden></div>
-    <!-- Mail ranked by how soon it needs you. See people.js. -->
-    <nav id="attention-nav"></nav>
     <div class="sidebar-heading with-action" id="folders-heading">
       <span>Mailboxes</span>
       <button type="button" id="folder-add" class="heading-action" title="New mailbox" aria-label="New mailbox">+</button>
@@ -153,6 +157,14 @@
         <div id="reading-file-status" class="file-status"></div>
       </div>
     </article>
+
+    <section id="mail-thread" hidden aria-label="Mail conversation">
+      <h2 id="mail-thread-title"></h2>
+      <p id="mail-thread-count" class="hint"></p>
+      <p class="hint">All messages in this conversation, including read mail and Sent. Expand a message to read it.</p>
+      <div id="mail-thread-messages"></div>
+      <button type="button" id="mail-thread-more" hidden>More messages</button>
+    </section>
 
     <!-- One person's exchange with you, as a messenger shows it. -->
     <section id="conversation" hidden>
@@ -261,7 +273,7 @@
              the assistant was asked about them. -->
         <div id="chat-about" class="chat-about" hidden></div>
         <div class="chat-compose">
-          <textarea id="chat-input" rows="2" placeholder="Ask about your mail, or say what to do with it…" spellcheck="true"></textarea>
+          <textarea id="chat-input" rows="3" aria-label="What would you like to do with your mail?" placeholder="What would you like to do with your mail?" spellcheck="true"></textarea>
           <button type="button" id="chat-send" class="primary">Send</button>
         </div>
         <div id="chat-model" class="hint chat-model"></div>
@@ -357,7 +369,7 @@
                  be typed in again. -->
             <section class="card" id="settings-import">
               <h3>Import</h3>
-              <p class="hint">Accounts already set up in Thunderbird or Apple Mail can be taken over with their servers and saved passwords.</p>
+              <p class="hint">Accounts already set up in Thunderbird, eM Client or Apple Mail can be taken over with their server settings.</p>
               <div class="card-actions"><button type="button" id="settings-import-accounts">Import from other mail programs…</button></div>
             </section>
             <section class="card">
@@ -397,6 +409,9 @@
                 </select></label>
               </div>
             </section>
+
+            <section class="card" id="account-domain-check"></section>
+            <section class="card" id="account-filing"></section>
 
             <section class="card">
               <h3>Sign-in</h3>
@@ -498,9 +513,8 @@
               <h3>Reading scanned letters <span class="hint">needs a model that can see images</span></h3>
               <div class="row3">
                 <label>Provider<select name="vision_provider"></select></label>
-                <label>Model<input name="vision_model" list="vision-models" spellcheck="false" required></label>
+                <label for="vision-models">Model<select id="vision-models" name="vision_model_choice"></select><input name="vision_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="vision-models"></datalist>
               <p class="hint ai-note" data-note="vision"></p>
             </section>
 
@@ -508,9 +522,8 @@
               <h3>Sorting mail <span class="hint">kuverta classify — any chat model</span></h3>
               <div class="row3">
                 <label>Provider<select name="chat_provider"></select></label>
-                <label>Model<input name="chat_model" list="chat-models" spellcheck="false" required></label>
+                <label for="chat-models">Model<select id="chat-models" name="chat_model_choice"></select><input name="chat_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="chat-models"></datalist>
               <p class="hint ai-note" data-note="chat"></p>
             </section>
 
@@ -518,9 +531,8 @@
               <h3>The assistant <span class="hint">needs a model that can use tools; larger is better</span></h3>
               <div class="row3">
                 <label>Provider<select name="assistant_provider"></select></label>
-                <label>Model<input name="assistant_model" list="assistant-models" spellcheck="false" required></label>
+                <label for="assistant-models">Model<select id="assistant-models" name="assistant_model_choice"></select><input name="assistant_model" aria-label="Model name" placeholder="Model name" spellcheck="false" required hidden></label>
               </div>
-              <datalist id="assistant-models"></datalist>
               <p class="hint ai-note" data-note="assistant"></p>
             </section>
 
@@ -611,7 +623,22 @@
           <!-- Everything that is not one account or one model. -->
           <div id="general-page" class="settings-page" hidden>
             <section class="card">
+              <h3>Message list</h3>
+              <label class="check"><input type="checkbox" id="pref-show-categories" checked> Show mail categories</label>
+              <p class="hint">Optional views such as business or newsletters. Hiding them does not move mail or disable the unread filter.</p>
+              <label class="check"><input type="checkbox" id="pref-highlight-unread"> Highlight unread mail in grey</label>
+              <p class="hint">Adds a grey background alongside the unread dot. Selected messages keep their selection colour.</p>
+              <label class="check"><input type="checkbox" id="pref-read-on-open"> Mark mail read when opened</label>
+              <label class="check"><input type="checkbox" id="pref-mail-navigation"> Back and forward through visited mail and mailboxes</label>
+              <p class="hint">Read status is also synced to your other mail apps.</p>
+              <label class="check"><input type="checkbox" id="pref-thread-messages"> Group mail into threads</label>
+              <p class="hint">Group matching subjects and replies within each account. Open a thread to see its messages.</p>
+              <label class="check"><input type="checkbox" id="pref-thread-open-latest"> Open the latest message when opening a thread</label>
+              <p class="hint">Only this message opens. Mark as read follows your setting above.</p>
+            </section>
+            <section class="card">
               <h3>Setup</h3>
+              <label class="check" id="general-startup-row" hidden><input type="checkbox" id="general-startup"> Start kuverta with Windows</label>
               <p class="hint">The assistant that opened on the first run: local models, Paperless, and the mail accounts other programs on this computer know.</p>
               <div class="card-actions"><button type="button" id="settings-setup">Open the setup assistant</button></div>
             </section>
@@ -660,6 +687,22 @@
               <h3>Needs attention</h3>
               <label class="check"><input type="checkbox" id="pref-urgency-model"> After each sync, let the model for sorting mail judge how soon new mail needs me</label>
               <p class="hint">kuverta's urgency agent always checks what it can itself — whether you write to the sender, whether you have answered, deadline and payment words. With this on, it also shows the model chosen under Models → Sorting mail the start of each new message that is not bulk mail, with those findings, and asks how soon it needs you and why. With a hosted model, that text leaves this computer.</p>
+              <p class="hint">This view checks recent Inbox mail (21 days), not every unread message. Newsletters, marketing and notifications are normally excluded. Personal topics also include matching senders and subjects from these categories. Keywords are hints; the model can disagree, for example about phishing.</p>
+              <label>Account<select id="attention-account"></select></label>
+              <div id="attention-fields">
+                <label>Personal topics to review<textarea id="attention-priority" rows="3"></textarea></label>
+                <p class="hint">Sender or subject contains one of these terms: nominate it for review, without automatically calling it urgent today. One term per line.</p>
+                <details><summary>Deadline and payment hints</summary>
+                  <label>Deadline terms<textarea id="attention-due" rows="5"></textarea></label>
+                  <label>Payment terms<textarea id="attention-pay" rows="4"></textarea></label>
+                </details>
+                <p class="hint">Start with the existing suggestions, then add or remove terms. Saving clears this account's previous attention ratings. Local rules are recalculated; the enabled model checks again at the next sync.</p>
+                <div class="card-actions">
+                  <button type="button" id="attention-defaults">Use original suggestions</button>
+                  <button type="button" id="attention-save" class="primary">Save attention criteria</button>
+                </div>
+              </div>
+              <p id="attention-status" class="hint" role="status"></p>
             </section>
             <section class="card">
               <h3>Updates</h3>
@@ -670,6 +713,11 @@
 
           <!-- The log, for a bug report. Filled by diagnostics.js. -->
           <div id="diagnostics-page" class="settings-page" hidden>
+            <section class="card">
+              <h3>Report a problem</h3>
+              <p class="hint">Opens a new GitHub issue in your browser. Describe what happened; logs and mail are not uploaded automatically.</p>
+              <div class="card-actions"><button type="button" id="report-problem">Open bug report</button></div>
+            </section>
             <section class="card">
               <h3>Detailed logging</h3>
               <label class="check"><input type="checkbox" id="log-detailed"> Record what kuverta does in detail</label>
@@ -719,6 +767,11 @@
         <div class="setup-page">
           <section data-page="profiles">
             <h2>Welcome to kuverta</h2>
+            <h3 class="setup-subhead">What would you like to set up?</h3>
+            <label class="check" id="setup-startup-row" hidden><input type="checkbox" id="setup-startup"> Start kuverta with Windows</label>
+            <label class="check"><input type="radio" name="setup-scope" id="setup-email-only" value="email" checked> Email only</label>
+            <label class="check"><input type="radio" name="setup-scope" id="setup-email-paper" value="paper"> Email and paper mail</label>
+            <p class="hint">You can add paper mail later. Email only skips Paperless and the scan model.</p>
             <p>kuverta puts your email and your paper post in one place and sorts both. This assistant sets it up with you — every step can be skipped and done later from settings.</p>
             <h3 class="setup-subhead">First: how do you want to keep your mail apart?</h3>
             <p>A <b>profile</b> is a set of accounts and postal addresses that belong together — your private mail, one company's, another's. The window shows one profile at a time, or all of them. Leave this empty to keep everything together.</p>
@@ -736,7 +789,7 @@
 
           <section data-page="models" hidden>
             <h2>Models on this computer</h2>
-            <p>Reading photographed letters and sorting mail use two small models, run by Ollama on this computer.</p>
+            <p id="setup-models-description">Reading photographed letters and sorting mail use two small models, run by Ollama on this computer.</p>
             <div class="setup-card" id="ollama-card"><p class="hint">Looking for Ollama…</p></div>
             <p class="hint">Would you rather use a hosted service such as DeepSeek or OpenAI? Add it later under Settings → Models; what a job sends then leaves this computer.</p>
           </section>
@@ -825,7 +878,7 @@
               <label>Add another address<input name="email" type="email" placeholder="you@example.com" spellcheck="false" required></label>
               <button type="submit">Find settings</button>
             </form>
-            <p class="hint">Thunderbird's saved passwords come with its accounts. Apple Mail's stay in the login keychain, so enter each of those once; kuverta keeps it in the system keychain.</p>
+            <p class="hint">Saved Thunderbird passwords can come with their accounts. For eM Client and Apple Mail, enter each password once; kuverta keeps it in the system keychain.</p>
           </section>
 
           <section data-page="done" hidden>
@@ -911,12 +964,14 @@
           <button type="button" id="attachment-more" hidden>More pages</button>
         </div>
         <p id="attachment-status" class="hint"></p>
+        <section id="attachment-filing" hidden></section>
       </div>
       <div class="dialog-foot">
         <span class="spacer"></span>
         <button type="button" id="attachment-close">Close</button>
         <button type="button" id="attachment-open">Open in another app</button>
         <button type="button" id="attachment-save" class="primary">Save to Downloads</button>
+        <button type="button" id="attachment-file">File in account folder…</button>
       </div>
     </div>
   </div>
@@ -1120,8 +1175,11 @@
   </div>
   <input type="file" id="file-picker" multiple hidden>
   <script src="i18n.js"></script>
+  <script src="folder-names.js"></script>
   <script src="app.js"></script>
   <script src="setup.js"></script>
+  <script src="domain-check.js"></script>
+  <script src="filing.js"></script>
   <script src="update.js"></script>
   <script src="folders.js"></script>
   <script src="outbox.js"></script>
@@ -1138,11 +1196,14 @@
   <script src="people.js"></script>
   <script src="sender.js"></script>
   <script src="profiles.js"></script>
+  <script src="invoice-setup.js"></script>
+  <script src="invoices.js"></script>
   <script src="signature.js"></script>
   <script src="signature-place.js"></script>
   <script src="assistant.js"></script>
   <script src="memory.js"></script>
   <script src="skills.js"></script>
   <script src="usage.js"></script>
+  <script src="navigation.js"></script>
 </body>
 </html>

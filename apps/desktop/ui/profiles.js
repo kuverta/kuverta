@@ -248,14 +248,16 @@ function profileItem(profile, at) {
   remove.className = "danger";
   remove.textContent = t("Delete");
   remove.onclick = async () => {
-    if (!(await ask(t("Delete the profile “{name}”? Its accounts and addresses stay, in no profile.", { name: profile.name }), { yes: t("Delete"), danger: true })))
+    if (!(await ask(t("Delete the profile “{name}”? Its accounts and addresses stay, in no profile. Its invoice history is removed; exported files stay on disk.", { name: profile.name }), { yes: t("Delete"), danger: true })))
       return;
     await invoke("delete_profile", { id: profile.id });
     if (activeProfile() === profile.id) setActiveProfile(null);
     await fillProfilesPage();
     renderProfileBar();
   };
-  item.append(name, count, move("↑", -1, at === 0), move("↓", 1, at === state.profiles.length - 1), remove);
+  const invoices = button(t("Collect invoices"), () => openInvoiceCollection(profile.id));
+  invoices.dataset.invoiceProfile = profile.id;
+  item.append(name, count, invoices, move("↑", -1, at === 0), move("↓", 1, at === state.profiles.length - 1), remove);
   return item;
 }
 

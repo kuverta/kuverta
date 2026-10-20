@@ -189,6 +189,87 @@ fn a_plain_message_has_none() {
 }
 
 #[test]
+fn filing_is_account_bound_and_proposals_write_nothing() {
+    let world = world("filing");
+    let id = file(&world, 1, &esim_mail(), "eSIM");
+    let root = world._dir.0.join("filing");
+    std::fs::create_dir_all(root.join("Contracts/2026")).unwrap();
+    std::fs::write(root.join("private-file.txt"), "DO NOT READ").unwrap();
+    world
+        .core
+        .set_filing_root(world.account, root.to_str().unwrap())
+        .unwrap();
+    let tree = world.core.filing_tree(world.account).unwrap();
+    assert_eq!(tree.folders, vec!["", "Contracts", "Contracts/2026"]);
+    assert!(!tree.truncated);
+    let listed = world
+        .core
+        .assistant_tool(world.account, &call("filing_folders", json!({})));
+    assert!(!listed.content.contains("private-file") && !listed.content.contains("DO NOT READ"));
+    assert!(!listed.content.contains(root.to_str().unwrap()));
+    let result = world.core.assistant_tool(
+        world.account,
+        &call(
+            "suggest_attachment_filing",
+            json!({"id":id,"index":0,"folder":"Contracts/2026","reason":"Contract"}),
+        ),
+    );
+    let Some(AssistantEvent::FilingSuggested { proposal }) = result.event else {
+        panic!("{}", result.content)
+    };
+    assert_eq!(
+        std::fs::read_dir(root.join("Contracts/2026"))
+            .unwrap()
+            .count(),
+        0
+    );
+    let (_, attachment) = world.core.confirm_attachment_filing(&proposal).unwrap();
+    assert_eq!(attachment.bytes, PNG);
+    // Even validation returns bytes only; the model has no write tool.
+    assert_eq!(
+        std::fs::read_dir(root.join("Contracts/2026"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert!(world.core.filing_tree(999999).is_err());
+    let other = world
+        .core
+        .store()
+        .add_account(&NewAccount {
+            email: "other@kuverta.test".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    assert!(world.core.filing_tree(other).unwrap().root.is_none());
+    world
+        .core
+        .set_filing_root(other, root.to_str().unwrap())
+        .unwrap();
+    // Sharing a destination never grants access to another account's mail.
+    assert!(world
+        .core
+        .propose_attachment_filing(other, id, 0, "", "")
+        .is_err());
+    let mut wrong_account = proposal.clone();
+    wrong_account.account = other;
+    assert!(world
+        .core
+        .confirm_attachment_filing(&wrong_account)
+        .is_err());
+    assert!(world
+        .core
+        .propose_attachment_filing(world.account, id, 0, "../", "")
+        .is_err());
+    world.core.set_filing_root(world.account, "").unwrap();
+    assert!(world.core.confirm_attachment_filing(&proposal).is_err());
+    assert_eq!(
+        std::fs::read_to_string(root.join("private-file.txt")).unwrap(),
+        "DO NOT READ"
+    );
+}
+
+#[test]
 fn a_forwarded_message_is_an_attachment_named_after_its_subject() {
     let world = world("forward");
     let raw = "From: a@example.com\r\nSubject: Fwd\r\nMIME-Version: 1.0\r\n\
@@ -279,6 +360,62 @@ fn searching_forgives_spelling_and_word_endings() {
         .search_terms(world.account, &terms(&["\"* OR NEAR(", "a"]), 10)
         .unwrap()
         .is_empty());
+}
+
+#[test]
+fn unread_search_and_people_filter_before_limits_and_report_real_flags() {
+    let world = world("unread-search");
+    let unread = file(
+        &world,
+        1,
+        "From: unread@example.com\r\nSubject: Important invoice\r\n\r\nx\r\n",
+        "Important invoice",
+    );
+    let read = file(
+        &world,
+        2,
+        "From: read@example.com\r\nSubject: Important invoice\r\n\r\nx\r\n",
+        "Important invoice",
+    );
+    world
+        .core
+        .store()
+        .set_location_flags(world.inbox, 2, "\\Seen")
+        .unwrap();
+    for query in ["invoice", "\"Important invoice\""] {
+        let all = world
+            .core
+            .search(world.account, query, 1, core_rpc::SearchOrder::Newest)
+            .unwrap();
+        assert_eq!(all[0].id, read);
+        assert!(!all[0].unread);
+        let filtered = world
+            .core
+            .search_filtered(world.account, query, 1, core_rpc::SearchOrder::Newest, true)
+            .unwrap();
+        assert_eq!(filtered[0].id, unread);
+        assert!(filtered[0].unread);
+    }
+    let people = world
+        .core
+        .conversations(world.account, true, true, None, 0, 1)
+        .unwrap();
+    assert_eq!(people.total, 1);
+    assert_eq!(people.rows[0].key, "unread@example.com");
+    assert!(world
+        .core
+        .conversations(world.account, true, true, None, 1, 1)
+        .unwrap()
+        .rows
+        .is_empty());
+    assert_eq!(
+        world
+            .core
+            .conversations(world.account, true, false, None, 0, 1)
+            .unwrap()
+            .total,
+        2
+    );
 }
 
 fn call(name: &str, arguments: serde_json::Value) -> ToolCall {

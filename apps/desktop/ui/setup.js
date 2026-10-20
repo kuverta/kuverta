@@ -24,6 +24,25 @@ const setup = {
   primaryPassword: "",
 };
 
+async function refreshStartup() {
+  try {
+    const enabled = await invoke("startup_enabled");
+    for (const id of ["general-startup", "setup-startup"]) {
+      el(`${id}-row`).hidden = enabled == null;
+      el(id).checked = enabled === true;
+    }
+  } catch (_) { /* Not supported by older hosts. */ }
+}
+for (const id of ["general-startup", "setup-startup"]) {
+  el(id).onchange = async event => {
+    event.target.disabled = true;
+    try { await invoke("set_startup_enabled", {enabled:event.target.checked}); }
+    catch (err) { say(String(err),true); }
+    finally { await refreshStartup(); event.target.disabled = false; }
+  };
+}
+refreshStartup();
+
 /// `step` opens a page other than the first: settings' Import goes straight
 /// to the mail accounts, looked for afresh, since what is already in kuverta
 /// may have changed since the last look.
@@ -56,6 +75,7 @@ function showStep(index) {
     page.hidden = page.dataset.page !== name;
   }
   setup.sheet.querySelectorAll("#setup-steps li").forEach((item, at) => {
+    item.hidden = emailOnlySetup() && ["paper", "folders"].includes(item.dataset.step);
     item.classList.toggle("current", at === setup.step);
     item.classList.toggle("done", at < setup.step);
   });
@@ -66,7 +86,12 @@ function showStep(index) {
 
   if (name === "profiles") showSetupProfiles();
   if (name === "paper" || name === "mail") fillSetupProfileFields();
-  if (name === "models") refreshModels();
+  if (name === "models") {
+    el("setup-models-description").textContent = t(emailOnlySetup()
+      ? "Mail sorting can run locally with Ollama. You can also choose a hosted model later."
+      : "Reading photographed letters and sorting mail use two small models, run by Ollama on this computer.");
+    refreshModels();
+  }
   if (name === "paper") refreshPaper();
   if (name === "folders") fillShelf();
   if (name === "mail" && !setup.found.length) scanAccounts();
@@ -78,9 +103,24 @@ function showStep(index) {
 /// stepped over in both directions.
 function nextStep(from, by) {
   let at = from + by;
-  while (setup.steps[at] === "folders" && !setup.paper) at += by;
+  while ((setup.steps[at] === "folders" && (!setup.paper || emailOnlySetup())) ||
+    (setup.steps[at] === "paper" && emailOnlySetup())) at += by;
   return at;
 }
+
+function emailOnlySetup() { return el("setup-email-only").checked; }
+function setupModelNeeds(status) {
+  return (status?.needed ?? []).filter(need => !emailOnlySetup() || need.task !== "vision");
+}
+for (const choice of document.querySelectorAll('[name="setup-scope"]')) {
+  choice.onchange = () => {
+    try { localStorage.setItem("setupScope", emailOnlySetup() ? "email" : "paper"); } catch { /* Session only. */ }
+    showStep(setup.step);
+  };
+}
+try {
+  el(localStorage.getItem("setupScope") === "paper" ? "setup-email-paper" : "setup-email-only").checked = true;
+} catch { /* Default: email. */ }
 
 el("setup-back").onclick = () => showStep(nextStep(setup.step, -1));
 el("setup-next").onclick = async () => {
@@ -209,10 +249,10 @@ async function refreshModels() {
   }
 
   if (status.running) {
-    for (const need of status.needed) {
+    for (const need of setupModelNeeds(status)) {
       lines.push(modelLine(need));
     }
-    const missing = status.needed.filter((need) => !need.present && !pulling.has(need.model));
+    const missing = setupModelNeeds(status).filter((need) => !need.present && !pulling.has(need.model));
     if (missing.length > 1) {
       lines.push(node("div", { className: "setup-actions" },
         button(t("Download all"), () => Promise.all(missing.map((need) => pullModel(need.model))), { primary: true })));
@@ -220,7 +260,7 @@ async function refreshModels() {
   }
   card.replaceChildren(...lines);
 
-  const ready = status.running && status.needed.every((need) => need.present);
+  const ready = status.running && setupModelNeeds(status).every((need) => need.present);
   el("setup-foot-note").textContent = ready ? "" : t("You can continue and come back to this later.");
   el("setup-next").textContent = ready ? t("Continue") : t("Skip for now");
 }
@@ -848,6 +888,8 @@ function accountCard(entry) {
   check.onchange = () => {
     entry.checked = check.checked;
     fields.hidden = !check.checked;
+    const diagnostics = fields.querySelector('.domain-check');
+    if (check.checked && diagnostics) diagnostics.replaceWith(makeDomainCheck(input.email, true));
     updateMailFoot();
   };
   const who = account.full_name ? `${account.full_name} <${input.email}>` : input.email;
@@ -913,10 +955,11 @@ function accountCard(entry) {
     profile.onchange = () => (entry.profile = selectedProfile(profile));
   }
   fields.append(details);
+  if (!account.already_added) fields.append(makeDomainCheck(input.email, entry.checked));
   card.append(fields);
 
   if (account.notes.length) {
-    card.append(node("div", { className: "notes", textContent: account.notes.join(" ") }));
+    card.append(node("div", { className: "notes", textContent: account.notes.map((note) => t(note)).join(" ") }));
   }
   card.append(node("div", {
     className: `status ${entry.status ? (entry.statusOk ? "ok" : "bad") : ""}`,
@@ -1001,6 +1044,7 @@ async function addChosenAccounts() {
         // crosses into this window.
         const id = await invoke("save_account_with_found_password", {
           input,
+          source: entry.account.source,
           primaryPassword: setup.primaryPassword || null,
         });
         saved = true;
@@ -1127,11 +1171,12 @@ async function showSummary() {
   const list = el("setup-summary");
   const lines = [];
   const models = setup.models ?? (await invoke("ollama_status").catch(() => null));
-  if (models && models.running && models.needed.every((need) => need.present)) {
+  if (models && models.running && setupModelNeeds(models).every((need) => need.present)) {
     lines.push(checkLine("ok", t("Models are ready on this computer.")));
   } else {
-    lines.push(checkLine("bad", t("Models are not ready — scanned letters cannot be read yet. Settings → Setup assistant.")));
+    lines.push(checkLine("bad", t(emailOnlySetup() ? "Mail sorting model is not ready. You can configure it later in Settings." : "Models are not ready — scanned letters cannot be read yet. Settings → Setup assistant.")));
   }
+  if (!emailOnlySetup()) {
   const postboxes = await invoke("paper_mailboxes").catch(() => []);
   lines.push(postboxes.length
     ? checkLine("ok", t("Paper mail: {list}.", { list: postboxes.map((p) => p.label).join(", ") }))
@@ -1148,6 +1193,7 @@ async function showSummary() {
     if (people.length) {
       lines.push(checkLine("ok", t("Post here is for: {list}.", { list: people.map((f) => f.name).join(", ") })));
     }
+  }
   }
   const accounts = await invoke("accounts").catch(() => []);
   await loadProfiles();

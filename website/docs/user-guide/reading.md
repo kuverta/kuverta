@@ -18,6 +18,21 @@ Each row shows the sender, the subject, the start of the text, a paperclip when
 there is an attachment, the category, and the date — the time for today, the
 weekday for this week, the date before that. A dot marks unread mail.
 
+In **Settings → General → Message list**, you can additionally highlight unread
+mail in grey and enable **Mark mail read when opened**. With this option on,
+clicking a message or navigating to another message in the open reader marks
+that message read; the dot and grey background disappear. Multi-selection and
+background refreshes do not mark mail read. In an unread-only list, the message
+stays visible until the next refresh so reading does not jump to another mail.
+The read change is queued for the next IMAP sync and can be undone.
+
+**Threads** above the list optionally groups matching subjects and replies
+within each account. A group opens an expandable conversation in the reader,
+including cached read replies and Sent. Expand a message to read it; only that
+message obeys read-on-open. The group's dot remains while any message in the
+conversation is unread. **Open individual message** provides its normal reply
+and attachment controls. Grouping and read-on-open can be switched off separately.
+
 **Acting keeps your place.** Archive or delete the message under the cursor and
 the next one moves up into its place; the list does not jump back to the top.
 

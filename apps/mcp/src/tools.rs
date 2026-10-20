@@ -268,6 +268,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
                 // As the window's own list is: with no folder named, this is
                 // mail that arrived, not replies of yours or what was binned.
                 incoming_only: args.get("folder").is_none(),
+                ..Default::default()
             };
             let (offset, limit) = (offset(args), limit(args));
             let page = core.messages(account, offset, limit, &filter)?;

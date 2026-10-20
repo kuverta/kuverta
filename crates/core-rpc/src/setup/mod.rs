@@ -14,6 +14,7 @@
 
 pub mod apple_mail;
 pub mod autoconfig;
+pub mod em_client;
 pub mod passwords;
 pub mod thunderbird;
 
@@ -1006,7 +1007,7 @@ pub struct PasswordHelp {
 /// save once it has a password.
 #[derive(Debug, Clone, Serialize)]
 pub struct FoundAccount {
-    /// `Thunderbird`, `Apple Mail`, or where the settings for a typed-in
+    /// `Thunderbird`, `eM Client`, `Apple Mail`, or where the settings for a typed-in
     /// address came from.
     pub source: String,
     pub input: AccountInput,
@@ -1124,11 +1125,24 @@ fn thunderbird_logins(primary_password: &str) -> (Vec<passwords::Login>, bool) {
 /// The password another program has for an account, for the keychain. Never
 /// returned to a window.
 pub fn stored_password(input: &AccountInput, primary_password: &str) -> Option<String> {
+    stored_password_from(None, input, primary_password)
+}
+
+/// Honour the program selected on the import card when both programs know an
+/// address. A stale Thunderbird password must not replace eM Client's password.
+pub fn stored_password_from(
+    source: Option<&str>,
+    input: &AccountInput,
+    primary_password: &str,
+) -> Option<String> {
+    if source.is_some_and(|s| s != "Thunderbird") {
+        return None;
+    }
     let (logins, _) = thunderbird_logins(primary_password);
     login_for(&logins, input).map(|login| login.password.clone())
 }
 
-/// Every mail account Thunderbird and Apple Mail know on this computer.
+/// Every supported mail account the other mail programs know on this computer.
 /// `existing` are the addresses kuverta already has.
 pub async fn scan_imports(existing: &[String], primary_password: &str) -> ImportScan {
     let mut accounts: Vec<FoundAccount> = Vec::new();
@@ -1182,6 +1196,44 @@ pub async fn scan_imports(existing: &[String], primary_password: &str) -> Import
                 "failed"
             }
             .into(),
+            detail: err.to_string(),
+            action_url: None,
+        }),
+    }
+
+    match em_client::scan() {
+        Ok(None) => sources.push(ImportSource {
+            name: "eM Client".into(),
+            state: "absent".into(),
+            detail: "not used on this computer".into(),
+            action_url: None,
+        }),
+        Ok(Some(scan)) => {
+            let mut detail = format!("{} IMAP accounts", scan.accounts.len());
+            if scan.skipped > 0 {
+                detail.push_str(&format!(
+                    "; {} disabled, unsupported or incomplete entries were skipped",
+                    scan.skipped
+                ));
+            }
+            sources.push(ImportSource {
+                name: "eM Client".into(),
+                state: if scan.accounts.is_empty() {
+                    "empty"
+                } else {
+                    "found"
+                }
+                .into(),
+                detail,
+                action_url: None,
+            });
+            for account in scan.accounts {
+                add(account.into_found(existing), &mut accounts);
+            }
+        }
+        Err(err) => sources.push(ImportSource {
+            name: "eM Client".into(),
+            state: "failed".into(),
             detail: err.to_string(),
             action_url: None,
         }),
