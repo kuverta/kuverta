@@ -300,12 +300,26 @@ fn move_to(
         .map_err(fail)
 }
 
+/// Queues a read/unread change.
+///
+/// `opened` is a message marked read because it was opened: that goes out
+/// with no undo window, and so is not what `z` takes back.
 #[tauri::command]
-fn set_read(app: State<'_, App>, account: Option<i64>, id: i64, read: bool) -> Result<i64, String> {
+fn set_read(
+    app: State<'_, App>,
+    account: Option<i64>,
+    id: i64,
+    read: bool,
+    opened: Option<bool>,
+) -> Result<i64, String> {
     let core = app.core.lock().unwrap();
     let account = account_for(&core, account, id)?;
-    core.set_read(account, id, read, core_rpc::DEFAULT_UNDO_WINDOW_SECS)
-        .map_err(fail)
+    let window = if opened == Some(true) {
+        0
+    } else {
+        core_rpc::DEFAULT_UNDO_WINDOW_SECS
+    };
+    core.set_read(account, id, read, window).map_err(fail)
 }
 
 /// Files a message under a category. Local only — never sent to a server.

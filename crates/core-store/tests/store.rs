@@ -877,7 +877,10 @@ fn an_operation_is_not_due_until_its_undo_window_has_elapsed() {
 fn undo_cancels_the_last_thing_queued_and_only_while_it_is_pending() {
     let (store, account, message, inbox) = store_with_message();
     let first = store
-        .enqueue_operation(&queued_move(account, message, inbox))
+        .enqueue_operation(&NewOperation {
+            execute_after: UNDO_OPEN,
+            ..queued_move(account, message, inbox)
+        })
         .unwrap();
     let second = store
         .enqueue_operation(&NewOperation {
@@ -885,6 +888,7 @@ fn undo_cancels_the_last_thing_queued_and_only_while_it_is_pending() {
                 flag: "\\Seen".into(),
                 set: true,
             },
+            execute_after: UNDO_OPEN,
             ..queued_move(account, message, inbox)
         })
         .unwrap();
@@ -903,6 +907,75 @@ fn undo_cancels_the_last_thing_queued_and_only_while_it_is_pending() {
         .unwrap();
     assert!(!store.cancel_operation(first).unwrap());
     assert!(store.cancel_latest_operation(account).unwrap().is_none());
+}
+
+/// An undo window that has not closed: far enough ahead of any clock.
+const UNDO_OPEN: i64 = 4_000_000_000;
+
+fn mark_read(account: AccountId, message: MessageId, folder: FolderId, set: bool) -> NewOperation {
+    NewOperation {
+        kind: OperationKind::Flag {
+            flag: "\\Seen".into(),
+            set,
+        },
+        ..queued_move(account, message, folder)
+    }
+}
+
+#[test]
+fn undo_passes_over_a_change_queued_with_no_undo_window() {
+    // Archive one message, open the next: the read-on-open is not what z
+    // means, the archive is.
+    let (store, account, message, inbox) = store_with_message();
+    let archived = store
+        .enqueue_operation(&NewOperation {
+            execute_after: UNDO_OPEN,
+            ..queued_move(account, message, inbox)
+        })
+        .unwrap();
+    store
+        .enqueue_operation(&mark_read(account, message, inbox, true))
+        .unwrap();
+
+    let undone = store.cancel_latest_operation(account).unwrap().unwrap();
+    assert_eq!(undone.id, archived);
+    assert!(store.cancel_latest_operation(account).unwrap().is_none());
+}
+
+#[test]
+fn a_queued_read_change_shows_in_the_list_before_the_server_has_it() {
+    let (store, account, message, inbox) = store_with_message();
+    let unread = |store: &Store| {
+        store
+            .message_window(account, 0, 10, &ListFilter::default())
+            .unwrap()
+            .messages[0]
+            .unread
+    };
+    assert!(unread(&store));
+
+    let read = store
+        .enqueue_operation(&mark_read(account, message, inbox, true))
+        .unwrap();
+    assert!(!unread(&store));
+    assert_eq!(store.folder_summaries(account).unwrap()[0].unread, 0);
+
+    // Undone, it is unread again.
+    store.cancel_operation(read).unwrap();
+    assert!(unread(&store));
+
+    // Once the server has it, the flag written locally carries it until the
+    // next sync says the same.
+    let read = store
+        .enqueue_operation(&mark_read(account, message, inbox, true))
+        .unwrap();
+    store
+        .settle_operation(read, OperationState::Done, None)
+        .unwrap();
+    assert!(store.set_location_flag(inbox, 2, "\\Seen", true).unwrap());
+    assert!(!unread(&store));
+    assert!(store.set_location_flag(inbox, 2, "\\Seen", false).unwrap());
+    assert!(unread(&store));
 }
 
 #[test]
