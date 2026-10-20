@@ -292,6 +292,8 @@ fn numbered(archive: &Archive<'_>, prefix: &str) -> Vec<String> {
     let mut names: Vec<(u32, String)> = archive
         .file_names()
         .filter_map(|name| {
+            // A name the archive cannot spell is no entry worth reading.
+            let name = name.ok()?;
             let n = name
                 .strip_prefix(prefix)?
                 .strip_suffix(".xml")?
