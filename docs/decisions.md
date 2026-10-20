@@ -3100,3 +3100,59 @@ Three things differ from the other providers on purpose:
 `ai_provider`'s CHECK now allows `anthropic`. SQLite cannot alter a CHECK,
 so migration 24 builds the table again with foreign keys off for the
 length of it, keeping every job that points at a provider.
+
+---
+
+## 55. A pull request is one change
+
+**2026-10-20.**
+
+A pull request (a merge request, on hosts that call it that) carries one
+feature or one bug fix, and nothing else. What is opened for review is one
+thing that can be described in a sentence without an "and" in it, and that
+is merged or sent back as one thing.
+
+The log shows why this is written down. "Let a closing letter wait for its
+pages to be read, and run Paperless commands as its user" (`9b5d5a4`) is a
+race fix in the scanner and a container-user fix in the rig setup, which
+have nothing in common but the day they were found. "Set the rig up from
+the repo, with Paperless on it, and say when a letter starts" (`b3fe792`)
+is three. Each landed as one change, so each can only be understood,
+reviewed, bisected, or reverted as one. A regression in the Paperless user
+handling cannot be undone without also undoing the race fix; a reader
+asking why the rig setup moved into the repo gets a diff that is mostly
+about something else.
+
+So, from here on:
+
+- **One concern per pull request.** A feature, or a bug fix, or a refactor
+  that changes no behaviour, or a dependency bump. Not two of them, and not
+  one of them with a drive-by of another kind.
+- **Found something else on the way?** Note it and open a second pull
+  request. If the second change is needed first, it goes first, on its
+  own, and the feature branch rebases on it.
+- **The title says the one thing.** If the title needs an "and" to be
+  honest, the branch needs splitting. The commit titles in this repository
+  are already written as what the change does for the person; that
+  sentence is now also the test of whether it is one change.
+- **Size is not the measure.** A feature that touches twenty files is one
+  pull request. A one-line fix beside a one-line unrelated fix is two.
+
+Renames and reformatting that a change *requires* go with it; those that
+are merely *nearby* do not. A test added for the thing being changed is
+part of the change. A test added for something else is not.
+
+**What this costs.** More pull requests, each smaller, and sometimes a
+chain of them where one used to do. A fix that depends on a refactor
+waits for the refactor to merge, or is stacked on its branch. The
+tooling does not enforce any of this; the person opening the request and
+the person merging it do, by reading the title.
+
+**What it buys.** `git log` and `git bisect` answer questions again: a
+commit on `main` is one change, so the first bad commit names one cause,
+and reverting it removes one thing. Review is of a change the reviewer
+can hold in their head. A release note is the list of titles.
+
+Releases are the exception already made: `make release` commits "Release
+x.y.z" with the version bump alone (see `docs/releasing.md`), which is one
+change by this rule.
