@@ -91,6 +91,12 @@ jobs:
         env:
           KUVERTA_REQUIRE_DEV_SERVER: "1"
 
+      # The window's and the triage surface's tests run under node, not
+      # cargo, and were not run here until 2026-10-20: two of them had been
+      # failing on main for a week without a red tick to say so.
+      - name: Test the window and the triage surface
+        run: make test-js
+
       - name: Dump server logs on failure
         if: failure()
         run: docker compose -f docker/docker-compose.yml logs

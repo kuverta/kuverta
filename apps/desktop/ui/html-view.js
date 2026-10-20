@@ -106,7 +106,7 @@ async function loadFrame() {
   try {
     url = await invoke("mail_page_url", { account, id, remote });
   } catch (err) {
-    say(t("could not show the mailPage: {error}", { error: err }), true);
+    say(t("could not show the page: {error}", { error: err }), true);
     return;
   }
   // The person moved on while the address was fetched.
@@ -167,7 +167,7 @@ function linkWarnings(url, said) {
     return warnings;
   }
   if (parsed.protocol === "http:") {
-    warnings.push(t("Not encrypted: the mailPage, and anything typed on it, can be read on the way."));
+    warnings.push(t("Not encrypted: the page, and anything typed on it, can be read on the way."));
   }
   const host = parsed.hostname.toLowerCase();
   if (host.split(".").some((label) => label.startsWith("xn--"))) {
