@@ -19,6 +19,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{bail, Result};
 use scannerd::button::Button;
 use scannerd::camera::Camera;
+use scannerd::read::Reader;
 use scannerd::run::{Letters, Scanner, Turn};
 use scannerd::spool::Spool;
 use scannerd::upload::Uploader;
@@ -399,4 +400,74 @@ fn closing_with_no_pages_makes_nothing() {
     let spool = Spool::open(&dir.0).unwrap();
     assert_eq!(spool.close_letter().unwrap(), None);
     assert!(spool.pending().unwrap().is_empty());
+}
+
+/// A reader that answers once `gate` is gone, standing in for tesseract.
+fn slow_reader(dir: &Path) -> (Reader, PathBuf) {
+    use std::os::unix::fs::PermissionsExt;
+    let gate = dir.join("gate");
+    std::fs::write(&gate, "").unwrap();
+    let program = dir.join("fake-tesseract");
+    std::fs::write(
+        &program,
+        format!(
+            "#!/bin/sh\nwhile [ -e '{}' ]; do sleep 0.05; done\necho Steuerbescheid\n",
+            gate.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    (Reader::new(&program.to_string_lossy(), "deu"), gate)
+}
+
+fn reading(rig: &mut Rig) -> PathBuf {
+    let (reader, gate) = slow_reader(&rig._dir.0);
+    let scanner = std::mem::replace(&mut rig.scanner, Scanner::new(3, Duration::from_secs(30)));
+    rig.scanner = scanner.reading_with(reader);
+    gate
+}
+
+#[tokio::test]
+async fn a_finished_letter_waits_for_its_page_to_be_read() {
+    // Where it goes is decided from its pages as it closes: closed while its
+    // one page was still being read, a letter went with no folder at all.
+    let mut rig = Rig::new("waits-for-reading");
+    let gate = reading(&mut rig);
+    rig.camera.then([a_page(), lifted()].concat());
+    rig.run().await;
+    assert_eq!(rig.camera.captures.get(), 1);
+
+    rig.press.send(()).unwrap();
+    rig.camera.then(vec![desk(); 5]);
+    rig.run().await;
+    assert_eq!(rig.received.uploads.load(SeqCst), 0, "held for its page");
+    assert_eq!(rig.spool.open_pages().unwrap().len(), 1);
+
+    std::fs::remove_file(&gate).unwrap();
+    // The reader is a process of its own: a turn at a time, in real time,
+    // until its text is in — well inside READ_WAIT_SECS of turns.
+    for _ in 0..15 {
+        std::thread::sleep(Duration::from_millis(100));
+        rig.camera.then([desk()]);
+        rig.run().await;
+        if rig.received.uploads.load(SeqCst) > 0 {
+            break;
+        }
+    }
+    assert_eq!(rig.received.uploads.load(SeqCst), 1, "sent once read");
+}
+
+#[tokio::test]
+async fn a_reader_that_never_answers_holds_a_letter_back_only_so_long() {
+    let mut rig = Rig::new("reading-gives-up");
+    let gate = reading(&mut rig);
+    rig.camera.then([a_page(), lifted()].concat());
+    rig.run().await;
+
+    rig.press.send(()).unwrap();
+    let turns = scannerd::run::READ_WAIT_SECS as usize + 3;
+    rig.camera.then(vec![desk(); turns]);
+    rig.run().await;
+    assert_eq!(rig.received.uploads.load(SeqCst), 1);
+    std::fs::remove_file(&gate).unwrap();
 }

@@ -21,9 +21,13 @@ docker compose --project-directory "$paperless" logs --since 336h --no-color \
     >"$work/logs/paperless.log" 2>&1
 
 # document_exporter writes inside the container, to the export directory
-# mounted from $paperless/export.
+# mounted from $paperless/export. As Paperless's own user (1000), never as
+# the container's root: a management command run as root leaves files in
+# Paperless's data that its worker cannot open, and every letter after it
+# failed "Permission denied" on the search index until they were given back.
 mkdir -p "$paperless/export/backup"
-docker compose --project-directory "$paperless" exec -T webserver \
+chown 1000:1000 "$paperless/export/backup"
+docker compose --project-directory "$paperless" exec -T -u paperless webserver \
     document_exporter ../export/backup --zip --zip-name paperless --no-progress-bar >&2
 
 tar czf - \

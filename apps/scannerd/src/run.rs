@@ -88,6 +88,15 @@ pub const FINISH_WAIT_SECS: u64 = 15;
 /// fetching the next takes a hand, which starts it again.
 pub const LYING_SECS: u64 = 20;
 
+/// How long a letter that is due to close waits for a page still being read.
+/// Its folder is decided from what its pages say the moment it closes, and a
+/// one-page letter finished as its page was put down was decided from
+/// nothing — sent with no folder, and "Sorting..." until Paperless had read
+/// it, a minute later, only to say the same. A page takes 5–11 s on the rig,
+/// longer while Paperless reads on the same cores; a reader that hangs is
+/// not waited for past this.
+pub const READ_WAIT_SECS: u64 = 20;
+
 pub struct Scanner {
     detector: Detector,
     /// How often the spool is looked at when nothing is being captured.
@@ -158,6 +167,11 @@ pub struct Scanner {
     /// And of the letter sent last, kept until the next letter starts: the
     /// preview still has something to show while Paperless reads it.
     sent_texts: Vec<PageText>,
+    /// Pages of the open letter handed to the reader whose text has not come
+    /// back yet. The reader answers for every page, read or not.
+    reading: std::collections::HashSet<String>,
+    /// Since when a letter due to close has been held for those.
+    held_since: Option<u64>,
     events: Vec<Event>,
 }
 
@@ -193,6 +207,8 @@ impl Scanner {
             reader: None,
             page_texts: Vec::new(),
             sent_texts: Vec::new(),
+            reading: std::collections::HashSet::new(),
+            held_since: None,
             events: Vec::new(),
         }
     }
@@ -200,6 +216,7 @@ impl Scanner {
     /// Reads every page as it is photographed, for the preview.
     pub fn reading_with(mut self, reader: Reader) -> Self {
         self.reader = Some(reader);
+        self.filings.reads_pages = true;
         self
     }
 
@@ -317,6 +334,7 @@ impl Scanner {
             return;
         };
         for page in reader.texts() {
+            self.reading.remove(&page.name);
             match self
                 .page_texts
                 .iter_mut()
@@ -1072,6 +1090,9 @@ impl Scanner {
                                 }
                                 if let Some(reader) = &self.reader {
                                     reader.start(&path);
+                                    if let Some(name) = path.file_name() {
+                                        self.reading.insert(name.to_string_lossy().into_owned());
+                                    }
                                 }
                             }
                             self.last_photographed = Some(Photographed {
@@ -1428,6 +1449,20 @@ impl Scanner {
         if !requested && !left_alone {
             return false;
         }
+        // Not while one of its pages is still being read: where the letter
+        // goes is decided as it closes, from what its pages say.
+        if !self.reading.is_empty() {
+            let since = *self.held_since.get_or_insert(now);
+            if now.saturating_sub(since) < READ_WAIT_SECS {
+                return false;
+            }
+            tracing::warn!(
+                pages = self.reading.len(),
+                "closing the letter without a page still being read"
+            );
+            self.reading.clear();
+        }
+        self.held_since = None;
         self.close_requested_at = None;
 
         let pages = spool.open_pages().map(|pages| pages.len()).unwrap_or(0);

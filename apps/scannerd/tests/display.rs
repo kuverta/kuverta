@@ -335,14 +335,26 @@ fn where_the_rig_decided_a_letter_goes_is_said_while_paperless_reads_it() {
         Some("Last letter: Taxes")
     );
 
-    // With nothing decided — no folder's words on the pages — it is still
-    // Paperless's to say.
+    // With nothing read on the rig, it is still Paperless's to say.
     let undecided = filed(Outcome::Reading);
     let screen = Screen::for_facts(&Facts {
         filing: undecided.latest(),
         ..facts("waiting")
     });
     assert_eq!(screen.headline, "Sorting...");
+
+    // But read, and no folder's words on its pages, that is the answer now:
+    // Paperless's folder tags do not match on their own, and a minute of
+    // "Sorting..." ended in the same "Which folder?".
+    let mut nowhere = filed(Outcome::Reading);
+    nowhere.decided("task", vec![]);
+    nowhere.settled("task");
+    let screen = Screen::for_facts(&Facts {
+        filing: nowhere.latest(),
+        ..facts("waiting")
+    });
+    assert_eq!(screen.headline, "Which folder?");
+    assert_eq!(screen.detail, "No folder's words on it");
 
     // And what Paperless says wins: a letter it had already is not filed.
     filings.decide("task", Outcome::Duplicate, 950);

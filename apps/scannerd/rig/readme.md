@@ -36,7 +36,7 @@ the Mac. Nothing else on the Pi needs keeping: a new SD card and
    a reboot is due.
 3. A token for scannerd: in Paperless (`http://scannerpi.local:8010`), or
    `sudo docker compose --project-directory /opt/kuverta-paperless exec
-   webserver python3 manage.py drf_create_token <user>`. Put it in
+   -u paperless webserver python3 manage.py drf_create_token <user>`. Put it in
    `/etc/scannerd.secrets`, then `sudo systemctl restart scannerd`.
 4. The data back, from the last `make rig-backup`: the spool into
    `/var/lib/scannerd` (owned by `scannerd`), and Paperless's export with
@@ -57,3 +57,9 @@ the Mac. Nothing else on the Pi needs keeping: a new SD card and
 
 `setup.sh` also adds `fbcon=map:9` to `cmdline.txt`, so the login console
 does not draw over the LCD.
+
+Anything run inside Paperless's container — `manage.py`, the exporter, the
+importer — is run with `-u paperless`. `docker compose exec` is root by
+default, and files root leaves in Paperless's data, such as its search
+index, are files its worker cannot open: every letter then fails after it
+has been read.
