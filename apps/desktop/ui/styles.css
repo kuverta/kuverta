@@ -549,6 +549,17 @@ footer .keys {
 .row .dot.on { background: var(--accent); }
 .row.selected .dot.on { background: var(--accent-fg); }
 
+/* The answered mark shares the gutter, under the dot and beside the subject:
+   new above, dealt with below, both readable down the left edge. */
+.row .mark {
+  grid-row: 2;
+  grid-column: 1;
+  justify-self: center;
+  color: var(--muted);
+  font-size: 11px;
+}
+.row.selected .mark { color: rgb(255 255 255 / 0.82); }
+
 .row .top {
   grid-row: 1;
   grid-column: 2;
