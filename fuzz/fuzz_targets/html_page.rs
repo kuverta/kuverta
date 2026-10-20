@@ -56,9 +56,25 @@ fuzz_target!(|html: &str| {
 
         let lower = page.html.to_ascii_lowercase();
         for forbidden in [
-            "<script", "<iframe", "<object", "<embed", "<form", "<input", "<link", "<base",
-            "<meta http-equiv=\"refresh", "<svg", "<frame", "<applet", "<textarea", "<button",
-            "<select", "<video", "<audio", "<source", "<template",
+            "<script",
+            "<iframe",
+            "<object",
+            "<embed",
+            "<form",
+            "<input",
+            "<link",
+            "<base",
+            "<meta http-equiv=\"refresh",
+            "<svg",
+            "<frame",
+            "<applet",
+            "<textarea",
+            "<button",
+            "<select",
+            "<video",
+            "<audio",
+            "<source",
+            "<template",
         ] {
             for (at, _) in lower.match_indices(forbidden) {
                 let after = lower.as_bytes().get(at + forbidden.len()).copied();
@@ -73,21 +89,32 @@ fuzz_target!(|html: &str| {
                 }
             }
         }
-        // No `on…=` attribute inside any tag the page wrote. Tags are the
-        // page's own, so each runs from `<` to the next `>` outside quotes
-        // — which is how the page wrote them.
+        // No `on…` attribute, no `srcdoc`, and no `javascript:` address in
+        // any tag the page wrote. Tags are the page's own, so each runs from
+        // `<` to the next `>` outside quotes, and every attribute in one is
+        // double-quoted with `"` escaped inside — which is how the page
+        // wrote them, and why the names and values can be read back apart.
+        // A title that says `a onx=b` is words in a value, not an attribute,
+        // and no browser reads it as one.
         for tag in tags_of(&page.html) {
-            let lower = tag.to_ascii_lowercase();
-            for (at, _) in lower.match_indices(" on") {
-                let rest = &lower[at + 3..];
-                let name_end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap_or(rest.len());
-                assert!(
-                    !rest[name_end..].trim_start().starts_with('='),
-                    "an on… attribute in {tag:?}"
-                );
+            for (name, value) in attributes_of(tag) {
+                assert!(!name.starts_with("on"), "an on… attribute in {tag:?}");
+                assert!(name != "srcdoc", "a srcdoc in {tag:?}");
+                if matches!(
+                    name.as_str(),
+                    "href" | "src" | "action" | "formaction" | "xlink:href"
+                ) {
+                    let scheme: String = value
+                        .chars()
+                        .filter(|c| !c.is_whitespace() && !c.is_control())
+                        .collect::<String>()
+                        .to_ascii_lowercase();
+                    assert!(
+                        !scheme.starts_with("javascript:") && !scheme.starts_with("vbscript:"),
+                        "a {name} that runs in {tag:?}"
+                    );
+                }
             }
-            assert!(!lower.contains("javascript:"), "a javascript: address in {tag:?}");
-            assert!(!lower.contains("srcdoc"), "a srcdoc in {tag:?}");
         }
     }
 });
@@ -117,6 +144,47 @@ fn tags_of(html: &str) -> Vec<&str> {
             out.push(tag);
         }
         at = close + 1;
+    }
+    out
+}
+
+/// The attributes of one tag the page wrote, lower-cased names with their
+/// values: every value is double-quoted, and a quote inside one is `&quot;`,
+/// so a value runs to the next `"`.
+fn attributes_of(tag: &str) -> Vec<(String, String)> {
+    let mut out = Vec::new();
+    let inner = tag
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim_end_matches('/');
+    // Past the element name.
+    let mut rest = inner.trim_start();
+    rest = rest.find(char::is_whitespace).map_or("", |at| &rest[at..]);
+    loop {
+        rest = rest.trim_start();
+        if rest.is_empty() {
+            break;
+        }
+        let name_end = rest
+            .find(|c: char| c == '=' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        let name = rest[..name_end].to_ascii_lowercase();
+        rest = rest[name_end..].trim_start();
+        let value = match rest.strip_prefix('=') {
+            Some(after) => {
+                let after = after.trim_start();
+                let Some(quoted) = after.strip_prefix('"') else {
+                    panic!("an unquoted value for {name} in {tag:?}");
+                };
+                let end = quoted
+                    .find('"')
+                    .unwrap_or_else(|| panic!("an unclosed value for {name} in {tag:?}"));
+                rest = &quoted[end + 1..];
+                quoted[..end].to_string()
+            }
+            None => String::new(),
+        };
+        out.push((name, value));
     }
     out
 }
