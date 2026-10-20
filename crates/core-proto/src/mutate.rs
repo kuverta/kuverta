@@ -214,6 +214,9 @@ fn settle(
                 report.non_atomic_moves += 1;
             }
             store.settle_operation(op.id, OperationState::Done, None)?;
+            if let OperationKind::Flag { flag, set } = &op.kind {
+                store.set_location_flag(op.source_folder_id, op.source_uid, flag, *set)?;
+            }
             report.applied += 1;
         }
         Outcome::Obsolete(reason) => {

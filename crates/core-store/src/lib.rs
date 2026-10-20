@@ -598,14 +598,19 @@ impl Store {
     /// Cancels the most recently queued pending operation, and returns it.
     ///
     /// This is `undo`: the last thing you did that has not yet left the
-    /// machine.
+    /// machine. A change queued with no undo window was never offered for
+    /// undo — a message marked read because it was opened — and is passed
+    /// over, so `z` after archiving one and reading the next undoes the
+    /// archive.
     pub fn cancel_latest_operation(&self, account_id: AccountId) -> Result<Option<Operation>> {
         let latest = self
             .conn
             .query_row(
                 &format!(
                     "SELECT {OPERATION_COLUMNS} FROM operation
-                     WHERE account_id = ?1 AND state = 'pending' ORDER BY id DESC LIMIT 1"
+                     WHERE account_id = ?1 AND state = 'pending'
+                       AND execute_after > created_at
+                     ORDER BY id DESC LIMIT 1"
                 ),
                 params![account_id],
                 row_to_operation,
@@ -766,6 +771,37 @@ impl Store {
             params![folder_id, uid, flags],
         )?;
         Ok(changed > 0)
+    }
+
+    /// Sets or clears one flag on a stored location, the way the server was
+    /// just told to.
+    ///
+    /// What a flushed change did is known before the next sync reports it;
+    /// writing it here keeps the list from showing the old state in between.
+    /// The sync that follows overwrites this with the server's word anyway.
+    pub fn set_location_flag(
+        &self,
+        folder_id: FolderId,
+        uid: u32,
+        flag: &str,
+        set: bool,
+    ) -> Result<bool> {
+        let current: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT flags FROM message_location WHERE folder_id = ?1 AND uid = ?2",
+                params![folder_id, uid],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(current) = current else {
+            return Ok(false);
+        };
+        let mut flags: Vec<&str> = current.split_whitespace().filter(|f| *f != flag).collect();
+        if set {
+            flags.push(flag);
+        }
+        self.set_location_flags(folder_id, uid, &flags.join(" "))
     }
 
     /// Removes locations the server no longer has, then deletes any message
@@ -1950,10 +1986,6 @@ pub struct Disagreement {
     pub model_category: String,
 }
 
-/// Whether a message is unread: no copy of it anywhere carries `\\Seen`.
-///
-/// Written once because the list, the counts and the filter all have to agree.
-/// Two spellings of this would show as a badge that never matches the rows.
 /// The category a message is *shown* under.
 ///
 /// A correction the user made wins; then something an assistant filed through
@@ -1984,9 +2016,24 @@ const COMING_HERE: &str = "(SELECT COUNT(DISTINCT o.message_id) FROM operation o
                             WHERE o.account_id = f.account_id AND o.state = 'pending'
                               AND o.kind = 'move' AND o.target_folder = f.name)";
 
-pub(crate) const UNREAD_PREDICATE: &str = "NOT EXISTS (SELECT 1 FROM message_location ul
-                                            WHERE ul.message_id = m.id
-                                              AND ul.flags LIKE '%\\Seen%')";
+/// Whether a message is unread: no copy of it anywhere carries `\\Seen` —
+/// unless a read or unread change is still queued, which says it first.
+///
+/// The queue is consulted because the flags here are the server's, and a
+/// change reaches them only after its undo window, the flush and the next
+/// sync: a message opened a moment ago would otherwise keep its dot for that
+/// long. The latest pending change wins, as it does in the queue itself.
+///
+/// Written once because the list, the counts and the filter all have to agree.
+/// Two spellings of this would show as a badge that never matches the rows.
+pub(crate) const UNREAD_PREDICATE: &str = "COALESCE(
+        (SELECT uo.flag_set = 0 FROM operation uo
+         WHERE uo.message_id = m.id AND uo.state = 'pending'
+           AND uo.kind = 'flag' AND uo.flag = '\\Seen'
+         ORDER BY uo.id DESC LIMIT 1),
+        NOT EXISTS (SELECT 1 FROM message_location ul
+                    WHERE ul.message_id = m.id
+                      AND ul.flags LIKE '%\\Seen%'))";
 
 /// Whether the account has answered a message: a copy of it carries
 /// `\\Answered`, or the account itself sent something that says, in

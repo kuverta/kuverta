@@ -1242,6 +1242,11 @@ function buildPool() {
 
     const unread = document.createElement("span");
     unread.className = "dot";
+    // Under the dot, in the same gutter: ↩ for mail that has been answered,
+    // the way every mail program has marked it. A glance down the left edge
+    // says what is new and what was dealt with yesterday.
+    const mark = document.createElement("span");
+    mark.className = "mark";
 
     // Line one: sender, any tag, then the date pushed to the right.
     const top = document.createElement("div");
@@ -1259,9 +1264,9 @@ function buildPool() {
     const snippet = document.createElement("div");
     snippet.className = "snippet";
 
-    row.append(unread, top, subject, snippet);
+    row.append(unread, mark, top, subject, snippet);
     content.append(row);
-    state.pool.push({ row, unread, top, date, sender, subject, snippet, tag });
+    state.pool.push({ row, unread, mark, top, date, sender, subject, snippet, tag });
   }
   state.firstRendered = -1;
 }
@@ -1338,6 +1343,7 @@ function render(force = false) {
       node.row.classList.add("pending");
       node.row.classList.remove("answered");
       node.unread.className = "dot";
+      node.mark.textContent = "";
       node.date.textContent = "";
       node.sender.textContent = "";
       node.subject.textContent = "…";
@@ -1356,17 +1362,12 @@ function render(force = false) {
     node.sender.title = row.to ? row.to.join(", ") : "";
     node.subject.textContent = row.subject;
     node.snippet.textContent = row.snippet ?? "";
-    // ↩ for mail that has been answered, the way every mail program has
-    // marked it: what you dealt with yesterday is readable at a glance.
     node.row.classList.toggle("answered", Boolean(row.answered));
-    node.tag.textContent = [
-      row.answered ? "↩" : "",
-      row.has_attachments ? "📎" : "",
-      row.category ? t(row.category) : "",
-    ]
+    node.mark.textContent = row.answered ? "↩" : "";
+    node.mark.title = row.answered ? t("you answered this") : "";
+    node.tag.textContent = [row.has_attachments ? "📎" : "", row.category ? t(row.category) : ""]
       .filter(Boolean)
       .join(" ");
-    node.tag.title = row.answered ? t("you answered this") : "";
   }
 
   ensureLoaded(first, first + state.pool.length);
@@ -1499,8 +1500,23 @@ async function openSelected() {
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
     showAttachments(detail, account);
     showMailView(detail, account);
+    if (row.unread) markOpenedRead(row, account);
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
+  }
+}
+
+/// Opening a message reads it, as it does a letter. The dot goes at once; the
+/// change goes to the server with no undo window, since u puts it back and z
+/// is kept for what was done on purpose.
+async function markOpenedRead(row, account) {
+  try {
+    await invoke("set_read", { account, id: row.id, read: true, opened: true });
+    row.unread = false;
+    render(true);
+    await refreshSidebar();
+  } catch (err) {
+    say(t("could not mark it read: {error}", { error: err }), true);
   }
 }
 
