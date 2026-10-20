@@ -834,6 +834,14 @@ impl Detector {
                             self.still_since_handled = 0;
                             if changed < self.thresholds.new_page {
                                 // Touched, straightened, but the same page.
+                                // Said, because it is also what a second page
+                                // laid on a first that looks like it comes to,
+                                // and from outside that is the rig stuck.
+                                tracing::info!(
+                                    changed,
+                                    new_page = self.thresholds.new_page,
+                                    "a hand was over the page, and it is the same page: not taken again"
+                                );
                             } else if again == Some(earlier.wrapping_sub(1))
                                 && self.photographed.as_deref().is_some_and(|last| {
                                     darker_share(last, frame, self.width) >= HAND_DARKER
@@ -851,6 +859,15 @@ impl Detector {
                                 return self.photographed(frame);
                             }
                             // An earlier page turned back up: already taken.
+                            if let Some(index) =
+                                again.filter(|_| changed >= self.thresholds.new_page)
+                            {
+                                tracing::info!(
+                                    page = index + 1,
+                                    changed,
+                                    "an earlier page of the letter turned back up: not taken again"
+                                );
+                            }
                         }
                     }
                 }

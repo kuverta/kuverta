@@ -275,6 +275,10 @@ pub struct Filing {
     /// wrote on it as it was sent. Paperless takes half a minute or more to
     /// read a letter on a Pi and then only says the same back.
     pub decided: Vec<Folder>,
+    /// The rig read the letter's pages before it was sent, so `decided` is
+    /// its answer even when it is no folder at all. Paperless's folder tags
+    /// do not match on their own, so it can only say the same back.
+    pub settled: bool,
     checked_at: Option<u64>,
 }
 
@@ -285,7 +289,9 @@ impl Filing {
     /// failure, a folder changed by hand.
     pub fn shown(&self) -> Outcome {
         match &self.outcome {
-            Outcome::Reading if !self.decided.is_empty() => Outcome::Folders(self.decided.clone()),
+            Outcome::Reading if self.settled || !self.decided.is_empty() => {
+                Outcome::Folders(self.decided.clone())
+            }
             outcome => outcome.clone(),
         }
     }
@@ -304,6 +310,9 @@ const KEEP: usize = 5;
 #[derive(Debug, Default)]
 pub struct Filings {
     filings: Vec<Filing>,
+    /// The rig reads every page itself, so where a letter was decided to go
+    /// is its answer: see [`Filing::settled`].
+    pub reads_pages: bool,
 }
 
 impl Filings {
@@ -318,6 +327,7 @@ impl Filings {
             undo: false,
             refile: None,
             decided: Vec::new(),
+            settled: false,
             checked_at: None,
         });
         if self.filings.len() > KEEP {
@@ -353,6 +363,15 @@ impl Filings {
     pub fn decided(&mut self, task: &str, folders: Vec<Folder>) {
         if let Some(filing) = self.filings.iter_mut().find(|f| f.task == task) {
             filing.decided = folders;
+            filing.settled |= self.reads_pages;
+        }
+    }
+
+    /// That where it was decided to go is the rig's answer, from its pages,
+    /// even if that is nowhere — rather than nothing having been read.
+    pub fn settled(&mut self, task: &str) {
+        if let Some(filing) = self.filings.iter_mut().find(|f| f.task == task) {
+            filing.settled = true;
         }
     }
 

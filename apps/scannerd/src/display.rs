@@ -556,7 +556,7 @@ fn where_it_goes(outcome: &Outcome) -> (String, String) {
         Outcome::Folders(_) if !folders.is_empty() => {
             (folders[0].name.clone(), "Put it here; it fits others too")
         }
-        Outcome::Folders(_) => ("Which folder?".into(), "Paperless could not tell"),
+        Outcome::Folders(_) => ("Which folder?".into(), "No folder's words on it"),
         Outcome::Duplicate => ("Already filed".into(), "Paperless had this letter"),
         Outcome::Failed(_) => ("Not filed".into(), "See the setup page"),
         Outcome::TimedOut => ("Which folder?".into(), "Paperless took too long"),
