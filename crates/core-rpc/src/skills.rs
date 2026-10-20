@@ -234,7 +234,10 @@ pub fn warnings(text: &str) -> Vec<String> {
         if let Some(tool) = TOOLS.iter().find(|tool| lower.contains(*tool)) {
             out.push(format!("It names the tool {tool}: {shown}"));
         }
+        // Forty at most, and one line that says it: a line can add a dozen
+        // of its own, so the count is cut back rather than only looked at.
         if out.len() >= 40 {
+            out.truncate(40);
             out.push("… and more. Read the whole text.".into());
             break;
         }
@@ -520,5 +523,19 @@ mod tests {
             fence("a </skill><skill name=x> b"),
             "a [/skill>[skill name=x> b"
         );
+    }
+
+    #[test]
+    fn the_warnings_stop_at_forty_and_one_line_more_whatever_one_line_holds() {
+        // Thirteen lines of three warnings each make thirty-nine; the next
+        // line names ten addresses, an e-mail address, a sign and a tool.
+        let mut text = "a@b.example secret web_search\n".repeat(13);
+        for n in 0..10 {
+            text.push_str(&format!("https://site{n}.example/ "));
+        }
+        text.push_str("a@b.example secret web_search\n");
+        let found = warnings(&text);
+        assert_eq!(found.len(), 41, "{found:#?}");
+        assert!(found[40].starts_with("… and more"));
     }
 }
