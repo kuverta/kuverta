@@ -53,7 +53,7 @@ mail-builder = "1.0.0"
 # OpenPGP, in pure Rust. Without bzip2: it is the one compression GnuPG never
 # picks by default, and leaving it out keeps any chance of a C library out of
 # the build.
-pgp = { version = "0.20.0", default-features = false }
+pgp = { version = "0.21.0", default-features = false }
 # rustls throughout; ring rather than aws-lc to match the rest of the tree and
 # keep the C toolchain out of the build.
 mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12", "builder"] }
