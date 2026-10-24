@@ -63,8 +63,8 @@ after(async () => {
   server?.close();
 });
 
-async function openWindow({ every = null } = {}) {
-  const context = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+async function openWindow({ every = null, urgent = null } = {}) {
+  const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, locale: 'en-US' });
   const page = await context.newPage();
   const problems = [];
   page.on('pageerror', (error) => problems.push(error.message));
@@ -79,13 +79,18 @@ async function openWindow({ every = null } = {}) {
   });
 
   await page.addInitScript((options) => {
+    // Mail HTML is rendered in a sandboxed frame. It has no native bridge
+    // and must not try to import the test bridge from its opaque origin.
+    if (window !== window.top) return;
     // A test cannot wait five minutes for the next sync. Null leaves the
     // timer far enough away that only the sync at startup happens.
     if (options.every !== null) window.__kuvertaSyncEveryMs = options.every;
     window.__fakeBridge = import(options.fake).then((module) => module.fakeInvoke());
     window.__TAURI__ = {
       core: {
-        invoke: async (command, args) => (await window.__fakeBridge)(command, args),
+        invoke: async (command, args) => command === 'urgent_messages' && options.urgent !== null
+          ? options.urgent
+          : (await window.__fakeBridge)(command, args),
         // Progress arrives on a channel in the real bridge, and the window
         // makes one for every sync, so without this nothing syncs here.
         Channel: class {
@@ -93,7 +98,7 @@ async function openWindow({ every = null } = {}) {
         },
       },
     };
-  }, { fake: FAKE, every });
+  }, { fake: FAKE, every, urgent });
 
   await page.goto(`${base}${PAGE}`);
   await page.waitForFunction(() => document.getElementById('status')?.textContent === 'you@example.com');
@@ -152,4 +157,31 @@ test('an account row syncs that account, and says when it last did', async () =>
   );
   assert.deepEqual(problems, []);
   await context.close();
+});
+
+test('attention stays readable when a verdict has no action', async () => {
+  const urgent = [null, 'none', 'read'].map((action, index) => ({
+    row: {
+      id: index + 1, account: 1, from: 'sender@example.test',
+      subject: `Attention case ${index + 1}`, date_utc: 1792100000,
+      unread: true, has_attachments: false, category: 'notification',
+    },
+    urgency: {
+      score: 3, action, deadline: null, reason: 'Review this notification.',
+      source: 'model', model: 'test-model',
+    },
+  }));
+  const { page, context, problems } = await openWindow({ urgent });
+  try {
+    await page.locator('#attention-nav').getByText('Needs attention').click();
+    for (let index = 1; index <= 3; index += 1) {
+      await page.getByText(`Attention case ${index}`, { exact: true }).waitFor();
+    }
+    const content = await page.locator('#list').textContent();
+    assert.ok(content.includes('today'));
+    assert.ok(!content.includes('undefined'));
+    assert.deepEqual(problems, []);
+  } finally {
+    await context.close();
+  }
 });
