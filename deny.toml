@@ -25,6 +25,12 @@ ignore = [
     # per message opened, with no one on the other end timing it — the attack
     # needs a decryption oracle queried many times over.
     { id = "RUSTSEC-2023-0071", reason = "no fixed rsa release; local-only decryption is no timing oracle" },
+    # crypto-bigint 0.5 branches on secrets in a few operations. It reaches us
+    # through rPGP's curves (k256, p256, p384, p521, cx448 need elliptic-curve
+    # 0.13, which cannot take the fixed 0.7 line), and no pgp release moves off
+    # it yet. As with Marvin: the keys are used locally, once per message, with
+    # no one timing it.
+    { id = "RUSTSEC-2026-0387", reason = "no fixed crypto-bigint 0.5 release; rPGP's curves pin it; local-only key use is no timing oracle" },
 ]
 
 [licenses]
