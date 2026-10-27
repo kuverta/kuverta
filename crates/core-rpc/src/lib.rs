@@ -27,6 +27,7 @@ pub mod chats;
 pub mod cleanup;
 pub mod conversations;
 pub mod documents;
+pub mod form;
 pub mod html;
 pub mod html_view;
 pub mod mailboxes;
@@ -70,6 +71,7 @@ pub use core_pgp::{
 };
 pub use core_store::{SearchOrder, SmartField, SmartOp, SmartQuery, SmartRule};
 pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, SignatureSettings};
+pub use form::FormField;
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use outbox::{OutboxSent, OutboxView};
