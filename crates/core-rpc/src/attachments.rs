@@ -20,6 +20,7 @@
 use mail_parser::{Message as MimeMessage, MessageParser, MessagePart, MimeHeaders};
 use serde::{Deserialize, Serialize};
 
+use core_pgp::Keyring;
 use core_store::model::{AccountId, MessageId};
 
 use crate::{Core, Result, RpcError};
@@ -431,16 +432,59 @@ impl Core {
             .blobs
             .get(path)
             .map_err(|e| RpcError::Rejected(format!("reading the stored body of {id}: {e}")))?;
-        let parsed = MessageParser::default().parse(&raw).ok_or_else(|| {
-            RpcError::Rejected(format!("the stored body of {id} is not a message"))
-        })?;
+        with_parts(&raw, id, self.keyring.as_ref(), |source| {
+            let part = attachment_parts(source)
+                .into_iter()
+                .nth(index)
+                .ok_or_else(|| {
+                    RpcError::Rejected(format!("message {id} has no attachment {}", index + 1))
+                })?;
+            Ok(Attachment {
+                view: describe(index, part),
+                bytes: part.contents().to_vec(),
+            })
+        })
+    }
+}
 
-        let opened = if is_encrypted(&parsed) {
-            core_pgp::open_parsed(&parsed, self.keyring.as_ref())
-        } else {
-            core_pgp::OpenedMessage::default()
-        };
-        let inner = match &opened.decrypted {
+/// Every attachment of a stored message, bytes and all: what a forward
+/// carries along with the text.
+pub(crate) fn every(
+    raw: &[u8],
+    id: MessageId,
+    keyring: Option<&Keyring>,
+) -> Result<Vec<Attachment>> {
+    with_parts(raw, id, keyring, |source| {
+        Ok(attachment_parts(source)
+            .into_iter()
+            .enumerate()
+            .map(|(index, part)| Attachment {
+                view: describe(index, part),
+                bytes: part.contents().to_vec(),
+            })
+            .collect())
+    })
+}
+
+/// Runs `f` on the parse that holds a stored message's attachments: the
+/// message itself, or what decrypting it yields.
+fn with_parts<T>(
+    raw: &[u8],
+    id: MessageId,
+    keyring: Option<&Keyring>,
+    f: impl FnOnce(&MimeMessage<'_>) -> Result<T>,
+) -> Result<T> {
+    let parsed = MessageParser::default()
+        .parse(raw)
+        .ok_or_else(|| RpcError::Rejected(format!("the stored body of {id} is not a message")))?;
+
+    let opened = if is_encrypted(&parsed) {
+        core_pgp::open_parsed(&parsed, keyring)
+    } else {
+        core_pgp::OpenedMessage::default()
+    };
+    let inner =
+        match &opened.decrypted {
             Some(bytes) => Some(MessageParser::default().parse(bytes).ok_or_else(|| {
                 RpcError::Rejected("the decrypted message could not be read".into())
             })?),
@@ -451,18 +495,7 @@ impl Core {
             }
             None => None,
         };
-        let source = inner.as_ref().unwrap_or(&parsed);
-        let part = attachment_parts(source)
-            .into_iter()
-            .nth(index)
-            .ok_or_else(|| {
-                RpcError::Rejected(format!("message {id} has no attachment {}", index + 1))
-            })?;
-        Ok(Attachment {
-            view: describe(index, part),
-            bytes: part.contents().to_vec(),
-        })
-    }
+    f(inner.as_ref().unwrap_or(&parsed))
 }
 
 #[cfg(test)]

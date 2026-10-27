@@ -126,3 +126,76 @@ async fn a_draft_for_an_account_that_does_not_exist_is_refused_before_connecting
 
     assert!(matches!(err, RpcError::UnknownAccount(_)), "got {err:?}");
 }
+
+#[test]
+fn a_forward_carries_the_files_of_the_message_it_forwards() {
+    // Found in use: a forward sent the text and dropped the PDF it was about.
+    let dir = TempDir::new("forward-files");
+    let store = core_store::Store::open(dir.0.join("kuverta.db")).unwrap();
+    let account = store
+        .add_account(&core_store::model::NewAccount {
+            label: "me@example.com".into(),
+            email: "me@example.com".into(),
+            imap_host: "127.0.0.1".into(),
+            imap_port: 1,
+            username: "me@example.com".into(),
+            auth_method: "app_password".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let raw = "From: Erika Mustermann <erika@example.com>\r\n\
+               To: me@example.com\r\n\
+               Subject: Rechnung\r\n\
+               Message-ID: <rechnung@example.com>\r\n\
+               MIME-Version: 1.0\r\n\
+               Content-Type: multipart/mixed; boundary=b\r\n\
+               \r\n\
+               --b\r\n\
+               Content-Type: text/plain; charset=utf-8\r\n\
+               \r\n\
+               Anbei die Rechnung.\r\n\
+               --b\r\n\
+               Content-Type: application/pdf; name=\"Rechnung.pdf\"\r\n\
+               Content-Disposition: attachment; filename=\"Rechnung.pdf\"\r\n\
+               Content-Transfer-Encoding: base64\r\n\
+               \r\n\
+               JVBERi0xLjQK\r\n\
+               --b--\r\n";
+    let path = core_store::Blobs::new(dir.0.join("blobs"))
+        .put(account, "m1", raw.as_bytes())
+        .unwrap();
+    let id = store
+        .upsert_message(
+            account,
+            &core_store::model::NewMessage {
+                rfc822_message_id: Some("rechnung@example.com".into()),
+                subject: Some("Rechnung".into()),
+                body_path: Some(path),
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap()
+        .0;
+
+    let preview = Session::new(dir.0.clone())
+        .preview(
+            "me@example.com",
+            &DraftInput {
+                to: vec!["a@example.com".into()],
+                body: "Zur Info".into(),
+                forward: Some(id),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+    use mail_parser::MimeHeaders;
+    let sent = mail_parser::MessageParser::default()
+        .parse(preview.rfc822.as_bytes())
+        .unwrap();
+    assert!(sent.body_text(0).unwrap().contains("Anbei die Rechnung."));
+    let file = sent.attachment(0).expect("the PDF should go along");
+    assert_eq!(file.attachment_name(), Some("Rechnung.pdf"));
+    assert_eq!(file.contents(), b"%PDF-1.4\n");
+}
