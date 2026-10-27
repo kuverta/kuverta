@@ -694,7 +694,7 @@ impl Session {
             .account_by_email(email)?
             .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
 
-        let draft = build_draft(&store, &blobs, &account, input)?;
+        let draft = build_draft(&store, &blobs, &self.keyring(), &account, input)?;
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
@@ -737,7 +737,7 @@ impl Session {
             .account_by_email(email)?
             .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
 
-        let draft = build_draft(&store, &blobs, &account, input)?;
+        let draft = build_draft(&store, &blobs, &self.keyring(), &account, input)?;
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
@@ -803,7 +803,7 @@ impl Session {
             ))
         })?;
 
-        let draft = build_draft(&store, &blobs, &account, input)?;
+        let draft = build_draft(&store, &blobs, &self.keyring(), &account, input)?;
         let built = draft
             .build()
             .map_err(|e| RpcError::Rejected(e.to_string()))?;
@@ -884,6 +884,7 @@ fn protection(input: &DraftInput) -> Protection {
 fn build_draft(
     store: &Store,
     blobs: &Blobs,
+    keyring: &Keyring,
     account: &Account,
     input: &DraftInput,
 ) -> Result<Draft> {
@@ -905,7 +906,21 @@ fn build_draft(
             };
             Draft::reply(from, &source, mode)
         }
-        (_, Some(id)) => Draft::forward(from, &reply_source(store, blobs, account.id, id)?),
+        (_, Some(id)) => {
+            let raw = stored_body(store, blobs, account.id, id)?;
+            let mut draft = Draft::forward(from, &parse_source(&raw, id)?);
+            // A forward without the original's files is not the original: they
+            // go along, read from the stored message as the reading pane lists
+            // them.
+            for file in crate::attachments::every(&raw, id, Some(keyring))? {
+                draft = draft.attach(core_smtp::Attachment {
+                    name: file.view.name,
+                    content_type: file.view.content_type,
+                    data: file.bytes,
+                });
+            }
+            draft
+        }
         _ => Draft::new(from),
     };
 
@@ -932,7 +947,18 @@ fn build_draft(
     // is where a reply is read from.
     draft.body = format!("{}{}", input.body, draft.body);
 
-    let total: usize = input.attachments.iter().map(|a| a.data.len()).sum();
+    // Counted with whatever a forward brought along: the server refuses the
+    // message, not the part of it that was typed.
+    let total: usize = input
+        .attachments
+        .iter()
+        .map(|a| a.data.len())
+        .sum::<usize>()
+        + draft
+            .attachments
+            .iter()
+            .map(|a| a.data.len())
+            .sum::<usize>();
     if total > MAX_ATTACHMENT_BYTES {
         return Err(RpcError::Rejected(format!(
             "the attached files come to {:.1} MB, and most mail servers refuse a message over \
@@ -965,6 +991,16 @@ fn reply_source(
     account: AccountId,
     id: MessageId,
 ) -> Result<ReplySource> {
+    parse_source(&stored_body(store, blobs, account, id)?, id)
+}
+
+fn parse_source(raw: &[u8], id: MessageId) -> Result<ReplySource> {
+    ReplySource::from_rfc822(raw)
+        .ok_or_else(|| RpcError::Rejected(format!("the stored body of {id} is not a message")))
+}
+
+/// A stored message's raw bytes, as synced.
+fn stored_body(store: &Store, blobs: &Blobs, account: AccountId, id: MessageId) -> Result<Vec<u8>> {
     let stored = store
         .message_by_id(account, id)?
         .ok_or(RpcError::UnknownMessage(id))?;
@@ -973,12 +1009,9 @@ fn reply_source(
             "message {id} was stored without its body, so it cannot be quoted"
         ))
     })?;
-    let raw = blobs
+    blobs
         .get(path)
-        .map_err(|e| RpcError::Rejected(format!("reading the stored body of {id}: {e}")))?;
-
-    ReplySource::from_rfc822(&raw)
-        .ok_or_else(|| RpcError::Rejected(format!("the stored body of {id} is not a message")))
+        .map_err(|e| RpcError::Rejected(format!("reading the stored body of {id}: {e}")))
 }
 
 /// Appends a draft, returning the folder it went to.
