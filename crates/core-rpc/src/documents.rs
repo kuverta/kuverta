@@ -266,7 +266,7 @@ impl Core {
         let pixels = self
             .signature_pixels()?
             .ok_or_else(|| reject(NO_SIGNATURE))?;
-        let (name, bytes, from) = self.to_sign(account, source)?;
+        let (name, bytes, from) = self.pdf_source(account, source)?;
         let on = self.line_for(account, &bytes, &aim, &name)?;
         let mut placement = Placement {
             page: aim.page,
@@ -317,6 +317,48 @@ impl Core {
         self.document_view(id)
     }
 
+    /// The form fields of a PDF, with the name it goes by: what
+    /// [`Core::fill_form`] takes. An empty list is a flat PDF.
+    pub fn form_fields(
+        &self,
+        account: AccountId,
+        source: DocumentSource,
+    ) -> Result<(String, Vec<crate::FormField>)> {
+        let (name, bytes, _) = self.pdf_source(account, source)?;
+        let fields = crate::form::fields(&bytes).map_err(reject)?;
+        Ok((name, fields))
+    }
+
+    /// Writes `values` into the form fields of a copy of `source`, kept as a
+    /// new document. The original is untouched, and the copy goes nowhere
+    /// until the person sends it themselves.
+    pub fn fill_form(
+        &self,
+        account: AccountId,
+        source: DocumentSource,
+        values: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<DocumentView> {
+        let (name, bytes, from) = self.pdf_source(account, source)?;
+        let filled = crate::form::fill(&bytes, values).map_err(reject)?;
+        let stem = name.trim_end_matches(".pdf").trim_end_matches(".PDF");
+        let stem = stem.strip_suffix(" (filled)").unwrap_or(stem);
+        let filled_name = document_name(&format!("{stem} (filled)"));
+        let id = self.store().add_document(&NewDocument {
+            account_id: account,
+            name: &filled_name,
+            note: Some(&format!(
+                "filled copy of {name}, {from}; {} fields filled",
+                filled.filled
+            )),
+            signed: false,
+            pages: pdf::page_count(&filled.pdf).map(|n| n as i64),
+            pdf: &filled.pdf,
+            signed_from: None,
+        })?;
+        tracing::info!(id, fields = filled.filled, "filled a form");
+        self.document_view(id)
+    }
+
     /// Puts the signature somewhere else on the same original.
     ///
     /// This is what the window's placer saves: the person dragged the
@@ -342,7 +384,7 @@ impl Core {
         let pixels = self
             .signature_pixels()?
             .ok_or_else(|| reject(NO_SIGNATURE))?;
-        let (_, bytes, _) = self.to_sign(account, was.source)?;
+        let (_, bytes, _) = self.pdf_source(account, was.source)?;
         let placement = Placement {
             page: Some(at.page),
             anchor: pdf::Anchor::BottomLeft,
@@ -374,8 +416,8 @@ impl Core {
     }
 
     /// What a source is: its name, its bytes, and where it came from in
-    /// words, for the note on the signed copy.
-    fn to_sign(
+    /// words, for the note on the copy made of it — signed or filled.
+    fn pdf_source(
         &self,
         account: AccountId,
         source: DocumentSource,
@@ -387,7 +429,7 @@ impl Core {
                     && !attachment.bytes.starts_with(b"%PDF")
                 {
                     return Err(reject(format!(
-                        "{} is {}, not a PDF; only a PDF can be signed",
+                        "{} is {}, not a PDF; only a PDF can be signed or filled",
                         attachment.view.name, attachment.view.content_type
                     )));
                 }
