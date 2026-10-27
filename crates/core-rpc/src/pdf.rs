@@ -158,7 +158,7 @@ fn winansi(c: char) -> Option<u8> {
 /// A PDF string literal: the text in WinAnsi, with what the syntax reserves
 /// escaped and everything above ASCII written as an octal escape, so the
 /// content stream stays plain ASCII whatever the text was.
-fn literal(text: &str) -> String {
+pub(crate) fn literal(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('(');
     for c in text.chars() {
@@ -241,14 +241,14 @@ fn helvetica_width(c: char) -> u32 {
 
 /// How wide `text` is at `size`, in points. Bold is somewhat wider than
 /// regular; the headings are measured generously rather than exactly.
-fn width(text: &str, size: f32, bold: bool) -> f32 {
+pub(crate) fn width(text: &str, size: f32, bold: bool) -> f32 {
     let units: u32 = text.chars().map(helvetica_width).sum();
     units as f32 * size / 1000.0 * if bold { 1.08 } else { 1.0 }
 }
 
 /// `text` broken into lines no wider than `most`. A word that is wider on
 /// its own is broken where it has to be.
-fn wrap(text: &str, size: f32, bold: bool, most: f32) -> Vec<String> {
+pub(crate) fn wrap(text: &str, size: f32, bold: bool, most: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut line = String::new();
     for word in text.split_whitespace() {
@@ -592,7 +592,7 @@ fn pdf_doc_string(text: &str) -> Vec<u8> {
         .collect()
 }
 
-fn font(base: &str) -> Dictionary {
+pub(crate) fn font(base: &str) -> Dictionary {
     let mut font = Dictionary::new();
     font.set("Type", Object::Name(b"Font".to_vec()));
     font.set("Subtype", Object::Name(b"Type1".to_vec()));
@@ -699,7 +699,7 @@ fn inherited<'a>(doc: &'a Document, page_id: ObjectId, key: &[u8]) -> Option<&'a
     None
 }
 
-fn rectangle(object: Option<&Object>) -> Option<[f32; 4]> {
+pub(crate) fn rectangle(object: Option<&Object>) -> Option<[f32; 4]> {
     let array = object?.as_array().ok()?;
     if array.len() != 4 {
         return None;
