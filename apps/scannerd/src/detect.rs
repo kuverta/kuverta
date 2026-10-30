@@ -501,6 +501,41 @@ pub enum Step {
 /// not pile up without end.
 const PAGES_KEPT: usize = 30;
 
+/// How many frames the paper test is remembered over: the width of
+/// `Detector::recent_paper`, one bit a frame. At five frames a second, the
+/// last second and a half.
+///
+/// The test is asked of one frame at a time, and its answer wobbles. It
+/// compares each block with the table as it was learnt and takes no offset out
+/// — on purpose, because an offset is what let a shadow over half the table
+/// make the other half look like paper — so a camera still choosing its
+/// exposure moves every block at once, and the lump the test finds is the
+/// whole frame on one frame and none of it on the next. On the rig a page lay
+/// still on the table and read a share of between 0.0 and 0.21, and a fill of
+/// between 0.0 and 1.0, from one frame to the next: the same page, lying
+/// still, not moving at all.
+///
+/// Asked afresh of every frame, that page was never photographed. `Settling`
+/// was entered on a frame that saw it and left again on the next frame that
+/// did not — four times in four seconds — and the frames of stillness a
+/// photograph needs were never in a row. So the frame in hand is enough to
+/// *start* waiting for a page to settle, and it takes this whole window with
+/// no paper in any of it to give up on one. A page that flickers is a page.
+///
+/// It is also what keeps the table from being learnt with a page lying on it.
+/// The light moving over the table is learnt as the table after a while, and
+/// the guard against learning a page away with it used to be the frame in hand
+/// alone — which the same wobble defeats: on the rig the table was learnt
+/// again on a frame that read a share of 0.013 while a page lay on it, and a
+/// page inside the baseline is a page that can never be seen again, however
+/// long it lies there. Nothing is learnt as the table now unless no frame in
+/// this window saw paper.
+pub const PAPER_FRAMES: u32 = u8::BITS;
+
+/// How often to say that something paper-like is lying there and never coming
+/// to a page: every fiftieth frame, ten seconds at five frames a second.
+const SAY_ALMOST: u32 = 50;
+
 pub struct Detector {
     thresholds: Thresholds,
     /// How many consecutive still frames before capturing.
@@ -537,6 +572,14 @@ pub struct Detector {
     /// paper: the light over the table has moved, and after a while what it
     /// looks like now is the table.
     light_frames: u8,
+    /// Whether each of the last [`PAPER_FRAMES`] frames looked like paper,
+    /// the newest in the lowest bit.
+    recent_paper: u8,
+    /// Frames in a row with something paper-like in them that never came to a
+    /// page. Counted only to say so: paper on the table, nothing in the log
+    /// and nothing photographed is what a rig that has stopped working looks
+    /// like from the outside, and it used to be silent.
+    almost_frames: u32,
 }
 
 impl Detector {
@@ -557,6 +600,8 @@ impl Detector {
             last_measure: None,
             last_paper: None,
             light_frames: 0,
+            recent_paper: 0,
+            almost_frames: 0,
         }
     }
 
@@ -577,6 +622,8 @@ impl Detector {
         }
         self.handled = false;
         self.still_since_handled = 0;
+        self.recent_paper = 0;
+        self.almost_frames = 0;
         Step::Capture
     }
 
@@ -625,6 +672,10 @@ impl Detector {
         self.learn_baseline(frame);
         self.state = State::Waiting;
         self.clear_frames = 0;
+        // Against a table just learnt, what the last frames looked like
+        // against the old one says nothing.
+        self.recent_paper = 0;
+        self.almost_frames = 0;
     }
 
     pub fn state(&self) -> State {
@@ -705,6 +756,10 @@ impl Detector {
         let looks_like_paper =
             paper.share >= self.thresholds.paper_share && paper.fill >= self.thresholds.paper_fill;
         self.last_paper = Some(paper);
+        // The last frames' answers, the newest in the lowest bit; the oldest
+        // falls off the top. What it is for is in [`PAPER_FRAMES`].
+        self.recent_paper = (self.recent_paper << 1) | u8::from(looks_like_paper);
+        let seen_paper = self.recent_paper.count_ones();
         let against_previous = self
             .previous
             .as_deref()
@@ -717,8 +772,10 @@ impl Detector {
             State::Waiting => {
                 if against_baseline < self.thresholds.present {
                     self.light_frames = 0;
+                    self.almost_frames = 0;
                 } else if looks_like_paper {
                     self.light_frames = 0;
+                    self.almost_frames = 0;
                     tracing::info!(
                         share = paper.share,
                         fill = paper.fill,
@@ -726,23 +783,42 @@ impl Detector {
                         "that looks like paper: waiting for it to be still"
                     );
                     self.state = State::Settling { frames_still: 0 };
+                } else if self.recent_paper != 0 || paper.share >= self.thresholds.paper_share / 2.0
+                {
+                    // Something paper-like is in the frame, or was in one of
+                    // the last [`PAPER_FRAMES`] of them, but never enough of it
+                    // to be a page. Not learnt as the table: that swallows the
+                    // page, and then nothing is ever seen again — which is
+                    // exactly what happened on the rig, both when this was let
+                    // through on any refusal and when the guard asked the frame
+                    // in hand rather than the window.
+                    //
+                    // Said, and said again while it lasts, because otherwise
+                    // this branch is silent: a rig sitting in it has paper on
+                    // the table, nothing in the log, nothing photographed and
+                    // no way to tell why. That is exactly how it looked from
+                    // the outside.
+                    self.light_frames = 0;
+                    self.almost_frames = self.almost_frames.saturating_add(1);
+                    if self.almost_frames % SAY_ALMOST == 1 {
+                        tracing::info!(
+                            share = paper.share,
+                            fill = paper.fill,
+                            change = against_baseline,
+                            of_last = seen_paper,
+                            want_share = self.thresholds.paper_share,
+                            want_fill = self.thresholds.paper_fill,
+                            frames = self.almost_frames,
+                            "something that could be paper is lying there, but not enough of the time to be a page"
+                        );
+                    }
                 } else {
                     // Changed, but not the way paper changes it: the sun has
                     // moved over the table. Seen that way for a while, that is
                     // what the table looks like now — otherwise every frame
                     // from here to nightfall is a page about to be
                     // photographed.
-                    //
-                    // Only when there is *nothing* paper-like in the frame,
-                    // though. A page refused for any other reason must never
-                    // be learnt as the table: that swallows the page, and then
-                    // nothing is ever seen again — which is exactly what
-                    // happened on the rig when this was let through on any
-                    // refusal.
-                    if paper.share >= self.thresholds.paper_share / 2.0 {
-                        self.light_frames = 0;
-                        return Step::Wait;
-                    }
+                    self.almost_frames = 0;
                     self.light_frames = self.light_frames.saturating_add(1);
                     // Said once a run, with the numbers: a rig that has stopped
                     // seeing pages must be able to show why.
@@ -771,8 +847,10 @@ impl Detector {
             }
 
             State::Settling { frames_still } => {
-                if against_baseline < self.thresholds.present || !looks_like_paper {
-                    // Whatever it was has gone again — a hand passing over.
+                if against_baseline < self.thresholds.present || self.recent_paper == 0 {
+                    // Whatever it was has gone again — a hand passing over, or
+                    // something that has not looked like paper once in the
+                    // last [`PAPER_FRAMES`] frames.
                     self.state = State::Waiting;
                     Step::Wait
                 } else if against_previous < self.thresholds.still {

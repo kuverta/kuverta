@@ -688,3 +688,138 @@ fn a_table_the_light_has_moved_over_is_learnt_again() {
     let paper = detector.last_paper().expect("measured");
     assert!(paper.share < 0.06, "{paper:?}");
 }
+
+/// A page of little contrast against the table: 80 rows of it at 129, over a
+/// desk at 90.
+///
+/// Which is the rig. The table there is creased paper with the corners drawn
+/// on it in marker, and a letter lying on it is barely paler than the table
+/// is — close enough to the twelve counts a block has to move to count as
+/// something lying there that the answer turns on very little.
+fn faint_page() -> Vec<u8> {
+    let mut frame = desk();
+    for pixel in frame.iter_mut().take(80 * W) {
+        *pixel = 129;
+    }
+    frame
+}
+
+/// The same page, lying exactly where it was, in a frame the paper test does
+/// not see a page in.
+///
+/// Every other 16×16 block — the block the paper test measures — taken down
+/// by 28 counts. The frame's own brightness moves with them, and once that is
+/// taken out no pixel has moved by the 24 counts that count as changed: by
+/// every measure of movement, the page is lying perfectly still. But the paper
+/// test takes no offset out, on purpose, so for those blocks the page has
+/// dropped to within twelve counts of the table and is not paper any more:
+/// what was one lump is a checkerboard whose largest piece is a single block,
+/// a share of 0.0033 of the frame.
+///
+/// That is not a trick to make a test fail. It is the rig, in arithmetic: the
+/// share the test read of one page lying still there swung between 0.0 and
+/// 0.21 from one frame to the next, and 0.0033 was among the numbers in the
+/// log.
+fn unseen(frame: &[u8]) -> Vec<u8> {
+    let mut out = frame.to_vec();
+    for y in 0..H {
+        for x in 0..W {
+            if (x / 16 + y / 16) % 2 == 0 {
+                out[y * W + x] = out[y * W + x].saturating_sub(28);
+            }
+        }
+    }
+    out
+}
+
+/// The three things the two frames above have to be, for the tests that
+/// alternate between them to be testing what they say. Asserted rather than
+/// trusted: if a threshold moves and the frames stop standing for a page that
+/// flickers, these should say so rather than quietly pass.
+fn premises() {
+    let (page, flickered) = (faint_page(), unseen(&faint_page()));
+    let defaults = Thresholds::default();
+    let paper = |frame: &[u8]| {
+        let seen = paper_like(&desk(), frame, W);
+        seen.share >= defaults.paper_share && seen.fill >= defaults.paper_fill
+    };
+    assert!(paper(&page), "the page has to look like paper");
+    assert!(!paper(&flickered), "and the other frame must not");
+    for frame in [&page, &flickered] {
+        assert!(
+            changed_fraction(&desk(), frame, defaults.pixel) >= defaults.present,
+            "both have to be something lying on the table"
+        );
+    }
+    assert!(
+        changed_fraction(&page, &flickered, defaults.pixel) < defaults.still,
+        "and nothing may have moved between them"
+    );
+}
+
+#[test]
+fn a_page_the_paper_test_sees_only_now_and_then_is_still_photographed() {
+    premises();
+
+    // On the rig this was a page that lay still on the table and was never
+    // photographed. Settling was entered on a frame that saw the page and left
+    // on the next frame that did not — four times in four seconds — so the
+    // still frames a photograph needs were never in a row.
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let (page, flickered) = (faint_page(), unseen(&faint_page()));
+    let mut steps = Vec::new();
+    for turn in 0..12 {
+        steps.push(detector.observe(if turn % 2 == 0 { &page } else { &flickered }));
+    }
+
+    assert!(
+        steps.contains(&Step::Capture),
+        "a page the test sees in half the frames is a page: {steps:?}"
+    );
+}
+
+#[test]
+fn a_page_lying_there_is_never_learnt_as_the_table() {
+    premises();
+
+    // The worse half of the same wobble. The table is learnt again when the
+    // light over it moves, and the guard against learning a page away with it
+    // used to ask the frame in hand — which the wobble defeats: on the rig the
+    // table was learnt again on a frame that read a share of 0.013 while a
+    // page lay on it. A page inside the baseline can never be seen again,
+    // however long it lies there, and nothing says why.
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    let baseline = detector.baseline_generation();
+    let (page, flickered) = (faint_page(), unseen(&faint_page()));
+
+    for turn in 0..80 {
+        detector.observe(if turn % 2 == 0 { &page } else { &flickered });
+    }
+
+    assert_eq!(
+        detector.baseline_generation(),
+        baseline,
+        "the table was learnt again with a page lying on it"
+    );
+}
+
+#[test]
+fn a_page_is_given_up_on_once_no_frame_in_the_window_has_seen_it() {
+    // The window cannot be a one-way door: something that looked like paper
+    // once and then does not, while the table stays covered, has to let go of
+    // Settling rather than wait there for a stillness that would photograph
+    // it.
+    let mut detector = detector();
+    detector.learn_empty(&desk());
+    detector.observe(&desk_with_page(0.4));
+    assert!(matches!(detector.state(), State::Settling { .. }));
+
+    // The evening instead: changed, and nothing paper-like in it.
+    for _ in 0..scannerd::detect::PAPER_FRAMES {
+        detector.observe(&evening(40));
+    }
+
+    assert_eq!(detector.state(), State::Waiting);
+}
