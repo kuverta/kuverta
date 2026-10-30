@@ -127,7 +127,7 @@ fn ids_param() -> Value {
 }
 
 fn documents_param() -> Value {
-    json!({"type": "array", "items": {"type": "integer"}, "description": "Ids of documents made here (write_pdf, sign_pdf, list_documents) to attach to it."})
+    json!({"type": "array", "items": {"type": "integer"}, "description": "Ids of documents made here (write_pdf, write_table, sign_pdf, list_documents) to attach to it."})
 }
 
 /// Every tool the assistant has.
@@ -199,6 +199,14 @@ pub fn tools() -> Vec<ToolSpec> {
                 "sign": {"type": "boolean", "default": false},
                 "note": {"type": "string", "description": "Optional: one line on what it is."}
             }, "required": ["name", "text"]})),
+        tool("write_table", "Write a table as a spreadsheet the person can open, sort and add up in Excel or Numbers: everything they owe, every investment they hold, every invoice of a year. Use it whenever they ask for a table, a list, an overview or a Tabelle of something gathered from their mail — not write_pdf, which cannot be sorted or totalled. Give the rows already in the order asked for: sorted by amount means the largest first, and \"by relevance\" or \"nach Relevanz\" means what needs them soonest first — a Mahnung or a Frist before a standing invoice — so put the figure and the urgency in columns of their own and sort by them. Put amounts in as plain numbers (1234.56, no currency sign and no thousands separator) in a column whose heading names the currency, or the spreadsheet cannot total them; dates as YYYY-MM-DD. Always give a last column saying where each row came from — the sender and the date of the message — so every figure can be checked, and say in your answer what you searched and what you may have missed. Never put in a figure you did not read: a row you are unsure of belongs in the table with the doubt written in it, not quietly rounded.",
+            json!({"type": "object", "properties": {
+                "name": {"type": "string", "description": "A file name, such as Schulden or Geldanlagen."},
+                "columns": {"type": "array", "items": {"type": "string"}, "description": "The heading of each column."},
+                "rows": {"type": "array", "description": "The rows, in the order they are to be read, each an array of values in the columns' order.", "items": {"type": "array", "items": {}}},
+                "format": {"type": "string", "enum": ["xlsx", "csv"], "default": "xlsx", "description": "xlsx unless the person asked for a CSV: a figure stays a figure, and the file opens as a spreadsheet."},
+                "note": {"type": "string", "description": "Optional: one line on what the table is and what it is built from."}
+            }, "required": ["name", "columns", "rows"]})),
         tool("sign_pdf", "Put the person's stored signature on a PDF — an attachment of a message (message_id and the attachment index from read_message) or a document (document_id). Only when they ask you to sign it, never on your own. The original is kept; the signed copy is a new document, shown as a card. Give nothing but what to sign: kuverta reads the page for the line it rules for a signature — „Unterschrift“, a name beneath a rule — and sits the signature on it, with the place and today's date beneath where there is room. Where a document rules a line for each party, it says so and names them; call it again with near set to words from the person's own line (a name, Darlehensnehmer, Auftraggeber). Only when it finds no line at all does it fall back to the bottom of the last page — then, or when the person says it landed wrong, place it yourself with page, position, above_bottom_mm and x_mm.",
             json!({"type": "object", "properties": {
                 "message_id": {"type": "integer"},
@@ -335,6 +343,20 @@ document you signed and where the signature went. A signature is a picture of \
 theirs, not a certificate. Without a stored signature, say they can add one under Settings → \
 General → Signature. A document is shown as a card the person opens, saves or attaches; to \
 send one, draft_message or draft_reply takes its id in documents — you still send nothing.\n\
+A table, a list or an overview of something gathered from their mail — what they owe, what they \
+have invested, what a year's invoices came to — is a spreadsheet, not prose and not a PDF: \
+write_table makes one they can sort and total themselves. Such a question is a search before it \
+is a file, and a thin search makes a table that is wrong in the one way a table must not be: \
+missing rows look exactly like rows that do not exist. So search several times, in German and \
+in English and for the words the senders would use rather than the words the person used — for \
+debts Rechnung, Mahnung, Zahlungserinnerung, Inkasso, Darlehen, Kredit, Rate, offener Betrag, \
+fällig; for investments Depot, Wertpapier, Fonds, ETF, Dividende, Zinsen, Sparplan, \
+Vermögensaufstellung — and read the attachments, because the amount is usually in the PDF and \
+not in the message. Then say, in your answer and not only in the file, what you searched, how \
+many messages you read, and what a table built this way can and cannot be: it is what their \
+mail says, which is not the same as what they owe or hold. Where two messages are about the \
+same debt, the newest is the one that counts, and the older one is not another row. Never \
+invent a figure to fill a column.\n\
 A PDF that is a form — boxes to type into, checkboxes — you can fill when the person asks: \
 read_form lists its fields, fill_form writes the values into a copy, shown as a card like any \
 other document, and sign_pdf signs the copy when a signature is asked for too. Fill only what \
@@ -867,6 +889,79 @@ impl Core {
                         "name": document.name,
                         "pages": document.pages,
                         "signed": document.signed,
+                        "note": "shown to the person as a card; they open, save or attach it",
+                    }),
+                    Some(AssistantEvent::Document { document, note }),
+                ))
+            }
+            "write_table" => {
+                let name = text(args, "name")?;
+                let columns: Vec<String> = args
+                    .get("columns")
+                    .and_then(Value::as_array)
+                    .map(|columns| {
+                        columns
+                            .iter()
+                            .map(|column| match column {
+                                Value::String(text) => text.trim().to_string(),
+                                other => other.to_string(),
+                            })
+                            .collect()
+                    })
+                    .ok_or_else(|| "write_table needs columns".to_string())?;
+                let rows: Vec<Vec<crate::table::Cell>> = args
+                    .get("rows")
+                    .and_then(Value::as_array)
+                    .map(|rows| {
+                        rows.iter()
+                            .map(|row| match row {
+                                // A row the model wrote as an array, which is
+                                // what was asked for.
+                                Value::Array(cells) => {
+                                    cells.iter().map(crate::table::Cell::from_json).collect()
+                                }
+                                // Or as an object keyed by the column names,
+                                // which a model will do however it is asked.
+                                // Taken in the columns' order, so a table
+                                // written that way is still a table.
+                                Value::Object(fields) => columns
+                                    .iter()
+                                    .map(|column| {
+                                        fields
+                                            .get(column)
+                                            .map(crate::table::Cell::from_json)
+                                            .unwrap_or_else(|| {
+                                                crate::table::Cell::Text(String::new())
+                                            })
+                                    })
+                                    .collect(),
+                                one => vec![crate::table::Cell::from_json(one)],
+                            })
+                            .collect()
+                    })
+                    .ok_or_else(|| "write_table needs rows".to_string())?;
+                let format = match args.get("format").and_then(Value::as_str) {
+                    Some(asked) if asked.trim().eq_ignore_ascii_case("csv") => {
+                        crate::table::Format::Csv
+                    }
+                    _ => crate::table::Format::Xlsx,
+                };
+                let note = args
+                    .get("note")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(|n| n.chars().take(300).collect::<String>());
+                let table = crate::table::Table { columns, rows };
+                let document = self
+                    .write_table(account, name, &table, format, note.as_deref())
+                    .map_err(e)?;
+                Ok(ToolOutcome::ok(
+                    json!({
+                        "document_id": document.id,
+                        "name": document.name,
+                        "rows": table.rows.len(),
+                        "columns": table.columns.len(),
                         "note": "shown to the person as a card; they open, save or attach it",
                     }),
                     Some(AssistantEvent::Document { document, note }),

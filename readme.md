@@ -112,6 +112,16 @@ in its header.
   and the original is signed again where you put it; the signed copy is a card
   to open, save or attach to a draft, and one click on ✨ Answer answers a
   "bitte unterschrieben zurück" with the signed contract already attached
+- **Tables, as a spreadsheet** — "bitte erstelle eine Tabelle mit allen meinen
+  Schulden, sortiert nach Höhe und Relevanz", or a list of what you have
+  invested: the assistant searches your mail for it — in German and in English,
+  and for the words the senders use rather than the words you did — reads the
+  attachments the amounts are actually in, and writes an **.xlsx** (or a
+  **.csv** if you ask) with the rows in the order you asked for, the figures as
+  figures so the sheet totals them, and a column saying which message each row
+  came from, so every number can be checked. It is a card to open, save or
+  attach, and it says what it searched and what a table built from a mailbox
+  cannot be: what your mail says is not the same as what you owe
 - **Profiles** — accounts and postal addresses grouped (private, one company,
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in
