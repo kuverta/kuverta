@@ -471,3 +471,101 @@ async fn a_reader_that_never_answers_holds_a_letter_back_only_so_long() {
     assert_eq!(rig.received.uploads.load(SeqCst), 1);
     std::fs::remove_file(&gate).unwrap();
 }
+
+/// A reader that answers at once with whatever `script` does, standing in for
+/// tesseract.
+fn reader_running(rig: &mut Rig, script: &str) {
+    use std::os::unix::fs::PermissionsExt;
+    let program = rig._dir.0.join("fake-tesseract");
+    std::fs::write(&program, format!("#!/bin/sh\n{script}\n")).unwrap();
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let reader = Reader::new(&program.to_string_lossy(), "deu");
+    let scanner = std::mem::replace(&mut rig.scanner, Scanner::new(3, Duration::from_secs(30)));
+    rig.scanner = scanner.reading_with(reader);
+}
+
+/// Turns, a frame of `frame` each, until the reader has answered for every
+/// page — in real time, since the reader is a process of its own.
+async fn until_read(rig: &mut Rig, frame: fn() -> Vec<u8>) {
+    for _ in 0..30 {
+        std::thread::sleep(Duration::from_millis(100));
+        rig.camera.then([frame()]);
+        rig.run().await;
+        if rig.scanner.read_pages().len() + discarded(rig) >= rig.camera.captures.get() {
+            return;
+        }
+    }
+    panic!("the reader never answered");
+}
+
+fn discarded(rig: &Rig) -> usize {
+    std::fs::read_dir(rig._dir.0.join("discarded"))
+        .map(|entries| entries.count())
+        .unwrap_or(0)
+}
+
+#[tokio::test]
+async fn a_page_with_not_one_word_on_it_is_the_table_and_is_not_sent() {
+    // On the rig, the light over the table changed, the whole frame read as
+    // paper, and the quality check called a photograph of creased paper with
+    // marker lines on it good. Tesseract read nothing, and the bare table went
+    // to Paperless as a letter.
+    let mut rig = Rig::new("nothing-to-read");
+    reader_running(&mut rig, "echo '| ~ ,'");
+    rig.camera.then(a_page());
+    rig.run().await;
+    assert_eq!(rig.camera.captures.get(), 1);
+
+    until_read(&mut rig, page).await;
+    assert!(rig.spool.open_pages().unwrap().is_empty(), "not kept");
+    assert_eq!(discarded(&rig), 1, "put aside, not deleted");
+    assert_eq!(
+        rig.scanner.state(),
+        scannerd::detect::State::Waiting,
+        "what lies there is learnt as the table"
+    );
+
+    // And the same view is not photographed again.
+    rig.camera.then(vec![page(); 10]);
+    rig.run().await;
+    assert_eq!(rig.camera.captures.get(), 1);
+
+    // Nor is anything sent when the letter is finished.
+    rig.press.send(()).unwrap();
+    rig.camera.then(vec![page(); 5]);
+    rig.run().await;
+    assert_eq!(rig.received.uploads.load(SeqCst), 0);
+}
+
+#[tokio::test]
+async fn a_page_the_reader_could_not_read_is_kept() {
+    // No text because tesseract failed says nothing about the page.
+    let mut rig = Rig::new("reader-failed");
+    reader_running(&mut rig, "echo broken >&2; exit 1");
+    rig.camera.then([a_page(), lifted()].concat());
+    rig.run().await;
+    until_read(&mut rig, desk).await;
+    assert_eq!(rig.spool.open_pages().unwrap().len(), 1);
+    assert_eq!(discarded(&rig), 0);
+}
+
+#[tokio::test]
+async fn a_page_with_words_on_it_is_kept() {
+    let mut rig = Rig::new("words");
+    reader_running(&mut rig, "echo 'Finanzamt'");
+    rig.camera.then([a_page(), lifted()].concat());
+    rig.run().await;
+    until_read(&mut rig, desk).await;
+    assert_eq!(rig.spool.open_pages().unwrap().len(), 1);
+    assert_eq!(discarded(&rig), 0);
+}
+
+#[test]
+fn words_are_three_letters_or_digits_in_a_row() {
+    use scannerd::read::has_words;
+    assert!(!has_words(""));
+    assert!(!has_words("| ~ , ' ii . l1"));
+    assert!(has_words("Am 12.3. bitte"));
+    assert!(has_words("ÄÖÜ"));
+    assert!(has_words("2026"));
+}
