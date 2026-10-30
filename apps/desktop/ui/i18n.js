@@ -1241,6 +1241,8 @@ const GERMAN = {
   "Save to Downloads": "In Downloads sichern",
   "Open in another app": "In einem anderen Programm öffnen",
   PDF: "PDF",
+  Spreadsheet: "Tabelle",
+  CSV: "CSV",
 
   // General and diagnostics
   "The assistant that opened on the first run: local models, Paperless, and the mail accounts other programs on this computer know.":

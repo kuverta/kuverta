@@ -7,8 +7,9 @@
 // thing a person may want to take back or finish: an Undo for every change, a
 // reply to read and send, a task to check.
 //
-// A document it makes — a letter it wrote, a PDF it signed — is a card too:
-// to show, save, attach to a message, or delete. A question that fails —
+// A document it makes — a letter it wrote, a PDF it signed, a table of what
+// the person owes — is a card too: to show, save, attach to a message, or
+// delete. A question that fails —
 // the model's service is down, or out of credit — leaves a Retry. Every
 // conversation is kept as it goes, and Earlier chats opens one again.
 //
@@ -707,6 +708,22 @@ function draftCard(event) {
   return box;
 }
 
+/// What kind of file a document is, from its type: a letter the assistant
+/// wrote is a PDF, a table it wrote is a spreadsheet, and the card says which
+/// rather than saying PDF to everything.
+function documentKind(doc) {
+  switch (doc.content_type) {
+    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+      return t("Spreadsheet");
+    case "text/csv":
+      return t("CSV");
+    case "application/pdf":
+      return t("PDF");
+    default:
+      return "";
+  }
+}
+
 /// A document the assistant made: show it, save it, attach it to a new
 /// message, or delete it.
 function documentCard(event) {
@@ -714,7 +731,7 @@ function documentCard(event) {
   const { box, actions } = card(
     doc.name,
     [
-      t("PDF"),
+      documentKind(doc),
       sizeText(doc.size),
       doc.pages == null ? "" : doc.pages === 1 ? t("one page") : t("{count} pages", { count: doc.pages }),
       doc.signed ? t("signed") : "",

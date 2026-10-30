@@ -643,3 +643,116 @@ fn chats_are_kept_with_their_turns_and_log() {
     world.core.delete_chat(saved.id).unwrap();
     assert!(world.core.chat(saved.id).is_err());
 }
+
+#[test]
+fn the_assistant_writes_a_table_as_a_spreadsheet() {
+    // "Bitte erstelle eine Tabelle mit allen meinen Schulden, sortiert nach
+    // Höhe und Relevanz." The answer is a file the person sorts and totals
+    // themselves, so what matters is that it is a spreadsheet and that the
+    // amounts in it are still amounts.
+    let world = world("table");
+    let written = world.core.assistant_tool(
+        world.account,
+        &call(
+            "write_table",
+            json!({
+                "name": "Schulden",
+                "columns": ["Gläubiger", "Betrag (EUR)", "Fällig", "Dringlichkeit", "Quelle"],
+                "rows": [
+                    ["Stadtwerke", 1234.56, "2026-11-15", "Mahnung", "Mahnung, 2026-10-02"],
+                    // An amount the model quoted: still an amount.
+                    ["Inkasso Nord", "97.40", "2026-11-03", "Inkasso", "Zahlungserinnerung, 2026-10-11"],
+                    ["Erika Mustermann", 80, "2026-12-01", "Rechnung", "Rechnung Nr. 7, 2026-09-30"]
+                ],
+                "note": "aus 3 Nachrichten, nach Höhe sortiert"
+            }),
+        ),
+    );
+    let out = result(&written);
+    assert_eq!(out["rows"], 3);
+    assert_eq!(out["columns"], 5);
+    let id = out["document_id"].as_i64().unwrap();
+
+    match &written.event {
+        Some(AssistantEvent::Document { document, note }) => {
+            assert_eq!(document.name, "Schulden.xlsx");
+            // The card says what kind of file it is, and a spreadsheet has no
+            // pages to count.
+            assert_eq!(
+                document.content_type,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            assert_eq!(document.pages, None);
+            assert!(!document.signed);
+            assert_eq!(
+                note.as_deref(),
+                Some("aus 3 Nachrichten, nach Höhe sortiert")
+            );
+        }
+        other => panic!("{other:?}"),
+    }
+
+    // A real workbook, with the figures as figures.
+    let file = world.core.document(id).unwrap();
+    assert_eq!(&file.bytes[..2], b"PK");
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(file.bytes.clone())).unwrap();
+    let mut sheet = String::new();
+    std::io::Read::read_to_string(
+        &mut zip.by_name("xl/worksheets/sheet1.xml").unwrap(),
+        &mut sheet,
+    )
+    .unwrap();
+    assert!(sheet.contains("<v>1234.56</v>"), "{sheet}");
+    assert!(sheet.contains("<v>97.4</v>"), "{sheet}");
+    assert!(sheet.contains("Gläubiger"));
+}
+
+#[test]
+fn a_table_asked_for_as_a_csv_is_a_csv() {
+    let world = world("table-csv");
+    let written = world.core.assistant_tool(
+        world.account,
+        &call(
+            "write_table",
+            json!({
+                "name": "Geldanlagen.xlsx",
+                "format": "csv",
+                "columns": ["Anlage", "Wert (EUR)"],
+                // Rows keyed by the column names, which a model will write
+                // however it is asked.
+                "rows": [{"Anlage": "ETF Welt", "Wert (EUR)": 12000.5}]
+            }),
+        ),
+    );
+    let document = match &written.event {
+        Some(AssistantEvent::Document { document, .. }) => document.clone(),
+        other => panic!("{other:?}"),
+    };
+    // Named for what it is, not for what it was asked to be called.
+    assert_eq!(document.name, "Geldanlagen.csv");
+    assert_eq!(document.content_type, "text/csv");
+
+    let file = world.core.document(document.id).unwrap();
+    let text = String::from_utf8(file.bytes).unwrap();
+    assert!(text.starts_with('\u{feff}'));
+    assert!(text.contains("ETF Welt,12000.5"), "{text}");
+}
+
+#[test]
+fn a_table_with_nothing_in_it_is_refused() {
+    let world = world("table-empty");
+    for args in [
+        json!({"name": "Schulden", "columns": [], "rows": [["a"]]}),
+        json!({"name": "Schulden", "columns": ["a"], "rows": []}),
+    ] {
+        let refused = world
+            .core
+            .assistant_tool(world.account, &call("write_table", args));
+        assert!(
+            matches!(refused.event, Some(AssistantEvent::Failed { .. })),
+            "{}",
+            refused.content
+        );
+    }
+    assert!(world.core.documents(world.account).unwrap().is_empty());
+}

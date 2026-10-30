@@ -1,10 +1,14 @@
-//! Documents: PDFs kuverta made, and the signature it puts on them.
+//! Documents: files kuverta made, and the signature it puts on them.
 //!
-//! The assistant writes documents — a letter, a cancellation, a confirmation
-//! — and signs PDFs: its own, or one that came as an attachment. Each is kept
-//! here, bytes and all, on the account it was made for, so the person can
-//! open, save, attach or throw it away later, and the assistant can list and
-//! read them again.
+//! The assistant writes documents — a letter, a cancellation, a confirmation,
+//! a spreadsheet of a table it was asked for — and signs PDFs: its own, or one
+//! that came as an attachment. Each is kept here, bytes and all, on the
+//! account it was made for, so the person can open, save, attach or throw it
+//! away later, and the assistant can list and read them again.
+//!
+//! The bytes live in a column called `pdf`, which is what every document here
+//! was when it was added. What kind of file one is is read from its name by
+//! the layer above; nothing here looks inside.
 //!
 //! The signature is one picture for the whole store: a PNG or JPEG of the
 //! person's handwritten signature, with the place that goes in front of the

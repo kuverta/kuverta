@@ -1,10 +1,15 @@
 //! Documents the assistant makes, and the signature it signs them with.
 //!
-//! A document is a PDF kept on an account: written from text the assistant
-//! composed, or an attachment — or an earlier document — with the person's
-//! signature put on it. The person sees each as a card in the chat, opens it
-//! in the viewer, saves it, attaches it to a message, or throws it away; the
-//! assistant lists, reads, renames and deletes them by id.
+//! A document is a file kept on an account: a PDF written from text the
+//! assistant composed, an attachment — or an earlier document — with the
+//! person's signature put on it, or a spreadsheet of a table it was asked
+//! for. The person sees each as a card in the chat, opens it in the viewer,
+//! saves it, attaches it to a message, or throws it away; the assistant
+//! lists, reads, renames and deletes them by id.
+//!
+//! What kind of file each one is comes from its own name — see
+//! [`DocumentView::content_type`] — so there is one place that says it, and
+//! `pages` is a PDF's and `None` for anything else.
 //!
 //! The signature is a PNG or JPEG of the person's handwritten signature, kept
 //! once for the whole store under Settings → General, with the place written
@@ -23,6 +28,7 @@ use core_store::model::AccountId;
 use crate::attachments::safe_file_name;
 use crate::pdf::{self, Anchor, Pixels, Placement};
 use crate::spots::{self, Choice, Spot};
+use crate::table::{self, Format, Table};
 use crate::{Core, Result, RpcError};
 
 /// A document as the window and the assistant see it: everything but the
@@ -37,7 +43,10 @@ pub struct DocumentView {
     pub pages: Option<i64>,
     pub size: i64,
     pub created_at: i64,
-    /// Always `application/pdf`, for the viewer, which takes files by type.
+    /// What the viewer opens it as, which it decides by type. Taken from the
+    /// file's own name rather than kept beside it: the name is what says
+    /// whether this is a PDF, a spreadsheet or a CSV, and two places to say it
+    /// is one place too many.
     pub content_type: String,
     /// Where the signature sits, for a signed document whose original is
     /// still to hand: the window shows it there and lets it be dragged
@@ -131,6 +140,11 @@ const MOST_SIGNATURE_BYTES: usize = 4 * 1024 * 1024;
 const MOST_SIGNATURE_SIDE: u32 = 4000;
 /// The most text one written document takes.
 const MOST_TEXT_CHARS: usize = 60_000;
+/// And of one table. Generous: a year of invoices is a few hundred rows, and
+/// what this is really for is refusing a model that has started repeating
+/// itself before the file is built.
+const MOST_ROWS: usize = 20_000;
+const MOST_COLUMNS: usize = 64;
 /// Where the signature sits from the left edge when nothing said otherwise:
 /// the page's own margin, which is what [`pdf::stamp`] uses for bottom_left.
 const DEFAULT_X_MM: f32 = 20.0;
@@ -141,26 +155,50 @@ fn reject(message: impl Into<String>) -> RpcError {
 
 /// A file name for a document: safe, and ending in `.pdf`.
 pub fn document_name(name: &str) -> String {
+    named(name, "pdf")
+}
+
+/// The same, for a table: ending in the extension the format asks for, and
+/// not in some other spreadsheet's. A model asked for `Schulden.csv` as an
+/// xlsx has named the file after the wrong thing, and a `.csv` that is really
+/// a workbook is a file nothing can open.
+pub fn table_name(name: &str, format: Format) -> String {
+    let trimmed = name.trim();
+    let bare = ["xlsx", "xls", "csv", "ods", "pdf"]
+        .iter()
+        .find_map(|known| {
+            let suffix = format!(".{known}");
+            trimmed
+                .to_lowercase()
+                .ends_with(&suffix)
+                .then(|| &trimmed[..trimmed.len() - suffix.len()])
+        })
+        .unwrap_or(trimmed);
+    named(bare, format.extension())
+}
+
+fn named(name: &str, extension: &str) -> String {
     let safe = safe_file_name(name.trim());
     let safe = safe.trim_end_matches('.').to_string();
-    if safe.to_lowercase().ends_with(".pdf") {
+    if safe.to_lowercase().ends_with(&format!(".{extension}")) {
         safe
     } else {
-        format!("{safe}.pdf")
+        format!("{safe}.{extension}")
     }
 }
 
 fn view(stored: core_store::documents::StoredDocument) -> DocumentView {
+    let name = stored.name;
     DocumentView {
         id: stored.id,
         account_id: stored.account_id,
-        name: stored.name,
         note: stored.note,
         signed: stored.signed,
         pages: stored.pages,
         size: stored.size,
         created_at: stored.created_at,
-        content_type: "application/pdf".into(),
+        content_type: crate::session::type_for_name(&name).into(),
+        name,
         // Written by `sign`; anything else there is from a build that wrote
         // something else, and the signature simply cannot be moved.
         placed: stored
@@ -245,6 +283,62 @@ impl Core {
             pages = written.pages,
             signed = written.signed,
             "wrote a document"
+        );
+        self.document_view(id)
+    }
+
+    /// Writes a table as a spreadsheet file, kept as a document.
+    ///
+    /// The rows go in the order they are given. Sorting them — by how much,
+    /// by how pressing — is a judgement about what the rows say, made where
+    /// they were read; there is nothing here that could do it better.
+    pub fn write_table(
+        &self,
+        account: AccountId,
+        name: &str,
+        table: &Table,
+        format: Format,
+        note: Option<&str>,
+    ) -> Result<DocumentView> {
+        if table.columns.is_empty() {
+            return Err(reject("a table needs its columns"));
+        }
+        if table.rows.is_empty() {
+            return Err(reject("a table needs at least one row"));
+        }
+        if table.columns.len() > MOST_COLUMNS {
+            return Err(reject(format!(
+                "that is more columns than a table holds: at most {MOST_COLUMNS}"
+            )));
+        }
+        if table.rows.len() > MOST_ROWS {
+            return Err(reject(format!(
+                "that is more rows than one table holds: at most {MOST_ROWS}"
+            )));
+        }
+        let name = table_name(name, format);
+        let bytes = match format {
+            Format::Csv => table::csv(table),
+            Format::Xlsx => table::xlsx(table)
+                .map_err(|err| reject(format!("the spreadsheet could not be written: {err}")))?,
+        };
+        let id = self.store().add_document(&NewDocument {
+            account_id: account,
+            name: &name,
+            note,
+            signed: false,
+            // Pages are a PDF's; a spreadsheet has rows, and the window says
+            // how many from the table itself.
+            pages: None,
+            pdf: &bytes,
+            signed_from: None,
+        })?;
+        tracing::info!(
+            id,
+            rows = table.rows.len(),
+            columns = table.columns.len(),
+            format = format.extension(),
+            "wrote a table"
         );
         self.document_view(id)
     }

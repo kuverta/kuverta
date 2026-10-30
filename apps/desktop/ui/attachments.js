@@ -81,10 +81,23 @@ function documentAsAttachment(doc) {
     content_type: doc.content_type,
     size: doc.size,
     inline: false,
-    preview: "pdf",
+    // Not always a PDF any more: the assistant also writes tables, and a
+    // spreadsheet handed to the PDF renderer is a viewer showing an error.
+    preview: previewKind(doc.content_type),
     risky: false,
     document: doc.id,
   };
+}
+
+/// Which preview a type gets. A spreadsheet gets none of its own: the sheet
+/// opens in the app the computer has for it, and in safe preview the worker
+/// reads it as text.
+function previewKind(type) {
+  const kind = type || "";
+  if (kind.startsWith("image/")) return "image";
+  if (kind === "application/pdf") return "pdf";
+  if (kind.startsWith("text/")) return "text";
+  return "none";
 }
 
 /// Opens the viewer on a document the assistant made.
@@ -103,13 +116,7 @@ function openOutgoing(file) {
     content_type: type,
     size: file.size,
     inline: false,
-    preview: type.startsWith("image/")
-      ? "image"
-      : type === "application/pdf"
-        ? "pdf"
-        : type.startsWith("text/")
-          ? "text"
-          : "none",
+    preview: previewKind(type),
     // What could run something is refused when it is opened rather than
     // guessed at here: the core knows the rule, and keeps it in one place.
     risky: false,
