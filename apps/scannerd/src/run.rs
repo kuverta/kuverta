@@ -1032,6 +1032,26 @@ impl Scanner {
                                 && self.page_covers.is_some_and(|page| {
                                     crate::straighten::is_envelope(covered, page)
                                 });
+                            // Whether it is small enough to be trusted to end
+                            // the letter already being collected, which is the
+                            // expensive half of this decision: see
+                            // [`crate::straighten::ENVELOPE_CUTS_LETTER`].
+                            let cuts_a_letter = is_paper
+                                && self.page_covers.is_some_and(|page| {
+                                    crate::straighten::envelope_cuts_a_letter(covered, page)
+                                });
+                            // Said on every photograph, because without these
+                            // two numbers a letter cut in two cannot be
+                            // explained afterwards — which is how the rig's was
+                            // found, by measuring the straightener's output in
+                            // the log instead.
+                            tracing::info!(
+                                covered = ?covered,
+                                page_covers = ?self.page_covers,
+                                envelope,
+                                cuts_a_letter,
+                                "measured the paper against a page"
+                            );
                             if is_paper && !envelope {
                                 // A page: learnt, a little at a time, so one
                                 // odd photograph does not move it far. Paper
@@ -1055,7 +1075,7 @@ impl Scanner {
                             // folder is known by the time this one's is asked —
                             // and the envelope is its first page.
                             let mut sent_before = false;
-                            if envelope && collecting {
+                            if cuts_a_letter && collecting {
                                 match spool.close_letter_except(&path) {
                                     Ok(Some(letter)) => {
                                         tracing::info!(letter = %letter.display(), "letter closed by the next envelope");
@@ -1072,7 +1092,7 @@ impl Scanner {
                                     }
                                 }
                             }
-                            self.envelope_only = envelope && collecting;
+                            self.envelope_only = cuts_a_letter && collecting;
                             if retakes > 0 {
                                 self.event(
                                     now,
@@ -1091,8 +1111,17 @@ impl Scanner {
                             let page = collecting
                                 .then(|| spool.open_pages().map(|pages| pages.len()).unwrap_or(0));
                             let text = match page {
-                                _ if envelope => {
+                                // An envelope that ended the letter before it
+                                // starts this one; one only marginally smaller
+                                // than a page stays a page of the letter being
+                                // collected, and saying "a new letter" of it
+                                // would be saying the very thing that was
+                                // wrong.
+                                _ if cuts_a_letter || (envelope && !collecting) => {
                                     "photographed the envelope of a new letter".to_string()
+                                }
+                                Some(page) if envelope => {
+                                    format!("photographed page {page} of this letter — it measures small for a page, but not small enough to be an envelope of its own")
                                 }
                                 Some(page) => format!("photographed page {page} of this letter"),
                                 None => "photographed a page".to_string(),

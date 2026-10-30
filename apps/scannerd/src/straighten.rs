@@ -396,6 +396,42 @@ pub struct Straightened {
 /// an A4 page, C5 about 0.6. C4, the size of an unfolded page, is not told
 /// apart.
 pub const ENVELOPE: f64 = 0.72;
+
+/// And how much smaller it must be before it will cut an open letter in two.
+///
+/// The two errors here do not cost the same, which the caller's own comments
+/// have said for a while: an envelope taken for a page becomes page one of the
+/// letter it holds, which is where it belongs anyway, while a page taken for
+/// an envelope ends the letter it was part of and starts another — one letter
+/// filed as two, each with half of itself missing.
+///
+/// So the measurement is asked twice, with a different bar each time. Calling
+/// a photograph an envelope — for the display, for the folder, for not judging
+/// it on its text — is cheap, and keeps [`ENVELOPE`]. Letting it finish the
+/// letter being collected costs a letter when it is wrong, and asks for this:
+/// unmistakably smaller, not marginally.
+///
+/// Why a margin rather than a better measurement. On the rig a six-page SCHUFA
+/// letter was filed as two three-page letters, by this test, on the fourth
+/// page: `letter closed by the next envelope`. What is measured is where the
+/// straightener found the paper's edge, and that moves with the exposure — the
+/// photograph that did it had just been taken again two thirds of a stop
+/// darker, and across the pages of that one letter the straightener's own
+/// output varied from 0.75 to 0.91 of the marked corners' area. A spread of
+/// that size cannot carry a threshold inside it. The numbers this test
+/// actually compares were not in the log at all, which is why the caller now
+/// prints them on every photograph.
+///
+/// A DL envelope at 0.4 of a page is still well under this and still finishes
+/// the letter before it. A C5 at 0.6 no longer does: it becomes page one of
+/// the letter it came with, which costs an envelope at the front of a letter
+/// instead of a letter torn in half.
+pub const ENVELOPE_CUTS_LETTER: f64 = 0.55;
+
+/// The two bars keep their order whatever they are tuned to: the one that may
+/// end a letter is the stricter. Checked when this compiles, because the whole
+/// point of having two is that one is harder to reach than the other.
+const _: () = assert!(ENVELOPE_CUTS_LETTER < ENVELOPE);
 /// Less than this share of the corners' area is not believed to be paper.
 const PAPER_AT_LEAST: f64 = 0.1;
 
@@ -406,6 +442,13 @@ const PAPER_AT_LEAST: f64 = 0.1;
 /// for an envelope.
 pub fn is_envelope(covered: Option<f64>, page: f64) -> bool {
     covered.is_some_and(|covered| covered >= PAPER_AT_LEAST && covered < page * ENVELOPE)
+}
+
+/// Whether that envelope is small enough to be trusted to finish the letter
+/// being collected. See [`ENVELOPE_CUTS_LETTER`].
+pub fn envelope_cuts_a_letter(covered: Option<f64>, page: f64) -> bool {
+    covered
+        .is_some_and(|covered| covered >= PAPER_AT_LEAST && covered < page * ENVELOPE_CUTS_LETTER)
 }
 
 struct Trimmed {
