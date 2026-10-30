@@ -358,6 +358,17 @@ tesseract-ocr-deu`) and `SCANNERD_READER_LANGUAGES=deu+eng`. Without it
 everything works as before, with no text in the preview and the folder known
 once Paperless has read the letter.
 
+The reading is also the last word on whether a photograph was a page at all.
+A page in which tesseract finds not one word — three letters or digits in a
+row — is the table, and is taken out of the letter into `discarded/` and the
+table learnt again, as the quality check does with a photograph that has no
+ink in it. The check alone was not enough on the rig: its table is creased
+paper with the corners drawn on in marker, which has as much contrast as ink,
+and when the light over it changed the bare table went to Paperless as a
+blank letter. A blank back of a sheet goes the same way. A read that failed
+keeps the page, and so does a letter of single pages, which is sent before it
+is read.
+
 ## The setup page
 
 `--ui 0.0.0.0:8080` (or `SCANNERD_UI`) serves a page from scannerd itself, so a
