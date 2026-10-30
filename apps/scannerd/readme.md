@@ -45,6 +45,35 @@ empty surface:
 - **Has it stopped?** A hand is still in shot for a moment after the page is,
   and capturing then gets a photograph of a thumb.
 
+The paper test is asked of one frame at a time, and its answer wobbles, so it
+is the last eight frames that count and not the frame in hand. It compares each
+block with the table and takes no offset out — on purpose, because an offset is
+what let a shadow over half the table make the other half look like paper — so
+a camera still choosing its exposure moves every block at once and the lump the
+test finds is the whole frame on one frame and none of it on the next. On the
+rig a page lay still on the table and read a share of between 0.0 and 0.21 of
+the frame from one frame to the next, of one page, not moving at all. Asked
+afresh of every frame, it was never photographed: the wait for it to settle was
+begun on a frame that saw it and abandoned on the next frame that did not, four
+times in four seconds, and the still frames a photograph needs were never in a
+row. So one frame that sees a page is enough to start waiting for it, and it
+takes a second and a half with no paper in any frame to give up on one. A page
+that flickers is a page.
+
+The same window is what keeps the table from being learnt with a page lying on
+it. That is the worst way for this to fail — a page inside the baseline is a
+page that can never be seen again, however long it lies there — and the guard
+used to ask the frame in hand, which the same wobble defeats: on the rig the
+table was learnt again on a frame that read a share of 0.013 while a page lay
+on it. Nothing is learnt as the table now unless no frame in the window saw
+paper. If it has happened anyway, taking the page off the table is enough: the
+empty table is learnt again the moment it is seen.
+
+A rig that can see something and never photographs it now says so, every ten
+seconds, with the numbers: *something that could be paper is lying there, but
+never enough of it to be a page*. That branch used to be silent, which from
+the outside is a rig that has simply stopped working.
+
 Then a third rule, which is the one that stops a letter becoming forty: after a
 capture it will not arm again until the surface has been seen empty — or until
 a hand has been over the page and what lies there, once still, is another page.
