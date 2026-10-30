@@ -68,6 +68,12 @@ fn result(outcome: &core_rpc::assistant::ToolOutcome) -> Value {
 /// ticked state is `On`, each field merged with its widget and carrying a
 /// tooltip.
 fn questionnaire() -> Vec<u8> {
+    questionnaire_with(
+        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    )
+}
+
+fn questionnaire_with(form_font: &str) -> Vec<u8> {
     let content = "BT /F1 11 Tf 72 726 Td (Personalfragebogen) Tj ET";
     let text_field = |name: &str, label: &str, rect: &str, extra: &str| {
         format!(
@@ -89,8 +95,7 @@ fn questionnaire() -> Vec<u8> {
          /DR << /Font << /Helv 3 0 R >> >> /DA (/Helv 0 Tf 0 g) >> >>"
             .to_string(),
         "<< /Type /Pages /Kids [4 0 R] /Count 1 >>".to_string(),
-        "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>"
-            .to_string(),
+        form_font.to_string(),
         // 4: the page, its widgets listed as its annotations.
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 10 0 R \
          /Resources << /Font << /F1 3 0 R >> >> /Annots [5 0 R 6 0 R 7 0 R 8 0 R 9 0 R] >>"
@@ -266,13 +271,41 @@ fn filling_writes_the_values_and_every_reader_sees_them() {
     // the text is in the bytes as WinAnsi literals.
     let bytes = String::from_utf8_lossy(&filled.pdf);
     assert!(bytes.contains("Erika"), "no appearance was drawn");
-    assert!(bytes.contains("NeedAppearances"));
+    // Not set: a reader honouring it would throw the drawn appearances away
+    // and lay the text out again with the form's own font.
+    assert!(!bytes.contains("NeedAppearances"));
 
     // The original is a form still empty.
     assert!(form::fields(&questionnaire())
         .unwrap()
         .iter()
         .all(|f| f.value.is_none()));
+}
+
+#[test]
+fn umlauts_survive_a_form_whose_font_names_no_encoding() {
+    // The usual form writer's /Helv carries no /Encoding, and text drawn
+    // with it as WinAnsi loses every umlaut. Such a font is passed over for
+    // one of ours that says WinAnsi.
+    let bare = questionnaire_with("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+    let mut values = serde_json::Map::new();
+    values.insert("Name".into(), json!("Müller-Lüdenscheidt"));
+    let filled = form::fill(&bare, &values).unwrap();
+    let bytes = String::from_utf8_lossy(&filled.pdf);
+    // The appearance writes ü as the WinAnsi octal escape, and the font it
+    // points at declares that encoding.
+    assert!(
+        bytes.contains("M\\374ller-L\\374denscheidt"),
+        "no appearance with the umlauts"
+    );
+    assert!(
+        bytes.contains("WinAnsiEncoding"),
+        "no WinAnsi font was added"
+    );
+    assert_eq!(
+        form::fields(&filled.pdf).unwrap()[1].value.as_deref(),
+        Some("Müller-Lüdenscheidt")
+    );
 }
 
 #[test]

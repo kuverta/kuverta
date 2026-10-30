@@ -8,9 +8,11 @@
 //!
 //! [`fill`] writes values into a copy. A text field gets its text, a checkbox
 //! its cross, and each filled widget a fresh appearance stream, so every
-//! reader shows the values — including the ones that ignore NeedAppearances,
-//! which is set too for the ones that honour it. The original is never
-//! touched: filling makes new bytes.
+//! reader shows the values. NeedAppearances stays unset: a reader that
+//! honours it throws the drawn appearances away and lays the values out
+//! again with the form's own font — which usually names no encoding, and
+//! there go the umlauts. The original is never touched: filling makes new
+//! bytes.
 
 use std::collections::BTreeMap;
 
@@ -468,15 +470,27 @@ fn parse_da(da: &str) -> (Option<String>, f32) {
     (font, size)
 }
 
-/// The font `name` names in the form's resources, or a Helvetica added to
-/// them under `Helv`, so every appearance stream has a font to point at.
+/// The font `name` names in the form's resources, or a Helvetica added by
+/// us, so every appearance stream has a font to point at.
+///
+/// The form's own font is only taken when it says it is WinAnsi: the text is
+/// drawn as WinAnsi octal escapes, and a font without that encoding — the
+/// usual `/Helv` of a form writer carries none — would drop every umlaut it
+/// is handed.
 fn form_font(doc: &mut Document, name: Option<&str>) -> Result<(String, ObjectId), String> {
     let named = |doc: &Document, name: &str| -> Option<ObjectId> {
         let catalog = doc.catalog().ok()?;
         let acro = resolved(doc, catalog, b"AcroForm")?.as_dict().ok()?;
         let fonts = resolved(doc, acro, b"DR")?.as_dict().ok()?;
         let fonts = resolved(doc, fonts, b"Font")?.as_dict().ok()?;
-        fonts.get(name.as_bytes()).ok()?.as_reference().ok()
+        let id = fonts.get(name.as_bytes()).ok()?.as_reference().ok()?;
+        let font = doc.get_dictionary(id).ok()?;
+        let winansi = font
+            .get(b"Encoding")
+            .ok()
+            .and_then(|e| e.as_name().ok())
+            .is_some_and(|e| e == b"WinAnsiEncoding");
+        winansi.then_some(id)
     };
     if let Some(name) = name {
         if let Some(id) = named(doc, name) {
@@ -573,39 +587,6 @@ fn text_appearance(
     Ok(())
 }
 
-/// Sets NeedAppearances on the form, for the readers that honour it.
-fn need_appearances(doc: &mut Document) -> Result<(), String> {
-    let root_id = doc
-        .trailer
-        .get(b"Root")
-        .and_then(Object::as_reference)
-        .map_err(|err| format!("this PDF has no catalog: {err}"))?;
-    let catalog = doc.get_dictionary(root_id).map_err(|e| e.to_string())?;
-    match catalog.get(b"AcroForm").map(Object::as_reference) {
-        Ok(Ok(form_id)) => {
-            doc.get_object_mut(form_id)
-                .and_then(Object::as_dict_mut)
-                .map_err(|e| e.to_string())?
-                .set("NeedAppearances", true);
-        }
-        Ok(Err(_)) => {
-            let mut form = catalog
-                .get(b"AcroForm")
-                .ok()
-                .and_then(|f| f.as_dict().ok())
-                .cloned()
-                .unwrap_or_default();
-            form.set("NeedAppearances", true);
-            doc.get_object_mut(root_id)
-                .and_then(Object::as_dict_mut)
-                .map_err(|e| e.to_string())?
-                .set("AcroForm", form);
-        }
-        Err(_) => {}
-    }
-    Ok(())
-}
-
 /// Writes `values` — field name to text, or to yes/no for a checkbox — into
 /// a copy of the form. A name the form does not have refuses the whole call,
 /// so what comes back is never half of what was asked.
@@ -683,7 +664,6 @@ pub fn fill(pdf_bytes: &[u8], values: &serde_json::Map<String, Value>) -> Result
         }
         filled += 1;
     }
-    need_appearances(&mut doc)?;
     let mut out = Vec::new();
     doc.save_to(&mut out)
         .map_err(|err| format!("the filled PDF could not be written: {err}"))?;
