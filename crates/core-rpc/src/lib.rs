@@ -47,6 +47,7 @@ pub mod signature;
 pub mod skills;
 pub mod smart;
 pub mod spots;
+pub mod table;
 pub mod tasks;
 pub mod update;
 pub mod urgency;
