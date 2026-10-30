@@ -329,12 +329,19 @@ impl Scanner {
     }
 
     /// Takes in whatever the reader has finished since the last turn.
-    fn collect_texts(&mut self) {
+    fn collect_texts(&mut self, spool: &Spool, now: u64) {
         let Some(reader) = &self.reader else {
             return;
         };
         for page in reader.texts() {
-            self.reading.remove(&page.name);
+            // The first reading of a page, not "Read it again": a page read
+            // a second way that still says nothing is a page someone has
+            // looked at and kept.
+            let first = self.reading.remove(&page.name);
+            if first && !page.failed && !crate::read::has_words(&page.text) {
+                self.nothing_to_read(spool, &page.name, now);
+                continue;
+            }
             match self
                 .page_texts
                 .iter_mut()
@@ -344,6 +351,63 @@ impl Scanner {
                 None => self.page_texts.push(page),
             }
         }
+    }
+
+    /// A page of the open letter in which the reader found not one word: the
+    /// table, photographed because the light over it changed.
+    ///
+    /// The quality check catches most of those as it photographs them, by
+    /// finding nothing that looks like ink. The rig's table is creased paper
+    /// with the corners drawn on it in marker, which has as much contrast as
+    /// ink, and the check called a bare table good: it went to Paperless as a
+    /// letter of one blank page. Tesseract is not fooled by creases, so what
+    /// it reads is the second opinion. The page goes to `discarded/`, where it
+    /// stays for a week, and is said on the setup page.
+    ///
+    /// A blank page, the back of a sheet turned over, goes the same way. It
+    /// would be a blank page in Paperless, and nobody files those.
+    fn nothing_to_read(&mut self, spool: &Spool, name: &str, now: u64) {
+        let pages = spool.open_pages().unwrap_or_default();
+        let Some(index) = pages
+            .iter()
+            .position(|path| path.file_name().is_some_and(|had| had == name))
+        else {
+            // Sent already, or taken back by hand.
+            return;
+        };
+        let newest = index + 1 == pages.len();
+        if let Err(err) = spool.discard_capture(&pages[index]) {
+            tracing::warn!(%err, page = %name, "could not put a page with nothing to read aside");
+            return;
+        }
+        tracing::info!(page = %name, "nothing to read on it: that was the table, not a page");
+        if newest {
+            self.detector.forget_last_page();
+            if let Some(last) = self.last_photographed.as_mut() {
+                last.kept = false;
+            }
+            // Still lying there as it was photographed: that is what the
+            // table looks like now. Learnt, as the quality check's table is,
+            // so the same view is not photographed again in a minute.
+            if self.detector.lying_untouched() {
+                if let Some(frame) = self.last_frame.clone() {
+                    self.detector.learn_empty(&frame);
+                    self.trusted_baseline = true;
+                    self.save_baseline();
+                }
+            }
+        }
+        if pages.len() == 1 {
+            self.envelope_only = false;
+        }
+        self.event(
+            now,
+            false,
+            format!(
+                "page {} had nothing to read on it: the table, not a page — not kept",
+                index + 1
+            ),
+        );
     }
 
     /// Collects pages into letters instead of sending each on its own.
@@ -887,7 +951,7 @@ impl Scanner {
         now: u64,
     ) -> Turn {
         // Whatever the reader finished while the last turn was taken.
-        self.collect_texts();
+        self.collect_texts(spool, now);
         if self.close_if_due(spool, now) {
             // The letter someone just finished goes now, not on the timer.
             self.drain_now(spool, uploader, now).await;

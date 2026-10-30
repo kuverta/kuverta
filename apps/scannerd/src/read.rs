@@ -29,6 +29,34 @@ pub struct PageText {
     /// The page's file name, as the open letter lists it.
     pub name: String,
     pub text: String,
+    /// The reader gave up on it, or could not be run: no text because nothing
+    /// was read, which says nothing about what is on the page.
+    #[serde(skip)]
+    pub failed: bool,
+}
+
+/// Whether the reader found a single word in `text`: three letters or digits
+/// in a row.
+///
+/// A photograph of the bare table is read as nothing at all, or as a few
+/// strokes where the creases and the marks for the corners are. A page with
+/// anything printed on it is read as words, however badly. On the rig the
+/// table came back empty every time, while the quality check called those
+/// photographs good: creased paper and marker lines have as much contrast as
+/// ink.
+pub fn has_words(text: &str) -> bool {
+    let mut run = 0;
+    for c in text.chars() {
+        if c.is_alphanumeric() {
+            run += 1;
+            if run >= 3 {
+                return true;
+            }
+        } else {
+            run = 0;
+        }
+    }
+    false
 }
 
 /// How long a page may take before it is given up on: a Pi 4 reads an A4 page
@@ -94,13 +122,18 @@ impl Reader {
                         chars = text.chars().count(),
                         "read the page for the preview"
                     );
-                    let _ = sent.send(PageText { name, text });
+                    let _ = sent.send(PageText {
+                        name,
+                        text,
+                        failed: false,
+                    });
                 }
                 Err(err) => {
                     tracing::warn!(%err, page = %name, "could not read the page for the preview");
                     let _ = sent.send(PageText {
                         name,
                         text: String::new(),
+                        failed: true,
                     });
                 }
             }
