@@ -89,6 +89,21 @@ there at all, the table is learnt again after a few seconds of it, so the rig
 settles into the new light instead of watching an empty table it no longer
 recognises.
 
+An envelope is told from a page by being smaller — DL about 0.4 of an A4 page,
+C5 about 0.6 — and an envelope means a new letter, so the one being collected
+is finished and sent. That decision is asked twice now, with a different bar
+each time, because its two errors do not cost the same: an envelope taken for a
+page becomes page one of the letter it holds, which is where it belongs anyway,
+while a page taken for an envelope ends the letter it was part of and starts
+another. On the rig a six-page SCHUFA letter was filed as two three-page
+letters that way. What is measured is where the straightener found the paper's
+edge, and that moves with the exposure — the photograph that did it had just
+been taken again darker — so marginal is not good enough to end a letter: it
+has to be unmistakably smaller. A DL envelope still finishes the letter before
+it; a C5 is still called an envelope, but is now page one of the letter it came
+with rather than the end of the one before. Both numbers are in the log on
+every photograph, which they were not when this had to be worked out.
+
 ## Letters of more than one page
 
 With `--button`, pages are not sent as they are photographed. They collect in

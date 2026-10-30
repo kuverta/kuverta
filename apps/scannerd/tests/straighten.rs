@@ -531,3 +531,43 @@ fn a_photograph_says_how_much_of_it_the_paper_covers() {
         straight.covered
     );
 }
+
+#[test]
+fn a_page_measuring_small_does_not_cut_a_letter_in_two() {
+    use scannerd::straighten::{
+        envelope_cuts_a_letter, is_envelope, ENVELOPE, ENVELOPE_CUTS_LETTER,
+    };
+
+    // On the rig a six-page SCHUFA letter was filed as two three-page letters:
+    // one of its pages measured small enough to be called an envelope, and an
+    // envelope finishes the letter before it. What is measured moves with the
+    // exposure, and the page that did it had just been taken again darker.
+    //
+    // So: anything that only just counts as an envelope must no longer end a
+    // letter. Everything between the two bars is that band.
+    let page = 1.0;
+    let only_just = (ENVELOPE + ENVELOPE_CUTS_LETTER) / 2.0;
+    assert!(
+        is_envelope(Some(only_just * page), page),
+        "an envelope, still"
+    );
+    assert!(
+        !envelope_cuts_a_letter(Some(only_just * page), page),
+        "but not one that may cut a letter in two"
+    );
+
+    // A DL envelope is about 0.4 of a page: unmistakable, and it still
+    // finishes the letter before it.
+    assert!(is_envelope(Some(0.40), page));
+    assert!(envelope_cuts_a_letter(Some(0.40), page));
+
+    // A C5 is about 0.6: an envelope, but no longer one that ends a letter in
+    // progress. It becomes page one of the letter it came with.
+    assert!(is_envelope(Some(0.60), page));
+    assert!(!envelope_cuts_a_letter(Some(0.60), page));
+
+    // Nothing was measured where no paper was found, and a speck is not an
+    // envelope.
+    assert!(!envelope_cuts_a_letter(None, page));
+    assert!(!envelope_cuts_a_letter(Some(0.02), page));
+}
