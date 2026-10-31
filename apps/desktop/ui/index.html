@@ -120,6 +120,9 @@
       <div id="reading-urgency" class="urgency-note" hidden></div>
       <!-- Encrypted or signed mail: what was checked, and what it found. -->
       <div id="reading-security" class="security-note" hidden></div>
+      <!-- An invitation the message carries, read from its text/calendar
+           part: what, when, where and who else. See invite.js. -->
+      <div id="reading-invite" class="invite-card" hidden></div>
       <!-- What the message carries besides its text: each opens in a viewer,
            and can be saved or opened in the program the system has for it. -->
       <div id="reading-attachments" class="attachments" hidden></div>
@@ -1127,6 +1130,7 @@
   <script src="unsubscribe-offer.js"></script>
   <script src="diagnostics.js"></script>
   <script src="encryption.js"></script>
+  <script src="invite.js"></script>
   <script src="attachments.js"></script>
   <script src="html-view.js"></script>
   <script src="compose-files.js"></script>

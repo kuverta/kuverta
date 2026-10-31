@@ -1443,6 +1443,7 @@ async function openSelected() {
       el("reading-actions").hidden = true;
       el("reading-urgency").hidden = true;
       showSecurity(null);
+      showInvite(null);
       hideAttachments();
       hideMailView();
       el("reading-subject").textContent = detail.row.subject || t("(untitled)");
@@ -1479,6 +1480,7 @@ async function openSelected() {
     emptyPane.hidden = true;
     el("reading-actions").hidden = false;
     showSecurity(detail);
+    showInvite(detail);
     showUrgency(row.id);
     showSender({ id: row.id, account });
     el("reading-shelf").hidden = true;
