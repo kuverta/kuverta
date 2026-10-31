@@ -375,6 +375,8 @@ const GERMAN = {
 
   // -- writing -------------------------------------------------------------
   "Scheduled message": "Geplante Nachricht",
+  Draft: "Entwurf",
+  "Draft — attachments not carried over": "Entwurf — Anhänge nicht übernommen",
   "New message to {to}": "Neue Nachricht an {to}",
   "Reply to {to}": "Antwort an {to}",
   "Sending…": "Wird gesendet…",
