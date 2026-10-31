@@ -277,6 +277,12 @@ pub struct MessageDetail {
     /// changes nothing — an offer is offered, and a person accepts.
     #[serde(default)]
     pub offers: Vec<OfferView>,
+    /// The server marked it `\Draft`: something half-written, kept to finish
+    /// later. A draft opened in the reading pane is a dead end — it is the one
+    /// kind of message whose point is that it is still being written — so the
+    /// window opens it in compose instead.
+    #[serde(default)]
+    pub is_draft: bool,
 }
 
 /// What a model pass did.
@@ -676,10 +682,13 @@ impl Core {
             .message_by_id(account, id)?
             .ok_or(RpcError::UnknownMessage(id))?;
 
-        let folders = self
-            .store
-            .locations_of(id)?
-            .into_iter()
+        let locations = self.store.locations_of(id)?;
+        // IMAP flag names are case-insensitive, and servers do vary.
+        let is_draft = locations
+            .iter()
+            .any(|location| location.flags.to_ascii_lowercase().contains("\\draft"));
+        let folders = locations
+            .iter()
             .filter_map(|location| {
                 self.store
                     .folder(location.folder_id)
@@ -800,6 +809,7 @@ impl Core {
                 .map(|p| addresses(p.cc()))
                 .unwrap_or_default(),
             folders,
+            is_draft,
             body_text,
             security: opened.security,
             pgp_keys_attached: !opened.pgp_keys.is_empty(),

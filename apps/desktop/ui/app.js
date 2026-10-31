@@ -1476,6 +1476,28 @@ async function openSelected() {
     showReadingView();
     const account = accountOf(row);
     const detail = await invoke("message", { account, id: row.id });
+    // A draft is the one message whose point is that it is not finished.
+    // Showing it in the reading pane is a dead end — there is nothing to
+    // reply to and no way to send it — so it opens where it was left off.
+    // Its attachments stay behind: the pane fetches those one at a time on
+    // demand, and silently sending a draft shorter than it was kept would be
+    // worse than saying so.
+    if (detail.is_draft) {
+      await openComposeWith(
+        {
+          to: detail.to,
+          cc: detail.cc,
+          subject: detail.subject ?? "",
+          body: detail.body_text ?? "",
+        },
+        {
+          what: detail.attachments?.length
+            ? t("Draft — attachments not carried over")
+            : t("Draft"),
+        },
+      );
+      return;
+    }
     reading.hidden = false;
     emptyPane.hidden = true;
     el("reading-actions").hidden = false;

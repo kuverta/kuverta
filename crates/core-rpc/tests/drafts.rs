@@ -199,3 +199,69 @@ fn a_forward_carries_the_files_of_the_message_it_forwards() {
     assert_eq!(file.attachment_name(), Some("Rechnung.pdf"));
     assert_eq!(file.contents(), b"%PDF-1.4\n");
 }
+
+/// A message the server flagged `\Draft` says so, so the window can open it in
+/// compose instead of the reading pane.
+///
+/// The flag lives on the location, not the message: the same message can sit in
+/// Drafts and nowhere else, and it is the folder copy that carries the mark.
+#[test]
+fn a_message_flagged_draft_is_reported_as_one() {
+    use core_store::model::*;
+    use core_store::{Blobs, Store};
+
+    let dir = TempDir::new("flagged");
+    let store = Store::open(dir.0.join("kuverta.db")).unwrap();
+    let account = store
+        .add_account(&NewAccount {
+            label: "Dev".into(),
+            email: "dev@kuverta.test".into(),
+            imap_host: "127.0.0.1".into(),
+            imap_port: 993,
+            imap_security: ImapSecurity::Tls,
+            username: "dev@kuverta.test".into(),
+            auth_method: "app_password".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let drafts = store.upsert_folder(account, "Drafts", None).unwrap();
+    let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let core = core_rpc::Core::new(store, Blobs::new(dir.0.join("blobs")));
+
+    let raw = "From: dev@kuverta.test\r\nTo: amt@example.test\r\n\
+               Subject: Widerspruch\r\n\r\nHalb geschrieben.\r\n";
+    let path = core.blobs().put(account, "d1", raw.as_bytes()).unwrap();
+    let new = |uid: u32, folder, flags: &str| {
+        core.store()
+            .upsert_message(
+                account,
+                &NewMessage {
+                    rfc822_message_id: Some(format!("d{uid}@example.test")),
+                    subject: Some("Widerspruch".into()),
+                    from_addr: Some("dev@kuverta.test".into()),
+                    date_utc: Some(1_700_000_000),
+                    body_path: Some(path.clone()),
+                    ..Default::default()
+                },
+                Some(&Location {
+                    folder_id: folder,
+                    uid,
+                    flags: flags.into(),
+                }),
+            )
+            .unwrap()
+            .0
+    };
+
+    let draft = new(1, drafts, "\\Seen \\Draft");
+    let plain = new(2, inbox, "\\Seen");
+
+    assert!(
+        core.message(account, draft).unwrap().is_draft,
+        "a \\Draft location should mark the message as a draft"
+    );
+    assert!(
+        !core.message(account, plain).unwrap().is_draft,
+        "ordinary mail is not a draft"
+    );
+}
