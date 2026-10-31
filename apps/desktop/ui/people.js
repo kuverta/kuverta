@@ -356,6 +356,7 @@ async function openWholeMessage(id) {
     el("reading-urgency").hidden = true;
     showSender({ id });
     showSecurity(detail);
+    showInvite(detail);
     showAttachments(detail);
   } catch (err) {
     say(String(err), true);

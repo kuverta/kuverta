@@ -3156,3 +3156,89 @@ can hold in their head. A release note is the list of titles.
 Releases are the exception already made: `make release` commits "Release
 x.y.z" with the version bump alone (see `docs/releasing.md`), which is one
 change by this rule.
+
+---
+
+## 56. A thing found in mail is offered, never applied
+
+**2026-10-31.**
+
+An invitation now has a card above the message: what the meeting is, when,
+where, who else was asked, and — where it matters — why there are no
+buttons on it. A `text/calendar` part was a 📅 in the attachment row until
+now, which meant opening the `.ics` in another program to find out what the
+meeting was.
+
+The feature is small. The shape it was built in is the decision, because
+three more kinds of thing are going to want it: a todo taken from a
+sentence somebody wrote, a line off a bank's statement, a document that
+belongs in Paperless. So `core-offers` holds what they share and nothing
+else: where it was found, what identifies the thing itself, whether its
+sender is a stranger, and whether it may be answered. What only an
+invitation needs — the method, the attendees, the repetition — sits in a
+typed payload beside that. It is the trick `core-paper` plays by giving a
+document the shapes a message has (§7): unify on the data, not on an
+interface, and the surface above learns one thing once.
+
+### Three rules, each of which was cheaper to keep now
+
+**An offer is offered, never applied.** Reading mail creates nothing
+outside kuverta. Syncing a folder twice is therefore exactly as harmless as
+syncing it once — which matters because the same invitation arrives more
+than once: forwarded, re-synced, or filed under two of Gmail's labels, and
+a different message row every time. The `handoff` ledger (migration 26) is
+keyed by the event's `UID` rather than by the mail, so the second copy says
+"you have already answered this one" instead of asking again. `SEQUENCE` is
+in the key's row for the case that makes naive dedup wrong: an organiser
+who moves the meeting sends the same `UID` with a higher revision, and that
+is a new question, not a repeat. Mail also arrives out of order, so a row
+is never replaced by a lower revision.
+
+**No instant is invented.** `DTSTART;TZID=Europe/Berlin:20261104T140000` is
+a wall clock, and which instant it names depends on a zone database
+`core-offers` does not carry. So an epoch second is filled in only where
+the sender gave a time that needs no lookup, and otherwise the card shows
+the digits that were on the line with the zone named beside them. A card
+showing a confident wrong hour is worse than one showing none, and this is
+where that line is drawn rather than in the window. The fuzz target
+(`read_invite`) asserts it for every input there is: if an instant is set,
+no zone was named and it was not a whole day.
+
+**A stranger's invitation gets no answer.** Answering tells whoever sent it
+that the address is read by somebody, which is what an unsolicited
+invitation is fishing for. The test is not whether they have written here —
+inbound volume is theirs to manufacture, and a newsletter that has written
+fifty times is still a stranger. It is whether this mailbox has ever
+*written to them*, which is the one signal nobody outside it can produce.
+The core decides it, as §48 requires: the window's card reports what the
+core already settled.
+
+### What it has not got, on purpose
+
+There is no sink. Nothing writes to a calendar, a reminder list or an
+archive, and nothing sends a `METHOD:REPLY` yet. Those are two separate
+decisions — one about sending mail as the person, one about reaching
+outside the app — and the card says plainly that answering is not built
+rather than offering an Accept that fails.
+
+That also keeps the half that *is* built the same everywhere. macOS is
+unusual in having one system calendar that every program reads through one
+framework; Windows has nothing comparable a desktop program may use, and on
+Linux it is Evolution's data server or nothing. So the portable half is the
+card and an `.ics` handed to whatever the system opens it with, and an
+EventKit adapter — if it comes — is a garnish that can never be
+load-bearing.
+
+**Where the line is.** kuverta reads invitations and will answer them. It
+is not a calendar: no event store, no calendar view, no expanding an
+`RRULE` beyond showing that the thing repeats. The non-goals list in the
+plan's §1 is where eighteen months went, and this is the guard on it.
+
+### The parser is one that reads what strangers wrote
+
+`calcard` does the iCalendar reading — Stalwart's, the same house as
+`mail-parser`, which the plan's "lean on, don't rewrite" list would have
+named had there been an invitation to read when it was written. Which puts
+it in the class §38 and §44 are about, so it went into `fuzz/` with the
+others on the day it landed rather than after the first bad `.ics`: it must
+return, say the same thing twice, and never produce more than it was given.

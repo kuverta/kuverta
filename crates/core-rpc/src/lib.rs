@@ -32,6 +32,7 @@ pub mod html;
 pub mod html_view;
 pub mod mailboxes;
 pub mod memory;
+pub mod offers;
 pub mod outbox;
 pub mod paper;
 pub mod pdf;
@@ -75,6 +76,7 @@ pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, Sig
 pub use form::FormField;
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
+pub use offers::OfferView;
 pub use outbox::{OutboxSent, OutboxView};
 pub use paper::{
     PaperDetail, PaperMailboxInput, PaperMailboxView, PaperPage, PaperRow, PaperSession,
@@ -270,6 +272,11 @@ pub struct MessageDetail {
     /// the encryption held has one.
     #[serde(default)]
     pub has_html: bool,
+    /// What the message is offering: an invitation it carries, and in time
+    /// a todo or a statement. Empty for almost every message. Reading one
+    /// changes nothing — an offer is offered, and a person accepts.
+    #[serde(default)]
+    pub offers: Vec<OfferView>,
 }
 
 /// What a model pass did.
@@ -760,6 +767,18 @@ impl Core {
                 .is_some_and(|html| !html.trim().is_empty()),
         };
 
+        // Before the struct below takes `from_addr`: whether an invitation
+        // may be answered depends on who sent it.
+        let offers = match parsed.as_ref() {
+            Some(parsed) => self.offers_in(
+                account,
+                parsed,
+                core_offers::Origin::Message(stored.id),
+                stored.from_addr.as_deref(),
+            )?,
+            None => Vec::new(),
+        };
+
         Ok(MessageDetail {
             facts,
             id: stored.id,
@@ -786,6 +805,7 @@ impl Core {
             pgp_keys_attached: !opened.pgp_keys.is_empty(),
             attachments,
             has_html,
+            offers,
         })
     }
 

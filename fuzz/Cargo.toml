@@ -28,6 +28,7 @@ core-smtp = { path = "../crates/core-smtp" }
 core-store = { path = "../crates/core-store" }
 core-ai = { path = "../crates/core-ai" }
 core-rpc = { path = "../crates/core-rpc" }
+core-offers = { path = "../crates/core-offers" }
 scannerd = { path = "../apps/scannerd" }
 # For the page scanner's base address and SearXNG's JSON.
 url = "2"
@@ -102,6 +103,13 @@ bench = false
 [[bin]]
 name = "web_page"
 path = "fuzz_targets/web_page.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "read_invite"
+path = "fuzz_targets/read_invite.rs"
 test = false
 doc = false
 bench = false

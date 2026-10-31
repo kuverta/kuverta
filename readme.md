@@ -67,6 +67,14 @@ in its header.
   until asked for on that message, and a link opens nothing until its real
   address has been shown and what is odd about it said
   ([why](docs/decisions.md#53-html-mail-as-a-page))
+- **Invitations** — a `text/calendar` part is read and shown above the
+  message: what the meeting is, when, where and who else was asked. The time
+  is the sender's own — a wall clock named by zone is shown with its zone
+  rather than converted into an hour that might be wrong — and an invitation
+  from an address this mailbox has never written to is shown without an
+  answer, because replying is what an unsolicited one is fishing for.
+  Answering and placing the event in a calendar are not built yet
+  ([why](docs/decisions.md#56-a-thing-found-in-mail-is-offered-never-applied))
 - **Auth** — app passwords in the OS keychain, the OAuth2 device flow
   (RFC 8628) for Microsoft 365, and the loopback flow (RFC 8252, with PKCE)
   for Gmail, which does not accept the device grant

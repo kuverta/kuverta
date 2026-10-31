@@ -1,0 +1,15 @@
+[package]
+name = "core-offers"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+# iCalendar, from the same house as `mail-parser`: the parser the plan's
+# "lean on, don't rewrite" list would have named had there been an invite to
+# read when it was written. Default features off — they are JSCalendar
+# conversion, which nothing here asks for.
+calcard = { version = "0.3.14", default-features = false }
+serde.workspace = true

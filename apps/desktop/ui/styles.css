@@ -653,6 +653,39 @@ footer .keys {
 .security-note[hidden] { display: none !important; }
 .security-note button { margin-left: 8px; font-size: 11.5px; padding: 1px 8px; }
 
+/* An invitation the message carries: read above the text, never acted on
+   from here. See invite.js. */
+.invite-card {
+  margin: -6px 0 14px;
+  padding: 9px 12px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-soft);
+  font-size: 12.5px;
+}
+.invite-card[hidden] { display: none !important; }
+
+.invite-head {
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 5px;
+}
+
+/* Label and value in two columns, so the times line up down the card. */
+.invite-rows {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 0;
+}
+.invite-rows dt { color: var(--muted); }
+.invite-rows dd { margin: 0; }
+
+.invite-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 /* Attachments: one button each under the header, and a viewer on top. */
 .attachments {
   display: flex;

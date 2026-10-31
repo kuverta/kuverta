@@ -842,6 +842,27 @@ const GERMAN = {
     "{sender} konnte nicht abbestellt werden: {detail}",
   "{count} more moved to Trash.": "{count} weitere in den Papierkorb verschoben.",
 
+  // -- an invitation a message carries --------------------------------------
+  "(no title)": "(ohne Titel)",
+  When: "Wann",
+  Where: "Wo",
+  From: "Von",
+  Who: "Wer",
+  "{from} until {to}": "{from} bis {to}",
+  "{date}, all day": "{date}, ganztägig",
+  "{time} ({zone})": "{time} ({zone})",
+  "{time} — repeats": "{time} — wiederholt sich",
+  "This meeting was cancelled.": "Dieser Termin wurde abgesagt.",
+  "This is somebody's answer to an invitation.": "Das ist die Antwort auf eine Einladung.",
+  "Sent for information — there is nothing to answer.":
+    "Nur zur Information — hier ist nichts zu beantworten.",
+  "Another time is proposed.": "Es wird ein anderer Zeitpunkt vorgeschlagen.",
+  "You have already answered this one.": "Diese Einladung haben Sie schon beantwortet.",
+  "No answer is offered: you have never written to this sender, and replying would confirm that someone reads this address.":
+    "Es wird keine Antwort angeboten: Sie haben diesem Absender noch nie geschrieben, und eine Antwort würde bestätigen, dass diese Adresse gelesen wird.",
+  "Answering from kuverta is not built yet — open the invitation in your calendar to accept it.":
+    "Das Beantworten in kuverta gibt es noch nicht — öffnen Sie die Einladung in Ihrem Kalender, um zuzusagen.",
+
   // -- attachments ----------------------------------------------------------
   "Choose a file…": "Datei wählen…",
   "{name} — {type}": "{name} — {type}",
