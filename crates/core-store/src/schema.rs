@@ -655,6 +655,37 @@ UPDATE urgency SET score = 0, deadline = NULL
 WHERE source = 'model' AND action = 'none'
   AND (score <> 0 OR deadline IS NOT NULL);
 "#,
+    // v26 — the ledger for things found in mail and handed on: an
+    // invitation accepted, and later a todo kept or a statement filed.
+    //
+    // One row per thing, keyed by what identifies the thing itself rather
+    // than the mail that carried it, because the same invitation arrives
+    // more than once: forwarded, synced again, or filed under two of
+    // Gmail's labels. Without this, reading mail twice would offer to do
+    // the same thing twice and a second event would land in the calendar.
+    //
+    // `revision` is what makes the dedup honest. An organiser who moves a
+    // meeting sends the same UID again with a higher `SEQUENCE`, and that
+    // is a new question, not a repeat: a row answers for the revision it
+    // was written at and no higher. `sink` and `reference` are where it
+    // went and what that place calls it — both empty for now, since
+    // nothing writes to a calendar yet, and both needed by the first thing
+    // that does, if only to take an event back out when the meeting is
+    // cancelled.
+    //
+    // `IF NOT EXISTS` because this migration is replayed: a store test
+    // winds `user_version` back to 23 to prove v24 rebuilds the provider
+    // table, which runs everything after it a second time.
+    r#"
+CREATE TABLE IF NOT EXISTS handoff (
+    key       TEXT    PRIMARY KEY,
+    revision  INTEGER NOT NULL DEFAULT 0,
+    answer    TEXT    NOT NULL,
+    sink      TEXT,
+    reference TEXT,
+    at        INTEGER NOT NULL
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

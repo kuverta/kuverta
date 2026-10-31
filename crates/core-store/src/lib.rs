@@ -14,6 +14,7 @@ pub mod blobs;
 pub mod chats;
 pub mod dedup;
 pub mod documents;
+pub mod handoffs;
 pub mod hygiene;
 pub mod memory;
 pub mod model;
@@ -29,6 +30,7 @@ pub mod usage;
 
 pub use blobs::Blobs;
 pub use dedup::{dedup_key, normalize_message_id};
+pub use handoffs::Handoff;
 pub use hygiene::{
     sender_key, BackfilledHeaders, SimilarityRow, UnsubscribeSender, Unsubscription,
     CLEANUP_CATEGORIES,
