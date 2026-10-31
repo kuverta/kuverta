@@ -5,6 +5,17 @@ name: Website
 # latest releases at /apt. Needs Settings → Pages → Source set to
 # "GitHub Actions" once; see website/docs/developers/releasing.md for the apt
 # repository's signing key.
+#
+# Two more settings it needs, both found unset on 2026-10-31:
+#
+#   * The `github-pages` environment must allow `v*` tags to deploy. A run
+#     triggered by a published release has the tag as its ref, and that
+#     environment allows the default branch only, so `deploy` is refused
+#     before its first step — two seconds, no log, nothing red but the job.
+#     Every release-triggered run from v0.5.36 to v0.5.51 failed that way,
+#     while every push to main deployed fine.
+#   * `APT_SIGNING_KEY` must be set, or the apt job warns and the site goes
+#     up without /apt — which is the only thing the release trigger is for.
 
 on:
   push:
