@@ -794,6 +794,10 @@ const GERMAN = {
   "Move this message to the Trash": "Diese Nachricht in den Papierkorb verschieben",
   "for {who}": "für {who}",
   "moved to {folder} — z undoes it": "nach {folder} verschoben — z macht es rückgängig",
+  "the draft could not be cleared away: {error}":
+    "der Entwurf konnte nicht aufgeräumt werden: {error}",
+  "this account has no Trash folder, so the draft is still in Drafts":
+    "dieses Konto hat keinen Papierkorb, der Entwurf liegt also weiter in Entwürfe",
   "that letter is further down the list than has been loaded":
     "Dieser Brief liegt weiter unten in der Liste, als bisher geladen ist",
 
