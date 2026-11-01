@@ -67,6 +67,19 @@ function assistantOpen() {
   return !assistant.panel.hidden;
 }
 
+/// The assistant works on a mail account. In the Post view there is nothing
+/// for it to read, so the box says so instead of taking a question it would
+/// only refuse — a disabled field that explains itself beats a live one that
+/// swallows what you typed.
+function syncAssistantAvailability() {
+  const usable = state.account !== null && !state.postbox;
+  assistant.input.disabled = !usable;
+  el("chat-send").disabled = !usable;
+  assistant.input.placeholder = usable
+    ? t("Ask about your mail, or say what to do with it…")
+    : t("choose a mail account first");
+}
+
 function setAssistantOpen(open) {
   assistant.panel.hidden = !open;
   try {
@@ -78,8 +91,9 @@ function setAssistantOpen(open) {
   // whether the column is there at all and redraws the list if it moved.
   syncAside();
   if (open) {
+    syncAssistantAvailability();
     showAssistantTab(currentTab());
-    if (currentTab() === "chat") assistant.input.focus();
+    if (currentTab() === "chat" && !assistant.input.disabled) assistant.input.focus();
   }
 }
 
@@ -469,7 +483,10 @@ function hideHistory() {
 /// The earlier conversations on this account, newest first, in place of the
 /// log until one is picked.
 async function showHistory() {
-  if (state.account === null || state.postbox) return;
+  if (state.account === null || state.postbox) {
+    say(t("choose a mail account first"), true);
+    return;
+  }
   const panel = el("chat-history");
   if (!panel.hidden) {
     hideHistory();
@@ -946,7 +963,14 @@ assistant.input.addEventListener("keydown", (event) => {
 // -- tasks -------------------------------------------------------------------------
 
 async function refreshAssistantBadge() {
-  if (state.account === null || state.postbox) return;
+  // Nobody asked for this one, so it says nothing — but it must not leave the
+  // last account's count sitting over an assistant that will not answer here.
+  // It runs whenever the account changes, which is when the box has to catch up.
+  syncAssistantAvailability();
+  if (state.account === null || state.postbox) {
+    for (const id of ["assistant-badge", "tasks-badge"]) el(id).hidden = true;
+    return;
+  }
   let pending = 0;
   try {
     pending = (await invoke("proposals", { account: state.account })).length;
@@ -1133,7 +1157,12 @@ el("proposals-approve-all").onclick = async () => {
 
 /// Runs the account's tasks. Quiet unless something happened or `loud`.
 async function runTasks({ loud = false } = {}) {
-  if (state.account === null || state.postbox) return;
+  if (state.account === null || state.postbox) {
+    // Pressing Run and having nothing happen is the worst of the two: the
+    // automatic pass stays quiet, the deliberate one says why it did not.
+    if (loud) say(t("choose a mail account first"), true);
+    return;
+  }
   const status = el("tasks-status");
   const channel = progressChannel(([done, total]) => {
     status.textContent = total ? t("asking the model: {done} of {total}", { done, total }) : "";
