@@ -1489,6 +1489,7 @@ async function openSelected() {
           cc: detail.cc,
           subject: detail.subject ?? "",
           body: detail.body_text ?? "",
+          draft_of: { id: row.id, account, trash: specialsOf(row).trash },
         },
         {
           what: detail.attachments?.length
@@ -1958,9 +1959,34 @@ const compose = {
   // Which account writes it: the open one, or from All inboxes the account
   // of the message answered — a reply goes from the address it came to.
   email: null,
+  // The Drafts copy this was opened from, as {id, account, trash}. Once the
+  // message has gone the copy is a stale duplicate of something already sent,
+  // so it is taken out — but only on the way out, never on the way in: a
+  // draft closed without sending is work the person still wants.
+  draftOf: null,
   // While "discard what you are writing?" is on screen.
   leaving: false,
 };
+
+/// Takes the Drafts copy out, once what it held has been sent or scheduled.
+///
+/// To Trash rather than deleted outright, like every other way mail leaves a
+/// folder here, so `z` can put it back. A failure is said out loud and not
+/// retried: the message has gone either way, and the only thing left wrong is
+/// a duplicate the person can see and remove themselves. Silence would leave
+/// them to discover it later and wonder whether it was ever sent.
+async function retireSourceDraft(source) {
+  if (!source) return;
+  if (!source.trash) {
+    say(t("this account has no Trash folder, so the draft is still in Drafts"), true);
+    return;
+  }
+  try {
+    await invoke("move_to", { account: source.account, id: source.id, target: source.trash });
+  } catch (err) {
+    say(t("the draft could not be cleared away: {error}", { error: String(err) }), true);
+  }
+}
 
 /// The fields as one string, to compare with how they were when compose
 /// opened. Files count by number: an attached file is something typed.
@@ -2054,6 +2080,7 @@ function closeCompose() {
   compose.replyTo = null;
   compose.forward = null;
   compose.replyAll = false;
+  compose.draftOf = null;
   compose.envelope.textContent = "";
   compose.files?.clear();
   // A late answer from the assistant is for compose as it was, not this.
@@ -2139,6 +2166,7 @@ async function openComposeWith(draft, { what = null } = {}) {
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
+  compose.draftOf = draft.draft_of ?? null;
   compose.what.textContent = what ?? t("Scheduled message");
   compose.to.value = (draft.to ?? []).join(", ");
   compose.cc.value = (draft.cc ?? []).join(", ");
@@ -2194,7 +2222,10 @@ async function sendDraft() {
     }
     // Whoever it went to is someone written to now.
     addressBookChanged();
+    // Read before closing: closing is what forgets it.
+    const source = compose.draftOf;
     closeCompose();
+    await retireSourceDraft(source);
     await reload();
   } catch (err) {
     say(String(err), true);

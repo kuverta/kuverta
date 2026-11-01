@@ -270,7 +270,11 @@ async function scheduleDraft(date) {
     });
     scheduleMenu.hidden = true;
     say(t("scheduled for {when}", { when: whenFormat.format(date) }));
+    // Same as sending: what is in the outbox now is the message, and the
+    // Drafts copy left behind would be an older version of it.
+    const source = compose.draftOf;
     closeCompose();
+    await retireSourceDraft(source);
     await renderOutboxNav();
   } catch (err) {
     say(String(err), true);
