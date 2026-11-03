@@ -1222,6 +1222,13 @@ footer .keys {
 
 .place-size input { width: 120px; }
 
+.letter-price { margin: 4px 0 0; font-size: 15px; font-weight: 600; }
+.letter-warning { color: var(--error); }
+.letter-address { display: flex; flex-direction: column; gap: 6px; }
+.letter-address textarea { width: 100%; box-sizing: border-box; font: inherit; resize: vertical; }
+.letter-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.letter-line .hint { margin: 0; }
+
 .dialog-head { padding: 18px 20px 6px; }
 .dialog-head h2 { margin: 0 0 4px; font-size: 16px; }
 .dialog-head p { margin: 0; }

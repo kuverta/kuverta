@@ -30,6 +30,7 @@ pub mod documents;
 pub mod form;
 pub mod html;
 pub mod html_view;
+pub mod letters;
 pub mod mailboxes;
 pub mod memory;
 pub mod offers;
@@ -66,6 +67,7 @@ pub use cleanup::{
 };
 pub use conversations::{Bubble, ContactView, ConversationPage, ConversationView, Thread};
 pub use core_ai::{ModelInfo, Provider as ModelProvider};
+pub use core_letter::{Balance as LetterBalance, Spec as LetterSpec};
 pub use core_paper::{learn, PaperReport, ShelfFolder};
 pub use core_pgp::{
     ImportReport, ImportedKey, KeyView, Keyring, RecipientKey, RecipientKeys, SecurityView,
@@ -74,6 +76,7 @@ pub use core_pgp::{
 pub use core_store::{SearchOrder, SmartField, SmartOp, SmartQuery, SmartRule};
 pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, SignatureSettings};
 pub use form::FormField;
+pub use letters::{LetterAddress, LetterQuote, LetterSettings, LetterSettingsInput, LetterView};
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use offers::OfferView;

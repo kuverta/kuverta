@@ -2210,6 +2210,146 @@ fn clear_signature(app: State<'_, App>) -> Result<(), String> {
     app.core.lock().unwrap().clear_signature().map_err(fail)
 }
 
+// -- letters by post -----------------------------------------------------------
+//
+// A PDF document goes to LetterXpress, which prints and posts it. The window
+// asks for a quote, shows it, and sends only what the person confirmed. No
+// lock is held while LetterXpress is asked: it is taken to make the order,
+// to write the letter down before it goes, and to keep what came back.
+
+#[tauri::command]
+fn letter_settings(app: State<'_, App>) -> Result<core_rpc::LetterSettings, String> {
+    app.core.lock().unwrap().letter_settings().map_err(fail)
+}
+
+#[tauri::command]
+fn save_letter_settings(
+    app: State<'_, App>,
+    input: core_rpc::LetterSettingsInput,
+) -> Result<core_rpc::LetterSettings, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .save_letter_settings(&input)
+        .map_err(fail)
+}
+
+#[tauri::command]
+fn set_letter_key(app: State<'_, App>, key: String) -> Result<(), String> {
+    app.core.lock().unwrap().set_letter_key(&key).map_err(fail)
+}
+
+#[tauri::command]
+fn clear_letter_key(app: State<'_, App>) -> Result<(), String> {
+    app.core.lock().unwrap().clear_letter_key().map_err(fail)
+}
+
+/// Whether the user name and key work: what the account holds, if they do.
+#[tauri::command]
+async fn check_letter_account(app: State<'_, App>) -> Result<core_rpc::LetterBalance, String> {
+    let client = app.core.lock().unwrap().letter_client().map_err(fail)?;
+    core_rpc::letters::check(&client).await.map_err(fail)
+}
+
+#[tauri::command]
+async fn quote_letter(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    spec: core_rpc::LetterSpec,
+    address: Option<core_rpc::LetterAddress>,
+) -> Result<core_rpc::LetterQuote, String> {
+    let order = app
+        .core
+        .lock()
+        .unwrap()
+        .letter_order(account, id, spec, address.as_ref())
+        .map_err(fail)?;
+    core_rpc::letters::quote(&order).await.map_err(fail)
+}
+
+/// Posts a document. Written down as on its way first, so that if kuverta
+/// stops before LetterXpress answers, the letter says it may have gone.
+#[tauri::command]
+async fn send_letter(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    spec: core_rpc::LetterSpec,
+    address: Option<core_rpc::LetterAddress>,
+    quoted: Option<f64>,
+) -> Result<core_rpc::LetterView, String> {
+    let (order, letter) = {
+        let core = app.core.lock().unwrap();
+        let order = core
+            .letter_order(account, id, spec, address.as_ref())
+            .map_err(fail)?;
+        let letter = core.begin_letter(&order, quoted).map_err(fail)?;
+        (order, letter)
+    };
+    let sent = core_rpc::letters::submit(&order).await;
+    let core = app.core.lock().unwrap();
+    match sent {
+        Ok(job) => core.record_letter(letter, &job).map_err(fail),
+        Err(err) => {
+            core.letter_failed(letter, &err.to_string()).map_err(fail)?;
+            Err(err.to_string())
+        }
+    }
+}
+
+/// The PDF as it would go in the envelope, address and all, for the
+/// viewer: what is about to be posted is what to look at first.
+#[tauri::command]
+fn letter_pdf(
+    app: State<'_, App>,
+    account: i64,
+    id: i64,
+    spec: core_rpc::LetterSpec,
+    address: Option<core_rpc::LetterAddress>,
+) -> Result<core_rpc::DraftAttachment, String> {
+    let (name, data, _) = app
+        .core
+        .lock()
+        .unwrap()
+        .letter_pdf(account, id, &spec, address.as_ref())
+        .map_err(fail)?;
+    Ok(core_rpc::DraftAttachment {
+        name,
+        content_type: "application/pdf".into(),
+        data,
+    })
+}
+
+#[tauri::command]
+fn letters_of_document(app: State<'_, App>, id: i64) -> Result<Vec<core_rpc::LetterView>, String> {
+    app.core
+        .lock()
+        .unwrap()
+        .letters_of_document(id)
+        .map_err(fail)
+}
+
+/// Asks LetterXpress where a letter is now.
+#[tauri::command]
+async fn refresh_letter(app: State<'_, App>, id: i64) -> Result<core_rpc::LetterView, String> {
+    let (client, job) = app.core.lock().unwrap().letter_job(id).map_err(fail)?;
+    let job = client.job(job).await.map_err(fail)?;
+    app.core
+        .lock()
+        .unwrap()
+        .record_letter(id, &job)
+        .map_err(fail)
+}
+
+/// Takes a letter back, which LetterXpress allows for fifteen minutes.
+#[tauri::command]
+async fn cancel_letter(app: State<'_, App>, id: i64) -> Result<core_rpc::LetterView, String> {
+    let (client, job) = app.core.lock().unwrap().letter_job(id).map_err(fail)?;
+    client.cancel(job).await.map_err(fail)?;
+    app.core.lock().unwrap().letter_cancelled(id).map_err(fail)
+}
+
 /// The sample page's file name, when it is saved or opened.
 const SIGNATURE_SAMPLE_NAME: &str = "kuverta signature sample.pdf";
 
@@ -2735,6 +2875,17 @@ fn main() {
             set_signature,
             set_signature_place,
             clear_signature,
+            letter_settings,
+            save_letter_settings,
+            set_letter_key,
+            clear_letter_key,
+            check_letter_account,
+            quote_letter,
+            send_letter,
+            letter_pdf,
+            letters_of_document,
+            refresh_letter,
+            cancel_letter,
             signature_sample,
             signature_sample_preview,
             save_signature_sample,
