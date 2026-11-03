@@ -192,12 +192,14 @@ pub fn tools() -> Vec<ToolSpec> {
                 "body": {"type": "string"},
                 "documents": documents_param()
             }, "required": ["to", "subject", "body"]})),
-        tool("write_pdf", "Write a PDF document from text you compose: a letter, a cancellation, a confirmation, a list. Each line stays a line (an address block keeps its lines), a blank line separates paragraphs, `# ` starts the title, `## ` a heading, `- ` a list item. Put `[signature]` on a line of its own where the person's signature belongs — above their printed name — and set sign to true to place their stored signature there, with the place and today's date written beneath it by kuverta — so do not write a date line there yourself; only when they asked for it signed. The person sees the document as a card to open, save or attach. Returns its id, for sign_pdf, read_document and the documents of draft_message.",
+        tool("write_pdf", "Write a PDF document from text you compose: a letter, a cancellation, a confirmation, a list. Each line stays a line (an address block keeps its lines), a blank line separates paragraphs, `# ` starts the title, `## ` a heading, `- ` a list item. Put `[signature]` on a line of its own where the person's signature belongs — above their printed name — and set sign to true to place their stored signature there, with the place and today's date written beneath it by kuverta — so do not write a date line there yourself; only when they asked for it signed. For a letter that goes by post, give recipient (and sender): the address is then set where the window of a DIN envelope shows it, the text starts below, and the person can send it on paper from its card — so leave the address block out of text, and start text with the place and date line or the subject. The person sees the document as a card to open, save, attach or post. Returns its id, for sign_pdf, read_document and the documents of draft_message.",
             json!({"type": "object", "properties": {
                 "name": {"type": "string", "description": "A file name, such as Kündigung Fitnessstudio."},
                 "text": {"type": "string"},
                 "sign": {"type": "boolean", "default": false},
-                "note": {"type": "string", "description": "Optional: one line on what it is."}
+                "note": {"type": "string", "description": "Optional: one line on what it is."},
+                "recipient": {"type": "string", "description": "Optional, for a letter: the address it goes to, one line each, at most six — name, department or c/o, street and number, postcode and town, and the country only when it goes abroad."},
+                "sender": {"type": "string", "description": "Optional, for a letter: the person's own address, written small above the recipient's as the return address. Only what you know from their mail or memory, never made up."}
             }, "required": ["name", "text"]})),
         tool("write_table", "Write a table as a spreadsheet the person can open, sort and add up in Excel or Numbers: everything they owe, every investment they hold, every invoice of a year. Use it whenever they ask for a table, a list, an overview or a Tabelle of something gathered from their mail — not write_pdf, which cannot be sorted or totalled. Give the rows already in the order asked for: sorted by amount means the largest first, and \"by relevance\" or \"nach Relevanz\" means what needs them soonest first — a Mahnung or a Frist before a standing invoice — so put the figure and the urgency in columns of their own and sort by them. Put amounts in as plain numbers (1234.56, no currency sign and no thousands separator) in a column whose heading names the currency, or the spreadsheet cannot total them; dates as YYYY-MM-DD. Always give a last column saying where each row came from — the sender and the date of the message — so every figure can be checked, and say in your answer what you searched and what you may have missed. Never put in a figure you did not read: a row you are unsure of belongs in the table with the doubt written in it, not quietly rounded.",
             json!({"type": "object", "properties": {
@@ -880,8 +882,18 @@ impl Core {
                     .filter(|n| !n.is_empty())
                     .map(|n| n.chars().take(300).collect::<String>());
                 let sign = flag(args, "sign").unwrap_or(false);
+                let optional = |key: &str| {
+                    args.get(key)
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                };
+                let window = optional("recipient").map(|recipient| crate::pdf::Window {
+                    recipient,
+                    sender: optional("sender"),
+                });
                 let document = self
-                    .write_document(account, name, body, note.as_deref(), sign)
+                    .write_document(account, name, body, note.as_deref(), sign, window.as_ref())
                     .map_err(e)?;
                 Ok(ToolOutcome::ok(
                     json!({

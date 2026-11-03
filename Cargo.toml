@@ -11,6 +11,7 @@ members = [
     "crates/core-smtp",
     "crates/core-rpc",
     "crates/core-pgp",
+    "crates/core-letter",
     "apps/cli",
     "apps/desktop",
     "apps/scannerd",
@@ -35,6 +36,7 @@ core-ai = { path = "crates/core-ai" }
 core-smtp = { path = "crates/core-smtp" }
 core-rpc = { path = "crates/core-rpc" }
 core-pgp = { path = "crates/core-pgp" }
+core-letter = { path = "crates/core-letter" }
 
 anyhow = "1.0.104"
 thiserror = "2.0.20"
@@ -60,6 +62,9 @@ pgp = { version = "0.20.0", default-features = false }
 # keep the C toolchain out of the build.
 mail-send = { version = "0.6.2", default-features = false, features = ["ring", "tls12", "builder"] }
 sha2 = "0.11.0"
+# LetterXpress wants an MD5 of the base64 it is sent, as a transfer check.
+# 0.10, the version already in the tree.
+md-5 = "0.10.6"
 # PKCE, for the OAuth2 loopback flow: a code verifier and a `state` value are
 # security parameters and must be unguessable, so they come from the OS rather
 # than from the clock.

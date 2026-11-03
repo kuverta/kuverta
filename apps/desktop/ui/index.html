@@ -656,6 +656,22 @@
               <label>Place<input id="signature-place" autocomplete="off" spellcheck="false"></label>
               <p class="hint">Written in front of the date beneath the signature wherever it is placed, the way a letter is signed: the place, a comma, today's date. Left empty, the date stands alone.</p>
             </section>
+            <section class="card" id="letter-card">
+              <h3>Letters by post</h3>
+              <p class="hint">kuverta can hand a PDF to LetterXpress, which prints it, puts it in a window envelope and posts it with Deutsche Post. The address is read from where the envelope window sits on the first page; letters the assistant writes for posting put it there. You need a LetterXpress account: the API key is made on their site under Mein Konto → Zugangsdaten → LXP API.</p>
+              <label>User name<input id="letter-username" autocomplete="off" spellcheck="false"></label>
+              <label>API key<input id="letter-key" type="password" autocomplete="off" spellcheck="false"></label>
+              <p class="hint" id="letter-key-status"></p>
+              <label class="check"><input type="checkbox" id="letter-live"> Print and post letters</label>
+              <p class="hint">Off, a letter only goes to your Postbox on the LetterXpress site, to check, send from there or delete: nothing is printed and nothing is charged. Turn this on once a letter in the Postbox looked right.</p>
+              <p class="hint" id="letter-status"></p>
+              <div class="card-actions">
+                <button type="button" id="letter-check">Check the account</button>
+                <button type="button" id="letter-forget" class="danger" hidden>Remove the key</button>
+                <span class="spacer"></span>
+                <button type="button" id="letter-save" class="primary">Save</button>
+              </div>
+            </section>
             <section class="card">
               <h3>Needs attention</h3>
               <label class="check"><input type="checkbox" id="pref-urgency-model"> After each sync, let the model for sorting mail judge how soon new mail needs me</label>
@@ -887,6 +903,49 @@
         <span class="spacer"></span>
         <button type="button" id="unsub-keep">No, keep them</button>
         <button type="button" id="unsub-go" class="primary">Unsubscribe</button>
+      </div>
+    </div>
+  </div>
+
+  <!--
+    Posting a document on paper: how it is printed, what LetterXpress
+    quotes, and Send. Filled by letters.js.
+  -->
+  <div id="letter-sheet" class="sheet dialog" hidden>
+    <div class="dialog-panel">
+      <div class="dialog-head">
+        <h2 id="letter-title">Send by post</h2>
+        <p class="hint" id="letter-sub"></p>
+      </div>
+      <div class="dialog-body">
+        <label>Postal address<select id="letter-address-mode">
+          <option value="page">As it stands on the first page</option>
+          <option value="over">Enter it: over the address field of the first page</option>
+          <option value="cover">Enter it: on a cover sheet in front</option>
+        </select></label>
+        <div id="letter-address-fields" class="letter-address" hidden>
+          <label>To<textarea id="letter-recipient" rows="5" spellcheck="false"></textarea></label>
+          <p class="hint">One line each, at most six: name, department or c/o, street and number, postcode and town, and the country only for an address abroad.</p>
+          <label>Return address<input id="letter-sender" autocomplete="off" spellcheck="false"></label>
+          <p class="hint" id="letter-address-hint"></p>
+        </div>
+        <label class="check"><input type="checkbox" id="letter-color"> In colour</label>
+        <label class="check"><input type="checkbox" id="letter-duplex"> On both sides of the paper</label>
+        <label class="check"><input type="checkbox" id="letter-abroad"> To an address abroad</label>
+        <label>Registered<select id="letter-registered">
+          <option value="">Not registered</option>
+          <option value="drop">Einschreiben Einwurf: delivery recorded</option>
+          <option value="signed">Einschreiben: handed over against a signature</option>
+        </select></label>
+        <p class="letter-price" id="letter-price"></p>
+        <p class="hint" id="letter-mode"></p>
+        <p class="hint letter-warning" id="letter-warning" hidden></p>
+      </div>
+      <div class="dialog-foot">
+        <button type="button" id="letter-show">Show the letter</button>
+        <span class="spacer"></span>
+        <button type="button" id="letter-cancel">Cancel</button>
+        <button type="button" id="letter-send" class="primary" disabled>Send</button>
       </div>
     </div>
   </div>
@@ -1141,6 +1200,7 @@
   <script src="profiles.js"></script>
   <script src="signature.js"></script>
   <script src="signature-place.js"></script>
+  <script src="letters.js"></script>
   <script src="assistant.js"></script>
   <script src="memory.js"></script>
   <script src="skills.js"></script>

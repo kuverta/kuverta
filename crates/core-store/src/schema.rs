@@ -686,6 +686,38 @@ CREATE TABLE IF NOT EXISTS handoff (
     at        INTEGER NOT NULL
 );
 "#,
+    // v27 — letters on paper, posted by LetterXpress. One row per letter,
+    // written as `sending` before LetterXpress is asked, for the outbox's
+    // reason: a letter costs money and cannot be unposted, so a crash in the
+    // middle must leave a row saying one may have gone. `job_id` is
+    // LetterXpress's, for asking after it; `mode` says whether it was
+    // printed at all or only put in the Postbox. The document may be thrown
+    // away later; the record of what was posted stays.
+    //
+    // `IF NOT EXISTS` for the reason v26 gives.
+    r#"
+CREATE TABLE IF NOT EXISTS letter (
+    id              INTEGER PRIMARY KEY,
+    account_id      INTEGER NOT NULL REFERENCES account(id) ON DELETE CASCADE,
+    document_id     INTEGER REFERENCES document(id) ON DELETE SET NULL,
+    name            TEXT    NOT NULL,
+    mode            TEXT    NOT NULL CHECK (mode IN ('test', 'live')),
+    spec            TEXT    NOT NULL,
+    pages           INTEGER NOT NULL,
+    quoted          REAL,
+    state           TEXT    NOT NULL,
+    job_id          INTEGER,
+    job_status      TEXT,
+    address         TEXT,
+    cost            REAL,
+    tracking_code   TEXT,
+    tracking_status TEXT,
+    last_error      TEXT,
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS letter_account ON letter (account_id, created_at);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

@@ -1444,6 +1444,83 @@ const GERMAN = {
   "Counted since {date}.": "Gezählt seit {date}.",
   "Nothing has been counted yet: counting starts with the next question to a model.":
     "Noch nichts gezählt: Die Zählung beginnt mit der nächsten Frage an ein Modell.",
+
+  // -- letters by post -----------------------------------------------------
+  "Letters by post": "Briefe per Post",
+  "kuverta can hand a PDF to LetterXpress, which prints it, puts it in a window envelope and posts it with Deutsche Post. The address is read from where the envelope window sits on the first page; letters the assistant writes for posting put it there. You need a LetterXpress account: the API key is made on their site under Mein Konto → Zugangsdaten → LXP API.":
+    "kuverta kann ein PDF an LetterXpress übergeben, das es druckt, in einen Fensterumschlag steckt und mit der Deutschen Post verschickt. Die Anschrift wird dort gelesen, wo auf der ersten Seite das Fenster des Umschlags sitzt; Briefe, die der Assistent zum Verschicken schreibt, setzen sie dorthin. Sie brauchen ein Konto bei LetterXpress: Den API-Schlüssel erzeugen Sie dort unter Mein Konto → Zugangsdaten → LXP API.",
+  "Print and post letters": "Briefe drucken und verschicken",
+  "Off, a letter only goes to your Postbox on the LetterXpress site, to check, send from there or delete: nothing is printed and nothing is charged. Turn this on once a letter in the Postbox looked right.":
+    "Aus, landet ein Brief nur in Ihrer Postbox auf der Seite von LetterXpress – zum Prüfen, Abschicken von dort oder Löschen: Nichts wird gedruckt, nichts berechnet. Schalten Sie das ein, wenn ein Brief in der Postbox richtig aussah.",
+  "Check the account": "Konto prüfen",
+  "Remove the key": "Schlüssel entfernen",
+  "kept in the keychain": "im Schlüsselbund",
+  "An API key is kept in the keychain. Enter a new one to replace it.":
+    "Ein API-Schlüssel liegt im Schlüsselbund. Geben Sie einen neuen ein, um ihn zu ersetzen.",
+  "No API key yet.": "Noch kein API-Schlüssel.",
+  "Print and post letters from now on? LetterXpress charges for every letter sent, and after 15 minutes one cannot be taken back.":
+    "Ab jetzt Briefe drucken und verschicken? LetterXpress berechnet jeden verschickten Brief, und nach 15 Minuten lässt sich keiner mehr zurückholen.",
+  "Print and post": "Drucken und verschicken",
+  "letter settings kept": "Brief-Einstellungen gespeichert",
+  "Asking LetterXpress…": "Frage LetterXpress…",
+  "LetterXpress knows the account. It holds {amount}.": "LetterXpress kennt das Konto. Guthaben: {amount}.",
+  "Remove the LetterXpress API key from the keychain?": "Den API-Schlüssel für LetterXpress aus dem Schlüsselbund entfernen?",
+  "Send by post": "Per Post senden",
+  "Send by post…": "Per Post senden…",
+  "Send {name} by post": "{name} per Post senden",
+  "In colour": "In Farbe",
+  "On both sides of the paper": "Beidseitig bedruckt",
+  "To an address abroad": "An eine Anschrift im Ausland",
+  Registered: "Einschreiben",
+  "Not registered": "Kein Einschreiben",
+  "Einschreiben Einwurf: delivery recorded": "Einschreiben Einwurf: Zustellung wird dokumentiert",
+  "Einschreiben: handed over against a signature": "Einschreiben: Übergabe gegen Unterschrift",
+  "Asking LetterXpress for the price…": "Frage LetterXpress nach dem Preis…",
+  "{pages} · {price} once it is posted": "{pages} · {price}, sobald er verschickt wird",
+  "{pages} · {price}": "{pages} · {price}",
+  "The LetterXpress account holds {amount}.": "Das Guthaben bei LetterXpress beträgt {amount}.",
+  "Test mode: it goes to your Postbox on the LetterXpress site, to check and send from there. Nothing is printed or charged.":
+    "Testmodus: Der Brief landet in Ihrer Postbox auf der Seite von LetterXpress, zum Prüfen und Abschicken von dort. Nichts wird gedruckt oder berechnet.",
+  "It is printed and posted with Deutsche Post. It can be taken back for 15 minutes, not after.":
+    "Er wird gedruckt und mit der Deutschen Post verschickt. 15 Minuten lang lässt er sich zurückholen, danach nicht mehr.",
+  "Put it in the Postbox": "In die Postbox legen",
+  "Post it for {price}": "Für {price} verschicken",
+  "This document went to LetterXpress before, on {when}.": "Dieses Dokument ging schon einmal an LetterXpress, am {when}.",
+  "This document went to LetterXpress {count} times before.": "Dieses Dokument ging schon {count}-mal an LetterXpress.",
+  "The account holds less than the letter costs; LetterXpress holds it back until it is topped up.":
+    "Das Guthaben reicht nicht für den Brief; LetterXpress hält ihn zurück, bis es aufgeladen ist.",
+  "{name} is in the LetterXpress Postbox": "{name} liegt in der Postbox von LetterXpress",
+  "{name} is with LetterXpress, to be printed and posted": "{name} ist bei LetterXpress und wird gedruckt und verschickt",
+  "Sent to LetterXpress on {when}, without an answer. It may have gone: look on the LetterXpress site before sending it again.":
+    "Am {when} an LetterXpress geschickt, ohne Antwort. Er ist vielleicht unterwegs: Sehen Sie auf der Seite von LetterXpress nach, bevor Sie ihn noch einmal schicken.",
+  "Not posted: {error}": "Nicht verschickt: {error}",
+  "Taken back on {when}.": "Am {when} zurückgeholt.",
+  "In the LetterXpress Postbox since {when}: not printed until it is sent from there.":
+    "Seit {when} in der Postbox von LetterXpress: Gedruckt wird er erst, wenn er von dort abgeschickt wird.",
+  "Posted on {when}.": "Am {when} verschickt.",
+  "With LetterXpress since {when}, to be printed and posted.": "Seit {when} bei LetterXpress, wird gedruckt und verschickt.",
+  "Tracking number {code}": "Sendungsnummer {code}",
+  "Address as LetterXpress read it: {address}": "Anschrift, wie LetterXpress sie gelesen hat: {address}",
+  "Where is it?": "Wo ist er?",
+  "Take it back": "Zurückholen",
+  "Postal address": "Anschrift",
+  "As it stands on the first page": "Wie sie auf der ersten Seite steht",
+  "Enter it: over the address field of the first page": "Eingeben: über das Anschriftfeld der ersten Seite",
+  "Enter it: on a cover sheet in front": "Eingeben: auf einem Deckblatt davor",
+  To: "An",
+  "One line each, at most six: name, department or c/o, street and number, postcode and town, and the country only for an address abroad.":
+    "Eine Zeile je Angabe, höchstens sechs: Name, Abteilung oder c/o, Straße und Hausnummer, Postleitzahl und Ort, das Land nur bei einer Anschrift im Ausland.",
+  "Return address": "Absender",
+  "Show the letter": "Brief ansehen",
+  "The address goes on a sheet of its own in front of the document, which costs a page more; printed on both sides, its back stays empty.":
+    "Die Anschrift kommt auf ein eigenes Blatt vor dem Dokument, das kostet eine Seite mehr; beidseitig gedruckt bleibt seine Rückseite leer.",
+  "The address is printed on white over the address field of the first page, covering what is there. Show the letter to check nothing else is under it.":
+    "Die Anschrift wird auf weißem Grund über das Anschriftfeld der ersten Seite gedruckt und verdeckt, was dort steht. Sehen Sie sich den Brief an, um zu prüfen, dass darunter nichts anderes liegt.",
+  "Enter the address it goes to.": "Geben Sie die Anschrift ein, an die er geht.",
+  "LetterXpress reads the address from where the envelope window sits on the first page: 20 mm from the left, 45 mm from the top. If it is not there, enter it here.":
+    "LetterXpress liest die Anschrift dort, wo auf der ersten Seite das Umschlagfenster sitzt: 20 mm vom linken, 45 mm vom oberen Rand. Steht sie dort nicht, geben Sie sie hier ein.",
+  "Take back {name}? LetterXpress allows this for 15 minutes after it was sent.":
+    "{name} zurückholen? LetterXpress erlaubt das 15 Minuten nach dem Abschicken.",
 };
 
 const CATALOGUES = { de: GERMAN };
