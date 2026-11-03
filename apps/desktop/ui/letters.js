@@ -318,12 +318,15 @@ el("letter-send").onclick = async () => {
 
 // -- Settings → General → Letters by post --------------------------------------
 
+// The functions here have names of their own, though they sit in a block:
+// a function declared in a block of a plain script is still a global, and
+// one called `render` here once replaced the message list's.
 {
   const page = SETTINGS_PAGES.general;
   const status = el("letter-status");
   let settings = null;
 
-  function render(next) {
+  function renderLetterSettings(next) {
     settings = next;
     el("letter-username").value = next.username ?? "";
     el("letter-key").value = "";
@@ -335,16 +338,16 @@ el("letter-send").onclick = async () => {
     el("letter-live").checked = next.mode === "live";
   }
 
-  async function show() {
+  async function showLetterSettings() {
     status.textContent = "";
     try {
-      render(await invoke("letter_settings"));
+      renderLetterSettings(await invoke("letter_settings"));
     } catch (err) {
       status.textContent = String(err);
     }
   }
 
-  async function save() {
+  async function saveLetterSettings() {
     const live = el("letter-live").checked;
     if (live && settings?.mode !== "live") {
       const yes = await ask(
@@ -358,7 +361,7 @@ el("letter-send").onclick = async () => {
     }
     const key = el("letter-key").value.trim();
     if (key) await invoke("set_letter_key", { key });
-    render(
+    renderLetterSettings(
       await invoke("save_letter_settings", {
         input: { username: el("letter-username").value.trim(), mode: live ? "live" : "test" },
       }),
@@ -366,11 +369,11 @@ el("letter-send").onclick = async () => {
     return true;
   }
 
-  page.addEventListener("show", show);
+  page.addEventListener("show", showLetterSettings);
 
   el("letter-save").onclick = async () => {
     try {
-      if (await save()) say(t("letter settings kept"));
+      if (await saveLetterSettings()) say(t("letter settings kept"));
     } catch (err) {
       status.textContent = String(err);
     }
@@ -381,7 +384,7 @@ el("letter-send").onclick = async () => {
     button.disabled = true;
     status.textContent = t("Asking LetterXpress…");
     try {
-      if (!(await save())) return;
+      if (!(await saveLetterSettings())) return;
       const balance = await invoke("check_letter_account");
       status.textContent = t("LetterXpress knows the account. It holds {amount}.", {
         amount: money(balance.balance, balance.currency),
@@ -397,7 +400,7 @@ el("letter-send").onclick = async () => {
     if (!(await ask(t("Remove the LetterXpress API key from the keychain?"), { yes: t("Remove"), danger: true }))) return;
     try {
       await invoke("clear_letter_key");
-      await show();
+      await showLetterSettings();
     } catch (err) {
       status.textContent = String(err);
     }
