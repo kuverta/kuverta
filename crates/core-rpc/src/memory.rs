@@ -123,7 +123,7 @@ fn parse_snapshot(text: &str) -> Option<Snapshot> {
 }
 
 /// A key the same on every device, made here.
-fn new_key() -> String {
+pub(crate) fn new_key() -> String {
     let mut bytes = [0u8; 12];
     getrandom::fill(&mut bytes).expect("the system has no randomness");
     bytes.iter().map(|b| format!("{b:02x}")).collect()

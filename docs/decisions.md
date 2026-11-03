@@ -3242,3 +3242,50 @@ named had there been an invitation to read when it was written. Which puts
 it in the class §38 and §44 are about, so it went into `fuzz/` with the
 others on the day it landed rather than after the first bad `.ics`: it must
 return, say the same thing twice, and never produce more than it was given.
+
+## 57. Letters on paper go through LetterXpress, and only when asked
+
+**2026-11-03.**
+
+A PDF document can be posted on paper: LetterXpress prints it, puts it in
+a window envelope and hands it to Deutsche Post. It was chosen over Binect
+and Pingen for being the cheapest of the three for German post (about
+0.80 € a standard letter, postage included), for having no contract or
+minimum, and for an API that is one JSON request with the PDF in it.
+Pingen's API is the nicer one — webhooks, other countries — and is the
+one to look at again if letters ever need to leave Germany often.
+`core-letter` is the client; nothing else in the tree knows the service's
+name.
+
+**The address is on the page.** LetterXpress reads it from where the
+window of a DIN envelope sits, form B of DIN 5008: 20 mm from the left,
+45 mm from the top, 85 mm wide. So `write_pdf` takes a recipient and a
+return address and sets them there, and the text starts below. What
+LetterXpress read comes back with the job and is shown on the document's
+card, because that is the only check there is that it read it right.
+
+A PDF that has no address there — a form, a scan, something somebody else
+wrote — gets one typed into the send sheet, put either on white over the
+first page's address field or on a cover sheet in front (with an empty
+back when the letter is printed on both sides, so the letter still starts
+on a sheet of its own). That is done to the copy that is posted, never to
+the document, and "Show the letter" opens exactly what will be sent. The
+return address is remembered for the next one.
+
+**Test mode until the person says otherwise.** In test mode a letter goes
+to the Postbox on the LetterXpress site and is neither printed nor
+charged, so the first letter is looked at before one is paid for. Going
+live is a setting, confirmed once, and the send button names the price
+LetterXpress quoted for the options chosen.
+
+**Written down before it goes.** A letter costs money and cannot be
+unposted, so it gets the outbox's rule: the row is written as `sending`
+before LetterXpress is asked, and a crash in between leaves a letter that
+says it may have gone rather than one that silently did. Nothing sends it
+again by itself.
+
+**Not the assistant's.** The assistant can write a letter ready for the
+envelope; posting it is a button on the card, behind a sheet that shows
+the price, and no tool offers it to a model. A letter is an action in the
+world with a bill attached, which is the line §56 draws for everything
+found in mail.

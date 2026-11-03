@@ -446,6 +446,7 @@ fn a_signature_is_moved_by_signing_the_original_again_into_the_same_document() {
             "Hallo\n\n[signature]\nErika",
             None,
             true,
+            None,
         )
         .unwrap();
     assert!(letter.placed.is_none());

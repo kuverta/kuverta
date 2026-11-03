@@ -28,6 +28,7 @@ core-paper.workspace = true
 core-accounts.workspace = true
 core-smtp.workspace = true
 core-pgp.workspace = true
+core-letter.workspace = true
 
 serde.workspace = true
 mail-parser.workspace = true

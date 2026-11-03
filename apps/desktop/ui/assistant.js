@@ -798,6 +798,20 @@ function documentCard(event) {
     });
     compose.what.textContent = t("New message");
   });
+  // A PDF can go on paper. What was posted from it before is shown above
+  // the buttons, newest first, so posting it again is a choice.
+  if (doc.content_type === "application/pdf") {
+    const posted = document.createElement("div");
+    box.insertBefore(posted, actions);
+    const show = (letter) => posted.prepend(letterLine(letter));
+    invoke("letters_of_document", { id: doc.id })
+      .then((letters) => letters.slice(0, 3).reverse().forEach(show))
+      .catch(() => {});
+    cardButton(actions, t("Send by post…"), async (button) => {
+      button.disabled = false;
+      await openLetterSheet(doc, show);
+    });
+  }
   cardButton(actions, t("Delete it"), async (button) => {
     if (!(await ask(t("Delete {name}?", { name: doc.name }), { yes: t("Delete"), danger: true }))) {
       button.disabled = false;

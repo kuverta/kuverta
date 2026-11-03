@@ -1056,6 +1056,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "core-letter"
+version = "0.5.55"
+dependencies = [
+ "base64 0.23.1",
+ "md-5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "core-offers"
 version = "0.5.55"
 dependencies = [
@@ -1119,6 +1133,7 @@ dependencies = [
  "chrono",
  "core-accounts",
  "core-ai",
+ "core-letter",
  "core-offers",
  "core-paper",
  "core-pgp",

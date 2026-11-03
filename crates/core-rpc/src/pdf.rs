@@ -44,6 +44,85 @@ const CAPTION_SIZE: f32 = 9.0;
 /// The marker in a document's text where the signature goes.
 pub const SIGNATURE_MARK: &str = "[signature]";
 
+/// The address field of a DIN 5008 letter, form B: where the window of a
+/// DL or C5/6 envelope sits once the page is folded in three. A print and
+/// post service reads the address from here and nowhere else.
+const FIELD_LEFT: f32 = 20.0 * MM;
+const FIELD_WIDTH: f32 = 85.0 * MM;
+/// From the page's top edge: the field, the zone for the return address
+/// and remarks at its top, and the address beneath.
+const FIELD_TOP: f32 = 45.0 * MM;
+const FIELD_BOTTOM: f32 = 90.0 * MM;
+const ADDRESS_TOP: f32 = 62.7 * MM;
+const ADDRESS_LINES: usize = 6;
+const ADDRESS_SIZE: f32 = 10.0;
+const ADDRESS_LEADING: f32 = 12.0;
+const SENDER_SIZE: f32 = 7.0;
+/// Where the text of a letter starts on its first page, below the field.
+const LETTER_TEXT_TOP: f32 = 98.5 * MM;
+/// What is kept clear inside the window's edges.
+const FIELD_PADDING: f32 = 2.5 * MM;
+
+/// A letter's address block, set in the envelope window.
+#[derive(Debug, Clone, Copy)]
+pub struct Window<'a> {
+    /// The recipient, one line each, at most six.
+    pub recipient: &'a str,
+    /// The return address, as one small line above it.
+    pub sender: Option<&'a str>,
+}
+
+impl Window<'_> {
+    /// The lines as they are set, or why they cannot be: an address that
+    /// does not fit the window is not an address the envelope shows.
+    fn lines(&self) -> Result<(Option<String>, Vec<String>), String> {
+        let most = FIELD_WIDTH - 2.0 * FIELD_PADDING;
+        let recipient: Vec<String> = self
+            .recipient
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_string)
+            .collect();
+        if recipient.is_empty() {
+            return Err("a letter's address needs at least a name and a place".into());
+        }
+        if recipient.len() > ADDRESS_LINES {
+            return Err(format!(
+                "an address in the envelope window has at most {ADDRESS_LINES} lines, not {}",
+                recipient.len()
+            ));
+        }
+        if let Some(line) = recipient
+            .iter()
+            .find(|line| width(line, ADDRESS_SIZE, false) > most)
+        {
+            return Err(format!(
+                "the address line \"{line}\" is wider than the envelope window; shorten it"
+            ));
+        }
+        let sender = self
+            .sender
+            .map(|sender| {
+                sender
+                    .lines()
+                    .map(str::trim)
+                    .filter(|part| !part.is_empty())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .filter(|sender| !sender.is_empty());
+        if let Some(sender) = &sender {
+            if width(sender, SENDER_SIZE, false) > most {
+                return Err(format!(
+                    "the return address \"{sender}\" is wider than the envelope window; shorten it"
+                ));
+            }
+        }
+        Ok((sender, recipient))
+    }
+}
+
 /// The signature as pixels: 8-bit RGB rows, top row first, and the alpha
 /// channel when the picture has one that matters.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -421,10 +500,150 @@ impl<'a> Setter<'a> {
         self.signed = true;
     }
 
+    /// Sets the address block in the envelope window on this page, and
+    /// starts the text beneath it.
+    fn window(&mut self, sender: Option<&str>, recipient: &[String]) {
+        self.current
+            .push_str(&window_content("F1", sender, recipient, PAGE.1));
+        self.y = PAGE.1 - LETTER_TEXT_TOP;
+    }
+
     fn finish(mut self) -> Vec<String> {
         self.pages.push(self.current);
         self.pages
     }
+}
+
+/// The address block as page content, in `font`, on a page `height` points
+/// tall as it is shown.
+fn window_content(font: &str, sender: Option<&str>, recipient: &[String], height: f32) -> String {
+    let mut out = String::new();
+    let x = FIELD_LEFT + FIELD_PADDING;
+    if let Some(sender) = sender {
+        // At the foot of the remarks zone, just above the address.
+        let y = height - ADDRESS_TOP + 2.0;
+        out.push_str(&format!(
+            "BT /{font} {SENDER_SIZE} Tf {x:.2} {y:.2} Td {text} Tj ET\n",
+            text = literal(sender)
+        ));
+    }
+    let mut y = height - ADDRESS_TOP;
+    for line in recipient {
+        y -= ADDRESS_LEADING;
+        out.push_str(&format!(
+            "BT /{font} {ADDRESS_SIZE} Tf {x:.2} {y:.2} Td {text} Tj ET\n",
+            text = literal(line)
+        ));
+    }
+    out
+}
+
+/// Where an address given by hand goes on a PDF that has none, or the
+/// wrong one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AddressAt {
+    /// Over the address field of the first page, on white: whatever was
+    /// there is covered.
+    FirstPage,
+    /// On a sheet of its own in front, for a PDF whose first page has
+    /// something else where the window is. With `blank_back`, the sheet's
+    /// back is left empty, so a letter printed on both sides still starts
+    /// on a sheet of its own.
+    Cover { blank_back: bool },
+}
+
+/// Puts an address where the envelope window shows it.
+pub fn address(pdf: &[u8], window: &Window, at: AddressAt) -> Result<Vec<u8>, String> {
+    let (sender, recipient) = window.lines()?;
+    let mut doc = load(pdf)?;
+    let pages = doc.get_pages();
+    let Some(&first) = pages.get(&1) else {
+        return Err("this PDF has no pages".into());
+    };
+    match at {
+        AddressAt::FirstPage => {
+            let (boxed, rotate) = page_geometry(&doc, first);
+            let (matrix, (_, shown_h)) = display_to_page(boxed, rotate);
+            let font_id = doc.add_object(font("Helvetica"));
+            let font_name = format!("KuvAddr{}", font_id.0);
+            let mut resources = own_resources(&mut doc, first)?;
+            add_to(&mut resources, "Font", &font_name, font_id);
+            let content = format!(
+                "q {a} {b} {c} {d} {e:.3} {f:.3} cm\n1 g {x:.2} {y:.2} {w:.2} {h:.2} re f 0 g\n{text}Q\n",
+                a = matrix[0],
+                b = matrix[1],
+                c = matrix[2],
+                d = matrix[3],
+                e = matrix[4],
+                f = matrix[5],
+                x = FIELD_LEFT,
+                y = shown_h - FIELD_BOTTOM,
+                w = FIELD_WIDTH,
+                h = FIELD_BOTTOM - FIELD_TOP,
+                text = window_content(&font_name, sender.as_deref(), &recipient, shown_h),
+            );
+            let page = doc
+                .get_object_mut(first)
+                .and_then(Object::as_dict_mut)
+                .map_err(|err| format!("the page could not be changed: {err}"))?;
+            page.set("Resources", resources);
+            doc.add_page_contents(first, content.into_bytes())
+                .map_err(|err| format!("the page could not be changed: {err}"))?;
+        }
+        AddressAt::Cover { blank_back } => {
+            let root = doc
+                .catalog()
+                .and_then(|catalog| catalog.get(b"Pages"))
+                .and_then(Object::as_reference)
+                .map_err(|err| format!("this PDF has no page tree: {err}"))?;
+            let font_id = doc.add_object(font("Helvetica"));
+            let mut fonts = Dictionary::new();
+            fonts.set("F1", font_id);
+            let mut resources = Dictionary::new();
+            resources.set("Font", fonts);
+            let resources_id = doc.add_object(resources);
+            let mut sheets = vec![window_content("F1", sender.as_deref(), &recipient, PAGE.1)];
+            if blank_back {
+                sheets.push(String::new());
+            }
+            let mut ids = Vec::new();
+            for content in sheets {
+                let content_id =
+                    doc.add_object(Stream::new(Dictionary::new(), content.into_bytes()));
+                let mut page = Dictionary::new();
+                page.set("Type", Object::Name(b"Page".to_vec()));
+                page.set("Parent", root);
+                page.set(
+                    "MediaBox",
+                    vec![
+                        Object::Integer(0),
+                        Object::Integer(0),
+                        Object::Real(PAGE.0),
+                        Object::Real(PAGE.1),
+                    ],
+                );
+                page.set("Contents", content_id);
+                page.set("Resources", resources_id);
+                ids.push(doc.add_object(page));
+            }
+            let tree = doc
+                .get_object_mut(root)
+                .and_then(Object::as_dict_mut)
+                .map_err(|err| format!("this PDF has no page tree: {err}"))?;
+            let mut kids = tree
+                .get(b"Kids")
+                .and_then(Object::as_array)
+                .cloned()
+                .unwrap_or_default();
+            for (at, id) in ids.iter().enumerate() {
+                kids.insert(at, Object::Reference(*id));
+            }
+            let count = tree.get(b"Count").and_then(Object::as_i64).unwrap_or(0);
+            tree.set("Kids", kids);
+            tree.set("Count", count + ids.len() as i64);
+        }
+    }
+    save(&mut doc)
 }
 
 /// The size a picture is drawn at: `width` wide, unless that makes it taller
@@ -442,18 +661,25 @@ fn fit(pixels: &Pixels, width: f32, most_height: f32) -> (f32, f32) {
 /// Writes a document. `sign` draws the signature where the text marks it, or
 /// after the text when it does not, with `caption` — the place and the date
 /// — beneath it; without `sign`, a marker leaves a gap to sign by hand.
+/// With `window`, the first page is a letter's: the address sits where an
+/// envelope's window shows it, and the text starts below.
 pub fn write(
     title: &str,
     text: &str,
     signature: Option<&Pixels>,
     sign: bool,
     caption: Option<&str>,
+    window: Option<&Window>,
 ) -> Result<Written, String> {
     if sign && signature.is_none() {
         return Err("there is no signature to sign with".into());
     }
     let drawn = if sign { signature } else { None };
     let mut setter = Setter::new(drawn, caption);
+    if let Some(window) = window {
+        let (sender, recipient) = window.lines()?;
+        setter.window(sender.as_deref(), &recipient);
+    }
     let blocks = blocks(text);
     let mut marked = false;
     for (at, block) in blocks.iter().enumerate() {
@@ -943,6 +1169,7 @@ mod tests {
             None,
             false,
             None,
+            None,
         )
         .unwrap();
         assert_eq!(written.pages, 1);
@@ -958,10 +1185,119 @@ mod tests {
             .map(|n| format!("Zeile {n}: ein Satz, der auf der Seite steht."))
             .collect::<Vec<_>>()
             .join("\n");
-        let many = write("Lang", &long, None, false, None).unwrap();
+        let many = write("Lang", &long, None, false, None, None).unwrap();
         assert!(many.pages >= 4, "{}", many.pages);
         assert_eq!(page_count(&many.pdf), Some(many.pages));
         assert!(text_of(&many.pdf).contains("Zeile 200"));
+    }
+
+    #[test]
+    fn a_letter_sets_its_address_in_the_envelope_window() {
+        let window = Window {
+            recipient: "Fitnessstudio Muster GmbH\nKundenservice\nHauptstraße 1\n12345 Musterstadt",
+            sender: Some("Erika Mustermann\nHeidestraße 17\n51147 Köln"),
+        };
+        let written = write(
+            "Kündigung",
+            "Kündigung meines Vertrags\n\nSehr geehrte Damen und Herren,",
+            None,
+            false,
+            None,
+            Some(&window),
+        )
+        .unwrap();
+        let doc = Document::load_mem(&written.pdf).unwrap();
+        let page = doc.get_pages()[&1];
+        let content = String::from_utf8_lossy(&doc.get_page_content(page).unwrap()).to_string();
+        // Every line of the address starts 22.5 mm in, in the address zone
+        // of the window: from 62.7 mm below the top edge, six lines at most.
+        let x = format!("{:.2}", FIELD_LEFT + FIELD_PADDING);
+        let first = format!(
+            "{x} {:.2} Td (Fitnessstudio Muster GmbH)",
+            PAGE.1 - ADDRESS_TOP - ADDRESS_LEADING
+        );
+        assert!(content.contains(&first), "{content}");
+        let last = format!(
+            "{x} {:.2} Td (12345 Musterstadt)",
+            PAGE.1 - ADDRESS_TOP - 4.0 * ADDRESS_LEADING
+        );
+        assert!(content.contains(&last), "{content}");
+        assert!(
+            content.contains("(Erika Mustermann, Heidestra\\337e 17, 51147 K\\366ln)"),
+            "{content}"
+        );
+        // The text starts below the window, not over it.
+        let body = content
+            .lines()
+            .find(|line| line.contains("(K\\374ndigung meines Vertrags)"))
+            .expect("the subject line");
+        let y: f32 = body.split_whitespace().nth(5).unwrap().parse().unwrap();
+        assert!(y <= PAGE.1 - LETTER_TEXT_TOP, "{body}");
+
+        let seven = Window {
+            recipient: "1\n2\n3\n4\n5\n6\n7",
+            sender: None,
+        };
+        assert!(write("x", "Text", None, false, None, Some(&seven)).is_err());
+        let wide = Window {
+            recipient:
+                "Eine Firma mit einem Namen, der nicht in ein Fenster passt, GmbH & Co. KG\nOrt",
+            sender: None,
+        };
+        assert!(write("x", "Text", None, false, None, Some(&wide))
+            .unwrap_err()
+            .contains("wider than the envelope window"));
+    }
+
+    #[test]
+    fn an_address_given_by_hand_goes_over_the_field_or_on_a_cover_sheet() {
+        let written = write("Antrag", "Antrag auf Verlängerung", None, false, None, None).unwrap();
+        let window = Window {
+            recipient: "Stadt Musterstadt\nBürgeramt\nRathausplatz 1\n12345 Musterstadt",
+            sender: Some("Erika Mustermann, Heidestraße 17, 51147 Köln"),
+        };
+
+        let over = address(&written.pdf, &window, AddressAt::FirstPage).unwrap();
+        assert_eq!(page_count(&over), Some(1));
+        let doc = Document::load_mem(&over).unwrap();
+        let content = String::from_utf8_lossy(&doc.get_page_content(doc.get_pages()[&1]).unwrap())
+            .to_string();
+        // White over the field first, then the address on it.
+        let white = content.find("1 g").expect("the field is covered");
+        let name = content.find("(Stadt Musterstadt)").expect("the address");
+        assert!(white < name, "{content}");
+        assert!(
+            content.contains("(Antrag auf Verl\\344ngerung)"),
+            "the page is kept"
+        );
+
+        let covered =
+            address(&written.pdf, &window, AddressAt::Cover { blank_back: true }).unwrap();
+        assert_eq!(page_count(&covered), Some(3));
+        let doc = Document::load_mem(&covered).unwrap();
+        let pages = doc.get_pages();
+        let first = String::from_utf8_lossy(&doc.get_page_content(pages[&1]).unwrap()).to_string();
+        assert!(first.contains("(Stadt Musterstadt)"), "{first}");
+        assert!(!first.contains("Antrag"), "{first}");
+        let last = String::from_utf8_lossy(&doc.get_page_content(pages[&3]).unwrap()).to_string();
+        assert!(last.contains("(Antrag auf Verl\\344ngerung)"), "{last}");
+        assert_eq!(
+            page_count(
+                &address(
+                    &written.pdf,
+                    &window,
+                    AddressAt::Cover { blank_back: false }
+                )
+                .unwrap()
+            ),
+            Some(2)
+        );
+
+        let empty = Window {
+            recipient: " \n ",
+            sender: None,
+        };
+        assert!(address(&written.pdf, &empty, AddressAt::FirstPage).is_err());
     }
 
     #[test]
@@ -972,6 +1308,7 @@ mod tests {
             Some(&pixels()),
             true,
             Some("Musterstadt, 07.10.2026"),
+            None,
         )
         .unwrap();
         assert!(marked.signed);
@@ -989,9 +1326,9 @@ mod tests {
         assert_eq!(content.matches("/Sig Do").count(), 1);
         assert!(content.contains("/GS1 gs"));
 
-        let unmarked = write("x", "Text only", Some(&pixels()), true, None).unwrap();
+        let unmarked = write("x", "Text only", Some(&pixels()), true, None, None).unwrap();
         assert!(unmarked.signed);
-        assert!(write("x", "Text", None, true, None).is_err());
+        assert!(write("x", "Text", None, true, None, None).is_err());
     }
 
     #[test]

@@ -236,7 +236,9 @@ impl Core {
     }
 
     /// Writes a document from text. `sign` puts the signature where the text
-    /// marks it with `[signature]`, or at the end.
+    /// marks it with `[signature]`, or at the end. With `window`, it is a
+    /// letter: the address sits where an envelope's window shows it, so it
+    /// can go by post as it is.
     pub fn write_document(
         &self,
         account: AccountId,
@@ -244,6 +246,7 @@ impl Core {
         text: &str,
         note: Option<&str>,
         sign: bool,
+        window: Option<&pdf::Window>,
     ) -> Result<DocumentView> {
         if text.trim().is_empty() {
             return Err(reject("a document needs some text"));
@@ -264,8 +267,15 @@ impl Core {
         } else {
             None
         };
-        let written =
-            pdf::write(title, text, pixels.as_ref(), sign, caption.as_deref()).map_err(reject)?;
+        let written = pdf::write(
+            title,
+            text,
+            pixels.as_ref(),
+            sign,
+            caption.as_deref(),
+            window,
+        )
+        .map_err(reject)?;
         let id = self.store().add_document(&NewDocument {
             account_id: account,
             name: &name,
@@ -630,8 +640,8 @@ impl Core {
             .ok_or_else(|| reject(NO_SIGNATURE))?;
         let caption = self.signature_caption()?;
         let text = "# A signed page\n\nThis is how the assistant signs: the signature where the text puts it, the place and the date beneath, on a page it wrote or on one that came as an attachment.\n\nWith kind regards\n\n[signature]\nErika Mustermann";
-        let written =
-            pdf::write("Signature", text, Some(&pixels), true, Some(&caption)).map_err(reject)?;
+        let written = pdf::write("Signature", text, Some(&pixels), true, Some(&caption), None)
+            .map_err(reject)?;
         Ok(written.pdf)
     }
 

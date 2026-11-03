@@ -16,6 +16,7 @@ pub mod dedup;
 pub mod documents;
 pub mod handoffs;
 pub mod hygiene;
+pub mod letters;
 pub mod memory;
 pub mod model;
 pub mod outbox;
@@ -35,6 +36,7 @@ pub use hygiene::{
     sender_key, BackfilledHeaders, SimilarityRow, UnsubscribeSender, Unsubscription,
     CLEANUP_CATEGORIES,
 };
+pub use letters::{LetterJob, NewLetter, StoredLetter};
 pub use memory::{MemorySync, StoredMemory};
 pub use model::*;
 pub use outbox::OutboxEntry;
