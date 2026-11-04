@@ -349,6 +349,7 @@ impl Core {
                 let window = pdf::Window {
                     recipient: &address.recipient,
                     sender: address.sender.as_deref(),
+                    registered: spec.registered.is_some(),
                 };
                 let at = if address.cover {
                     pdf::AddressAt::Cover {
