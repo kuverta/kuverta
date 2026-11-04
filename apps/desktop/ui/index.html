@@ -113,6 +113,13 @@
       </div>
       <h2 id="reading-subject"></h2>
       <p id="reading-meta"></p>
+      <!-- A draft: not finished, so nothing to reply to. It is read here like
+           any message and goes on being written in compose on request — never
+           on its own, since opening a message is reading it. -->
+      <div id="reading-draft" class="reading-draft" hidden>
+        <span id="reading-draft-note"></span>
+        <button type="button" id="reading-draft-edit" class="primary">Continue writing</button>
+      </div>
       <!-- How soon it needs you, and why, when the urgency agent says soon. -->
       <!-- Which folder on the shelf the paper went in: set by the rig while
            somebody was holding the letter, so it is a place to go and look. -->
@@ -172,16 +179,25 @@
       <div class="conversation-compose">
         <button type="button" id="conversation-attach" class="tool icon-only" title="Attach files — or drop them here" aria-label="Attach files">📎</button>
         <textarea id="conversation-reply" rows="2" placeholder="Write a reply…" spellcheck="true"></textarea>
+        <button type="button" id="conversation-popout" class="tool icon-only" title="Write this in a window of its own" aria-label="Write this in a window of its own">↗</button>
         <button type="button" id="conversation-send" class="primary">Send</button>
       </div>
       <div class="hint conversation-hint">⌘/ctrl+enter sends, as a reply to their latest message. Double-click a bubble for the whole message.</div>
       <div class="drop-hint" hidden>Drop to attach</div>
     </section>
 
+    <!-- The seam between the message and the reply under it: drag to give
+         the reply more room, double-click to put it back. See
+         `setComposeHeight` in app.js. -->
+    <button type="button" id="compose-grip" class="row-grip" aria-label="Drag to resize the reply" title="Drag to resize · double-click to reset" hidden></button>
+
     <section id="compose" hidden>
       <div class="compose-head">
         <strong id="compose-what">New message</strong>
         <span id="compose-envelope"></span>
+        <span class="spacer"></span>
+        <!-- The same compose in a window of its own. See `popOutDraft` in app.js. -->
+        <button type="button" id="compose-popout" class="tool icon-only" title="Open in a window of its own" aria-label="Open in a window of its own">↗</button>
       </div>
       <input id="compose-to" placeholder="To — comma separated" spellcheck="false">
       <input id="compose-cc" placeholder="Cc" spellcheck="false">

@@ -16,7 +16,7 @@ const replyBox = el("conversation-reply");
 /// most a few hundred rows.
 let attention = [];
 /// The conversation on screen.
-const thread = { key: null, replyTo: null, subject: "" };
+const thread = { key: null, replyTo: null, subject: "", email: null };
 /// Whether an urgency pass is running, so a second is not started.
 let judging = false;
 
@@ -61,10 +61,11 @@ async function renderAttentionNav() {
 
 /// Switches between the ordinary list, Needs attention and People.
 async function showView(view) {
+  // A reply half written is not thrown away for a change of view.
+  if (!(await leaveCompose())) return;
   state.view = view;
   if (view !== "mail") state.filter = { ...NO_FILTER };
   hideConversation();
-  closeCompose();
   await reload();
 }
 
@@ -272,6 +273,8 @@ async function openConversation(row) {
   const keepDraft = thread.key === row.key;
   thread.key = row.key;
   thread.replyTo = data.reply_to;
+  // Which account answers: the one the conversation was opened on.
+  thread.email = state.email ?? emailOf(state.account) ?? visibleAccounts()[0]?.email ?? null;
   thread.subject = [...data.bubbles].reverse().find((b) => b.subject)?.subject ?? "";
 
   reading.hidden = true;
@@ -350,6 +353,7 @@ async function openWholeMessage(id) {
     reading.hidden = false;
     emptyPane.hidden = true;
     el("reading-actions").hidden = true;
+    showDraftBar(null);
     el("reading-subject").textContent = detail.subject ?? t("(no subject)");
     fillMeta(el("reading-meta"), detail.from, { id }, [formatDate(detail.date_utc)]);
     el("reading-body").textContent = detail.body_text ?? t("(no readable body)");
@@ -363,8 +367,25 @@ async function openWholeMessage(id) {
   }
 }
 
-/// Sends what is typed under the conversation: a reply to their latest
+/// What Send under the conversation would send: a reply to their latest
 /// message when there is one, so it threads, else a new message.
+function conversationDraft(body) {
+  return {
+    to: [thread.key],
+    cc: [],
+    bcc: [],
+    subject: thread.replyTo ? "" : thread.subject || t("Hello"),
+    body,
+    reply_to: thread.replyTo,
+    reply_all: false,
+    forward: null,
+    sign: false,
+    encrypt: false,
+    attachments: conversationFiles.forDraft(),
+  };
+}
+
+/// Sends what is typed under the conversation.
 async function sendInConversation() {
   const text = replyBox.value.trim();
   const files = conversationFiles.forDraft();
@@ -373,20 +394,8 @@ async function sendInConversation() {
   button.disabled = true;
   try {
     const sent = await invoke("send", {
-      email: state.email,
-      draft: {
-        to: [thread.key],
-        cc: [],
-        bcc: [],
-        subject: thread.replyTo ? "" : thread.subject || t("Hello"),
-        body: `${text}\n`,
-        reply_to: thread.replyTo,
-        reply_all: false,
-        forward: null,
-        sign: false,
-        encrypt: false,
-        attachments: files,
-      },
+      email: thread.email,
+      draft: conversationDraft(`${text}\n`),
     });
     replyBox.value = "";
     conversationFiles.clear();
@@ -405,6 +414,22 @@ async function sendInConversation() {
 }
 
 el("conversation-send").onclick = sendInConversation;
+
+// The same reply, written in a window of its own: with Cc, a subject of its
+// own, and room. What was typed here goes with it.
+el("conversation-popout").onclick = async () => {
+  if (!thread.key) return;
+  const moved = await popOutDraft({
+    draft: conversationDraft(replyBox.value),
+    what: thread.replyTo ? t("Reply") : t("New message"),
+    email: thread.email,
+    draft_of: null,
+    typed: replyBox.value.trim() !== "" || conversationFiles.files.length > 0,
+  });
+  if (!moved) return;
+  replyBox.value = "";
+  conversationFiles.clear();
+};
 
 // Files for the reply: dropped anywhere on the conversation, or picked.
 const conversationFiles = fileTray(el("conversation-files"));

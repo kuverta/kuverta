@@ -40,7 +40,9 @@ function usageLayout() {
   `;
   usagePage.querySelector("[data-el=refresh]").onclick = fillUsage;
   usagePage.querySelector("[data-el=clear]").onclick = async () => {
-    if (!confirm(t("Reset the token statistics? Counting starts again from nothing."))) return;
+    // The window's own question, as everywhere else — not the webview's
+    // box, which looks like nothing else in it.
+    if (!(await ask(t("Reset the token statistics? Counting starts again from nothing."), { yes: t("Reset"), danger: true }))) return;
     try {
       await invoke("clear_usage_stats");
       await fillUsage();

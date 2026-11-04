@@ -391,7 +391,17 @@ impl Draft {
         let mut seen: HashSet<String> = HashSet::new();
         seen.insert(draft.from.key());
 
-        if let Some(author) = author.clone() {
+        // A message of our own — one read in Sent — has no author to answer,
+        // and a reply with nobody in To is a reply nobody can send. It is a
+        // follow-up, and goes where the message went: to its recipients.
+        let ours = author.as_ref().is_some_and(|a| a.key() == draft.from.key());
+        if ours {
+            for mailbox in &source.to {
+                if seen.insert(mailbox.key()) {
+                    draft.to.push(mailbox.clone());
+                }
+            }
+        } else if let Some(author) = author.clone() {
             if seen.insert(author.key()) {
                 draft.to.push(author);
             }
@@ -845,6 +855,29 @@ mod tests {
         let all = Draft::reply(me(), &source, ReplyMode::All);
         let to: Vec<&str> = all.to.iter().map(|m| m.address.as_str()).collect();
         // Jane first, then the original To — minus ourselves.
+        assert_eq!(to, vec!["jane@example.com", "bob@example.com"]);
+        assert_eq!(all.cc.len(), 1);
+        assert_eq!(all.cc[0].address, "carol@example.com");
+        assert!(!to.contains(&"erika@kuverta.test"));
+    }
+
+    #[test]
+    fn a_reply_to_our_own_message_follows_it_up_with_its_recipients() {
+        // Read in Sent: From is us, To is who it went to.
+        let source = ReplySource {
+            from: Some(me()),
+            to: vec![Mailbox::named("Jane Doe", "jane@example.com"), Mailbox::new("bob@example.com")],
+            cc: vec![Mailbox::new("carol@example.com")],
+            ..thread()
+        };
+
+        let one = Draft::reply(me(), &source, ReplyMode::Sender);
+        let to: Vec<&str> = one.to.iter().map(|m| m.address.as_str()).collect();
+        assert_eq!(to, vec!["jane@example.com", "bob@example.com"]);
+        assert!(one.cc.is_empty());
+
+        let all = Draft::reply(me(), &source, ReplyMode::All);
+        let to: Vec<&str> = all.to.iter().map(|m| m.address.as_str()).collect();
         assert_eq!(to, vec!["jane@example.com", "bob@example.com"]);
         assert_eq!(all.cc.len(), 1);
         assert_eq!(all.cc[0].address, "carol@example.com");

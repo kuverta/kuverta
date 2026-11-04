@@ -91,6 +91,10 @@ const sidebar = {
 };
 const scopeBar = el("scope");
 
+/// Set when this window was opened on nothing but a draft: the key the draft
+/// waits under in the core. See `startPopout`.
+const POPOUT = new URLSearchParams(location.search).get("popout");
+
 const state = {
   accounts: [],
   account: null,
@@ -717,12 +721,13 @@ function renderScope() {
 /// Shows a postal address's post as an inbox: what Paperless holds for it,
 /// newest first, read like mail.
 async function selectPostbox(postbox) {
+  // A reply half written is not thrown away for a change of view.
+  if (!(await leaveCompose())) return;
   state.postbox = postbox;
   state.view = "mail";
   hideConversation();
   statusBar.textContent = postbox.label;
   state.filter = { ...NO_FILTER };
-  closeCompose();
   if (!postbox.has_token) {
     say(t("{name} has no Paperless token stored — add it in settings (,)", { name: postbox.label }), true);
   }
@@ -1036,7 +1041,7 @@ async function refreshPostbox() {
   }
 }
 
-setInterval(checkForPost, POST_POLL_MS);
+if (!POPOUT) setInterval(checkForPost, POST_POLL_MS);
 
 async function selectAccount(account) {
   state.postbox = null;
@@ -1441,6 +1446,7 @@ async function openSelected() {
       reading.hidden = false;
       emptyPane.hidden = true;
       el("reading-actions").hidden = true;
+      showDraftBar(null);
       el("reading-urgency").hidden = true;
       showSecurity(null);
       showInvite(null);
@@ -1476,32 +1482,21 @@ async function openSelected() {
     showReadingView();
     const account = accountOf(row);
     const detail = await invoke("message", { account, id: row.id });
-    // A draft is the one message whose point is that it is not finished.
-    // Showing it in the reading pane is a dead end — there is nothing to
-    // reply to and no way to send it — so it opens where it was left off.
-    // Its attachments stay behind: the pane fetches those one at a time on
-    // demand, and silently sending a draft shorter than it was kept would be
-    // worse than saying so.
-    if (detail.is_draft) {
-      await openComposeWith(
-        {
-          to: detail.to,
-          cc: detail.cc,
-          subject: detail.subject ?? "",
-          body: detail.body_text ?? "",
-          draft_of: { id: row.id, account, trash: specialsOf(row).trash },
-        },
-        {
-          what: detail.attachments?.length
-            ? t("Draft — attachments not carried over")
-            : t("Draft"),
-        },
-      );
-      return;
-    }
     reading.hidden = false;
     emptyPane.hidden = true;
-    el("reading-actions").hidden = false;
+    // A draft is the one message whose point is that it is not finished:
+    // nothing to reply to, nothing to forward. It is still read here like
+    // any other, with a way to go on writing it — on request, never on its
+    // own. Opening a message is reading it, and a compose that appears
+    // uninvited takes the message away to make room for itself.
+    showDraftBar(detail, row, account);
+    // Mail the account sent has nobody to answer. Reply follows it up, to
+    // the people it went to; the assistant's Answer — a reply to what the
+    // sender asked — makes no sense on your own words, so it is not offered.
+    showReadingActions({
+      draft: detail.is_draft,
+      mine: Boolean(row.to) || sameAddress(detail.from, emailOf(account)),
+    });
     showSecurity(detail);
     showInvite(detail);
     showUrgency(row.id);
@@ -1529,6 +1524,53 @@ async function openSelected() {
   } catch (err) {
     say(t("could not open: {error}", { error: err }), true);
   }
+}
+
+/// Whether `from` — a header, `Name <addr>` or the address alone — is `email`.
+function sameAddress(from, email) {
+  if (!from || !email) return false;
+  const address = (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
+  return address === email.toLowerCase();
+}
+
+/// Which of the buttons over a message apply to it. The bar is always there
+/// for mail — Archive and Delete apply to anything — and the ones that do
+/// not fit go, rather than the whole row jumping about.
+function showReadingActions({ draft = false, mine = false } = {}) {
+  const bar = el("reading-actions");
+  bar.hidden = false;
+  for (const button of bar.querySelectorAll("[data-act]")) {
+    const act = button.dataset.act;
+    const about = ["reply", "reply-all", "forward", "answer", "ask"].includes(act);
+    button.hidden = (draft && about) || (mine && act === "answer");
+  }
+}
+
+/// The bar under a draft's heading: what it is, and the way to go on writing
+/// it. Its attachments stay behind: the pane fetches those one at a time on
+/// demand, and silently sending a draft shorter than it was kept would be
+/// worse than saying so.
+function showDraftBar(detail, row, account) {
+  const bar = el("reading-draft");
+  bar.hidden = !detail?.is_draft;
+  delete reading.dataset.draft;
+  if (bar.hidden) return;
+  reading.dataset.draft = String(row.id);
+  const files = detail.attachments?.length > 0;
+  el("reading-draft-note").textContent = files
+    ? t("A draft, not sent yet. Its attachments stay in Drafts — attach them again if they are to go.")
+    : t("A draft, not sent yet.");
+  el("reading-draft-edit").onclick = () =>
+    openComposeWith(
+      {
+        to: detail.to,
+        cc: detail.cc,
+        subject: detail.subject ?? "",
+        body: detail.body_text ?? "",
+        draft_of: { id: row.id, account, trash: specialsOf(row).trash },
+      },
+      { what: files ? t("Draft — attachments not carried over") : t("Draft"), email: emailOf(account) },
+    );
 }
 
 /// Opening a message reads it, as it does a letter. The dot goes at once; the
@@ -2094,6 +2136,8 @@ function closeCompose() {
   // A new message had hidden the reading pane; with compose gone too there
   // would be nothing on the right at all.
   if (reading.hidden && conversationPane.hidden) emptyPane.hidden = false;
+  // A window opened on this one draft has nothing left to show.
+  if (POPOUT) closePopoutWindow();
 }
 
 /// Opens compose. With `replyAll`, the recipients and quoted body come from
@@ -2105,6 +2149,12 @@ function closeCompose() {
 /// without the message it answers in front of you is written from memory.
 async function openCompose({ replyAll = null, forward = false } = {}) {
   const row = state.rows.get(state.selected);
+  // Reply on a draft: there is nothing to reply to, and what R means there
+  // is the one thing that can be done with it.
+  if ((replyAll !== null || forward) && row && reading.dataset.draft === String(row.id)) {
+    el("reading-draft-edit").click();
+    return;
+  }
   // Reply pressed with a reply half written: the typed one is not thrown
   // away for an empty one without asking.
   if (!(await leaveCompose())) return;
@@ -2160,9 +2210,14 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
 /// Fills compose from a draft the core kept — a scheduled message being
 /// edited again, or, with `what` naming it, a message a link asked for.
 /// Replies keep what they reply to, so threading survives.
-async function openComposeWith(draft, { what = null } = {}) {
+///
+/// `email` is the account it goes from, when it is not the open one. With
+/// `typed`, what is in it counts as typed: a draft the assistant wrote is
+/// not recipients and quoting that cost nothing, and is asked about before
+/// it goes.
+async function openComposeWith(draft, { what = null, email = null, typed = false } = {}) {
   if (!(await leaveCompose())) return;
-  compose.email = state.email ?? visibleAccounts()[0]?.email ?? null;
+  compose.email = email ?? state.email ?? visibleAccounts()[0]?.email ?? null;
   compose.replyTo = draft.reply_to ?? null;
   compose.replyAll = Boolean(draft.reply_all);
   compose.forward = draft.forward ?? null;
@@ -2182,8 +2237,202 @@ async function openComposeWith(draft, { what = null } = {}) {
   reading.hidden = true;
   emptyPane.hidden = true;
   compose.body.focus();
-  compose.opened = composeFingerprint();
+  compose.opened = typed ? null : composeFingerprint();
   await refreshEnvelope();
+}
+
+// -- how tall the reply is ------------------------------------------------------
+//
+// Compose sits under the message it answers, and how much of the pane each
+// gets is a choice: a long reply wants room, a long message wants reading.
+// The seam between them drags, as the seams between the columns do, and the
+// height is kept. Double-click, or Escape on the handle, puts it back to the
+// size it takes on its own.
+
+const COMPOSE_HEIGHT = { least: 180, key: "compose.height" };
+const composeGrip = el("compose-grip");
+
+function composeHeight() {
+  const set = Number.parseFloat(compose.pane.style.getPropertyValue("--compose-h"));
+  return Number.isFinite(set) ? set : compose.pane.getBoundingClientRect().height;
+}
+
+/// As tall as it can be while leaving the message a few lines.
+function mostComposeHeight() {
+  return Math.max(COMPOSE_HEIGHT.least, el("detail").clientHeight - 120);
+}
+
+/// Sets how tall compose is, within what fits, and remembers it; `null`
+/// hands the height back to its content.
+function setComposeHeight(pixels) {
+  if (pixels === null) {
+    compose.pane.classList.remove("sized");
+    compose.pane.style.removeProperty("--compose-h");
+    try {
+      localStorage.removeItem(COMPOSE_HEIGHT.key);
+    } catch {
+      // Lasts until the window closes.
+    }
+    return null;
+  }
+  const height = Math.round(Math.min(mostComposeHeight(), Math.max(COMPOSE_HEIGHT.least, pixels)));
+  compose.pane.classList.add("sized");
+  compose.pane.style.setProperty("--compose-h", `${height}px`);
+  try {
+    localStorage.setItem(COMPOSE_HEIGHT.key, String(height));
+  } catch {
+    // Lasts until the window closes.
+  }
+  return height;
+}
+
+function restoreComposeHeight() {
+  let kept = null;
+  try {
+    kept = Number.parseFloat(localStorage.getItem(COMPOSE_HEIGHT.key) ?? "");
+  } catch {
+    kept = null;
+  }
+  if (Number.isFinite(kept)) setComposeHeight(kept);
+}
+
+/// The handle is there when there is a seam: compose open under a message.
+function placeComposeGrip() {
+  composeGrip.hidden = Boolean(POPOUT) || compose.pane.hidden || reading.hidden;
+}
+
+composeGrip.addEventListener("pointerdown", (event) => {
+  if (event.button !== 0) return;
+  event.preventDefault();
+  const startY = event.clientY;
+  const startHeight = composeHeight();
+  composeGrip.setPointerCapture(event.pointerId);
+  composeGrip.classList.add("dragging");
+  document.body.classList.add("dragging-row");
+  // Upwards is more room for the reply.
+  const move = (at) => setComposeHeight(startHeight - (at.clientY - startY));
+  const done = () => {
+    composeGrip.removeEventListener("pointermove", move);
+    composeGrip.classList.remove("dragging");
+    document.body.classList.remove("dragging-row");
+  };
+  composeGrip.addEventListener("pointermove", move);
+  composeGrip.addEventListener("pointerup", done, { once: true });
+  composeGrip.addEventListener("pointercancel", done, { once: true });
+});
+composeGrip.addEventListener("dblclick", () => setComposeHeight(null));
+composeGrip.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    setComposeHeight(null);
+    return;
+  }
+  const step = { ArrowUp: 16, ArrowDown: -16 }[event.key];
+  if (!step) return;
+  event.preventDefault();
+  setComposeHeight(composeHeight() + step);
+});
+for (const pane of [compose.pane, reading]) {
+  new MutationObserver(placeComposeGrip).observe(pane, { attributes: true, attributeFilter: ["hidden"] });
+}
+
+// -- compose in a window of its own ---------------------------------------------
+//
+// The reply sits under the message, where what it answers can be read while
+// it is written. For a long one, or one written beside something else, ↗
+// moves it to a window of its own: the same page, opened on nothing but
+// compose. The draft goes through the core (`stash_draft`) rather than the
+// new window's URL, so its files come too; the window closes when the
+// message is sent or thrown away, and asks first when closed with something
+// typed in it.
+
+/// Opens a window on `handed` — a draft in compose's shape, with `what` it
+/// is, which account's `email` it goes from, the Drafts copy it came from,
+/// and whether its text counts as `typed`. True once the window is there.
+async function popOutDraft(handed) {
+  const WebviewWindow = window.__TAURI__?.webviewWindow?.WebviewWindow;
+  if (!WebviewWindow) {
+    say(t("this build cannot open windows"), true);
+    return false;
+  }
+  let key;
+  try {
+    key = await invoke("stash_draft", { draft: handed });
+  } catch (err) {
+    say(String(err), true);
+    return false;
+  }
+  const subject = handed.draft.subject?.trim();
+  return new Promise((resolve) => {
+    const opened = new WebviewWindow(`compose-${key}`, {
+      url: `index.html?popout=${encodeURIComponent(key)}`,
+      title: subject ? `${subject} — kuverta` : `${handed.what} — kuverta`,
+      width: 760,
+      height: 640,
+      minWidth: 420,
+      minHeight: 320,
+      // File drops reach the page, as in the main window.
+      dragDropEnabled: false,
+    });
+    opened.once("tauri://created", () => resolve(true));
+    opened.once("tauri://error", (event) => {
+      say(t("could not open a window: {error}", { error: event.payload }), true);
+      invoke("take_draft", { key }).catch(() => {});
+      resolve(false);
+    });
+  });
+}
+
+/// Moves what compose holds to a window of its own.
+async function popOutCompose() {
+  if (compose.pane.hidden) return;
+  const moved = await popOutDraft({
+    draft: draftInput(),
+    what: compose.what.textContent,
+    email: compose.email,
+    draft_of: compose.draftOf,
+    typed: composeTouched(),
+  });
+  if (!moved) return;
+  // The text has moved, not gone: nothing to ask about.
+  compose.opened = composeFingerprint();
+  closeCompose();
+}
+
+el("compose-popout").onclick = popOutCompose;
+
+/// This window, opened on a draft: takes it from the core and shows nothing
+/// but compose. Closing the window is leaving compose, and asks the same.
+async function startPopout(accounts) {
+  document.body.classList.add("popout");
+  state.accounts = accounts;
+  await loadProfiles();
+  buildPool();
+  const handed = await invoke("take_draft", { key: POPOUT });
+  const account = accounts.find((a) => a.email === handed?.email) ?? accounts[0];
+  if (!handed || !account) {
+    statusBar.textContent = t("nothing to write here");
+    closePopoutWindow();
+    return;
+  }
+  state.account = account.id;
+  state.email = account.email;
+  statusBar.textContent = account.email;
+  await openComposeWith(
+    { ...handed.draft, draft_of: handed.draft_of ?? null },
+    { what: handed.what, email: account.email, typed: handed.typed },
+  );
+  const current = window.__TAURI__?.window?.getCurrentWindow?.();
+  current
+    ?.onCloseRequested(async (event) => {
+      if (!compose.pane.hidden && !(await leaveCompose())) event.preventDefault();
+    })
+    .catch((err) => invoke("log_ui", { level: "warn", message: `close-requested: ${err}` }).catch(() => {}));
+}
+
+/// Done here: the window goes. `destroy` rather than `close`, which would ask
+/// `onCloseRequested` again about a compose that is already shut.
+function closePopoutWindow() {
+  window.__TAURI__?.window?.getCurrentWindow?.()?.destroy().catch(() => {});
 }
 
 /// Shows who would actually receive it, Bcc included.
@@ -2388,7 +2637,7 @@ async function syncEverything() {
   }
 }
 
-setInterval(syncEverything, SYNC_EVERY_MS);
+if (!POPOUT) setInterval(syncEverything, SYNC_EVERY_MS);
 
 /// Shows where the sync is, or hides the bar when passed nothing.
 ///
@@ -2844,6 +3093,10 @@ async function start() {
   }
 
   const accounts = await invoke("accounts");
+  if (POPOUT) {
+    await startPopout(accounts);
+    return;
+  }
   // Post is an addition: a Paperless that is down or not set up must not keep
   // mail from opening.
   state.postboxes = await invoke("paper_mailboxes").catch(() => []);
@@ -2896,6 +3149,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // already on the page, and what follows is built through `t`.
   translateDom();
   restoreColumns();
+  restoreComposeHeight();
   start().catch((err) => {
     statusBar.textContent = t("failed to start: {error}", { error: err });
   });
