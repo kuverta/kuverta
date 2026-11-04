@@ -100,6 +100,7 @@ async fn a_letter_is_quoted_written_down_sent_and_remembered_on_its_document() {
             Some(&Window {
                 recipient: "Fitnessstudio Muster GmbH\nHauptstraße 1\n12345 Musterstadt",
                 sender: Some("Erika Mustermann, Heidestraße 17, 51147 Köln"),
+                registered: true,
             }),
         )
         .unwrap();

@@ -891,6 +891,9 @@ impl Core {
                 let window = optional("recipient").map(|recipient| crate::pdf::Window {
                     recipient,
                     sender: optional("sender"),
+                    // Nothing here knows how the letter will be posted, and
+                    // a document written today may go registered tomorrow.
+                    registered: true,
                 });
                 let document = self
                     .write_document(account, name, body, note.as_deref(), sign, window.as_ref())

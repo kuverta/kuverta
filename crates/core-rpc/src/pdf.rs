@@ -53,8 +53,23 @@ const FIELD_WIDTH: f32 = 85.0 * MM;
 /// and remarks at its top, and the address beneath.
 const FIELD_TOP: f32 = 45.0 * MM;
 const FIELD_BOTTOM: f32 = 90.0 * MM;
-const ADDRESS_TOP: f32 = 62.7 * MM;
+/// Where the recipient starts on a letter that goes as registered mail: a
+/// print and post service prints the Einschreiben label over 49-66 mm, so
+/// the address waits until the strip is past. Five lines fit beneath it.
+const ADDRESS_TOP_REGISTERED: f32 = 66.0 * MM;
+const ADDRESS_LINES_REGISTERED: usize = 5;
+/// Where it starts on an ordinary letter, which has no label to avoid: the
+/// top of the field, once the return address has had its 5 mm.
+const ADDRESS_TOP: f32 = 50.0 * MM;
 const ADDRESS_LINES: usize = 6;
+/// The return address, in the field's own first line and above any label.
+const SENDER_TOP: f32 = 47.5 * MM;
+/// The return address clears the label, and the lowest line a registered
+/// address can reach still clears the bottom of the field.
+const _: () = assert!(SENDER_TOP < ADDRESS_TOP_REGISTERED);
+const _: () = assert!(
+    ADDRESS_TOP_REGISTERED + ADDRESS_LINES_REGISTERED as f32 * ADDRESS_LEADING < FIELD_BOTTOM
+);
 const ADDRESS_SIZE: f32 = 10.0;
 const ADDRESS_LEADING: f32 = 12.0;
 const SENDER_SIZE: f32 = 7.0;
@@ -70,9 +85,33 @@ pub struct Window<'a> {
     pub recipient: &'a str,
     /// The return address, as one small line above it.
     pub sender: Option<&'a str>,
+    /// Keep the 49-66 mm strip clear for the label a print and post service
+    /// prints on registered mail. Set it when the letter is known to go as
+    /// Einschreiben, and when it is not known either: a document written
+    /// today may be posted registered tomorrow, and the lower address is
+    /// inside the envelope window both ways.
+    pub registered: bool,
 }
 
 impl Window<'_> {
+    /// Where the recipient's first line sits, and how many there is room
+    /// for: a registered letter gives up the top of the field to the label.
+    fn top(&self) -> f32 {
+        if self.registered {
+            ADDRESS_TOP_REGISTERED
+        } else {
+            ADDRESS_TOP
+        }
+    }
+
+    fn most_lines(&self) -> usize {
+        if self.registered {
+            ADDRESS_LINES_REGISTERED
+        } else {
+            ADDRESS_LINES
+        }
+    }
+
     /// The lines as they are set, or why they cannot be: an address that
     /// does not fit the window is not an address the envelope shows.
     fn lines(&self) -> Result<(Option<String>, Vec<String>), String> {
@@ -87,9 +126,10 @@ impl Window<'_> {
         if recipient.is_empty() {
             return Err("a letter's address needs at least a name and a place".into());
         }
-        if recipient.len() > ADDRESS_LINES {
+        let most_lines = self.most_lines();
+        if recipient.len() > most_lines {
             return Err(format!(
-                "an address in the envelope window has at most {ADDRESS_LINES} lines, not {}",
+                "an address in the envelope window has at most {most_lines} lines, not {}",
                 recipient.len()
             ));
         }
@@ -466,6 +506,21 @@ impl<'a> Setter<'a> {
         }
     }
 
+    /// How much room the signature block wants: the picture, its caption
+    /// and the air around them. Asked for before the closing is set, so
+    /// the whole of it lands on one page.
+    fn signature_space(&self) -> f32 {
+        let Some(pixels) = self.signature else {
+            return SIGNATURE_GAP;
+        };
+        let (_, h) = fit(pixels, SIGNATURE_WIDTH, SIGNATURE_HEIGHT);
+        let below = match self.caption.map(str::trim) {
+            Some(caption) if !caption.is_empty() => CAPTION_SIZE + 4.0,
+            _ => 0.0,
+        };
+        h + 6.0 + below + 4.0
+    }
+
     fn signature(&mut self) {
         let Some(pixels) = self.signature else {
             self.need(SIGNATURE_GAP);
@@ -502,9 +557,9 @@ impl<'a> Setter<'a> {
 
     /// Sets the address block in the envelope window on this page, and
     /// starts the text beneath it.
-    fn window(&mut self, sender: Option<&str>, recipient: &[String]) {
+    fn window(&mut self, sender: Option<&str>, recipient: &[String], top: f32) {
         self.current
-            .push_str(&window_content("F1", sender, recipient, PAGE.1));
+            .push_str(&window_content("F1", sender, recipient, PAGE.1, top));
         self.y = PAGE.1 - LETTER_TEXT_TOP;
     }
 
@@ -516,18 +571,24 @@ impl<'a> Setter<'a> {
 
 /// The address block as page content, in `font`, on a page `height` points
 /// tall as it is shown.
-fn window_content(font: &str, sender: Option<&str>, recipient: &[String], height: f32) -> String {
+fn window_content(
+    font: &str,
+    sender: Option<&str>,
+    recipient: &[String],
+    height: f32,
+    top: f32,
+) -> String {
     let mut out = String::new();
     let x = FIELD_LEFT + FIELD_PADDING;
     if let Some(sender) = sender {
         // At the foot of the remarks zone, just above the address.
-        let y = height - ADDRESS_TOP + 2.0;
+        let y = height - SENDER_TOP;
         out.push_str(&format!(
             "BT /{font} {SENDER_SIZE} Tf {x:.2} {y:.2} Td {text} Tj ET\n",
             text = literal(sender)
         ));
     }
-    let mut y = height - ADDRESS_TOP;
+    let mut y = height - top;
     for line in recipient {
         y -= ADDRESS_LEADING;
         out.push_str(&format!(
@@ -580,7 +641,7 @@ pub fn address(pdf: &[u8], window: &Window, at: AddressAt) -> Result<Vec<u8>, St
                 y = shown_h - FIELD_BOTTOM,
                 w = FIELD_WIDTH,
                 h = FIELD_BOTTOM - FIELD_TOP,
-                text = window_content(&font_name, sender.as_deref(), &recipient, shown_h),
+                text = window_content(&font_name, sender.as_deref(), &recipient, shown_h, window.top()),
             );
             let page = doc
                 .get_object_mut(first)
@@ -602,7 +663,13 @@ pub fn address(pdf: &[u8], window: &Window, at: AddressAt) -> Result<Vec<u8>, St
             let mut resources = Dictionary::new();
             resources.set("Font", fonts);
             let resources_id = doc.add_object(resources);
-            let mut sheets = vec![window_content("F1", sender.as_deref(), &recipient, PAGE.1)];
+            let mut sheets = vec![window_content(
+                "F1",
+                sender.as_deref(),
+                &recipient,
+                PAGE.1,
+                window.top(),
+            )];
             if blank_back {
                 sheets.push(String::new());
             }
@@ -660,6 +727,41 @@ fn fit(pixels: &Pixels, width: f32, most_height: f32) -> (f32, f32) {
 
 /// Writes a document. `sign` draws the signature where the text marks it, or
 /// after the text when it does not, with `caption` — the place and the date
+/// How tall the blocks from `from` on are, with `signature` standing for
+/// the signature block. A closing — "Mit freundlichen Grussen", the
+/// signature, the name under it — is measured whole and moved whole, so
+/// that a name never sits alone on a page of its own.
+fn height_from(blocks: &[Block<'_>], from: usize, signature: f32) -> f32 {
+    let body = PAGE.0 - 2.0 * MARGIN;
+    blocks[from..]
+        .iter()
+        .map(|block| match block {
+            Block::Signature => signature,
+            Block::Blank => BODY_LEADING * 0.6,
+            Block::Title(line) => {
+                wrap(line, TITLE_SIZE, true, body).len() as f32 * TITLE_SIZE * 1.3
+            }
+            Block::Heading(line) => {
+                wrap(line, HEADING_SIZE, true, body).len() as f32 * HEADING_SIZE * 1.3
+            }
+            Block::Item(line) => {
+                wrap(line, BODY_SIZE, false, body - LIST_INDENT).len() as f32 * BODY_LEADING
+            }
+            Block::Line(line) => wrap(line, BODY_SIZE, false, body).len() as f32 * BODY_LEADING,
+        })
+        .sum()
+}
+
+/// Whether a signature follows, with nothing but blank lines between: the
+/// line before it is part of the closing and travels with it.
+fn closing_follows(blocks: &[Block<'_>], from: usize) -> bool {
+    blocks[from..]
+        .iter()
+        .skip(1)
+        .find(|block| !matches!(block, Block::Blank))
+        .is_some_and(|block| matches!(block, Block::Signature))
+}
+
 /// — beneath it; without `sign`, a marker leaves a gap to sign by hand.
 /// With `window`, the first page is a letter's: the address sits where an
 /// envelope's window shows it, and the text starts below.
@@ -678,7 +780,7 @@ pub fn write(
     let mut setter = Setter::new(drawn, caption);
     if let Some(window) = window {
         let (sender, recipient) = window.lines()?;
-        setter.window(sender.as_deref(), &recipient);
+        setter.window(sender.as_deref(), &recipient, window.top());
     }
     let blocks = blocks(text);
     let mut marked = false;
@@ -709,7 +811,13 @@ pub fn write(
                     bullet = literal("•")
                 ));
             }
-            Block::Line(line) => setter.paragraph(line, BODY_SIZE, false, MARGIN, BODY_LEADING),
+            Block::Line(line) => {
+                if closing_follows(&blocks, at) {
+                    let whole = height_from(&blocks, at, setter.signature_space());
+                    setter.need(whole);
+                }
+                setter.paragraph(line, BODY_SIZE, false, MARGIN, BODY_LEADING)
+            }
             Block::Blank => {
                 // Several blank lines are one break, except that the gap
                 // above a signature is kept: it is the room for it.
@@ -720,6 +828,8 @@ pub fn write(
             }
             Block::Signature => {
                 marked = true;
+                let whole = height_from(&blocks, at, setter.signature_space());
+                setter.need(whole);
                 setter.space(4.0);
                 setter.signature();
             }
@@ -1196,6 +1306,7 @@ mod tests {
         let window = Window {
             recipient: "Fitnessstudio Muster GmbH\nKundenservice\nHauptstraße 1\n12345 Musterstadt",
             sender: Some("Erika Mustermann\nHeidestraße 17\n51147 Köln"),
+            registered: false,
         };
         let written = write(
             "Kündigung",
@@ -1210,7 +1321,8 @@ mod tests {
         let page = doc.get_pages()[&1];
         let content = String::from_utf8_lossy(&doc.get_page_content(page).unwrap()).to_string();
         // Every line of the address starts 22.5 mm in, in the address zone
-        // of the window: from 62.7 mm below the top edge, six lines at most.
+        // of the window: from 50 mm below the top edge for an ordinary
+        // letter, six lines at most.
         let x = format!("{:.2}", FIELD_LEFT + FIELD_PADDING);
         let first = format!(
             "{x} {:.2} Td (Fitnessstudio Muster GmbH)",
@@ -1237,12 +1349,14 @@ mod tests {
         let seven = Window {
             recipient: "1\n2\n3\n4\n5\n6\n7",
             sender: None,
+            registered: false,
         };
         assert!(write("x", "Text", None, false, None, Some(&seven)).is_err());
         let wide = Window {
             recipient:
                 "Eine Firma mit einem Namen, der nicht in ein Fenster passt, GmbH & Co. KG\nOrt",
             sender: None,
+            registered: false,
         };
         assert!(write("x", "Text", None, false, None, Some(&wide))
             .unwrap_err()
@@ -1255,6 +1369,7 @@ mod tests {
         let window = Window {
             recipient: "Stadt Musterstadt\nBürgeramt\nRathausplatz 1\n12345 Musterstadt",
             sender: Some("Erika Mustermann, Heidestraße 17, 51147 Köln"),
+            registered: false,
         };
 
         let over = address(&written.pdf, &window, AddressAt::FirstPage).unwrap();
@@ -1296,8 +1411,118 @@ mod tests {
         let empty = Window {
             recipient: " \n ",
             sender: None,
+            registered: false,
         };
         assert!(address(&written.pdf, &empty, AddressAt::FirstPage).is_err());
+    }
+
+    #[test]
+    fn a_registered_letter_leaves_the_label_strip_clear() {
+        let recipient = "hkk Krankenkasse\nTeam Forderungsmanagement\n28185 Bremen";
+        let sender = Some("Erika Mustermann \u{b7} Heidestraße 17 \u{b7} 51147 Köln");
+        let plain = Window {
+            recipient,
+            sender,
+            registered: false,
+        };
+        let registered = Window {
+            recipient,
+            sender,
+            registered: true,
+        };
+        let first = |window: &Window| {
+            let written = write("x", "Text", None, false, None, Some(window)).unwrap();
+            let doc = Document::load_mem(&written.pdf).unwrap();
+            let page = doc.get_pages()[&1];
+            String::from_utf8_lossy(&doc.get_page_content(page).unwrap()).to_string()
+        };
+        // An ordinary letter uses the whole field; a registered one waits
+        // until the printed label's strip is past.
+        assert!(
+            first(&plain).contains(&format!(
+                "{:.2} Td (hkk Krankenkasse)",
+                PAGE.1 - ADDRESS_TOP - ADDRESS_LEADING
+            )),
+            "ordinary letter"
+        );
+        assert!(
+            first(&registered).contains(&format!(
+                "{:.2} Td (hkk Krankenkasse)",
+                PAGE.1 - ADDRESS_TOP_REGISTERED - ADDRESS_LEADING
+            )),
+            "registered letter"
+        );
+    }
+
+    #[test]
+    fn a_registered_address_holds_one_line_fewer() {
+        let six = "1\n2\n3\n4\n5\n6";
+        assert!(write(
+            "x",
+            "Text",
+            None,
+            false,
+            None,
+            Some(&Window {
+                recipient: six,
+                sender: None,
+                registered: false,
+            })
+        )
+        .is_ok());
+        let err = write(
+            "x",
+            "Text",
+            None,
+            false,
+            None,
+            Some(&Window {
+                recipient: six,
+                sender: None,
+                registered: true,
+            }),
+        )
+        .unwrap_err();
+        assert!(err.contains("at most 5 lines"), "{err}");
+    }
+
+    #[test]
+    fn a_closing_is_not_left_alone_on_a_page_of_its_own() {
+        // Long enough that the closing lands just where the page runs out.
+        for lines in 28..40 {
+            let body: String = (0..lines)
+                .map(|i| format!("Zeile {i} mit genug Text, um die Seite zu f\u{fc}llen.\n\n"))
+                .collect();
+            let written = write(
+                "x",
+                &format!(
+                    "{body}Mit freundlichen Gr\u{fc}\u{df}en\n\n[signature]\n\nErika Mustermann"
+                ),
+                Some(&pixels()),
+                true,
+                Some("Musterstadt, 07.10.2026"),
+                None,
+            )
+            .unwrap();
+            let doc = Document::load_mem(&written.pdf).unwrap();
+            let last = written.pages;
+            let content = String::from_utf8_lossy(
+                &doc.get_page_content(doc.get_pages()[&(last as u32)])
+                    .unwrap(),
+            )
+            .to_string();
+            // Wherever the closing fell, it fell together: the greeting,
+            // the signature and the name share a page.
+            assert!(content.contains("/Sig Do"), "{lines}: signature adrift");
+            assert!(
+                content.contains("(Erika Mustermann)"),
+                "{lines}: name adrift"
+            );
+            assert!(
+                content.contains(r"Gr\374\337en"),
+                "{lines}: greeting adrift"
+            );
+        }
     }
 
     #[test]
