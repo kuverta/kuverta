@@ -42,6 +42,9 @@ struct App {
     logs: logging::Logs,
     /// The secret in every link of a message's page; see `page.rs`.
     link_token: String,
+    /// Drafts on their way from one window to another: compose popped out
+    /// into a window of its own. See `stash_draft`.
+    handoffs: Mutex<std::collections::HashMap<String, serde_json::Value>>,
 }
 
 /// Tauri needs a serialisable error; `RpcError` is not one.
@@ -2611,6 +2614,28 @@ fn export_log(app: State<'_, App>) -> Result<String, String> {
     Ok(path.display().to_string())
 }
 
+// -- compose in a window of its own --------------------------------------------
+//
+// Compose can be popped out of the main window into a window of its own. The
+// draft goes through here rather than through the new window's URL or the
+// webview's storage: a draft carries its files, and 25 MB is nothing to put
+// in a query string. The window that opens it takes it, once.
+
+/// Keeps a draft for the window about to be opened on it, and names it.
+#[tauri::command]
+fn stash_draft(app: State<'_, App>, draft: serde_json::Value) -> String {
+    let key = page::link_token();
+    app.handoffs.lock().unwrap().insert(key.clone(), draft);
+    key
+}
+
+/// The draft stashed under `key`, and it is gone: a window reloaded gets
+/// nothing rather than a second copy of what the first one may have sent.
+#[tauri::command]
+fn take_draft(app: State<'_, App>, key: String) -> Option<serde_json::Value> {
+    app.handoffs.lock().unwrap().remove(&key)
+}
+
 /// Something the window wants on the record — an error it showed, mostly —
 /// so a log sent with a report has both halves of what happened.
 #[tauri::command]
@@ -2725,11 +2750,14 @@ fn main() {
             data_dir,
             logs,
             link_token: page::link_token(),
+            handoffs: Mutex::default(),
         })
         // HTML mail as a page, in a frame that can reach nothing but this.
         .register_uri_scheme_protocol(page::SCHEME, page::handle)
         .invoke_handler(tauri::generate_handler![
             accounts,
+            stash_draft,
+            take_draft,
             messages,
             messages_in,
             message,

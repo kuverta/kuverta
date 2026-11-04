@@ -686,20 +686,29 @@ impl Core {
             .ok_or(RpcError::UnknownMessage(id))?;
 
         let locations = self.store.locations_of(id)?;
-        // IMAP flag names are case-insensitive, and servers do vary.
-        let is_draft = locations
+        let placed: Vec<core_store::model::Folder> = locations
             .iter()
-            .any(|location| location.flags.to_ascii_lowercase().contains("\\draft"));
-        let folders = locations
-            .iter()
-            .filter_map(|location| {
-                self.store
-                    .folder(location.folder_id)
-                    .ok()
-                    .flatten()
-                    .map(|f| f.name)
-            })
+            .filter_map(|location| self.store.folder(location.folder_id).ok().flatten())
             .collect();
+        // A draft is a message in Drafts — the folder, not the `\Draft`
+        // flag. The flag is unreliable both ways: a draft put there by hand
+        // may lack it, and a copy in Sent or Trash may keep it. The one
+        // message can sit in Drafts and Sent at once, when the draft was
+        // never cleared away after sending; then Sent wins, because what
+        // has gone is not something to go on writing.
+        let in_folder = |attribute: &str, names: &[&str]| {
+            placed.iter().any(|f| {
+                core_proto::client::find_special(
+                    [(f.name.as_str(), f.special_use.as_deref())],
+                    &[attribute],
+                    names,
+                )
+                .is_some()
+            })
+        };
+        let is_draft = in_folder("\\Drafts", core_proto::client::DRAFTS_NAMES)
+            && !in_folder("\\Sent", core_proto::client::SENT_NAMES);
+        let folders = placed.iter().map(|f| f.name.clone()).collect();
 
         // A body that will not load is not an error: the message row is still
         // worth showing, and the alternative is a list that cannot open a row

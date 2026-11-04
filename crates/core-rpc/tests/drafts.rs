@@ -200,13 +200,14 @@ fn a_forward_carries_the_files_of_the_message_it_forwards() {
     assert_eq!(file.contents(), b"%PDF-1.4\n");
 }
 
-/// A message the server flagged `\Draft` says so, so the window can open it in
-/// compose instead of the reading pane.
+/// A message in Drafts says so, so the window can offer to go on writing it.
 ///
-/// The flag lives on the location, not the message: the same message can sit in
-/// Drafts and nowhere else, and it is the folder copy that carries the mark.
+/// The folder decides, not the `\Draft` flag: a copy in Sent or Trash can keep
+/// the flag its draft had, and a draft appended by hand can lack it. When the
+/// one message sits in Drafts and Sent at once — the draft never cleared away
+/// after sending — it is sent, not a draft.
 #[test]
-fn a_message_flagged_draft_is_reported_as_one() {
+fn a_message_in_drafts_is_reported_as_a_draft_unless_it_was_sent() {
     use core_store::model::*;
     use core_store::{Blobs, Store};
 
@@ -226,6 +227,8 @@ fn a_message_flagged_draft_is_reported_as_one() {
         .unwrap();
     let drafts = store.upsert_folder(account, "Drafts", None).unwrap();
     let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
+    let sent = store.upsert_folder(account, "Gesendet", Some("\\Sent")).unwrap();
+    let trash = store.upsert_folder(account, "Trash", None).unwrap();
     let core = core_rpc::Core::new(store, Blobs::new(dir.0.join("blobs")));
 
     let raw = "From: dev@kuverta.test\r\nTo: amt@example.test\r\n\
@@ -254,14 +257,65 @@ fn a_message_flagged_draft_is_reported_as_one() {
     };
 
     let draft = new(1, drafts, "\\Seen \\Draft");
-    let plain = new(2, inbox, "\\Seen");
+    let unflagged = new(2, drafts, "\\Seen");
+    let plain = new(3, inbox, "\\Seen");
+    let binned = new(4, trash, "\\Seen \\Draft");
+    // The same message, filed in Sent as well: `upsert_message` with the
+    // same Message-ID adds the location to the one row.
+    let gone = new(5, drafts, "\\Seen \\Draft");
+    let also_sent = new_in(&core, account, 5, sent, "\\Seen", &path);
+    assert_eq!(gone, also_sent, "one message, two folders");
 
     assert!(
         core.message(account, draft).unwrap().is_draft,
-        "a \\Draft location should mark the message as a draft"
+        "a message in Drafts is a draft"
+    );
+    assert!(
+        core.message(account, unflagged).unwrap().is_draft,
+        "a message in Drafts without the flag is still a draft"
     );
     assert!(
         !core.message(account, plain).unwrap().is_draft,
         "ordinary mail is not a draft"
     );
+    assert!(
+        !core.message(account, binned).unwrap().is_draft,
+        "a flagged copy in Trash is not a draft"
+    );
+    assert!(
+        !core.message(account, gone).unwrap().is_draft,
+        "a draft that was sent is sent, not a draft"
+    );
+}
+
+/// The same `upsert_message` as the test's closure, for a second location of
+/// a message that already exists.
+fn new_in(
+    core: &core_rpc::Core,
+    account: core_store::model::AccountId,
+    uid: u32,
+    folder: core_store::model::FolderId,
+    flags: &str,
+    path: &str,
+) -> core_store::model::MessageId {
+    use core_store::model::*;
+    core.store()
+        .upsert_message(
+            account,
+            &NewMessage {
+                rfc822_message_id: Some(format!("d{uid}@example.test")),
+                subject: Some("Widerspruch".into()),
+                from_addr: Some("dev@kuverta.test".into()),
+                date_utc: Some(1_700_000_000),
+                body_path: Some(path.to_string()),
+                ..Default::default()
+            },
+            Some(&Location {
+                folder_id: folder,
+                uid,
+                flags: flags.into(),
+            }),
+        )
+        .unwrap()
+        .0
 }

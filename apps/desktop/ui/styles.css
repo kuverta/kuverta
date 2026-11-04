@@ -615,9 +615,50 @@ footer .keys {
 
 #detail {
   display: grid;
-  grid-template-rows: 1fr auto;
+  /* The message, the seam, the reply. */
+  grid-template-rows: 1fr auto auto;
   min-height: 0;
 }
+
+/* The seam between the message and the reply: the same handle as between
+   the columns, turned on its side. It lies over compose's top border. */
+.row-grip {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 9px;
+  margin: -4px 0 -5px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: row-resize;
+}
+
+.row-grip:hover, .row-grip.dragging {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.row-grip:focus-visible { outline-offset: -2px; }
+.row-grip[hidden] { display: none !important; }
+body.dragging-row { cursor: row-resize; user-select: none; }
+body.dragging-row #viewport, body.dragging-row #reading, body.dragging-row #compose { pointer-events: none; }
+
+/* A draft, under its heading: what it is and the way to go on with it. */
+.reading-draft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sidebar-bg);
+  font-size: 12.5px;
+}
+
+.reading-draft span { flex: 1; }
+.reading-draft[hidden] { display: none !important; }
 
 #reading {
   padding: 14px 24px 18px;
@@ -978,6 +1019,15 @@ footer .keys {
   background: var(--bg);
 }
 
+/* Dragged to a height: the body takes whatever the fields leave. */
+#compose.sized {
+  height: var(--compose-h);
+  max-height: 88vh;
+  flex-shrink: 0;
+}
+
+#compose.sized #compose-body { flex: 1 1 auto; min-height: 60px; }
+
 .compose-head {
   display: flex;
   align-items: baseline;
@@ -985,6 +1035,35 @@ footer .keys {
 }
 
 .compose-head span { color: var(--muted); font-size: 11.5px; }
+.compose-head .spacer { flex: 1; }
+
+/* A window of its own: the same page, with nothing on it but compose. The
+   draft came in through the core; see `startPopout` in app.js. */
+body.popout {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1fr;
+}
+
+body.popout header,
+body.popout footer,
+body.popout #sidebar,
+body.popout #list,
+body.popout #aside,
+body.popout .col-grip,
+body.popout #compose-grip,
+body.popout #compose-popout,
+body.popout #empty { display: none !important; }
+
+body.popout #detail { grid-column: 1; grid-row: 1; grid-template-rows: 1fr; }
+
+body.popout #compose {
+  border-top: 0;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+}
+
+body.popout #compose-body { flex: 1 1 auto; min-height: 120px; }
 
 #compose input:not([type="checkbox"]),
 #compose textarea {
@@ -1157,6 +1236,13 @@ footer .keys {
   border-radius: 12px;
   box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
   overflow: hidden;
+  /* The corner drags, as a window's does: a sheet is a page of settings or
+     a document, and the size that suits one does not suit the other. */
+  resize: both;
+  min-width: 420px;
+  min-height: 320px;
+  max-width: 98vw;
+  max-height: 96vh;
 }
 
 .sheet-head {
@@ -1179,6 +1265,10 @@ footer .keys {
   border-radius: 12px;
   box-shadow: 0 24px 60px rgb(0 0 0 / 0.35);
   overflow: hidden;
+  resize: both;
+  min-width: 320px;
+  min-height: 140px;
+  max-width: 98vw;
 }
 
 .dialog-panel.wide { width: min(720px, 94vw); }
@@ -2008,11 +2098,13 @@ footer #sync-progress { width: 90px; height: 6px; flex: none; }
 
 .conversation-compose textarea {
   flex: 1;
-  resize: none;
+  /* Taller when there is more to say than a line or two. */
+  resize: vertical;
   border-radius: 18px;
   padding: 8px 14px;
   background: var(--bg);
-  max-height: 160px;
+  min-height: 38px;
+  max-height: 50vh;
 }
 
 .conversation-compose button { border-radius: 16px; }

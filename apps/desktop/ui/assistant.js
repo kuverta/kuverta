@@ -709,18 +709,21 @@ function draftCard(event) {
       compose.files.set(attachments);
       return;
     }
-    await openComposeWith({
-      to: event.to.split(",").map((address) => address.trim()).filter(Boolean),
-      cc: [],
-      bcc: [],
-      subject: event.subject,
-      body: `${body.value.trim()}\n`,
-      reply_to: null,
-      reply_all: false,
-      forward: null,
-      attachments,
-    });
-    compose.what.textContent = t("New message");
+    await openComposeWith(
+      {
+        to: event.to.split(",").map((address) => address.trim()).filter(Boolean),
+        cc: [],
+        bcc: [],
+        subject: event.subject,
+        body: `${body.value.trim()}\n`,
+        reply_to: null,
+        reply_all: false,
+        forward: null,
+        attachments,
+      },
+      // The assistant's text is work, and is asked about before it goes.
+      { what: t("New message"), typed: true },
+    );
   });
   return box;
 }
@@ -785,18 +788,20 @@ function documentCard(event) {
   });
   cardButton(actions, t("Attach to a new message"), async (button) => {
     button.disabled = false;
-    await openComposeWith({
-      to: [],
-      cc: [],
-      bcc: [],
-      subject: "",
-      body: "",
-      reply_to: null,
-      reply_all: false,
-      forward: null,
-      attachments: await documentAttachments([doc]),
-    });
-    compose.what.textContent = t("New message");
+    await openComposeWith(
+      {
+        to: [],
+        cc: [],
+        bcc: [],
+        subject: "",
+        body: "",
+        reply_to: null,
+        reply_all: false,
+        forward: null,
+        attachments: await documentAttachments([doc]),
+      },
+      { what: t("New message"), typed: true },
+    );
   });
   // A PDF can go on paper. What was posted from it before is shown above
   // the buttons, newest first, so posting it again is a choice.
@@ -944,12 +949,15 @@ async function sendReply(messageId, body, attachments = []) {
 
 /// Opens compose on a reply with the drafted text in it, for changing first.
 async function openReplyInCompose(messageId, body) {
-  closeCompose();
+  // What is in compose is asked about, not swept away under this.
+  if (!(await leaveCompose())) return;
   compose.replyTo = messageId;
   compose.what.textContent = t("Reply");
+  // Which account it goes from: without one, Send has nothing to send as.
+  compose.email = state.email ?? emailOf(state.account) ?? visibleAccounts()[0]?.email ?? null;
   try {
     const preview = await invoke("preview", {
-      email: state.email,
+      email: compose.email,
       draft: { to: [], cc: [], bcc: [], subject: "", body: "", reply_to: messageId, reply_all: false, forward: null },
     });
     compose.subject.value = preview.subject;
