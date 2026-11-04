@@ -47,8 +47,12 @@ in its header.
   several locations, which is what Gmail's labels-as-folders needs
 - **Send** — compose, reply, reply-all, forward, SMTP submission, and a copy
   filed in Sent via `APPEND`; a reply keeps the message it answers on screen
-  above it, and marks it `\Answered` — the list shows a ↩ beside everything
-  you have already answered, whether you answered it here or on your phone
+  above it — the seam between them drags, and ↗ moves the reply to a window
+  of its own — and marks it `\Answered`: the list shows a ↩ beside everything
+  you have already answered, whether you answered it here or on your phone.
+  Opening a message only ever reads it: a draft shows what it says with a
+  *Continue writing* button, and a message you sent offers Reply as a
+  follow-up to the people it went to, without the assistant's ✨ Answer
 - **Triage** — archive, delete, move, mark read/unread, with a durable queue,
   an undo window, and conflict checks before anything is written; several at
   once, from the keyboard or the menu under the right button
@@ -133,7 +137,8 @@ in its header.
 - **Profiles** — accounts and postal addresses grouped (private, one company,
   another), one profile on screen at a time; the first step of the setup assistant
 - **People** — mail as conversations: one row per person, the exchange in
-  bubbles with quotes taken off, and a reply box underneath
+  bubbles with quotes taken off, and a reply box underneath that grows when
+  dragged, or moves to a compose window of its own with ↗
 - **Who the message is with** — a card in the right-hand column, above the
   assistant, opened by clicking a sender's name and closed with its ×; and
   beside a list row on hover, where it answers "who is this?" without opening
