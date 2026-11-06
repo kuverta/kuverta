@@ -167,6 +167,19 @@ pub enum Tone {
     Bin,
 }
 
+/// How far the rig has read the open letter's pages itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Read {
+    /// It does not read pages: where a letter goes is not known here.
+    #[default]
+    Never,
+    /// A page is still being read.
+    Reading,
+    /// Every page so far has been read: where the letter goes is known, for
+    /// as long as no other page says otherwise.
+    Done,
+}
+
 /// What the screen is made from: the loop's state as the setup page gets it.
 #[derive(Debug, Clone)]
 pub struct Facts<'a> {
@@ -201,6 +214,8 @@ pub struct Facts<'a> {
     pub queue: &'a [crate::hub::Queued],
     /// Folders the open letter's text looks like, newest reading first.
     pub guess: &'a [String],
+    /// How far the open letter's pages have been read.
+    pub read: Read,
     /// Whether the display is showing that list.
     pub showing_queue: bool,
     /// A button waiting for its second tap.
@@ -226,20 +241,14 @@ impl Screen {
             // buttons are the rest.
             screen.headline = match (facts.state, screen.headline.as_str()) {
                 (_, "Sending letter") => "Sending the letter...".into(),
-                ("waiting", _) if facts.open_pages > 0 => match facts.finishing_in {
-                    Some(seconds) => format!("Next page? Finishing in {seconds}s"),
-                    None => "Next page, or finish".into(),
-                },
+                ("waiting", _) if facts.open_pages > 0 => next_page(facts),
                 // Where one letter ends and the next begins is said in so
                 // many words: "Scanned" on every page left it to be worked
                 // out from a page count, and two letters ran into one.
                 ("waiting", _) => "New letter: put page 1 down".into(),
                 // The last page left lying: the letter finishes all the same.
                 ("photographed", _) if facts.open_pages > 0 && facts.finishing_in.is_some() => {
-                    format!(
-                        "Next page? Finishing in {}s",
-                        facts.finishing_in.unwrap_or_default()
-                    )
+                    next_page(facts)
                 }
                 ("settling", _) => "Hold still...".into(),
                 ("photographed", _) if facts.last.is_some_and(|last| !last.kept) => {
@@ -249,12 +258,27 @@ impl Screen {
                 ("photographed", "Check scan") => {
                     format!("Check page {} - next page?", facts.open_pages)
                 }
-                ("photographed", _) if facts.open_pages <= 1 => {
-                    "New letter started - page 1".into()
-                }
-                ("photographed", _) => format!("Page {} added - next page?", facts.open_pages),
+                ("photographed", _) if facts.read == Read::Done => next_page(facts),
+                ("photographed", _) if facts.open_pages <= 1 => match facts.read {
+                    Read::Reading => "New letter - reading page 1...".into(),
+                    _ => "New letter started - page 1".into(),
+                },
+                ("photographed", _) => match facts.read {
+                    Read::Reading => format!("Page {} added - reading it...", facts.open_pages),
+                    _ => format!("Page {} added - next page?", facts.open_pages),
+                },
                 (_, headline) => headline.to_string(),
             };
+            // The folder in the headline is the news, and in its colour.
+            let says_folder = facts.read == Read::Done
+                && facts.open_pages > 0
+                && facts
+                    .guess
+                    .first()
+                    .is_some_and(|folder| screen.headline.starts_with(folder.as_str()));
+            if says_folder && screen.tone != Tone::Problem {
+                screen.tone = Tone::Folder;
+            }
             screen.detail.clear();
             if let Some((ok, words)) = facts.notice {
                 screen.headline = words.to_string();
@@ -289,13 +313,19 @@ impl Screen {
                 live: facts.live.clone(),
                 last: facts.last.and_then(|last| last.thumbnail.clone()),
             });
-            // What this letter looks like, as soon as a page has been read.
-            if facts.open_pages > 0 && !facts.guess.is_empty() {
+            // What this letter looks like, as soon as a page has been read —
+            // in the corner while another page is still being read, because
+            // that page may say otherwise. With them all read the headline
+            // says it, and has the whole bar to say it in.
+            if facts.open_pages > 0 && !facts.guess.is_empty() && facts.read != Read::Done {
                 screen.guess = Some(facts.guess.join(" · "));
             }
             // Where the letter before goes stays in sight while the next is
-            // scanned: the paper is still in a hand, or on the pile.
-            screen.last_letter = relevant_filing(facts).map(|filing| {
+            // scanned: the paper is still in a hand, or on the pile. Until
+            // the next has a folder of its own to name, or none: two folders
+            // on one bar are one too many to put a letter in.
+            let answered = facts.open_pages > 0 && facts.read == Read::Done;
+            screen.last_letter = relevant_filing(facts).filter(|_| !answered).map(|filing| {
                 let shown = filing.shown();
                 let (words, _) = where_it_goes(&shown);
                 let words = match &shown {
@@ -508,6 +538,28 @@ fn refile_buttons(facts: &Facts<'_>) -> Vec<Action> {
     .filter(|(refiling, _)| chosen.as_ref() != Some(refiling))
     .map(|(_, action)| action)
     .collect()
+}
+
+/// What to do with the open letter once its last page is dealt with: put the
+/// next one down, or let it finish.
+///
+/// With every page so far read, that starts with where the letter goes. It
+/// is the answer whoever is standing there is waiting for, and it used to
+/// come only as the letter closed — twenty-eight seconds after a page left
+/// lying, for something the rig had known since the eleventh.
+fn next_page(facts: &Facts<'_>) -> String {
+    let folder = match facts.read {
+        Read::Done => Some(facts.guess.first()),
+        _ => None,
+    };
+    match (folder, facts.finishing_in) {
+        (None, Some(seconds)) => format!("Next page? Finishing in {seconds}s"),
+        (None, None) => "Next page, or finish".into(),
+        (Some(Some(folder)), Some(seconds)) => format!("{folder} - finishing in {seconds}s"),
+        (Some(Some(folder)), None) => format!("{folder} - next page?"),
+        (Some(None), Some(seconds)) => format!("No folder - finishing in {seconds}s"),
+        (Some(None), None) => "No folder yet - next page?".into(),
+    }
 }
 
 fn relevant_filing<'a>(facts: &Facts<'a>) -> Option<&'a Filing> {
