@@ -411,6 +411,178 @@ fn the_assistant_drafts_mail_to_someone_else_and_sends_none_of_it() {
     assert!(matches!(empty.event, Some(AssistantEvent::Failed { .. })));
 }
 
+#[test]
+fn the_assistant_forwards_messages_as_one_draft_with_their_text_and_files() {
+    // Found in use: asked to forward eleven booking confirmations, it said it
+    // could not, and opened eleven cards instead.
+    let world = world("draft-forward");
+    let esim = file(&world, 1, &esim_mail(), "Ihre neue e-SIM ist da");
+    let booking = file(
+        &world,
+        2,
+        "From: Hotel <buchung@hotel.example>\r\nTo: dev@kuverta.test\r\n\
+         Subject: Buchungsbestätigung 4711\r\n\r\nIhr Zimmer ist gebucht.\r\n",
+        "Buchungsbestätigung 4711",
+    );
+
+    let drafted = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_forward",
+            json!({"ids": [esim, booking], "to": "clara@example.com", "body": "Hallo Clara,\n\nanbei die beiden."}),
+        ),
+    );
+    let Some(AssistantEvent::Draft {
+        message_id,
+        to,
+        subject,
+        body,
+        attachments,
+        forwards,
+        ..
+    }) = &drafted.event
+    else {
+        panic!("expected a draft, got {:?}", drafted.event);
+    };
+    assert_eq!(*message_id, None, "a new message, not a reply");
+    assert_eq!(to, "clara@example.com");
+    assert_eq!(subject, "Fwd: Ihre neue e-SIM ist da");
+    assert_eq!(forwards, &[esim, booking]);
+    // The note, then each message as a forward reproduces it, in order.
+    assert!(body.starts_with("Hallo Clara,"), "{body}");
+    assert_eq!(body.matches("Forwarded message").count(), 2, "{body}");
+    let first = body
+        .find("Scannen Sie den QR-Code")
+        .expect("the first text");
+    let second = body
+        .find("Ihr Zimmer ist gebucht.")
+        .expect("the second text");
+    assert!(first < second, "{body}");
+    assert!(body.contains("Subject: Buchungsbestätigung 4711"), "{body}");
+    assert!(
+        body.contains("From: Hotel <buchung@hotel.example>"),
+        "{body}"
+    );
+    // Every file the messages carry goes along, and each is there to fetch.
+    assert_eq!(attachments.len(), 4);
+    for file in attachments {
+        assert_eq!(file.message_id, esim);
+        let fetched = world
+            .core
+            .attachment(world.account, file.message_id, file.attachment.index)
+            .unwrap();
+        assert_eq!(fetched.view.name, file.attachment.name);
+    }
+    assert!(drafted.content.contains("you did not send it"));
+
+    // The window reads a file's place beside its name, as it does a
+    // received attachment's.
+    let event = serde_json::to_value(drafted.event.as_ref().unwrap()).unwrap();
+    assert_eq!(event["attachments"][1]["message_id"], esim);
+    assert_eq!(event["attachments"][1]["index"], 1);
+    assert_eq!(event["attachments"][1]["name"], "eSIM QR.png");
+
+    // A forward needs someone to go to, and something to forward.
+    let nobody = world.core.assistant_tool(
+        world.account,
+        &call("draft_forward", json!({"ids": [booking]})),
+    );
+    assert!(matches!(nobody.event, Some(AssistantEvent::Failed { .. })));
+    let nothing = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_forward",
+            json!({"ids": [999], "to": "a@example.com"}),
+        ),
+    );
+    assert!(matches!(nothing.event, Some(AssistantEvent::Failed { .. })));
+}
+
+#[test]
+fn a_draft_carries_a_file_out_of_another_message() {
+    let world = world("draft-file");
+    let esim = file(&world, 1, &esim_mail(), "Ihre neue e-SIM ist da");
+    let question = file(
+        &world,
+        2,
+        "From: Clara <clara@example.com>\r\nSubject: QR-Code?\r\n\r\nSchickst du ihn mir?\r\n",
+        "QR-Code? Schickst du ihn mir?",
+    );
+
+    // In a reply to someone else — the index as a small model sends it, as
+    // text, and named twice.
+    let drafted = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_reply",
+            json!({"id": question, "body": "Hier ist er.", "attachments": [
+                {"message_id": esim, "attachment": "1"},
+                {"message_id": esim, "attachment": 1},
+            ]}),
+        ),
+    );
+    match &drafted.event {
+        Some(AssistantEvent::Draft {
+            message_id,
+            attachments,
+            forwards,
+            ..
+        }) => {
+            assert_eq!(*message_id, Some(question));
+            assert_eq!(attachments.len(), 1, "named twice, attached once");
+            assert_eq!(attachments[0].message_id, esim);
+            assert_eq!(attachments[0].attachment.name, "eSIM QR.png");
+            assert!(forwards.is_empty());
+        }
+        other => panic!("expected a draft, got {other:?}"),
+    }
+    let result: serde_json::Value = serde_json::from_str(&drafted.content).unwrap();
+    assert_eq!(result["attached"], 1);
+
+    // In a new message.
+    let drafted = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_message",
+            json!({"to": "clara@example.com", "subject": "Vertrag", "body": "Anbei.", "attachments": [{"message_id": esim, "attachment": 2}]}),
+        ),
+    );
+    match &drafted.event {
+        Some(AssistantEvent::Draft { attachments, .. }) => {
+            assert_eq!(attachments[0].attachment.content_type, "application/pdf");
+        }
+        other => panic!("expected a draft, got {other:?}"),
+    }
+
+    // A file that is not there is said, not left out.
+    let missing = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_message",
+            json!({"to": "clara@example.com", "subject": "x", "body": "y", "attachments": [{"message_id": question, "attachment": 0}]}),
+        ),
+    );
+    assert!(
+        missing.content.contains("has no attachment"),
+        "{}",
+        missing.content
+    );
+    assert!(matches!(missing.event, Some(AssistantEvent::Failed { .. })));
+
+    // A forward does not attach twice what it already carries.
+    let forwarded = world.core.assistant_tool(
+        world.account,
+        &call(
+            "draft_forward",
+            json!({"ids": [esim], "to": "clara@example.com", "attachments": [{"message_id": esim, "attachment": 1}]}),
+        ),
+    );
+    match &forwarded.event {
+        Some(AssistantEvent::Draft { attachments, .. }) => assert_eq!(attachments.len(), 4),
+        other => panic!("expected a draft, got {other:?}"),
+    }
+}
+
 #[tokio::test]
 async fn the_assistant_reads_what_is_in_an_attachment_not_only_its_name() {
     let world = world("read-attachment");
