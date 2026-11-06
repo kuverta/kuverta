@@ -443,8 +443,14 @@ headless Pi needs no screen, no desktop and no second program: open
   (`rpicam-still --list-cameras`, and the log says which it found), so
   another camera on the rig is photographed at its own; `--sensor-width` and
   `--sensor-height` say it instead, and a camera that cannot be asked is
-  taken for a Pi camera v1. Also the Paperless address, token and tags, and
-  **Check connection**.
+  taken for a Pi camera v1. A camera that answered is also told which of its
+  modes to read in (`--mode`): the one of half the sensor each way for the
+  live view and the picture of the whole view, the full one for photographs.
+  Left to choose for a small picture, `rpicam-still` takes the sensor's
+  smallest mode, and a v2's 640×480 is only the middle two fifths of what it
+  sees — the live view showed the middle of a letter, two and a half times
+  too big. Also the Paperless address, token and tags, and **Check
+  connection**.
 - **The camera looks at the table at an angle**, for a camera that cannot be
   mounted straight above the table, where a page shows as a trapezium. Instead
   of a box there are four corners to drag onto the corners of a page lying

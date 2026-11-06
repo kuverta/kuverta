@@ -68,6 +68,16 @@ pub struct RpiCamera {
     /// the camera that is there.
     pub sensor_width: u32,
     pub sensor_height: u32,
+    /// The sensor mode — a width and height the sensor is read at — for
+    /// previews and pictures of the whole view, and the one for photographs.
+    /// `None` leaves it to the camera program, which takes the mode nearest
+    /// the picture's size: and a sensor's small modes may be a cut from its
+    /// middle. The v2's 640×480 is the middle two fifths of it, so a 320×240
+    /// preview showed the page two and a half times too big, and nothing of
+    /// its edges. [`Sensor::view_mode`] and [`Sensor::capture_mode`] see the
+    /// whole of the sensor.
+    pub view_mode: Option<(u32, u32)>,
+    pub capture_mode: Option<(u32, u32)>,
     /// Previews from a video stream this program keeps running —
     /// `rpicam-vid` — at `stream_fps` frames a second. `None`: a still for
     /// each frame, as before.
@@ -96,6 +106,8 @@ pub struct Sensor {
     pub model: String,
     pub width: u32,
     pub height: u32,
+    /// The sizes it can be read at, as listed.
+    pub modes: Vec<(u32, u32)>,
 }
 
 impl Sensor {
@@ -122,25 +134,74 @@ impl Sensor {
     }
 
     /// The first camera of a `--list-cameras` listing, which is the one
-    /// photographed with when none is chosen:
+    /// photographed with when none is chosen, and the modes listed under it:
     ///
     /// ```text
     /// 0 : imx219 [3280x2464 10-bit RGGB] (/base/soc/i2c0mux/i2c@1/imx219@10)
+    ///     Modes: 'SRGGB10_CSI2P' : 640x480 [206.65 fps - (1000, 752)/1280x960 crop]
+    ///                              1640x1232 [41.85 fps - (0, 0)/3280x2464 crop]
     /// ```
     pub fn parse(listing: &str) -> Option<Sensor> {
-        listing.lines().find_map(|line| {
+        let camera = |line: &str| {
             let (index, rest) = line.trim().split_once(" : ")?;
             index.parse::<u32>().ok()?;
             let (model, rest) = rest.split_once('[')?;
-            let size = rest.split([' ', ']']).next()?;
-            let (width, height) = size.split_once('x')?;
-            let (width, height) = (width.parse().ok()?, height.parse().ok()?);
-            (width > 0 && height > 0).then(|| Sensor {
+            let (width, height) = size(rest.split([' ', ']']).next()?)?;
+            Some(Sensor {
                 model: model.trim().to_string(),
                 width,
                 height,
+                modes: Vec::new(),
             })
-        })
+        };
+        let mut lines = listing.lines();
+        let mut sensor = lines.find_map(camera)?;
+        for line in lines.take_while(|line| camera(line).is_none()) {
+            // `1640x1232 [41.85 fps - …]`, after the format's name or alone.
+            let mode = line
+                .split_once(" [")
+                .and_then(|(before, _)| size(before.split_whitespace().last()?));
+            if let Some(mode) = mode.filter(|mode| !sensor.modes.contains(mode)) {
+                sensor.modes.push(mode);
+            }
+        }
+        Some(sensor)
+    }
+
+    /// The mode for previews and pictures of the whole view: one that sees
+    /// all of the sensor, and the cheapest of those that can be told.
+    ///
+    /// Which modes are a cut from the middle the listing says, but not so it
+    /// can be believed — the rig's lists every mode's as 65535×65535. What
+    /// does hold for the Pi's cameras is that the mode of exactly half the
+    /// sensor each way is the whole of it, its pixels read four at a time. A
+    /// sensor without one is read whole.
+    pub fn view_mode(&self) -> (u32, u32) {
+        let half = (self.width / 2, self.height / 2);
+        if (half.0 * 2, half.1 * 2) == self.capture_mode() && self.modes.contains(&half) {
+            half
+        } else {
+            self.capture_mode()
+        }
+    }
+
+    /// The mode for photographs: every pixel there is.
+    pub fn capture_mode(&self) -> (u32, u32) {
+        (self.width, self.height)
+    }
+}
+
+/// `3280x2464`, as numbers.
+fn size(text: &str) -> Option<(u32, u32)> {
+    let (width, height) = text.split_once('x')?;
+    let (width, height) = (width.parse().ok()?, height.parse().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+/// `--mode 1640:1232`, for a camera whose mode is chosen.
+fn in_mode(command: &mut Command, mode: Option<(u32, u32)>) {
+    if let Some((width, height)) = mode {
+        command.args(["--mode", &format!("{width}:{height}")]);
     }
 }
 
@@ -201,6 +262,8 @@ impl Default for RpiCamera {
             settle_ms: 200,
             sensor_width: 2592,
             sensor_height: 1944,
+            view_mode: None,
+            capture_mode: None,
             video_program: None,
             stream_fps: 5,
             stream_state: StreamState::default(),
@@ -292,6 +355,7 @@ impl RpiCamera {
         if let Some(roi) = &self.roi {
             command.args(["--roi", roi]);
         }
+        in_mode(&mut command, self.view_mode);
         let mut child = command
             .spawn()
             .with_context(|| format!("could not run {program}"))?;
@@ -336,6 +400,7 @@ impl RpiCamera {
         if let Some(roi) = roi {
             command.args(["--roi", roi]);
         }
+        in_mode(&mut command, self.view_mode);
 
         let output = run(&self.program, &mut command)?;
 
@@ -383,6 +448,7 @@ impl Camera for RpiCamera {
             .args(["--width", "1024", "--height", "768"])
             .args(["--timeout", &self.settle_ms.to_string()])
             .args(["--output", "-"]);
+        in_mode(&mut command, self.view_mode);
         let jpeg = run(&self.program, &mut command)?;
         if !jpeg.starts_with(&[0xFF, 0xD8]) {
             bail!("{} did not return a JPEG", self.program);
@@ -418,6 +484,7 @@ impl Camera for RpiCamera {
         if ev != 0.0 {
             command.args(["--ev", &format!("{ev:.1}")]);
         }
+        in_mode(&mut command, self.capture_mode);
         if let Some((width, height)) = self.capture_size() {
             command.args([
                 "--width",
