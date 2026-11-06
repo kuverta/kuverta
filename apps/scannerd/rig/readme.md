@@ -1,8 +1,14 @@
 # The rig
 
 The scanner on the shelf: a Raspberry Pi 4 on 64-bit Raspberry Pi OS Lite,
-an OV5647 camera, a 3.5″ SPI LCD with touch, and Paperless-ngx running beside
-scannerd so the letters it photographs are read on the same Pi.
+a Pi camera v2 (IMX219; an OV5647 before it), a 3.5″ SPI LCD with touch, and
+Paperless-ngx running beside scannerd so the letters it photographs are read
+on the same Pi.
+
+scannerd asks the camera which sensor it is when it starts, so a different
+camera needs nothing set here. What it does need is on the setup page: a lens
+with another angle of view puts the page somewhere else in the frame, so the
+crop or the corners are set again, and the empty table learnt again.
 
 Everything on it comes from this directory except three things:
 
