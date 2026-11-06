@@ -26,7 +26,7 @@ use clap::Parser;
 use scannerd::button::Button;
 use scannerd::camera::{Camera, RpiCamera, Sensor};
 use scannerd::detect::State;
-use scannerd::display::{Confirming, Display, Facts, Screen};
+use scannerd::display::{Confirming, Display, Facts, Read, Screen};
 use scannerd::folders::{self, Folder};
 use scannerd::hub::{Command, Event, Hub, Queued, SettingsView};
 use scannerd::lcd::Bands;
@@ -672,6 +672,11 @@ async fn main() -> Result<()> {
                 can_refile: scanner.can_refile(now),
                 queue: &waiting,
                 guess: &guess,
+                read: match scanner.still_reading() {
+                    None => Read::Never,
+                    Some(true) => Read::Reading,
+                    Some(false) => Read::Done,
+                },
                 showing_queue,
                 confirming: confirming
                     .filter(|(_, at)| now.saturating_sub(*at) < CONFIRM_SECS)
