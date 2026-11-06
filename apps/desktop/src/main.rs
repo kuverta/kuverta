@@ -2273,6 +2273,10 @@ async fn quote_letter(
 
 /// Posts a document. Written down as on its way first, so that if kuverta
 /// stops before LetterXpress answers, the letter says it may have gone.
+///
+/// A letter that went to be printed is then filed in the account's Sent
+/// folder, on a thread of its own for the reason [`send`] has one. That it
+/// could not be filed is said beside the letter, never instead of it.
 #[tauri::command]
 async fn send_letter(
     app: State<'_, App>,
@@ -2281,7 +2285,7 @@ async fn send_letter(
     spec: core_rpc::LetterSpec,
     address: Option<core_rpc::LetterAddress>,
     quoted: Option<f64>,
-) -> Result<core_rpc::LetterView, String> {
+) -> Result<core_rpc::PostedLetter, String> {
     let (order, letter) = {
         let core = app.core.lock().unwrap();
         let order = core
@@ -2291,14 +2295,40 @@ async fn send_letter(
         (order, letter)
     };
     let sent = core_rpc::letters::submit(&order).await;
-    let core = app.core.lock().unwrap();
-    match sent {
-        Ok(job) => core.record_letter(letter, &job).map_err(fail),
-        Err(err) => {
-            core.letter_failed(letter, &err.to_string()).map_err(fail)?;
-            Err(err.to_string())
+    let letter = {
+        let core = app.core.lock().unwrap();
+        match sent {
+            Ok(job) => core.record_letter(letter, &job).map_err(fail)?,
+            Err(err) => {
+                core.letter_failed(letter, &err.to_string()).map_err(fail)?;
+                return Err(err.to_string());
+            }
         }
-    }
+    };
+
+    // Everything past this point is best-effort. The letter has gone.
+    let data_dir = app.data_dir.clone();
+    let (id, pdf) = (letter.id, order.pdf);
+    let filed = tauri::async_runtime::spawn_blocking(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(fail)?;
+        runtime
+            .block_on(core_rpc::Session::new(data_dir).file_letter(id, &pdf))
+            .map_err(fail)
+    })
+    .await
+    .unwrap_or_else(|err| Err(format!("the filing thread did not finish: {err}")));
+    let (filed_in, filing_error) = match filed {
+        Ok(folder) => (folder, None),
+        Err(err) => (None, Some(err)),
+    };
+    Ok(core_rpc::PostedLetter {
+        letter,
+        filed_in,
+        filing_error,
+    })
 }
 
 /// The PDF as it would go in the envelope, address and all, for the

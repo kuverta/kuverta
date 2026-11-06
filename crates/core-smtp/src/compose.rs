@@ -88,6 +88,14 @@ impl Mailbox {
         self.address.to_lowercase()
     }
 
+    /// The part after the `@`, which a Message-ID is made under.
+    fn domain(&self) -> &str {
+        self.address
+            .rsplit_once('@')
+            .map(|(_, domain)| domain)
+            .unwrap_or("localhost")
+    }
+
     fn validate(&self, header: &'static str) -> Result<()> {
         if let Some(name) = &self.name {
             if name.chars().any(is_header_break) {
@@ -480,13 +488,7 @@ impl Draft {
             return Err(ComposeError::NoRecipients);
         }
 
-        let domain = self
-            .from
-            .address
-            .rsplit_once('@')
-            .map(|(_, domain)| domain)
-            .unwrap_or("localhost");
-        let message_id = generate_message_id(domain);
+        let message_id = generate_message_id(self.from.domain());
 
         let mut builder = MessageBuilder::new()
             .message_id(message_id.clone())
@@ -550,6 +552,64 @@ pub struct BuiltMessage {
     /// sends on behalf of one mailbox at a time, so there is no case where the
     /// envelope sender and the header sender differ.
     pub sender: String,
+}
+
+/// A record of something that went another way than mail — a letter posted
+/// on paper — as a message, so that it can be filed in Sent beside the mail.
+///
+/// It is never submitted, so it has no envelope, and the only address in it
+/// is the account's own, in From. Who it went to is a name, written as a
+/// group with nobody in it (`To: Name:;`): a mail program lists the record
+/// under that name, and a reply has no address to go to. An address made up
+/// to carry the name would be one, and the account's own address there
+/// would make every record a note to oneself.
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub from: Mailbox,
+    /// Who it went to, as a name. Empty leaves the header out.
+    pub to: String,
+    pub subject: String,
+    pub body: String,
+    /// When it went, in Unix seconds: the `Date` header, so that a record
+    /// filed later still sorts where the thing itself belongs.
+    pub date_utc: i64,
+    pub attachments: Vec<Attachment>,
+}
+
+impl Record {
+    /// Serialises the record. The same care as [`Draft::build`] takes with
+    /// what ends up in a header, and no envelope: there is nobody to send
+    /// it to.
+    pub fn build(&self) -> Result<Vec<u8>> {
+        self.from.validate("From")?;
+        if self.to.chars().any(is_header_break) {
+            return Err(ComposeError::HeaderInjection { header: "To" });
+        }
+        if self.subject.chars().any(is_header_break) {
+            return Err(ComposeError::HeaderInjection { header: "Subject" });
+        }
+
+        let mut builder = MessageBuilder::new()
+            .message_id(generate_message_id(self.from.domain()))
+            .from(self.from.to_builder())
+            .subject(self.subject.clone())
+            .date(self.date_utc)
+            .text_body(normalize_newlines(&self.body));
+        if !self.to.trim().is_empty() {
+            builder = builder.to(Address::new_group(
+                Some(self.to.trim().to_string()),
+                Vec::new(),
+            ));
+        }
+        for attachment in &self.attachments {
+            builder = builder.attachment(
+                attachment.header_type(),
+                attachment.header_name(),
+                attachment.data.clone(),
+            );
+        }
+        Ok(builder.write_to_vec()?)
+    }
 }
 
 fn address_list(mailboxes: &[Mailbox]) -> Address<'static> {
@@ -1189,6 +1249,63 @@ mod tests {
             message.attachment(1).unwrap().attachment_name(),
             Some("attachment")
         );
+    }
+
+    #[test]
+    fn a_record_names_who_it_went_to_without_an_address_and_keeps_its_date() {
+        let pdf = b"%PDF-1.4 not really";
+        let record = Record {
+            from: me(),
+            to: "Gärtnerei Muster GmbH & Co. KG".into(),
+            subject: "Letter by post: Kündigung".into(),
+            body: "Posted.\n".into(),
+            date_utc: 1_780_000_000,
+            attachments: vec![file("Kündigung.pdf", "application/pdf", pdf)],
+        };
+        let raw = record.build().unwrap();
+        let message = mail_parser::MessageParser::default().parse(&raw).unwrap();
+
+        assert_eq!(message.subject(), Some("Letter by post: Kündigung"));
+        assert_eq!(
+            message.date().map(|date| date.to_timestamp()),
+            Some(1_780_000_000)
+        );
+        assert_eq!(first_mailbox(message.from()), Some(me()));
+        // A name, and nobody a reply could reach.
+        match message.to() {
+            Some(mail_parser::Address::Group(groups)) => {
+                assert_eq!(groups.len(), 1);
+                assert_eq!(
+                    groups[0].name.as_deref(),
+                    Some("Gärtnerei Muster GmbH & Co. KG")
+                );
+                assert!(groups[0].addresses.is_empty());
+            }
+            other => panic!("not a group: {other:?}"),
+        }
+        assert!(message.message_id().is_some());
+        assert_eq!(message.body_text(0).as_deref(), Some("Posted.\r\n"));
+        let part = message.attachment(0).unwrap();
+        assert_eq!(part.attachment_name(), Some("Kündigung.pdf"));
+        assert_eq!(part.contents(), pdf);
+
+        // What goes in a header cannot write one.
+        let forged = Record {
+            to: "Erika\r\nBcc: x@example.com".into(),
+            ..record.clone()
+        };
+        assert!(matches!(
+            forged.build(),
+            Err(ComposeError::HeaderInjection { header: "To" })
+        ));
+        // With nobody named there is no To at all, rather than an empty one.
+        let nameless = Record {
+            to: " ".into(),
+            ..record
+        };
+        let raw = nameless.build().unwrap();
+        let message = mail_parser::MessageParser::default().parse(&raw).unwrap();
+        assert!(message.to().is_none());
     }
 
     #[test]

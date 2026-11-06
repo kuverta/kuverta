@@ -512,6 +512,14 @@ impl Session {
             tracing::warn!(account = %account.email, %err, "the assistant's notes did not sync");
         }
 
+        // So do the letters posted on paper whose record is not in Sent:
+        // filing it failed when they went, or they went before kuverta filed
+        // them at all. The server has just answered, which is the moment to
+        // try; a failure is tried again at the next sync.
+        if let Err(err) = self.file_letters(&account.email).await {
+            tracing::warn!(account = %account.email, %err, "a posted letter was not filed in Sent");
+        }
+
         Ok(SyncSummary {
             email: account.email,
             changes_sent: flushed.applied,
@@ -880,6 +888,18 @@ fn protection(input: &DraftInput) -> Protection {
     }
 }
 
+/// The account as the sender of a message.
+///
+/// The label doubles as the display name, unless it is just the address
+/// again — in which case a `Name <addr>` header would only repeat itself.
+pub(crate) fn own_mailbox(account: &Account) -> Mailbox {
+    if account.label == account.email {
+        Mailbox::new(account.email.clone())
+    } else {
+        Mailbox::named(account.label.clone(), account.email.clone())
+    }
+}
+
 /// Assembles the draft, resolving a reply or forward from the store.
 fn build_draft(
     store: &Store,
@@ -888,13 +908,7 @@ fn build_draft(
     account: &Account,
     input: &DraftInput,
 ) -> Result<Draft> {
-    // The label doubles as the display name, unless it is just the address
-    // again — in which case a `Name <addr>` header would only repeat itself.
-    let from = if account.label == account.email {
-        Mailbox::new(account.email.clone())
-    } else {
-        Mailbox::named(account.label.clone(), account.email.clone())
-    };
+    let from = own_mailbox(account);
 
     let mut draft = match (input.reply_to, input.forward) {
         (Some(id), _) => {
@@ -1045,7 +1059,7 @@ async fn file_in_drafts(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) 
 /// copy is in the store — and in Sent in the window — when the send returns
 /// rather than at the next sync. A failure to sync is only logged: the copy
 /// is filed, and the next sync finds it.
-async fn file_copy_in_sent(
+pub(crate) async fn file_copy_in_sent(
     account: &Account,
     auth: &dyn AuthProvider,
     raw: &[u8],
