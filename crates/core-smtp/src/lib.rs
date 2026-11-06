@@ -14,5 +14,7 @@
 pub mod compose;
 pub mod submit;
 
-pub use compose::{Attachment, BuiltMessage, ComposeError, Draft, Mailbox, ReplyMode, ReplySource};
+pub use compose::{
+    Attachment, BuiltMessage, ComposeError, Draft, Mailbox, Record, ReplyMode, ReplySource,
+};
 pub use submit::{submit, verify, SubmitError};

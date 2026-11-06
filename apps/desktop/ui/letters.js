@@ -302,11 +302,23 @@ el("letter-send").onclick = async () => {
       quoted: quote.price,
     });
     closeLetterSheet();
-    say(
-      letter.mode === "test"
-        ? t("{name} is in the LetterXpress Postbox", { name: doc.name })
-        : t("{name} is with LetterXpress, to be printed and posted", { name: doc.name }),
-    );
+    // A letter that is printed is filed in Sent, as mail is. That it could
+    // not be is said with the letter having gone, which it has.
+    if (letter.filing_error) {
+      say(
+        t("{name} is with LetterXpress, to be printed and posted — but not filed: {error}", {
+          name: doc.name,
+          error: letter.filing_error,
+        }),
+        true,
+      );
+    } else {
+      say(
+        letter.mode === "test"
+          ? t("{name} is in the LetterXpress Postbox", { name: doc.name })
+          : t("{name} is with LetterXpress, to be printed and posted", { name: doc.name }),
+      );
+    }
     onSent?.(letter);
   } catch (err) {
     send.disabled = false;

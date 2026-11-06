@@ -10,6 +10,10 @@
 //! a crash says a letter may have gone, which is the truth, and nothing
 //! sends it again by itself. The store does not know what a spec is —
 //! core-rpc writes it as JSON and reads it back.
+//!
+//! A letter that was printed is also filed in the account's Sent folder, as
+//! a message. `letter_filed` says which have been: claimed before the
+//! message is appended and released if that fails, so none is filed twice.
 
 use rusqlite::{params, OptionalExtension};
 
@@ -193,6 +197,39 @@ impl Store {
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
     }
+
+    /// Takes a letter to file in Sent: `true` for the one caller that may,
+    /// `false` when it is filed already or somebody else is at it.
+    pub fn claim_letter_filing(&self, id: i64) -> Result<bool> {
+        let claimed = self.conn.execute(
+            "INSERT OR IGNORE INTO letter_filed (letter_id, at) VALUES (?1, ?2)",
+            params![id, crate::now()],
+        )?;
+        Ok(claimed == 1)
+    }
+
+    /// Gives a letter back unfiled: the message did not reach Sent.
+    pub fn release_letter_filing(&self, id: i64) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM letter_filed WHERE letter_id = ?1", params![id])?;
+        Ok(())
+    }
+
+    /// An account's letters that were printed and have no record in Sent
+    /// yet, oldest first. Only those whose document is still there: the
+    /// record carries the PDF, and without it there is nothing to file.
+    pub fn letters_to_file(&self, account_id: AccountId) -> Result<Vec<StoredLetter>> {
+        let mut statement = self.conn.prepare(&format!(
+            "SELECT {COLUMNS} FROM letter
+             WHERE account_id = ?1 AND mode = 'live' AND state = 'sent'
+               AND document_id IS NOT NULL
+               AND id NOT IN (SELECT letter_id FROM letter_filed)
+             ORDER BY created_at, id"
+        ))?;
+        let rows = statement.query_map(params![account_id], row_to_letter)?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
 }
 
 #[cfg(test)]
@@ -317,5 +354,78 @@ mod tests {
         let letter = store.letter(failed).unwrap().unwrap();
         assert_eq!(letter.state, "failed");
         assert_eq!(letter.last_error.as_deref(), Some("Unauthorized."));
+    }
+
+    #[test]
+    fn only_a_printed_letter_with_its_document_waits_to_be_filed_and_only_once() {
+        let store = Store::open_in_memory().unwrap();
+        let account = account(&store);
+        let document = store
+            .add_document(&NewDocument {
+                account_id: account,
+                name: "Kündigung.pdf",
+                note: None,
+                signed: true,
+                pages: Some(1),
+                pdf: b"%PDF-1.5",
+                signed_from: None,
+            })
+            .unwrap();
+        let letter = |mode: &'static str, document_id: Option<i64>| {
+            store
+                .begin_letter(&NewLetter {
+                    account_id: account,
+                    document_id,
+                    name: "Kündigung.pdf",
+                    mode,
+                    spec: "{}",
+                    pages: 1,
+                    quoted: None,
+                })
+                .unwrap()
+        };
+        let taken = |id: i64| {
+            let job = LetterJob {
+                job_id: id,
+                job_status: "queue",
+                ..Default::default()
+            };
+            store.record_letter_job(id, &job).unwrap();
+        };
+        let waiting = || -> Vec<i64> {
+            store
+                .letters_to_file(account)
+                .unwrap()
+                .iter()
+                .map(|letter| letter.id)
+                .collect()
+        };
+
+        let printed = letter("live", Some(document));
+        // Still on its way: LetterXpress has not said it took it.
+        assert!(waiting().is_empty());
+        taken(printed);
+        // In the Postbox, never printed; printed, but its document is gone;
+        // refused; taken back.
+        taken(letter("test", Some(document)));
+        taken(letter("live", None));
+        store
+            .letter_failed(letter("live", Some(document)), "Unauthorized.")
+            .unwrap();
+        let back = letter("live", Some(document));
+        taken(back);
+        store.letter_cancelled(back).unwrap();
+        assert_eq!(waiting(), vec![printed]);
+
+        assert!(store.claim_letter_filing(printed).unwrap());
+        assert!(
+            !store.claim_letter_filing(printed).unwrap(),
+            "claimed twice"
+        );
+        assert!(waiting().is_empty());
+        // The message did not reach Sent: it waits again.
+        store.release_letter_filing(printed).unwrap();
+        assert_eq!(waiting(), vec![printed]);
+        assert!(store.claim_letter_filing(printed).unwrap());
     }
 }

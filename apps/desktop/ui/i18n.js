@@ -1503,6 +1503,8 @@ const GERMAN = {
     "Das Guthaben reicht nicht für den Brief; LetterXpress hält ihn zurück, bis es aufgeladen ist.",
   "{name} is in the LetterXpress Postbox": "{name} liegt in der Postbox von LetterXpress",
   "{name} is with LetterXpress, to be printed and posted": "{name} ist bei LetterXpress und wird gedruckt und verschickt",
+  "{name} is with LetterXpress, to be printed and posted — but not filed: {error}":
+    "{name} ist bei LetterXpress und wird gedruckt und verschickt — aber nicht abgelegt: {error}",
   "Sent to LetterXpress on {when}, without an answer. It may have gone: look on the LetterXpress site before sending it again.":
     "Am {when} an LetterXpress geschickt, ohne Antwort. Er ist vielleicht unterwegs: Sehen Sie auf der Seite von LetterXpress nach, bevor Sie ihn noch einmal schicken.",
   "Not posted: {error}": "Nicht verschickt: {error}",
