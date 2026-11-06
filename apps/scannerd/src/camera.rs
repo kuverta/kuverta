@@ -64,7 +64,8 @@ pub struct RpiCamera {
     /// Milliseconds the sensor is given to settle before a frame is taken.
     pub settle_ms: u32,
     /// The sensor's full size in pixels, which a crop's photograph is a share
-    /// of. The Pi camera v1 (OV5647) is 2592×1944.
+    /// of. The Pi camera v1 (OV5647) is 2592×1944; [`Sensor::detect`] asks
+    /// the camera that is there.
     pub sensor_width: u32,
     pub sensor_height: u32,
     /// Previews from a video stream this program keeps running —
@@ -82,6 +83,65 @@ pub struct RpiCamera {
     /// The running stream, shared by clones. Opaque: `..Default::default()`
     /// fills it.
     pub stream_state: StreamState,
+}
+
+/// The camera that is attached, as the capture program lists it.
+///
+/// The sensor's size was a setting, with the v1's as its default — and a v2
+/// put where the v1 had been was photographed at the v1's pixels, its extra
+/// ones scaled away, until somebody remembered the setting.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Sensor {
+    /// The sensor's name as the kernel has it: `ov5647`, `imx219`.
+    pub model: String,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Sensor {
+    /// Asks `program --list-cameras` which camera it would photograph with.
+    pub fn detect(program: &str) -> Result<Sensor> {
+        let output = Command::new(program)
+            .arg("--list-cameras")
+            .output()
+            .with_context(|| format!("could not run {program}"))?;
+        // The list has been on standard output and on standard error, by
+        // version.
+        let listing = format!(
+            "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        match Sensor::parse(&listing) {
+            Some(sensor) => Ok(sensor),
+            None if !output.status.success() => {
+                bail!("{program} --list-cameras failed: {}", listing.trim())
+            }
+            None => bail!("{program} lists no camera"),
+        }
+    }
+
+    /// The first camera of a `--list-cameras` listing, which is the one
+    /// photographed with when none is chosen:
+    ///
+    /// ```text
+    /// 0 : imx219 [3280x2464 10-bit RGGB] (/base/soc/i2c0mux/i2c@1/imx219@10)
+    /// ```
+    pub fn parse(listing: &str) -> Option<Sensor> {
+        listing.lines().find_map(|line| {
+            let (index, rest) = line.trim().split_once(" : ")?;
+            index.parse::<u32>().ok()?;
+            let (model, rest) = rest.split_once('[')?;
+            let size = rest.split([' ', ']']).next()?;
+            let (width, height) = size.split_once('x')?;
+            let (width, height) = (width.parse().ok()?, height.parse().ok()?);
+            (width > 0 && height > 0).then(|| Sensor {
+                model: model.trim().to_string(),
+                width,
+                height,
+            })
+        })
+    }
 }
 
 /// Whatever stream an [`RpiCamera`] has running, and the last of its frames

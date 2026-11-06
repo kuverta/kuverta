@@ -438,9 +438,13 @@ headless Pi needs no screen, no desktop and no second program: open
   colour, finds the page (the largest bright area) and puts a box around it;
   move the box, drag its corners, or draw a new one, then **Save this area**.
   The crop may be any shape: the photograph is taken at the crop's own share
-  of the sensor (`--sensor-width`/`--sensor-height`, a Pi camera v1 by
-  default), so a page-shaped crop is not stretched to 4:3. Also the Paperless
-  address, token and tags, and **Check connection**.
+  of the sensor, so a page-shaped crop is not stretched to 4:3. How many
+  pixels the sensor has is asked of the camera when scannerd starts
+  (`rpicam-still --list-cameras`, and the log says which it found), so
+  another camera on the rig is photographed at its own; `--sensor-width` and
+  `--sensor-height` say it instead, and a camera that cannot be asked is
+  taken for a Pi camera v1. Also the Paperless address, token and tags, and
+  **Check connection**.
 - **The camera looks at the table at an angle**, for a camera that cannot be
   mounted straight above the table, where a page shows as a trapezium. Instead
   of a box there are four corners to drag onto the corners of a page lying

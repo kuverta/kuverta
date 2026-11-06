@@ -24,7 +24,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use anyhow::{bail, Context, Result};
 use clap::Parser;
 use scannerd::button::Button;
-use scannerd::camera::{Camera, RpiCamera};
+use scannerd::camera::{Camera, RpiCamera, Sensor};
 use scannerd::detect::State;
 use scannerd::display::{Confirming, Display, Facts, Screen};
 use scannerd::folders::{self, Folder};
@@ -95,14 +95,15 @@ struct Args {
     camera: String,
 
     /// The camera sensor's full width in pixels, which a crop's photograph is
-    /// a share of. 2592×1944 is the Pi camera v1; the v2 is 3280×2464, the v3
-    /// 4608×2592.
-    #[arg(long, env = "SCANNERD_SENSOR_WIDTH", default_value_t = 2592)]
-    sensor_width: u32,
+    /// a share of. Left out, the camera is asked — 2592×1944 for the Pi
+    /// camera v1, 3280×2464 for the v2, 4608×2592 for the v3 — and a camera
+    /// that cannot be asked is taken for a v1.
+    #[arg(long, env = "SCANNERD_SENSOR_WIDTH")]
+    sensor_width: Option<u32>,
 
     /// The camera sensor's full height in pixels.
-    #[arg(long, env = "SCANNERD_SENSOR_HEIGHT", default_value_t = 1944)]
-    sensor_height: u32,
+    #[arg(long, env = "SCANNERD_SENSOR_HEIGHT")]
+    sensor_height: Option<u32>,
 
     /// How long between turns of the loop. With the preview stream each turn
     /// also waits for the stream's next frame.
@@ -290,8 +291,7 @@ async fn main() -> Result<()> {
     let mut camera = RpiCamera::default();
     camera.program = args.camera.clone();
     camera.roi = view.roi.clone();
-    camera.sensor_width = args.sensor_width;
-    camera.sensor_height = args.sensor_height;
+    (camera.sensor_width, camera.sensor_height) = sensor_size(&args, &camera);
     // The stream is rpicam-vid's, beside rpicam-still. Another camera program
     // — the ffmpeg stand-in on a laptop — takes a still for every frame.
     if args.preview_fps > 0 && args.camera == "rpicam-still" {
@@ -715,6 +715,39 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
     settings
         .effective_view(args.roi.as_deref(), args.corners.as_deref(), args.rotate)
         .context("the crop, corners or turn are not usable")
+}
+
+/// The sensor's size in pixels: what was given, and failing that the
+/// camera's own answer — so another camera on the rig is photographed at its
+/// own pixels without anything being set. A camera that cannot be asked, the
+/// ffmpeg stand-in among them, keeps the size `camera` came with.
+fn sensor_size(args: &Args, camera: &RpiCamera) -> (u32, u32) {
+    if let (Some(width), Some(height)) = (args.sensor_width, args.sensor_height) {
+        return (width, height);
+    }
+    let (width, height) = match Sensor::detect(&camera.program) {
+        Ok(sensor) => {
+            tracing::info!(
+                model = %sensor.model,
+                width = sensor.width,
+                height = sensor.height,
+                "camera recognised"
+            );
+            (sensor.width, sensor.height)
+        }
+        Err(error) => {
+            tracing::warn!(
+                width = camera.sensor_width,
+                height = camera.sensor_height,
+                "camera not recognised, photographing at the usual size: {error:#}"
+            );
+            (camera.sensor_width, camera.sensor_height)
+        }
+    };
+    (
+        args.sensor_width.unwrap_or(width),
+        args.sensor_height.unwrap_or(height),
+    )
 }
 
 /// How often a scanner with no folders of its own asks Paperless for the
