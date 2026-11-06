@@ -291,7 +291,7 @@ async fn main() -> Result<()> {
     let mut camera = RpiCamera::default();
     camera.program = args.camera.clone();
     camera.roi = view.roi.clone();
-    (camera.sensor_width, camera.sensor_height) = sensor_size(&args, &camera);
+    recognise(&args, &mut camera);
     // The stream is rpicam-vid's, beside rpicam-still. Another camera program
     // — the ffmpeg stand-in on a laptop — takes a still for every frame.
     if args.preview_fps > 0 && args.camera == "rpicam-still" {
@@ -717,37 +717,34 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
         .context("the crop, corners or turn are not usable")
 }
 
-/// The sensor's size in pixels: what was given, and failing that the
-/// camera's own answer — so another camera on the rig is photographed at its
-/// own pixels without anything being set. A camera that cannot be asked, the
-/// ffmpeg stand-in among them, keeps the size `camera` came with.
-fn sensor_size(args: &Args, camera: &RpiCamera) -> (u32, u32) {
-    if let (Some(width), Some(height)) = (args.sensor_width, args.sensor_height) {
-        return (width, height);
-    }
-    let (width, height) = match Sensor::detect(&camera.program) {
+/// Asks the camera which sensor it is, and has it photographed with as that
+/// one: at its own pixels, so another camera on the rig needs nothing set,
+/// and in modes that see the whole of it. A size that was given stands. A
+/// camera that cannot be asked — the ffmpeg stand-in among them — is left as
+/// `camera` came, a Pi camera v1 in whatever modes the program picks.
+fn recognise(args: &Args, camera: &mut RpiCamera) {
+    match Sensor::detect(&camera.program) {
         Ok(sensor) => {
             tracing::info!(
                 model = %sensor.model,
                 width = sensor.width,
                 height = sensor.height,
+                view_mode = ?sensor.view_mode(),
                 "camera recognised"
             );
-            (sensor.width, sensor.height)
+            camera.sensor_width = sensor.width;
+            camera.sensor_height = sensor.height;
+            camera.view_mode = Some(sensor.view_mode());
+            camera.capture_mode = Some(sensor.capture_mode());
         }
-        Err(error) => {
-            tracing::warn!(
-                width = camera.sensor_width,
-                height = camera.sensor_height,
-                "camera not recognised, photographing at the usual size: {error:#}"
-            );
-            (camera.sensor_width, camera.sensor_height)
-        }
-    };
-    (
-        args.sensor_width.unwrap_or(width),
-        args.sensor_height.unwrap_or(height),
-    )
+        Err(error) => tracing::warn!(
+            width = camera.sensor_width,
+            height = camera.sensor_height,
+            "camera not recognised, photographing at the usual size: {error:#}"
+        ),
+    }
+    camera.sensor_width = args.sensor_width.unwrap_or(camera.sensor_width);
+    camera.sensor_height = args.sensor_height.unwrap_or(camera.sensor_height);
 }
 
 /// How often a scanner with no folders of its own asks Paperless for the
