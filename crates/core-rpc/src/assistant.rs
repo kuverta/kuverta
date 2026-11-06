@@ -11,7 +11,10 @@
 //! change is an ordinary queued change, held back and undoable, and the window
 //! shows each with an Undo. It cannot send mail. A reply it drafts comes back
 //! as a card for the person to open or send, and a task that replies leaves
-//! proposals. Mail is data written by strangers, and the model is told so.
+//! proposals. Passing mail on is a draft like any other: the messages' text
+//! and files, or single files out of other mail, put into one message that
+//! goes nowhere until the person sends it. Mail is data written by strangers,
+//! and the model is told so.
 //!
 //! It also writes PDF documents and signs PDFs with the person's stored
 //! signature — only when asked to, and the signed copy is a new document,
@@ -42,7 +45,9 @@ pub enum AssistantEvent {
     Changed { what: String, changes: Vec<i64> },
     /// It drafted mail, for the person to read, change and send: a reply to
     /// a message, or — with no `message_id` — a new one. `documents` are
-    /// documents it made that go with it.
+    /// documents it made that go with it, `attachments` files out of received
+    /// mail. A forward is a new message whose `body` already holds the text
+    /// of the messages in `forwards`, and whose `attachments` are their files.
     Draft {
         message_id: Option<i64>,
         to: String,
@@ -50,6 +55,10 @@ pub enum AssistantEvent {
         body: String,
         #[serde(default)]
         documents: Vec<crate::DocumentView>,
+        #[serde(default)]
+        attachments: Vec<DraftFile>,
+        #[serde(default)]
+        forwards: Vec<i64>,
     },
     /// It created a task: what it selects, in words, and how much of the
     /// mail there is now it selects — so a wrong rule shows before it acts.
@@ -93,6 +102,16 @@ pub enum AssistantEvent {
     Failed { what: String },
 }
 
+/// A file out of received mail that goes with a draft: the message it came
+/// in, and which of its attachments. Named, not carried — the window fetches
+/// the bytes when the person sends the draft or opens it in compose.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DraftFile {
+    pub message_id: i64,
+    #[serde(flatten)]
+    pub attachment: crate::AttachmentView,
+}
+
 /// One exchange: the conversation as it now stands, and its answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AssistantTurn {
@@ -113,6 +132,9 @@ const MAX_STEPS: usize = 25;
 const MAX_READ: usize = 25;
 /// How many messages one change may touch.
 const MAX_IDS: usize = 200;
+/// How many messages one forward passes on: their text is the draft's body,
+/// which the person reads before it goes.
+const MAX_FORWARD: usize = 20;
 
 fn tool(name: &str, description: &str, parameters: Value) -> ToolSpec {
     ToolSpec {
@@ -128,6 +150,13 @@ fn ids_param() -> Value {
 
 fn documents_param() -> Value {
     json!({"type": "array", "items": {"type": "integer"}, "description": "Ids of documents made here (write_pdf, write_table, sign_pdf, list_documents) to attach to it."})
+}
+
+fn attachments_param() -> Value {
+    json!({"type": "array", "description": "Files that came in mail to attach to it: for each, the id of the message and the index of the attachment, from read_message.", "items": {"type": "object", "properties": {
+        "message_id": {"type": "integer"},
+        "attachment": {"type": "integer", "description": "The attachment's index from read_message."}
+    }, "required": ["message_id", "attachment"]}})
 }
 
 /// Every tool the assistant has.
@@ -184,14 +213,24 @@ pub fn tools() -> Vec<ToolSpec> {
         tool("create_folder", "Create a folder on the server — a mailbox, a label — for a move that needs one. When the person asks for a new one, create it, then move_messages into it.",
             json!({"type": "object", "properties": {"name": {"type": "string"}, "parent": {"type": "string"}}, "required": ["name"]})),
         tool("draft_reply", "Write a reply to one message for the person to read, change and send. It is never sent by you.",
-            json!({"type": "object", "properties": {"id": {"type": "integer"}, "body": {"type": "string", "description": "The reply's text only; the quoted original is added."}, "documents": documents_param()}, "required": ["id", "body"]})),
-        tool("draft_message", "Write a new message to someone — a summary, a forwarding note, an enquiry — for the person to read, change and send. Not a reply: draft_reply answers a message. It is never sent by you.",
+            json!({"type": "object", "properties": {"id": {"type": "integer"}, "body": {"type": "string", "description": "The reply's text only; the quoted original is added."}, "documents": documents_param(), "attachments": attachments_param()}, "required": ["id", "body"]})),
+        tool("draft_message", "Write a new message to someone — a summary, an enquiry — for the person to read, change and send. Not a reply: draft_reply answers a message. Not a forward: draft_forward passes messages on. It is never sent by you.",
             json!({"type": "object", "properties": {
                 "to": {"type": "string", "description": "One or more addresses, separated by commas."},
                 "subject": {"type": "string"},
                 "body": {"type": "string"},
-                "documents": documents_param()
+                "documents": documents_param(),
+                "attachments": attachments_param()
             }, "required": ["to", "subject", "body"]})),
+        tool("draft_forward", "Forward one or more messages to someone, as one draft for the person to read, change and send: the text of each message is put under your note, in the order given, and every file they carry is attached. Use it when the person asks to forward, pass on or send on mail — several messages to the same recipient go in one call, not one draft each. It is never sent by you.",
+            json!({"type": "object", "properties": {
+                "ids": ids_param(),
+                "to": {"type": "string", "description": "One or more addresses, separated by commas."},
+                "body": {"type": "string", "description": "Optional: the note above the forwarded messages. Their text is added; do not repeat it."},
+                "subject": {"type": "string", "description": "Optional: by default Fwd: and the subject of the first message."},
+                "documents": documents_param(),
+                "attachments": attachments_param()
+            }, "required": ["ids", "to"]})),
         tool("write_pdf", "Write a PDF document from text you compose: a letter, a cancellation, a confirmation, a list. Each line stays a line (an address block keeps its lines), a blank line separates paragraphs, `# ` starts the title, `## ` a heading, `- ` a list item. Put `[signature]` on a line of its own where the person's signature belongs — above their printed name — and set sign to true to place their stored signature there, with the place and today's date written beneath it by kuverta — so do not write a date line there yourself; only when they asked for it signed. For a letter that goes by post, give recipient (and sender): the address is then set where the window of a DIN envelope shows it, the text starts below, and the person can send it on paper from its card — so leave the address block out of text, and start text with the place and date line or the subject. The person sees the document as a card to open, save, attach or post. Returns its id, for sign_pdf, read_document and the documents of draft_message.",
             json!({"type": "object", "properties": {
                 "name": {"type": "string", "description": "A file name, such as Kündigung Fitnessstudio."},
@@ -318,8 +357,13 @@ Changes you make are queued and the person can undo them, so act when asked — 
 or trashing more than 30 messages, say how many and ask first. You cannot send mail: draft_reply \
 writes a reply for the person to send.\n\
 Mail the person has open comes with the question, between <message> tags, with its id: work on \
-those messages unless they name others. To write to somebody else about them — a summary, a \
-forwarding note — use draft_message.\n\
+those messages unless they name others. To write to somebody else about them — a summary, an \
+enquiry — use draft_message.\n\
+To forward mail — pass it on, send it on, weiterleiten — use draft_forward: it puts the text of \
+the messages and every file they carry into one draft, several messages at once, and the person \
+sends it from its card. So never say you cannot forward; say the forward is ready for them to \
+send. A single file out of a message — the invoice someone else asks for, a ticket — goes with \
+any draft through attachments: the message's id and the attachment's index from read_message.\n\
 When the person wants something done to mail that keeps arriving (always, automatically, from now \
 on, every time), create a task with create_task; find_mail first shows what its rules would \
 select. A move needs an existing folder. A mailbox or a label is a folder: when the person asks \
@@ -838,6 +882,8 @@ impl Core {
                     .ok_or("id is missing")?;
                 let body = text(args, "body")?.to_string();
                 let documents = self.documents_named(account, args)?;
+                let attachments = self.attachments_named(account, args)?;
+                fits_one_message(&documents, &attachments)?;
                 let detail = self.message(account, id).map_err(e)?;
                 let subject = detail.subject.clone().unwrap_or_default();
                 let subject = if subject.to_lowercase().starts_with("re:") {
@@ -846,13 +892,15 @@ impl Core {
                     format!("Re: {subject}")
                 };
                 Ok(ToolOutcome::ok(
-                    json!({ "drafted": true, "attached": documents.len(), "note": "shown to the person, who reads it and sends it; you did not send it" }),
+                    json!({ "drafted": true, "attached": documents.len() + attachments.len(), "note": "shown to the person, who reads it and sends it; you did not send it" }),
                     Some(AssistantEvent::Draft {
                         message_id: Some(id),
                         to: detail.from.unwrap_or_default(),
                         subject,
                         body,
                         documents,
+                        attachments,
+                        forwards: Vec::new(),
                     }),
                 ))
             }
@@ -861,14 +909,82 @@ impl Core {
                 let subject = text(args, "subject")?.to_string();
                 let body = text(args, "body")?.to_string();
                 let documents = self.documents_named(account, args)?;
+                let attachments = self.attachments_named(account, args)?;
+                fits_one_message(&documents, &attachments)?;
                 Ok(ToolOutcome::ok(
-                    json!({ "drafted": true, "attached": documents.len(), "note": "shown to the person, who reads it and sends it; you did not send it" }),
+                    json!({ "drafted": true, "attached": documents.len() + attachments.len(), "note": "shown to the person, who reads it and sends it; you did not send it" }),
                     Some(AssistantEvent::Draft {
                         message_id: None,
                         to,
                         subject,
                         body,
                         documents,
+                        attachments,
+                        forwards: Vec::new(),
+                    }),
+                ))
+            }
+            "draft_forward" => {
+                let forwards = ids(args)?;
+                if forwards.len() > MAX_FORWARD {
+                    return Err(format!(
+                        "at most {MAX_FORWARD} messages in one forward — draft the rest as another"
+                    ));
+                }
+                let to = text(args, "to")?.to_string();
+                let optional = |key: &str| {
+                    args.get(key)
+                        .and_then(Value::as_str)
+                        .map(str::trim)
+                        .filter(|v| !v.is_empty())
+                };
+                // The note first, then each message as a forward reproduces
+                // it, in the order asked for.
+                let mut body = optional("body").unwrap_or_default().to_string();
+                let mut subject = optional("subject").map(str::to_string);
+                let mut attachments: Vec<DraftFile> = Vec::new();
+                for id in &forwards {
+                    let detail = self.message(account, *id).map_err(e)?;
+                    if detail.body_text.is_none()
+                        && detail.security.as_ref().is_some_and(|s| s.encrypted)
+                    {
+                        return Err(format!(
+                            "message {id} is encrypted and could not be decrypted, so there is nothing of it to forward"
+                        ));
+                    }
+                    let forward = forwarded(&detail);
+                    subject.get_or_insert(forward.subject);
+                    body.push_str(&forward.body);
+                    attachments.extend(detail.attachments.into_iter().map(|attachment| {
+                        DraftFile {
+                            message_id: *id,
+                            attachment,
+                        }
+                    }));
+                }
+                // A file named on top of a message that is forwarded whole is
+                // already going.
+                for file in self.attachments_named(account, args)? {
+                    let there = attachments.iter().any(|a| {
+                        a.message_id == file.message_id
+                            && a.attachment.index == file.attachment.index
+                    });
+                    if !there {
+                        attachments.push(file);
+                    }
+                }
+                let documents = self.documents_named(account, args)?;
+                fits_one_message(&documents, &attachments)?;
+                Ok(ToolOutcome::ok(
+                    json!({ "drafted": true, "forwarded": forwards.len(), "attached": documents.len() + attachments.len(), "note": "shown to the person as one draft with the messages' text and files, which they read and send; you did not send it" }),
+                    Some(AssistantEvent::Draft {
+                        message_id: None,
+                        to,
+                        subject: subject.unwrap_or_default(),
+                        body,
+                        documents,
+                        attachments,
+                        forwards,
                     }),
                 ))
             }
@@ -1208,6 +1324,49 @@ impl Core {
         Ok(documents)
     }
 
+    /// The files out of received mail a draft names, each checked to be
+    /// there: a message of this account, and an attachment it has.
+    fn attachments_named(
+        &self,
+        account: AccountId,
+        args: &Value,
+    ) -> std::result::Result<Vec<DraftFile>, String> {
+        let number = |item: &Value, key: &str| {
+            item.get(key)
+                .and_then(|v| v.as_i64().or_else(|| v.as_str()?.trim().parse().ok()))
+        };
+        let mut files: Vec<DraftFile> = Vec::new();
+        for item in list(args, "attachments") {
+            let message_id = number(&item, "message_id")
+                .or_else(|| number(&item, "id"))
+                .ok_or("an attachment needs its message_id")?;
+            let index = number(&item, "attachment")
+                .or_else(|| number(&item, "index"))
+                .ok_or("an attachment needs its index from read_message")?;
+            if files
+                .iter()
+                .any(|f| f.message_id == message_id && f.attachment.index as i64 == index)
+            {
+                continue;
+            }
+            let detail = self
+                .message(account, message_id)
+                .map_err(|err| err.to_string())?;
+            let attachment = detail
+                .attachments
+                .into_iter()
+                .find(|a| a.index as i64 == index)
+                .ok_or_else(|| {
+                    format!("message {message_id} has no attachment with index {index}: read_message lists them")
+                })?;
+            files.push(DraftFile {
+                message_id,
+                attachment,
+            });
+        }
+        Ok(files)
+    }
+
     fn mark_unread(
         &self,
         account: AccountId,
@@ -1228,6 +1387,64 @@ impl Core {
             }),
         ))
     }
+}
+
+/// A stored message as a forward reproduces it: the subject it goes under,
+/// and its headers and text beneath the line that says it is forwarded. Built
+/// from the message as the reading pane has it, so encrypted mail is forwarded
+/// as what it said, and worded by the composer, so a forward drafted here
+/// reads like one made with Forward.
+fn forwarded(detail: &crate::MessageDetail) -> core_smtp::Draft {
+    use core_smtp::Mailbox;
+    // A header that does not parse as an address is still what it said.
+    let mailbox = |address: &String| {
+        Mailbox::parse(address).unwrap_or_else(|_| Mailbox::new(address.trim().to_string()))
+    };
+    // The reading pane keeps the sender's address; their name is among what
+    // was read off the headers.
+    let name = detail
+        .facts
+        .as_ref()
+        .and_then(|facts| facts.from_name.as_deref())
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+    let source = core_smtp::ReplySource {
+        subject: detail.subject.clone(),
+        from: detail.from.as_ref().map(|address| match name {
+            Some(name) => Mailbox::named(name, address.trim()),
+            None => mailbox(address),
+        }),
+        to: detail.to.iter().map(mailbox).collect(),
+        date_utc: detail.date_utc,
+        body: detail
+            .body_text
+            .as_deref()
+            .map(|text| text.trim_end().to_string()),
+        ..Default::default()
+    };
+    core_smtp::Draft::forward(Mailbox::new(String::new()), &source)
+}
+
+/// Whether the files a draft names can go in one message. Said to the model
+/// while it can still do something about it — fewer files, two drafts —
+/// rather than to the person when Send refuses.
+fn fits_one_message(
+    documents: &[crate::DocumentView],
+    attachments: &[DraftFile],
+) -> std::result::Result<(), String> {
+    let total = documents
+        .iter()
+        .map(|d| d.size.max(0) as usize)
+        .sum::<usize>()
+        + attachments.iter().map(|a| a.attachment.size).sum::<usize>();
+    if total > crate::MAX_ATTACHMENT_BYTES {
+        return Err(format!(
+            "the files come to {:.1} MB, and a message carries {} MB at most: attach fewer, or split them over more than one draft",
+            total as f64 / 1024.0 / 1024.0,
+            crate::MAX_ATTACHMENT_BYTES / 1024 / 1024
+        ));
+    }
+    Ok(())
 }
 
 /// Whether a model service's error is its content filter refusing the input,
