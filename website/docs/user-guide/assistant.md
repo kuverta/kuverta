@@ -31,6 +31,12 @@ it happens:
   changes back while they wait.
 - **Replying** — the assistant never sends mail. A reply it drafts appears as a
   card you can edit, then **Send** (after a confirmation) or **Open in compose**.
+- **Forwarding** — *"Forward the booking confirmations from the hotel to
+  Clara"* is a draft too: one message with a note, the text of every message
+  it passes on beneath it, and all their files attached. A draft can also
+  carry a single file out of other mail — *"Reply to Clara with the invoice
+  from the plumber"*. The files show on the card; click one to look at it
+  before it goes. You send it, or it goes nowhere.
 - **Tasks** — when you say *always*, *automatically* or *from now on*, it creates
   a task (below) and shows its rules in words and how many messages they match
   now, so a rule that catches too much or too little shows before it acts.

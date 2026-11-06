@@ -389,6 +389,7 @@ const GERMAN = {
   "nothing to write here": "hier gibt es nichts zu schreiben",
   "New message to {to}": "Neue Nachricht an {to}",
   "Reply to {to}": "Antwort an {to}",
+  "Forward to {to}": "Weiterleitung an {to}",
   "Sending…": "Wird gesendet…",
   "sent to {recipients}": "gesendet an {recipients}",
   "sent to {count} — but not filed: {error}":

@@ -58,7 +58,7 @@ pub mod web;
 
 pub use ai::{AiChoice, AiProviderInput, AiProviderView, AiTaskView, AiTrial, Task};
 pub use answer::AnswerDraft;
-pub use assistant::{AssistantEvent, AssistantTurn};
+pub use assistant::{AssistantEvent, AssistantTurn, DraftFile};
 pub use attachments::{Attachment, AttachmentView};
 pub use chats::{ChatFull, ChatView};
 pub use cleanup::{

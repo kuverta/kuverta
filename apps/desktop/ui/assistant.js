@@ -672,28 +672,43 @@ function changeCard(event) {
 
 function draftCard(event) {
   const reply = event.message_id != null;
+  // A forward is a new message that already holds what it passes on.
+  const forward = (event.forwards ?? []).length > 0;
   const { box, actions } = card(
-    reply ? t("Reply to {to}", { to: event.to }) : t("New message to {to}", { to: event.to }),
+    reply
+      ? t("Reply to {to}", { to: event.to })
+      : forward
+        ? t("Forward to {to}", { to: event.to })
+        : t("New message to {to}", { to: event.to }),
     event.subject,
   );
   const body = document.createElement("textarea");
   body.value = event.body;
   box.insertBefore(body, actions);
-  // Documents the assistant made that go with it: shown as chips, and sent
-  // or opened in compose with the message.
+  // What goes with it — documents the assistant made, and files out of
+  // received mail: shown as chips, and sent or opened in compose with the
+  // message.
   const documents = event.documents ?? [];
-  if (documents.length) {
+  const received = event.attachments ?? [];
+  // The account the chat is on now, not the one open when Send is pressed.
+  const account = assistant.account;
+  if (documents.length || received.length) {
     const files = document.createElement("div");
     files.className = "attachments";
     for (const doc of documents) files.append(documentChip(doc));
+    for (const file of received) files.append(attachmentChip(account, file.message_id, file));
     box.insertBefore(files, actions);
   }
+  const draftFiles = async () => [
+    ...(await documentAttachments(documents)),
+    ...(await receivedAttachments(received, account)),
+  ];
   cardButton(actions, t("Send"), async (button) => {
     if (!(await ask(t("Send this to {to}?", { to: event.to }), { yes: t("Send") }))) {
       button.disabled = false;
       return;
     }
-    const attachments = await documentAttachments(documents);
+    const attachments = await draftFiles();
     if (reply) {
       await sendReply(event.message_id, body.value, attachments);
     } else {
@@ -703,7 +718,7 @@ function draftCard(event) {
     button.textContent = t("Sent");
   }, "primary");
   cardButton(actions, t("Open in compose"), async () => {
-    const attachments = await documentAttachments(documents);
+    const attachments = await draftFiles();
     if (reply) {
       await openReplyInCompose(event.message_id, body.value);
       compose.files.set(attachments);
@@ -722,7 +737,7 @@ function draftCard(event) {
         attachments,
       },
       // The assistant's text is work, and is asked about before it goes.
-      { what: t("New message"), typed: true },
+      { what: forward ? t("Forward") : t("New message"), typed: true },
     );
   });
   return box;
@@ -829,16 +844,33 @@ function documentCard(event) {
   return box;
 }
 
+/// Bytes from the core as base64, which is what a draft carries.
+function base64Of(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
+  }
+  return btoa(binary);
+}
+
 /// Documents as a draft carries them: name, type and bytes as base64.
 async function documentAttachments(documents) {
   const out = [];
   for (const doc of documents) {
-    const bytes = new Uint8Array(await invoke("document", { id: doc.id }));
-    let binary = "";
-    for (let at = 0; at < bytes.length; at += 0x8000) {
-      binary += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-    }
-    out.push({ name: doc.name, content_type: doc.content_type, data: btoa(binary) });
+    const data = base64Of(await invoke("document", { id: doc.id }));
+    out.push({ name: doc.name, content_type: doc.content_type, data });
+  }
+  return out;
+}
+
+/// Files out of received mail as a draft carries them: read from the stored
+/// message only now, when the draft goes or opens in compose.
+async function receivedAttachments(files, account) {
+  const out = [];
+  for (const file of files) {
+    const data = base64Of(await invoke("attachment", { account, id: file.message_id, index: file.index }));
+    out.push({ name: file.name, content_type: file.content_type, data });
   }
   return out;
 }
