@@ -6,16 +6,17 @@ name: Website
 # "GitHub Actions" once; see website/docs/developers/releasing.md for the apt
 # repository's signing key.
 #
-# Two more settings it needs, both found unset on 2026-10-31:
+# One more setting it needs, found unset on 2026-10-31: `APT_SIGNING_KEY`, or
+# the apt job warns and the site goes up without /apt — which is the only
+# thing the release trigger is for.
 #
-#   * The `github-pages` environment must allow `v*` tags to deploy. A run
-#     triggered by a published release has the tag as its ref, and that
-#     environment allows the default branch only, so `deploy` is refused
-#     before its first step — two seconds, no log, nothing red but the job.
-#     Every release-triggered run from v0.5.36 to v0.5.51 failed that way,
-#     while every push to main deployed fine.
-#   * `APT_SIGNING_KEY` must be set, or the apt job warns and the site goes
-#     up without /apt — which is the only thing the release trigger is for.
+# A run triggered by a published release has the tag as its ref, and the
+# `github-pages` environment allows the default branch only, so `deploy` was
+# refused before its first step — two seconds, no log, nothing red but the
+# job. Every release-triggered run from v0.5.36 to v0.5.60 failed that way,
+# while every push to main deployed fine. Such a run now builds nothing
+# itself: `handover` starts this workflow again on main, which is allowed to
+# deploy, and no setting has to be remembered for it.
 
 on:
   push:
@@ -46,10 +47,30 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # A published release: start the run that can deploy, on main. A workflow
+  # started with the workflow's own token starts no other, except by
+  # workflow_dispatch, which is what this is. The run it starts waits in the
+  # `pages` group until this one has finished.
+  handover:
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Run this workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: gh workflow run pages.yml --repo "$REPO" --ref main
+
   # The apt repository, in a job of its own: it is the only one that holds
   # the signing key, and the job that runs MkDocs never sees it. Without the
   # key it builds nothing, and the site is published without /apt.
+  #
+  # Not on a release's own run, which hands over instead; `build` and
+  # `deploy` need this job, and are skipped with it.
   apt:
+    if: github.event_name != 'release'
     runs-on: ubuntu-latest
     outputs:
       built: ${{ steps.repo.outputs.built }}

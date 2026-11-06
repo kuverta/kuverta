@@ -88,15 +88,16 @@ Without the key the site is still published, only without `/apt`.
    Actions → *New repository secret*, named `APT_SIGNING_KEY`, with the whole
    of `kuverta-apt-private.asc`. A key with a passphrase also needs
    `APT_SIGNING_PASSPHRASE`.
-3. **Let releases deploy the site**: Settings → Environments → `github-pages`
-   → *Deployment branches and tags* → add a **tag** rule `v*`. The
-   environment only accepts `main` at first, and a release runs the workflow
-   for its tag.
-4. **Keep `kuverta-apt-private.asc` somewhere safe and offline**, then delete
+3. **Keep `kuverta-apt-private.asc` somewhere safe and offline**, then delete
    the copy and `$GNUPGHOME`. Everyone who added the repository trusts this
    key; a new one means each of them fetching `kuverta.gpg` again.
-5. **Run the workflow once** (Actions → Website → *Run workflow*) so the
+4. **Run the workflow once** (Actions → Website → *Run workflow*) so the
    repository exists before the next release.
+
+Publishing a release needs nothing more: its run of the workflow starts
+another on `main`, which is the one that builds and deploys. The
+`github-pages` environment accepts `main` only, and a release's own run has
+its tag as the ref.
 
 To check it from any Debian or Ubuntu machine, follow the steps on the
 [install page](../install.md#linux): `apt policy kuverta` should list the
