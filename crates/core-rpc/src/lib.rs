@@ -76,7 +76,9 @@ pub use core_pgp::{
 pub use core_store::{SearchOrder, SmartField, SmartOp, SmartQuery, SmartRule};
 pub use documents::{Aim, DocumentFile, DocumentSource, DocumentView, Placed, SignatureSettings};
 pub use form::FormField;
-pub use letters::{LetterAddress, LetterQuote, LetterSettings, LetterSettingsInput, LetterView};
+pub use letters::{
+    LetterAddress, LetterQuote, LetterSettings, LetterSettingsInput, LetterView, PostedLetter,
+};
 pub use mailboxes::CreatedFolder;
 pub use memory::{MemorySyncReport, MemorySyncView, MemoryView};
 pub use offers::OfferView;

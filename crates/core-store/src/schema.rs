@@ -718,6 +718,21 @@ CREATE TABLE IF NOT EXISTS letter (
 );
 CREATE INDEX IF NOT EXISTS letter_account ON letter (account_id, created_at);
 "#,
+    // v28 — which letters have their record in the account's Sent folder. A
+    // posted letter is filed there as a message, as sent mail is; a row here
+    // says that was done, or is being done. It is written before the message
+    // is appended and taken away again if the append fails, so a letter is
+    // never filed twice: not by two things filing at once, and not after a
+    // crash in between, which leaves one unfiled rather than doubled.
+    //
+    // A table of its own rather than a column on `letter`, and `IF NOT
+    // EXISTS`, for the reason v26 gives: a column cannot be added twice.
+    r#"
+CREATE TABLE IF NOT EXISTS letter_filed (
+    letter_id INTEGER PRIMARY KEY REFERENCES letter(id) ON DELETE CASCADE,
+    at        INTEGER NOT NULL
+);
+"#,
 ];
 
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {

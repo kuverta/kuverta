@@ -19,12 +19,21 @@
 //! down as `sending` ([`Core::begin_letter`]), then ask LetterXpress and
 //! record what it said — and a crash between the last two leaves a row that
 //! says a letter may have gone, which is the truth.
+//!
+//! A letter that went to be printed is then filed in the account's Sent
+//! folder, as sent mail is: a message from the account that says where the
+//! letter went and how, with the PDF attached ([`Session::file_letter`]).
+//! That is best-effort, as it is for mail — the letter has gone whether or
+//! not its record could be filed — and a record that could not be filed, or
+//! never was, is filed after a later sync ([`Session::file_letters`]). A
+//! letter in test mode was never printed, and has no record.
 
 use core_letter::{Balance, Credentials, Job, Letter, LetterError, LetterXpress, Mode, Spec};
-use core_store::model::AccountId;
-use core_store::{LetterJob, NewLetter, StoredLetter};
+use core_store::model::{Account, AccountId};
+use core_store::{Blobs, LetterJob, NewLetter, Store, StoredLetter};
 use serde::{Deserialize, Serialize};
 
+use crate::session::{file_copy_in_sent, own_mailbox, provider_for, Session};
 use crate::{pdf, Core, Result, RpcError};
 
 pub use core_letter::Registered;
@@ -99,6 +108,22 @@ pub struct LetterView {
     pub updated_at: i64,
     /// Until when it can still be taken back, while it can.
     pub cancellable_until: Option<i64>,
+}
+
+/// What sending a letter came to: the letter, and whether its record
+/// reached the account's Sent folder.
+#[derive(Debug, Clone, Serialize)]
+pub struct PostedLetter {
+    #[serde(flatten)]
+    pub letter: LetterView,
+    /// The folder the record was filed in, when it was.
+    pub filed_in: Option<String>,
+    /// Set when the letter went but its record could not be filed.
+    ///
+    /// Separate from an error for the reason [`crate::SentSummary`]'s is: by
+    /// this point LetterXpress has the letter, and reporting a failure would
+    /// invite posting it twice.
+    pub filing_error: Option<String>,
 }
 
 /// What sending a document would be, before it is sent.
@@ -457,6 +482,244 @@ impl Core {
         let client = self.letter_client()?;
         let mode = Mode::parse(&letter.mode).unwrap_or(Mode::Test);
         Ok((client.with_mode(mode), job))
+    }
+}
+
+/// What a header may carry of a name: one line of it.
+fn one_line(text: &str) -> String {
+    text.split(|c: char| c.is_control())
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// A time as a person reads it, in this computer's time zone.
+fn local_time(timestamp: i64) -> String {
+    use chrono::{Local, TimeZone};
+    match Local.timestamp_opt(timestamp, 0) {
+        chrono::LocalResult::Single(at) => at.format("%a, %-d %b %Y at %H:%M").to_string(),
+        _ => String::new(),
+    }
+}
+
+/// The record of a posted letter as a message for the Sent folder: from the
+/// account, under the letter's name, saying where it went and how, with the
+/// PDF attached. Dated when the letter went.
+///
+/// `pdf` is what was posted. With `late` — when a record is filed some time
+/// after its letter, and the time it is — it is the document as it is kept
+/// now, and the record says so: an address given by hand is not kept.
+pub fn filed_message(
+    account: &Account,
+    letter: &LetterView,
+    pdf: &[u8],
+    late: Option<i64>,
+) -> Result<Vec<u8>> {
+    // The document's name, which is the file's: the letter is called that
+    // without the ending, and the file attached keeps or gets it.
+    let name = one_line(&letter.name);
+    let ending = name
+        .len()
+        .checked_sub(4)
+        .filter(|at| name.is_char_boundary(*at) && name[*at..].eq_ignore_ascii_case(".pdf"));
+    let title = ending.map_or(name.as_str(), |at| name[..at].trim_end());
+    // The lines of the envelope window, which LetterXpress gives back as
+    // one, with commas between. The first is who it went to.
+    let address: Vec<&str> = letter
+        .address
+        .as_deref()
+        .unwrap_or_default()
+        .split(|c: char| c == ',' || c.is_control())
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect();
+    let recipient = address.first().copied().unwrap_or("by post");
+
+    let spec = &letter.spec;
+    let mut body = String::from(
+        "This letter went by post, through LetterXpress, which prints it and hands it to \
+         Deutsche Post.\n\n",
+    );
+    let mut line = |label: &str, value: String| body.push_str(&format!("{label}: {value}\n"));
+    line(
+        "Address, as LetterXpress read it off the page",
+        if address.is_empty() {
+            "LetterXpress did not say".into()
+        } else {
+            address.join(", ")
+        },
+    );
+    line("Sent to LetterXpress", local_time(letter.created_at));
+    line(
+        "Printed",
+        format!(
+            "{}, {}",
+            if spec.color {
+                "in colour"
+            } else {
+                "in black and white"
+            },
+            if spec.duplex {
+                "on both sides of the paper"
+            } else {
+                "on one side of the paper"
+            }
+        ),
+    );
+    line(
+        "Registered",
+        match spec.registered {
+            None => "no",
+            Some(Registered::Drop) => "Einschreiben Einwurf, delivery recorded",
+            Some(Registered::Signed) => "Einschreiben, handed over against a signature",
+        }
+        .into(),
+    );
+    line(
+        "Destination",
+        if spec.international {
+            "abroad"
+        } else {
+            "within Germany"
+        }
+        .into(),
+    );
+    line("Pages", letter.pages.to_string());
+    match (letter.cost, letter.quoted) {
+        (Some(cost), _) => line("Cost", format!("{cost:.2} EUR, VAT included")),
+        (None, Some(quoted)) => line("Cost", format!("{quoted:.2} EUR, as quoted")),
+        (None, None) => {}
+    }
+    if let Some(job) = letter.job_id {
+        line("LetterXpress job", job.to_string());
+    }
+    if let Some(code) = &letter.tracking_code {
+        line("Tracking number", one_line(code));
+    }
+    body.push('\n');
+    match late {
+        None => body.push_str("Attached is the PDF as it was posted.\n"),
+        Some(when) => body.push_str(&format!(
+            "Filed here later, on {}. Attached is the document as kuverta keeps it now, which \
+             may differ from what was posted: an address entered by hand for the envelope is \
+             not on it.\n",
+            local_time(when)
+        )),
+    }
+
+    core_smtp::Record {
+        from: own_mailbox(account),
+        to: recipient.to_string(),
+        subject: format!("Letter by post: {title}"),
+        body,
+        date_utc: letter.created_at,
+        attachments: vec![core_smtp::Attachment {
+            name: match ending {
+                Some(_) => name.clone(),
+                None => format!("{name}.pdf"),
+            },
+            content_type: "application/pdf".into(),
+            data: pdf.to_vec(),
+        }],
+    }
+    .build()
+    .map_err(|err| reject(err.to_string()))
+}
+
+impl Session {
+    /// Files the record of a letter that has just gone in its account's Sent
+    /// folder. `pdf` is what was posted.
+    ///
+    /// The folder it was filed in, or `None` when there is nothing to file:
+    /// a letter in test mode was never printed, and one already filed is not
+    /// filed again. An error here is the record's and not the letter's —
+    /// the letter has gone, and stays as it is; its record is tried again
+    /// after a later sync.
+    pub async fn file_letter(&self, id: i64, pdf: &[u8]) -> Result<Option<String>> {
+        let (store, blobs) = self.open_store()?;
+        let letter = store
+            .letter(id)?
+            .ok_or_else(|| reject(format!("there is no letter {id}")))?;
+        let account = store
+            .accounts()?
+            .into_iter()
+            .find(|account| account.id == letter.account_id)
+            .ok_or_else(|| reject(format!("letter {id} belongs to no account")))?;
+        self.file_record(&store, &blobs, &account, letter, pdf, None)
+            .await
+    }
+
+    /// Files the records still owed for an account's letters: those whose
+    /// filing failed when they went, and those that went before kuverta
+    /// filed letters at all. How many were filed.
+    ///
+    /// Each carries its document as it is kept now, and says so. It stops at
+    /// the first that cannot be filed — the server that refused one will
+    /// refuse the next — and what is left waits for the next time.
+    pub async fn file_letters(&self, email: &str) -> Result<usize> {
+        let (store, blobs) = self.open_store()?;
+        let account = store
+            .account_by_email(email)?
+            .ok_or_else(|| RpcError::UnknownAccount(email.to_string()))?;
+        let mut filed = 0;
+        for letter in store.letters_to_file(account.id)? {
+            let Some(pdf) = letter
+                .document_id
+                .map(|document| store.document_bytes(document))
+                .transpose()?
+                .flatten()
+            else {
+                continue;
+            };
+            let late = Some(crate::now_utc());
+            if self
+                .file_record(&store, &blobs, &account, letter, &pdf, late)
+                .await?
+                .is_some()
+            {
+                filed += 1;
+            }
+        }
+        Ok(filed)
+    }
+
+    /// Files one letter's record, once. It is claimed in the store before
+    /// anything is appended, and given back if the append fails: two filings
+    /// at once, or one after the other, leave one message in Sent.
+    async fn file_record(
+        &self,
+        store: &Store,
+        blobs: &Blobs,
+        account: &Account,
+        letter: StoredLetter,
+        pdf: &[u8],
+        late: Option<i64>,
+    ) -> Result<Option<String>> {
+        if letter.mode != Mode::Live.as_str() || letter.state != "sent" {
+            return Ok(None);
+        }
+        let id = letter.id;
+        if !store.claim_letter_filing(id)? {
+            return Ok(None);
+        }
+        let filed = async {
+            let raw = filed_message(account, &view(letter), pdf, late)?;
+            let auth = provider_for(account, self.password_env())?;
+            file_copy_in_sent(account, auth.as_ref(), &raw, store, blobs).await
+        }
+        .await;
+        match filed {
+            Ok(folder) => {
+                tracing::info!(id, folder = %folder, "letter filed in Sent");
+                Ok(Some(folder))
+            }
+            Err(err) => {
+                store.release_letter_filing(id)?;
+                tracing::warn!(id, %err, "posted, but could not file the letter in Sent");
+                Err(err)
+            }
+        }
     }
 }
 
