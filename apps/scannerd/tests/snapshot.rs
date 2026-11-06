@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use scannerd::camera::RpiCamera;
+use scannerd::camera::{RpiCamera, Sensor};
 use scannerd::hub::Hub;
 use scannerd::web::{serve, Web};
 
@@ -45,6 +45,90 @@ fn another_sensor_gives_another_size() {
         ..RpiCamera::default()
     };
     assert_eq!(v3.capture_size(), Some((2304, 1296)));
+}
+
+#[test]
+fn the_camera_says_which_sensor_it_is() {
+    // What `rpicam-still --list-cameras` prints on the rig, for its Pi camera
+    // v2.
+    let v2 = "\
+Available cameras
+-----------------
+0 : imx219 [3280x2464 10-bit] (/base/soc/i2c0mux/i2c@1/imx219@10)
+    Modes: 'SBGGR10_CSI2P' : 640x480 [30.00 fps - (65527, 65527)/65535x65535 crop]
+                             1640x1232 [30.00 fps - (65527, 65527)/65535x65535 crop]
+                             1920x1080 [30.00 fps - (65527, 65527)/65535x65535 crop]
+                             3280x2464 [30.00 fps - (65527, 65527)/65535x65535 crop]
+           'SBGGR8' : 640x480 [30.00 fps - (65527, 65527)/65535x65535 crop]
+";
+    assert_eq!(
+        Sensor::parse(v2),
+        Some(Sensor {
+            model: "imx219".into(),
+            width: 3280,
+            height: 2464,
+        })
+    );
+
+    // The v1, and the older listing with nothing but the size in brackets.
+    let v1 = Sensor::parse("0 : ov5647 [2592x1944] (/base/soc/i2c0mux/i2c@1/ov5647@36)").unwrap();
+    assert_eq!(
+        (v1.model.as_str(), v1.width, v1.height),
+        ("ov5647", 2592, 1944)
+    );
+
+    // With two, the first: the one photographed with when none is chosen.
+    let two = "\
+0 : imx708 [4608x2592 10-bit RGGB] (/base/axi/pcie@120000/rp1/i2c@88000/imx708@1a)
+1 : ov5647 [2592x1944 10-bit GBRG] (/base/axi/pcie@120000/rp1/i2c@80000/ov5647@36)
+";
+    assert_eq!(Sensor::parse(two).unwrap().model, "imx708");
+
+    assert_eq!(Sensor::parse("No cameras available!"), None);
+    assert_eq!(Sensor::parse(""), None);
+}
+
+#[test]
+fn a_camera_is_asked_through_its_program() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join(format!("scannerd-sensor-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let program_in = |name: &str, script: &str| {
+        let program = dir.join(name);
+        std::fs::write(&program, format!("#!/bin/sh\n{script}\n")).unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
+        program.to_string_lossy().into_owned()
+    };
+
+    let v2 = program_in(
+        "lists-a-v2",
+        r#"[ "$1" = --list-cameras ] || exit 2
+echo "Available cameras"
+echo "0 : imx219 [3280x2464 10-bit RGGB] (/base/soc/i2c0mux/i2c@1/imx219@10)""#,
+    );
+    let sensor = Sensor::detect(&v2).unwrap();
+    assert_eq!((sensor.width, sensor.height), (3280, 2464));
+
+    // A crop on it is photographed at the v2's pixels, not the v1's.
+    let camera = RpiCamera {
+        roi: Some("0,0,0.5,0.5".into()),
+        sensor_width: sensor.width,
+        sensor_height: sensor.height,
+        ..RpiCamera::default()
+    };
+    assert_eq!(camera.capture_size(), Some((1640, 1232)));
+
+    let none = program_in("lists-nothing", "echo 'No cameras available!'");
+    let error = Sensor::detect(&none).unwrap_err().to_string();
+    assert!(error.contains("lists no camera"), "{error}");
+
+    // The ffmpeg stand-in, and anything else that does not know the flag.
+    let deaf = program_in("knows-no-such-flag", "echo 'unsupported flag' >&2; exit 2");
+    let error = Sensor::detect(&deaf).unwrap_err().to_string();
+    assert!(error.contains("unsupported flag"), "{error}");
+
+    assert!(Sensor::detect(&dir.join("not-there").to_string_lossy()).is_err());
+    std::fs::remove_dir_all(&dir).unwrap();
 }
 
 #[tokio::test]
