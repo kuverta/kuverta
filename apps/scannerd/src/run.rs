@@ -230,6 +230,18 @@ impl Scanner {
         }
     }
 
+    /// Whether a page of the open letter is still being read here — `None`
+    /// when nothing reads pages here, or there are no folders to read them
+    /// for. Once none is, [`Self::guessed`] is where the letter goes as far
+    /// as its pages so far can say, which is what it will be decided from
+    /// when it closes.
+    pub fn still_reading(&self) -> Option<bool> {
+        if self.folders.is_empty() {
+            return None;
+        }
+        self.reader.as_ref().map(|_| !self.reading.is_empty())
+    }
+
     /// Where that text says the letter goes, before Paperless has said: the
     /// one folder it fits best, and everybody it is for.
     ///

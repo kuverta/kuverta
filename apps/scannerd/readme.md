@@ -428,10 +428,15 @@ headless Pi needs no screen, no desktop and no second program: open
   taken twice); a letter already sent is Paperless's to change;
 - what was sent and what is waiting, with **Retry uploads now**;
 - **Where it is going, from the first page.** The Pi reads each page itself
-  and matches the shelf's words, so the panel shows the folder as an outline
-  pill in the corner while you are still holding the letter — minutes before
-  Paperless has it. An outline because it is a guess; what Paperless decides
-  replaces it. The pill gives the corner back to the last letter's folder
+  and matches the shelf's words, so the panel names the folder while you are
+  still holding the letter — minutes before Paperless has it. The headline
+  says *reading page 1...* while it reads, about ten seconds a page, and then
+  leads with the folder: *Taxes - next page?*, or *No folder yet* when no
+  folder's words are on it. That is the folder the letter is closed with
+  unless a later page says otherwise, so there is no need to wait for the
+  letter to finish to know. While a further page is still being read, what
+  the earlier ones said is an outline pill in the corner — an outline
+  because it is a guess. The corner goes back to the last letter's folder
   once this one is sent.
 - **Learn empty table**, and setup. For the crop: put a page where letters will
   lie and press **Take a picture** — scannerd photographs the whole view in

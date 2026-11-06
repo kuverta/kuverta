@@ -4,7 +4,7 @@ use std::sync::mpsc;
 
 use anyhow::Result;
 use scannerd::display::{
-    drive, render, Facts, Frame, Panel, Screen, FULL_EVERY, HEIGHT, ROW_BYTES, WIDTH,
+    drive, render, Facts, Frame, Panel, Read, Screen, FULL_EVERY, HEIGHT, ROW_BYTES, WIDTH,
 };
 use scannerd::folders::{Filings, Folder, Outcome, Refiling};
 use scannerd::quality::{Problem, Quality};
@@ -30,6 +30,7 @@ fn facts(state: &str) -> Facts<'_> {
         confirming: None,
         queue: &[],
         guess: &[],
+        read: Read::Never,
         showing_queue: false,
     }
 }
@@ -67,6 +68,72 @@ fn the_letter_in_hand_says_where_it_looks_like_going_from_its_first_page() {
         ..facts("waiting")
     });
     assert_eq!(nothing.guess, None, "there is no letter to guess about yet");
+}
+
+#[test]
+fn the_headline_names_the_folder_as_soon_as_the_pages_are_read() {
+    // The bug this is here for: a page left lying on the table was answered
+    // when its letter closed, twenty-eight seconds after it was photographed.
+    // The rig had read it, and knew, after eleven.
+    let guess = vec!["Lawstuff".to_string()];
+    let touch = |state: &'static str, read, finishing_in| Facts {
+        touch: true,
+        scanning: true,
+        open_pages: 1,
+        read,
+        finishing_in,
+        ..facts(state)
+    };
+
+    // While the page is being read the headline says so, and what an earlier
+    // page looked like stays a guess in the corner.
+    let reading = Screen::for_facts(&Facts {
+        guess: &guess,
+        ..touch("photographed", Read::Reading, None)
+    });
+    assert_eq!(reading.headline, "New letter - reading page 1...");
+    assert_eq!(reading.guess.as_deref(), Some("Lawstuff"));
+    let second = Screen::for_facts(&Facts {
+        open_pages: 2,
+        ..touch("photographed", Read::Reading, None)
+    });
+    assert_eq!(second.headline, "Page 2 added - reading it...");
+
+    // Read: the folder leads the headline, in the folder's colour, and the
+    // corner is given up — the bar says one folder, not two.
+    let filings = filed(Outcome::Folders(vec![Folder::named("Taxes")]));
+    let read = Screen::for_facts(&Facts {
+        guess: &guess,
+        filing: filings.latest(),
+        ..touch("photographed", Read::Done, None)
+    });
+    assert_eq!(read.headline, "Lawstuff - next page?");
+    assert_eq!(read.tone, scannerd::display::Tone::Folder);
+    assert_eq!(read.guess, None);
+    assert_eq!(read.last_letter, None);
+
+    // The page left lying, and the page taken away: counted down the same.
+    for state in ["photographed", "waiting"] {
+        let lying = Screen::for_facts(&Facts {
+            guess: &guess,
+            ..touch(state, Read::Done, Some(6))
+        });
+        assert_eq!(lying.headline, "Lawstuff - finishing in 6s", "{state}");
+    }
+
+    // Read, and no folder's words on it: said as well, rather than nothing
+    // until the letter closes.
+    let nowhere = Screen::for_facts(&touch("photographed", Read::Done, None));
+    assert_eq!(nowhere.headline, "No folder yet - next page?");
+    assert_ne!(nowhere.tone, scannerd::display::Tone::Folder);
+    let closing = Screen::for_facts(&touch("waiting", Read::Done, Some(3)));
+    assert_eq!(closing.headline, "No folder - finishing in 3s");
+
+    // A rig that reads nothing says what it always said.
+    let unread = Screen::for_facts(&touch("photographed", Read::Never, None));
+    assert_eq!(unread.headline, "New letter started - page 1");
+    let waiting = Screen::for_facts(&touch("waiting", Read::Never, Some(8)));
+    assert_eq!(waiting.headline, "Next page? Finishing in 8s");
 }
 
 /// A letter sent at 900, and what Paperless made of it at 950.
