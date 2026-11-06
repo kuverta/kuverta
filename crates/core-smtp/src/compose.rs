@@ -866,7 +866,10 @@ mod tests {
         // Read in Sent: From is us, To is who it went to.
         let source = ReplySource {
             from: Some(me()),
-            to: vec![Mailbox::named("Jane Doe", "jane@example.com"), Mailbox::new("bob@example.com")],
+            to: vec![
+                Mailbox::named("Jane Doe", "jane@example.com"),
+                Mailbox::new("bob@example.com"),
+            ],
             cc: vec![Mailbox::new("carol@example.com")],
             ..thread()
         };

@@ -227,7 +227,9 @@ fn a_message_in_drafts_is_reported_as_a_draft_unless_it_was_sent() {
         .unwrap();
     let drafts = store.upsert_folder(account, "Drafts", None).unwrap();
     let inbox = store.upsert_folder(account, "INBOX", None).unwrap();
-    let sent = store.upsert_folder(account, "Gesendet", Some("\\Sent")).unwrap();
+    let sent = store
+        .upsert_folder(account, "Gesendet", Some("\\Sent"))
+        .unwrap();
     let trash = store.upsert_folder(account, "Trash", None).unwrap();
     let core = core_rpc::Core::new(store, Blobs::new(dir.0.join("blobs")));
 
