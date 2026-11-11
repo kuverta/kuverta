@@ -18,13 +18,28 @@
 // Opening a file in another app then leaves that protection, so it takes a
 // second, deliberate click.
 //
+// A PDF locked with a password — a bank statement, a payslip — is asked
+// about here rather than refused: the password goes to the worker, which
+// unlocks the file inside its own process to draw it. It is held only while
+// the viewer is open and written nowhere.
+//
 // The same viewer shows the documents the assistant makes — a letter it
 // wrote, a PDF it signed — which have the same four commands under other
 // names (see `viewerCall`), and are drawn in safe preview too: a signed copy
 // of a stranger's PDF is mostly the stranger's PDF.
 
 const attachmentSheet = el("attachment-sheet");
-const viewer = { account: null, messageId: null, attachment: null, url: null, generation: 0, openArmed: false };
+const viewer = {
+  account: null,
+  messageId: null,
+  attachment: null,
+  url: null,
+  generation: 0,
+  openArmed: false,
+  // What was typed to unlock a locked PDF. Kept only while the viewer is
+  // open — paging through it needs it again — and never written anywhere.
+  password: null,
+};
 
 /// The bytes of a base64 string, as the viewer and the core take them.
 function base64Bytes(data) {
@@ -242,6 +257,41 @@ function clearViewer() {
   pages.hidden = true;
   el("attachment-more").hidden = true;
   el("attachment-safe").hidden = true;
+  hidePasswordAsk();
+  viewer.password = null;
+}
+
+/// The password form put away and emptied: nothing typed is left lying in
+/// the window for the next attachment.
+function hidePasswordAsk() {
+  const form = el("attachment-password");
+  form.hidden = true;
+  el("attachment-password-field").value = "";
+}
+
+/// Asks for the password of a locked PDF, or says the last one did not fit.
+function askForPassword(generation, wrong) {
+  const form = el("attachment-password");
+  const field = el("attachment-password-field");
+  el("attachment-status").textContent = wrong
+    ? t("That password did not open it. Try another.")
+    : t("This PDF is locked with a password. Type it and kuverta draws it here — the password is used for that and nothing else.");
+  form.hidden = false;
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    const typed = field.value;
+    if (!typed) return;
+    viewer.password = typed;
+    hidePasswordAsk();
+    el("attachment-status").textContent = t("Loading…");
+    showSafePreview(generation, 0).catch((err) => {
+      if (generation === viewer.generation) {
+        el("attachment-status").textContent = t("could not load it: {error}", { error: err });
+      }
+    });
+  };
+  field.focus();
+  field.select();
 }
 
 /// Shows what the worker drew or read, from `first` on.
@@ -252,6 +302,9 @@ async function showSafePreview(generation, first) {
   const shown = await viewerCall("attachment_preview", {
     first,
     count: first === 0 ? SAFE_PAGES_AT_ONCE : 4,
+    // Left out until there is one, so the worker knows the difference
+    // between a first look and a password that did not fit.
+    ...(viewer.password ? { password: viewer.password } : {}),
   });
   if (generation !== viewer.generation || attachmentSheet.hidden) return;
   more.disabled = false;
@@ -278,6 +331,12 @@ async function showSafePreview(generation, first) {
     text.textContent = shown.text;
     text.hidden = false;
     status.textContent = "";
+  } else if (shown.kind === "password") {
+    // One that did not fit is not kept: the next try starts from nothing.
+    if (shown.wrong) viewer.password = null;
+    // Not the safe-preview note: nothing has been drawn yet.
+    askForPassword(generation, shown.wrong);
+    return;
   } else {
     status.textContent = shown.why;
   }

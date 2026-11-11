@@ -926,4 +926,31 @@ pub(crate) mod tests_support {
         );
         out
     }
+
+    /// The same one-page PDF, locked with a user password: RC4 128-bit, the
+    /// standard security handler, which is what a bank's statement or a
+    /// payslip comes with. Only this password opens it; the owner password
+    /// is another one, so an empty password does not get in.
+    pub(crate) fn locked_pdf(line: &str, user_password: &str) -> Vec<u8> {
+        use lopdf::encryption::{EncryptionState, EncryptionVersion, Permissions};
+        use lopdf::{Document, Object};
+
+        let mut document = Document::load_mem(&pdf_saying(line)).expect("a PDF written here");
+        // The file's identifier goes into the encryption key, so a PDF
+        // without one cannot be locked at all.
+        let id = Object::string_literal("kuverta test file identifier");
+        document.trailer.set("ID", vec![id.clone(), id]);
+        let state = EncryptionState::try_from(EncryptionVersion::V2 {
+            document: &document,
+            owner_password: "owner-of-the-file",
+            user_password,
+            key_length: 128,
+            permissions: Permissions::all(),
+        })
+        .expect("the encryption state");
+        document.encrypt(&state).expect("encrypting it");
+        let mut out = Vec::new();
+        document.save_to(&mut out).expect("writing it out");
+        out
+    }
 }

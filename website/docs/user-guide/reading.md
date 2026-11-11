@@ -95,6 +95,11 @@ the file's name and size. Click one to see it:
   An existing file is never overwritten: a second copy is named `name (2)`.
 - **Open in another app** hands it to the program your computer uses for that
   kind of file — Preview, a PDF reader, your office suite.
+- **A PDF locked with a password** — a bank statement, a payslip — asks for it
+  and then shows itself like any other. The password is used to open it and
+  nothing else: it is not saved, not put in your keychain, and forgotten as
+  soon as you close the viewer. PDFs that are locked only against printing or
+  copying open without asking.
 
 Pictures a message shows inside its text — logos, mostly — are left out of the
 list; **N pictures in the text** shows them too.
