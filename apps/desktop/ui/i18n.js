@@ -1174,6 +1174,10 @@ const GERMAN = {
   "More pages": "Weitere Seiten",
   "More pages ({shown} of {total})": "Weitere Seiten ({shown} von {total})",
   "Page {page}": "Seite {page}",
+  Unlock: "Entsperren",
+  "This PDF is locked with a password. Type it and kuverta draws it here — the password is used for that and nothing else.":
+    "Dieses PDF ist mit einem Passwort geschützt. Geben Sie es ein, dann zeichnet kuverta es hier — das Passwort wird nur dafür benutzt und nirgends gespeichert.",
+  "That password did not open it. Try another.": "Dieses Passwort hat es nicht geöffnet. Versuchen Sie ein anderes.",
   "Open anyway?": "Trotzdem öffnen?",
   "Another app reads the file itself, outside safe preview. Open it only if you trust the sender — click again to open.":
     "Ein anderes Programm liest die Datei selbst, außerhalb der sicheren Vorschau. Öffnen Sie sie nur, wenn Sie dem Absender vertrauen — zum Öffnen noch einmal klicken.",

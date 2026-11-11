@@ -174,6 +174,10 @@ fn attachment(
 /// Safe preview: the attachment drawn, or its text read, in the locked-down
 /// worker (see core-rpc's preview.rs) — pages `first` to `first + count`.
 /// The store is held only while the bytes are read, not while it draws.
+///
+/// `password` is what the person typed when a locked PDF asked for one. It
+/// goes to the worker, which unlocks the file with it, and nowhere else: it
+/// is not stored, not logged, and gone when the viewer closes.
 #[tauri::command]
 async fn attachment_preview(
     app: State<'_, App>,
@@ -182,6 +186,7 @@ async fn attachment_preview(
     index: usize,
     first: usize,
     count: usize,
+    password: Option<String>,
 ) -> Result<core_rpc::preview::SafePreview, String> {
     let found = {
         let core = app.core.lock().unwrap();
@@ -199,6 +204,7 @@ async fn attachment_preview(
             &found.bytes,
             first,
             count,
+            password.as_deref(),
         )
     })
     .await
@@ -2051,6 +2057,7 @@ async fn outgoing_preview(
     file: core_rpc::DraftAttachment,
     first: usize,
     count: usize,
+    password: Option<String>,
 ) -> Result<core_rpc::preview::SafePreview, String> {
     let worker = core_rpc::preview::worker()
         .cloned()
@@ -2063,6 +2070,7 @@ async fn outgoing_preview(
             &file.data,
             first,
             count,
+            password.as_deref(),
         )
     })
     .await
@@ -2124,6 +2132,7 @@ async fn document_preview(
     id: i64,
     first: usize,
     count: usize,
+    password: Option<String>,
 ) -> Result<core_rpc::preview::SafePreview, String> {
     let file = app.core.lock().unwrap().document(id).map_err(fail)?;
     let worker = core_rpc::preview::worker()
@@ -2137,6 +2146,7 @@ async fn document_preview(
             &file.bytes,
             first,
             count,
+            password.as_deref(),
         )
     })
     .await
@@ -2412,6 +2422,8 @@ async fn signature_sample_preview(
             &pdf,
             first,
             count,
+            // A page kuverta wrote itself: never locked, so never asked for.
+            None,
         )
     })
     .await

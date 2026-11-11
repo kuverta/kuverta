@@ -28,6 +28,11 @@
 //!    itself, so the window's image decoder only ever sees a PNG kuverta wrote
 //!    — even a worker that had been taken over could hand it nothing else.
 //!
+//! A PDF locked with a password is the one thing the worker asks about: it
+//! answers `Reply::Password`, the window asks the person, and the password
+//! comes back in the next request and is used to unlock the file here. It is
+//! not stored on either side.
+//!
 //! What it cannot cover is a file opened in another program; that program
 //! reads it as it reads anything. The window marks such files as come from
 //! elsewhere (quarantine on macOS, Mark of the Web on Windows) and, in safe
@@ -110,6 +115,9 @@ pub enum SafePreview {
     },
     /// The text of a file that is read rather than drawn.
     Text { text: String },
+    /// A PDF locked with a password, which the window asks for and sends
+    /// back. `wrong` is set when one was tried and did not fit.
+    Password { wrong: bool },
     /// Nothing to show, and why.
     Unavailable { why: String },
 }
@@ -134,6 +142,9 @@ struct Request {
     content_type: String,
     first: usize,
     count: usize,
+    /// What the person typed to unlock a PDF, when they were asked. `None`
+    /// is the first look, before anyone has been asked for anything.
+    password: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -150,6 +161,11 @@ enum Reply {
     Scans,
     Text {
         text: String,
+    },
+    /// The PDF is locked, and the password it was tried with — none, or the
+    /// one the person typed — did not open it.
+    Password {
+        wrong: bool,
     },
     Unavailable {
         why: String,
@@ -360,13 +376,35 @@ fn on_white(rgba: &[u8]) -> Vec<u8> {
 }
 
 fn pdf(request: &Request, bytes: &[u8]) -> (Reply, Vec<Vec<u8>>) {
-    use hayro::hayro_syntax::Pdf;
+    use hayro::hayro_syntax::{DecryptionError, LoadPdfError, Pdf};
     use std::sync::Arc;
 
     let data: hayro::hayro_syntax::PdfData = Arc::new(bytes.to_vec());
-    let document = match Pdf::new(data) {
+    // The empty password on the first look: that alone opens a PDF locked
+    // only against printing or copying, which is most of them — the lock is
+    // on what may be done with it, not on reading it, and nobody need be
+    // asked for anything.
+    let password = request.password.as_deref().unwrap_or("");
+    let document = match Pdf::new_with_password(data, password) {
         Ok(document) => document,
-        // Encrypted, or not a PDF after all: its text, if anything reads it.
+        // Locked with a password of its own. The window asks for one and
+        // sends it back here; `wrong` tells it whether this is the first
+        // time of asking or a second.
+        Err(LoadPdfError::Decryption(DecryptionError::PasswordProtected)) => {
+            return (
+                Reply::Password {
+                    wrong: request.password.is_some(),
+                },
+                Vec::new(),
+            );
+        }
+        Err(LoadPdfError::Decryption(DecryptionError::UnsupportedAlgorithm)) => {
+            return unavailable(
+                "a PDF locked in a way kuverta cannot undo, so no password would open it here",
+            );
+        }
+        // Encryption that does not add up, or not a PDF after all: its text,
+        // if anything reads it.
         Err(_) => {
             return match crate::readable::contents(&request.name, "application/pdf", bytes) {
                 Contents::Text(text) => (Reply::Text { text }, Vec::new()),
@@ -641,6 +679,10 @@ fn exchange(worker: &Worker, request: &Request, bytes: &[u8]) -> Result<Vec<u8>,
 }
 
 /// Draws an attachment, or reads its text, in the worker.
+///
+/// `password` is what the person typed when a locked PDF asked for one, and
+/// `None` on the first look. It is handed to the worker and used there to
+/// unlock the file; it is never stored and never logged.
 pub fn preview(
     worker: &Worker,
     name: &str,
@@ -648,6 +690,7 @@ pub fn preview(
     bytes: &[u8],
     first: usize,
     count: usize,
+    password: Option<&str>,
 ) -> Result<SafePreview, String> {
     let request = Request {
         job: Job::Preview,
@@ -655,6 +698,7 @@ pub fn preview(
         content_type: content_type.to_string(),
         first,
         count: count.clamp(1, MOST_PAGES_AT_ONCE),
+        password: password.map(str::to_string),
     };
     let out = exchange(worker, &request, bytes)?;
     let (reply, blobs) = unframe::<Reply>(&out)?;
@@ -678,6 +722,7 @@ pub fn preview(
             })
         }
         Reply::Text { text } => Ok(SafePreview::Text { text }),
+        Reply::Password { wrong } => Ok(SafePreview::Password { wrong }),
         Reply::Unavailable { why } => Ok(SafePreview::Unavailable { why }),
         Reply::Scans | Reply::Probe { .. } => {
             Err("the preview worker answered another question".into())
@@ -715,6 +760,7 @@ pub fn contents(worker: &Worker, name: &str, content_type: &str, bytes: &[u8]) -
         content_type: content_type.to_string(),
         first: 0,
         count: 0,
+        password: None,
     };
     let answer = exchange(worker, &request, bytes).and_then(|out| {
         let (reply, blobs) = unframe::<Reply>(&out)?;
@@ -738,6 +784,7 @@ pub fn probe_worker(worker: &Worker) -> Result<Vec<(String, bool)>, String> {
         content_type: String::new(),
         first: 0,
         count: 0,
+        password: None,
     };
     let out = exchange(worker, &request, &[])?;
     match unframe::<Reply>(&out)?.0 {
@@ -757,6 +804,15 @@ mod tests {
             content_type: content_type.into(),
             first: 0,
             count: 2,
+            password: None,
+        }
+    }
+
+    /// The same, with a password typed into the window.
+    fn request_with(name: &str, password: &str) -> Request {
+        Request {
+            password: Some(password.into()),
+            ..request(name, "application/pdf")
         }
     }
 
@@ -819,6 +875,39 @@ mod tests {
         assert_eq!(blobs[0].len(), (w * h * 3) as usize);
         // White paper, and somewhere on it, dark text.
         assert_eq!(&blobs[0][..3], &[255, 255, 255]);
+        assert!(blobs[0].iter().any(|&c| c < 80), "no ink drawn");
+    }
+
+    #[test]
+    fn a_pdf_locked_with_a_password_asks_for_one_and_opens_with_it() {
+        let locked = crate::readable::tests_support::locked_pdf("Kontoauszug 3/2026", "Rosebud");
+
+        // Nobody has been asked yet: it asks, and does not call it wrong.
+        let (reply, blobs) = draw(&request("auszug.pdf", "application/pdf"), &locked);
+        assert_eq!(reply, Reply::Password { wrong: false });
+        assert!(blobs.is_empty());
+
+        // One tried that does not fit: asked again, this time as wrong.
+        let (reply, _) = draw(&request_with("auszug.pdf", "Hoellenhund"), &locked);
+        assert_eq!(reply, Reply::Password { wrong: true });
+
+        // The right one draws the pages, like any other PDF.
+        let (reply, blobs) = draw(&request_with("auszug.pdf", "Rosebud"), &locked);
+        let Reply::Pages { total, sizes, .. } = reply else {
+            panic!("expected pages, got {reply:?}")
+        };
+        assert_eq!(total, 1);
+        assert_eq!(blobs[0].len(), (sizes[0].0 * sizes[0].1 * 3) as usize);
+        assert!(blobs[0].iter().any(|&c| c < 80), "no ink drawn");
+    }
+
+    #[test]
+    fn a_pdf_locked_against_printing_only_is_drawn_without_asking_anyone() {
+        // The owner password locks what may be done with the file; the user
+        // password is empty, so reading it needs nothing from the person.
+        let locked = crate::readable::tests_support::locked_pdf("Rechnung 4711", "");
+        let (reply, blobs) = draw(&request("rechnung.pdf", "application/pdf"), &locked);
+        assert!(matches!(reply, Reply::Pages { total: 1, .. }), "{reply:?}");
         assert!(blobs[0].iter().any(|&c| c < 80), "no ink drawn");
     }
 

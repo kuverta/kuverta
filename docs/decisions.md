@@ -3303,3 +3303,40 @@ envelope; posting it is a button on the card, behind a sheet that shows
 the price, and no tool offers it to a model. A letter is an action in the
 world with a bill attached, which is the line §56 draws for everything
 found in mail.
+
+## 58. A PDF locked with a password is asked about, not refused
+
+**2026-11-12.**
+
+Safe preview said "a PDF kuverta cannot draw — protected with a password, or
+damaged" and stopped there, which is a bank statement, a payslip or an
+insurance policy unreadable in the window it arrived in. The password is
+asked for instead.
+
+**Most of them never ask.** A PDF's standard security handler has two
+passwords: the owner's, which locks what may be done with the file — printed,
+copied, changed — and the user's, which locks reading it. Most locked PDFs
+set only the owner's, and the empty user password opens them. hayro is handed
+the empty password on the first look, so those draw as they always did and
+nobody is asked anything. Only a real user password gets as far as a
+question.
+
+**The question is the worker's, and the answer goes back to it.** The worker
+answers `Password { wrong }` instead of pages; the viewer shows a field, and
+what is typed rides along in the next request and unlocks the file inside the
+worker — where the decrypting is the same Rust code in the same locked-down
+process that does the drawing. Nothing is decrypted in the app's own process.
+
+**The password is not kept.** It lives in the viewer's state while the viewer
+is open, because paging to the next pages needs it again, and goes when the
+viewer closes. It is not written to the store, not put in the keychain, not
+logged, and a password that did not fit is dropped rather than tried again.
+Offering to remember it would mean keeping the key to someone's bank
+statements beside the statements, which is the trade the store is designed
+not to make.
+
+**What is still refused.** A PDF locked with an algorithm hayro does not
+implement says so plainly rather than asking for a password no answer would
+satisfy. The assistant reading an attachment is not asked anything — it has
+nobody to ask — so a locked PDF is still unreadable to it, and signing or
+posting one still needs the unlocked file.
