@@ -15,11 +15,11 @@
 //! 2. **In a process of its own, locked down before it looks.** The worker is
 //!    this program again, started with [`WORKER_FLAG`]. It reads the file from
 //!    its standard input, then takes away what it could do with a foothold —
-//!    on macOS by the system's sandbox in its pure-computation profile (no
-//!    files, no network, no programs), everywhere on Unix by resource limits
-//!    (no new files or sockets, no new processes, no core file, a CPU budget)
-//!    — and only then parses. It fails closed: a worker that cannot lock
-//!    itself down draws nothing.
+//!    on macOS by the system's sandbox, denying everything
+//!    (`SANDBOX_PROFILE`), everywhere on Unix by resource limits (no new
+//!    files or sockets, no new processes, no core file, a CPU budget) — and
+//!    only then parses. It fails closed: a worker that cannot lock itself
+//!    down draws nothing.
 //! 3. **Bounded, and killed if it is not done.** A wall-clock limit, input and
 //!    output caps, a limit on how large a picture may claim to be, and pages
 //!    drawn a few at a time.
@@ -456,35 +456,45 @@ fn probe() -> Vec<(String, bool)> {
 
 // -- locking the worker down -----------------------------------------------------------
 
+/// The sandbox the worker puts itself in, written out rather than named.
+///
+/// Two words in the language the system's own profiles are written in: deny
+/// everything. No file opened for reading or writing, nothing reached over
+/// the network, nothing looked up from another program. Descriptors open
+/// before it — standard input and output — stay usable, which is how the
+/// worker still reads the file and answers with pixels.
+///
+/// It used to be `kSBXProfilePureComputation`, the system's own named
+/// profile, which said the same thing in one word. macOS 27 removed the
+/// named profiles, and a program built against its SDK that asks for one is
+/// *killed* rather than told no — SIGKILL inside `sandbox_init`, before the
+/// worker can fail closed and say why. So the profile is written here, where
+/// it cannot be withdrawn under us, and passed as a profile rather than as a
+/// name. That is the call `sandbox-exec -p` makes and it is honoured on
+/// every macOS kuverta runs on.
+///
+/// What this does not stop — making a socket, forking — the worker's
+/// resource limits do, which is why both layers are there.
+#[cfg(target_os = "macos")]
+const SANDBOX_PROFILE: &[u8] = b"(version 1)\n(deny default)\n\0";
+
 #[cfg(target_os = "macos")]
 fn sandbox() -> Result<(), String> {
     use std::ffi::{c_char, c_int, CStr};
 
     // libsandbox, which every macOS program links through libSystem. The API
     // is marked deprecated, and is what Chromium's and WebKit's helpers used
-    // before they had their own; pure computation allows nothing but
-    // computing: no file opened, no socket, no program started. Descriptors
-    // open before it — standard input and output — stay usable.
+    // before they had their own.
     extern "C" {
-        // `const char kSBXProfilePureComputation[]` in sandbox.h: an array,
-        // so the symbol is the first character, and its address the string.
-        static kSBXProfilePureComputation: c_char;
         fn sandbox_init(profile: *const c_char, flags: u64, errorbuf: *mut *mut c_char) -> c_int;
         fn sandbox_free_error(errorbuf: *mut c_char);
     }
-    const SANDBOX_NAMED: u64 = 0x0001;
 
     let mut error: *mut c_char = std::ptr::null_mut();
-    // SAFETY: the profile is a static C string the library defines, passed
-    // by address; `error` is written only on failure, read once as a C
-    // string, and freed with the library's own function.
-    let status = unsafe {
-        sandbox_init(
-            std::ptr::addr_of!(kSBXProfilePureComputation),
-            SANDBOX_NAMED,
-            &mut error,
-        )
-    };
+    // SAFETY: the profile is a NUL-terminated string in this binary, passed
+    // by address and only read; `error` is written only on failure, read
+    // once as a C string, and freed with the library's own function.
+    let status = unsafe { sandbox_init(SANDBOX_PROFILE.as_ptr().cast::<c_char>(), 0, &mut error) };
     if status == 0 {
         return Ok(());
     }
