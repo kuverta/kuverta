@@ -2617,8 +2617,9 @@ stopping a different mistake (`core-rpc/src/preview.rs`):
 2. **In a process of its own, locked down before it looks.** The app starts
    itself again with `--preview-worker`, before any window, store or log. The
    worker reads the file from standard input and then, before parsing a byte,
-   takes away what a foothold would want: on macOS the system sandbox in its
-   pure-computation profile — no files, no network, no programs — and on every
+   takes away what a foothold would want: on macOS the system sandbox, with a
+   profile that denies everything — no file opened, nothing over the network,
+   nothing looked up from another program — and on every
    Unix resource limits: no new descriptors (so no file, socket or pipe), no
    new processes, nothing written to disk, no core file, a CPU budget, and on
    Linux an address-space limit. A worker that cannot lock itself down draws
@@ -2634,6 +2635,19 @@ stopping a different mistake (`core-rpc/src/preview.rs`):
 A test starts the real worker and has it try, once locked down, to write a
 file, open a socket, start a program and read a file; each must fail. With the
 lockdown taken out, the same test fails at the first — so it tests something.
+
+**The macOS profile is written out, not named (2026-11-12).** It was
+`kSBXProfilePureComputation`, one of the system's named profiles, which says
+the same thing in one word. macOS 27 removed the named profiles, and a
+program built against its SDK that asks for one is *killed* — SIGKILL inside
+`sandbox_init`, before the worker can fail closed and say why. Every preview
+then failed with "the preview worker stopped without an answer", and the
+layer that was meant to fail safe was the one that broke. The profile is now
+two lines of SBPL in `preview.rs`, passed as a profile rather than as a name,
+which is the call `sandbox-exec -p` makes and is honoured on every macOS
+kuverta runs on. The lesson is the one the layers are for: what the system
+hands out can be withdrawn under you, so the part that must not change is the
+part you write down yourself.
 
 ### What it cannot cover
 
