@@ -985,6 +985,14 @@
         <div id="attachment-pages" class="safe-pages" hidden>
           <button type="button" id="attachment-more" hidden>More pages</button>
         </div>
+        <!-- A PDF locked with a password. What is typed here is used to
+             unlock it for drawing and nothing else: it is not saved, not put
+             in the keychain, and gone when the viewer closes. -->
+        <form id="attachment-password" class="attachment-password" autocomplete="off" hidden>
+          <label for="attachment-password-field">Password</label>
+          <input id="attachment-password-field" type="password" autocomplete="off" spellcheck="false">
+          <button type="submit" class="primary">Unlock</button>
+        </form>
         <p id="attachment-status" class="hint"></p>
       </div>
       <div class="dialog-foot">
