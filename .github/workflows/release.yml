@@ -78,8 +78,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # One app for both kinds of Mac.
-          - os: macos-14
+          # One app for both kinds of Mac. Pinned, like the Ubuntu runners
+          # below: `macos-latest` moves on its own, and which SDK the app is
+          # linked against is not something a release should decide by itself.
+          # Bump it when GitHub retires the image — it retired macos-14 on
+          # 2 November 2026, and a retired label is not refused but *cancelled*,
+          # so the other three builds upload and the Mac one quietly does not.
+          - os: macos-15
             targets: aarch64-apple-darwin x86_64-apple-darwin
             args: --target universal-apple-darwin
           # The oldest supported Ubuntu, so the AppImage runs on older systems
