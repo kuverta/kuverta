@@ -12,7 +12,7 @@ core-accounts.workspace = true
 pgp.workspace = true
 # rPGP's signing and encryption take rand 0.8's `CryptoRng`; a newer rand
 # would be a second, incompatible trait.
-rand = "0.8.5"
+rand = "0.10.2"
 mail-parser.workspace = true
 serde.workspace = true
 thiserror.workspace = true
