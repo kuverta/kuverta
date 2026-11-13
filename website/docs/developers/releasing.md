@@ -9,7 +9,7 @@ makes a **draft** release and builds into it:
 
 | System | Built on | Installers |
 | --- | --- | --- |
-| macOS 11+ (Apple Silicon and Intel) | macos-14 | `.dmg`, and the `.app` as `.tar.gz` |
+| macOS 11+ (Apple Silicon and Intel) | macos-15 | `.dmg`, and the `.app` as `.tar.gz` |
 | Linux (x86-64) | ubuntu-22.04 | `.AppImage`, `.deb`, `.rpm` |
 | Linux (64-bit ARM) | ubuntu-22.04-arm | `.AppImage`, `.deb`, `.rpm` |
 | Windows 10+ (x86-64) | windows-latest | `-setup.exe`, `.msi` |
