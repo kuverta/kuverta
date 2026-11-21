@@ -18,7 +18,7 @@ const PAGE = '/apps/desktop/ui/index.html';
 const FAKE = '/kuverta-bird/test/support/fake-invoke.js';
 const OUT = join(ROOT, 'website', 'docs', 'assets', 'video', 'kuverta-demo.mp4');
 const SIZE = { width: 1440, height: 900 };
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.jpg': 'image/jpeg' };
 
 function serve(root) {
   return new Promise((ready) => {
@@ -274,7 +274,19 @@ try {
 await caption('It says where it looked and shows the message it answered from. Every claim can be checked.');
 await wait(7000);
 
-// 6. End card.
+// 6. The scanner rig, then the end card.
+await caption('');
+await page.evaluate((src) => {
+  const c = document.createElement('div'); c.id = '__photo';
+  c.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:#0b0d11;display:flex;align-items:center;justify-content:center;gap:48px;padding:40px;font-family:-apple-system,Inter,Segoe UI,sans-serif;color:#fff';
+  c.innerHTML = `<img src="${src}" style="height:100%;max-height:820px;border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.6)"><div style="max-width:440px"><div style="font-size:40px;font-weight:650;letter-spacing:-.02em;line-height:1.15">The other end: the letter scanner</div><div style="font-size:22px;color:#9aa3b2;margin-top:18px;line-height:1.45">A Raspberry Pi with a camera and a touchscreen over a fixed bed. Put a letter down, it is photographed, handed to Paperless and lands in kuverta. Open hardware, in the repository.</div></div>`;
+  document.body.appendChild(c);
+}, `${base}/website/docs/assets/scanner-rig.jpg`);
+await page.waitForFunction(() => { const i = document.querySelector('#__photo img'); return i && i.complete && i.naturalWidth > 0; });
+await wait(7000);
+await page.evaluate(() => document.getElementById('__photo')?.remove());
+
+// 7. End card.
 await caption('');
 await card('kuverta', 'Open source, AGPL-3.0 · kuverta.github.io/kuverta · desktop app and Thunderbird extension');
 await wait(5000);
