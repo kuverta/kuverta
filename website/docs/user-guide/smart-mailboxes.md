@@ -1,15 +1,15 @@
 ---
-description: Smart mailboxes in kuverta — saved searches in the sidebar, every rule they can use, and importing them from Thunderbird and Apple Mail.
+description: Smart mailboxes in kuverta, saved searches in the sidebar, every rule they can use, and importing them from Thunderbird and Apple Mail.
 ---
 
 # Smart mailboxes
 
-A smart mailbox gathers mail by rules — who sent it, what it says, how old it
-is — without moving any of it. It sits in the sidebar under **Smart mailboxes**
-and works like any mailbox: click it to see what it gathers, with its unread and
-total counts beside it, and narrow it further by category.
+A smart mailbox gathers mail by rules (who sent it, what it says, how old it
+is) without moving any of it. It sits in the sidebar under **Smart mailboxes**
+with its unread and total counts, and works like any mailbox: click it to see
+what it gathers, and narrow that by category.
 
-Smart mailboxes belong to one account and look at every message of that
+A smart mailbox belongs to one account and looks at every message of that
 account, whichever mailbox it is in.
 
 ## Making one
@@ -17,21 +17,21 @@ account, whichever mailbox it is in.
 - Press **+** beside *Smart mailboxes* in the sidebar,
 - **New smart mailbox…** in Settings → Smart mailboxes, or
 - **Smart mailbox…** when kuverta offers [similar messages](similar.md) after a
-  delete — the editor then opens with rules that would catch the next one.
+  delete. The editor then opens with rules that would catch the next one.
 
 ![The smart mailbox editor with three rules and the preview below](../assets/screens/smart-editor.webp)
 
 Give it a name, choose whether mail has to match **all** or **any** of the rules,
 and add rules with **+ Add a rule** (**×** removes one). The box at the bottom
-shows what the rules gather **while you write them** — how many messages match,
-and the first few — so a rule that matches nothing is obvious before you save.
-Rules still being typed are left out of the preview rather than shown as errors.
+previews the result while you write: how many messages match, and the first
+few. A rule that matches nothing shows before you save. Rules you are still
+typing are left out of the preview and are not shown as errors.
 
 **Save** creates it and opens it.
 
 To change or delete one, right-click it in the sidebar and choose **Edit…** or
 **Delete**, or use the list in Settings → Smart mailboxes. Deleting a smart
-mailbox deletes no mail; it only stops gathering it.
+mailbox deletes no mail.
 
 ## Rules
 
@@ -46,7 +46,7 @@ mailbox deletes no mail; it only stops gathering it.
 | **Mailbox** | is, is not, contains | any mailbox the message has a copy in, e.g. `Archive`; names are offered as you type |
 | **Unread** | is | yes or no |
 | **Has an attachment** | is | yes or no |
-| **Can be unsubscribed from** | is | yes or no — whether the mail carries `List-Unsubscribe` |
+| **Can be unsubscribed from** | is | yes or no: whether the mail carries `List-Unsubscribe` |
 | **Older than (days)** | | sent more than this many days ago |
 | **Received in the last (days)** | | sent within this many days |
 
@@ -69,23 +69,22 @@ A few examples:
   profiles, and
 - **Apple Mail**'s smart mailboxes, from its `SmartMailboxes.plist`. macOS only
   lets a program read that with **Full Disk Access** (System Settings → Privacy &
-  Security); without it, kuverta says so.
+  Security). Without it, kuverta says so.
 
 ![Settings → Smart mailboxes, with the import section below](../assets/screens/settings-smart-light.webp#only-light)
 ![Settings → Smart mailboxes](../assets/screens/settings-smart-dark.webp#only-dark)
 
-Each one found is listed with its rules as kuverta understood them, and which
-account it will go to — the account it belonged to, when kuverta can match it,
-otherwise the account you are looking at. Tick the ones you want and press
+Each one found is listed with its rules as kuverta understood them and the
+account it will go to: the one it belonged to if kuverta can match it,
+otherwise the one you are looking at. Tick the ones you want and press
 **Import the chosen ones**.
 
-The rules of the three programs do not line up exactly, so an import translates
-what it can and **lists what it could not carry over** under the smart mailbox,
-as *Left out: …*. A smart mailbox with none of its rules left cannot be ticked.
-Leaving a rule out silently would make a smart mailbox gather more than the
-original and look right while doing it.
+The three programs' rules do not line up exactly. An import translates what it
+can and lists the rest under the smart mailbox as *Left out: …*, because a
+smart mailbox with a rule missing gathers more than the original. One with no
+rules left cannot be ticked.
 
-Importing twice does not make duplicates: one that already exists with the same
-name on that account is shown as *already imported*. Imported smart mailboxes
-are marked **Thunderbird** or **Apple Mail** in the settings list, and are
+Importing twice makes no duplicates: a smart mailbox with the same name on
+that account is shown as *already imported*. Imported smart mailboxes
+are marked **Thunderbird** or **Apple Mail** in the settings list and are
 ordinary smart mailboxes from then on.

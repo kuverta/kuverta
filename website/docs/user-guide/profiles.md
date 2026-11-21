@@ -1,5 +1,5 @@
 ---
-description: Profiles keep private mail and each company's mail apart — accounts and postal addresses grouped, one profile on screen at a time.
+description: Profiles keep private mail and each company's mail apart, accounts and postal addresses grouped, one profile on screen at a time.
 ---
 
 # Profiles
@@ -13,9 +13,9 @@ profile at a time, or all of them.
 ## Switching
 
 The switcher sits at the top of the sidebar once there is at least one profile:
-**All**, then each profile. Choosing one shows only its accounts and addresses;
-if the account you were reading is not in it, kuverta moves to the profile's
-first. The choice is kept the next time kuverta opens.
+**All**, then each profile. Choosing one shows only its accounts and addresses.
+If the account you were reading is not in it, kuverta moves to the profile's
+first. Your choice is kept for the next time kuverta opens.
 
 An account or address in no profile shows under **All** only.
 
@@ -27,11 +27,11 @@ postal address goes in.
 
 ![The first step of the setup assistant: profiles](../assets/screens/setup-profiles.webp)
 
-Afterwards, **Settings → Profiles** lists them: rename one by typing over its
+Afterwards, **Settings → Profiles** lists them. Rename one by typing over its
 name, move it up or down, delete it, or add another. Underneath, **What is in
-each** has every account and address with its profile, to change in one place.
-The account and address forms have a **Profile** field too, and a new account
-starts in the profile on screen.
+each** lists every account and address with its profile, to change in one
+place. The account and address forms have a **Profile** field too, and a new
+account starts in the profile on screen.
 
 ![Settings → Profiles](../assets/screens/settings-profiles.webp)
 

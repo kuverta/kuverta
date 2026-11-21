@@ -4,9 +4,9 @@ description: Every keyboard shortcut in kuverta's main window and in Cleanup.
 
 # Keyboard shortcuts
 
-Keys are case-sensitive: <kbd>R</kbd> (reply) is not <kbd>r</kbd> (sync). None of
-them fire while you are typing in a field — typing an `e` into a subject line
-never archives anything.
+Keys are case-sensitive: <kbd>R</kbd> replies and <kbd>r</kbd> syncs. No key
+fires while you are typing in a field, so an `e` in a subject line never
+archives anything.
 
 ## Main window
 
@@ -52,13 +52,13 @@ picks one more.
 | --- | --- |
 | <kbd>v</kbd> | switch a letter between its text and the scan |
 | <kbd>i</kbd> | open or close the [assistant](assistant.md) |
-| <kbd>Shift</kbd>+<kbd>I</kbd> | hand the message under the cursor — or the ones picked — to the assistant |
+| <kbd>Shift</kbd>+<kbd>I</kbd> | hand the message under the cursor, or the ones picked, to the assistant |
 | Ask the assistant about the message under the cursor, or the ones picked |
 | <kbd>,</kbd> | settings |
 | <kbd>Esc</kbd> | close settings, a dialog or a menu |
 
-In a postal address, the keys that change mail — archive, delete, undo, reply —
-do nothing but say that post cannot be changed from here.
+In a postal address, the keys that change mail (archive, delete, undo, reply)
+only say that post cannot be changed from here.
 
 ## Cleanup
 
@@ -75,9 +75,9 @@ Cleanup has the same keys for moving and acting, plus:
 | <kbd>?</kbd> | what Cleanup is for, and every key |
 | <kbd>Esc</kbd> | close the message; with none open, clear the filter |
 
-In Cleanup, <kbd>#</kbd> and <kbd>Delete</kbd> move to Trash (not
-<kbd>Backspace</kbd>), and keys with <kbd>⌘</kbd>, <kbd>Ctrl</kbd> or
-<kbd>Alt</kbd> are left to the system — <kbd>⌘</kbd>+<kbd>C</kbd> still copies.
+In Cleanup, <kbd>#</kbd> and <kbd>Delete</kbd> move to Trash but
+<kbd>Backspace</kbd> does not. Keys with <kbd>⌘</kbd>, <kbd>Ctrl</kbd> or
+<kbd>Alt</kbd> are left to the system, so <kbd>⌘</kbd>+<kbd>C</kbd> still copies.
 While the Unsubscribe list is open, only its search box takes keys, and
 <kbd>Esc</kbd> closes it.
 

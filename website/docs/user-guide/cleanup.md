@@ -1,32 +1,31 @@
 ---
-description: Cleanup in kuverta — dealing with newsletters, marketing and notifications a whole kind at a time, and unsubscribing from senders in one go.
+description: Cleanup in kuverta, dealing with newsletters, marketing and notifications a whole kind at a time, and unsubscribing from senders in one go.
 ---
 
 # Cleanup and unsubscribing
 
-Most of a mailbox was not written to you. Newsletters, receipts, alerts and
-adverts arrive in the same list as the few messages that need an answer, and in
-an Inbox they all look equally like work. **Cleanup** is for dealing with them a
-whole kind at a time — and for stopping the ones you never read.
+Newsletters, receipts, alerts and adverts arrive in the same list as the few
+messages that need an answer. **Cleanup** handles them a whole kind at a time
+and stops the ones you never read.
 
 ## The count in the header
 
-**Cleanup** in the header carries a number: the newsletters, marketing and
-notifications **still in your Inbox**. Hover over it to also see how many
-senders you could unsubscribe from. Click it to open Cleanup; **← kuverta** at
-the top left takes you back.
+**Cleanup** in the header shows a number: the newsletters, marketing and
+notifications still in your Inbox. Hover over it to also see how many senders
+you could unsubscribe from. Click it to open Cleanup. **← kuverta** at the top
+left takes you back.
 
 ## Working through mail by category
 
 ![Cleanup: mailboxes and the six categories on the left, the list in the middle](../assets/screens/cleanup.webp)
 
-The left side lists **Everything**, the account's mailboxes, and the six
-[categories](reading.md#categories); pick one and the list shows only that. If
-you have more than one account, choose which one at the top. If you have post,
-each postal address is listed too, and **Everything** shows mail and post
-together, newest first.
+The left side lists **Everything**, the account's mailboxes and the six
+[categories](reading.md#categories). Pick one and the list shows only that.
+With more than one account, choose which at the top. If you have post, each
+postal address is listed too, and **Everything** shows mail and post together,
+newest first.
 
-The keys are the ones from the main window, plus filing:
+The keys are those of the main window, plus filing:
 
 | Key | |
 | --- | --- |
@@ -35,77 +34,76 @@ The keys are the ones from the main window, plus filing:
 | <kbd>e</kbd> | archive |
 | <kbd>#</kbd> or <kbd>Delete</kbd> | move to Trash |
 | <kbd>u</kbd> | read / unread |
-| <kbd>1</kbd>–<kbd>6</kbd> | file as personal, newsletter, marketing, transactional, notification, unknown |
+| <kbd>1</kbd> to <kbd>6</kbd> | file as personal, newsletter, marketing, transactional, notification, unknown |
 | <kbd>z</kbd> | undo |
 | <kbd>/</kbd> | search |
 | <kbd>r</kbd> | sync |
 | <kbd>?</kbd> | what Cleanup is for, and every key |
 | <kbd>Esc</kbd> | close the message, or clear the filter |
 
-As in the main window, acting on a message keeps your place, and changes wait in
-the same [undo window](reading.md#undo) before they reach the server.
+As in the main window, acting on a message keeps your place, and changes wait
+in the same [undo window](reading.md#undo) before they reach the server.
 
-Filing with a number is a correction: from then on, that sender or list is filed
-the way you said.
+Filing with a number is a correction: from then on, that sender or list is
+filed the way you said.
 
 ## Unsubscribe
 
-Below the categories is **Unsubscribe**, with a count: every sender whose mail
-says how to unsubscribe (a `List-Unsubscribe` header) and whom you have not
-unsubscribed from yet.
+Below the categories is **Unsubscribe**, with a count of every sender whose
+mail says how to unsubscribe (a `List-Unsubscribe` header) and whom you have
+not unsubscribed from yet.
 
 ![Unsubscribe: senders with message counts and how each can be unsubscribed](../assets/screens/unsubscribe.webp)
 
-Senders are grouped by mailing list, or by address when there is no list, and
-each row shows how many messages they have sent, how many are unread, and the
+Senders are grouped by mailing list, or by address when there is no list. Each
+row shows how many messages they have sent, how many are unread, and the
 latest subject. **Find a sender** narrows the list. The chip on the right says
 how the sender can be unsubscribed:
 
 | Chip | What kuverta does |
 | --- | --- |
-| **one click** | Sends the one request the sender's header asks for, as RFC 8058 describes — made for exactly this, and safe to automate. |
+| **one click** | Sends the one request the sender's header asks for, as RFC 8058 describes. It is made for this and safe to automate. |
 | **by mail** | Sends the unsubscribe mail the sender asks for, from your account. |
 | **opens a page** | The sender only offers a web page. kuverta opens it in your browser for you to finish there. |
 
-Tick the senders you want — or **Select all** — and press **Unsubscribe from N**.
-Senders marked *one click* and *by mail* are unsubscribed from right there.
-Senders that only offer a page are collected in a bar that opens them **five at
-a time**, so a long list does not open fifty browser tabs at once.
+Tick the senders you want, or **Select all**, and press **Unsubscribe from N**.
+Senders marked *one click* and *by mail* are unsubscribed right there. Senders
+that only offer a page are collected in a bar that opens them **five at a
+time**, so a long list does not open fifty browser tabs at once.
 
-kuverta **never follows an ordinary unsubscribe link on its own.** Visiting one
+kuverta never follows an ordinary unsubscribe link on its own. Visiting one
 tells the sender that your address is read, and most of those pages want a
 click anyway.
 
 Each row remembers what happened: *unsubscribed* with the date, *page opened*
-with the date, or *failed* — hover over it for the reason.
+with the date, or *failed* (hover over it for the reason).
 
 ### Also moving their mail to the Trash
 
-Tick **Also move their mail to Trash** before pressing Unsubscribe to clear out
-everything those senders have sent, too. Every message is moved as its own
+Tick **Also move their mail to Trash** before pressing Unsubscribe to also
+clear out everything those senders have sent. Each message is moved as its own
 queued change, like any other delete, so <kbd>z</kbd> in the main window can
-still bring them back while they wait to be sent.
+bring them back while they wait to be sent.
 
 !!! warning "Unsubscribe only from senders you recognise"
-    For real spam, unsubscribing — by any method — confirms to the sender that
+    For real spam, unsubscribing by any method confirms to the sender that
     your address exists and is read, and brings more of it. Delete spam instead,
     and let kuverta offer the [messages like it](similar.md).
 
 The first time you open Unsubscribe, kuverta reads the unsubscribe headers of
-mail that was synced before it kept them. On a large mailbox that takes a moment
-and says how far it has got.
+mail that was synced before it kept them. On a large mailbox that takes a
+moment, and it says how far it has got.
 
 ### Unsubscribing where you decided to
 
-You do not have to come here for it. Deleting a single message that says how to
-be taken off its list — a newsletter, an advert — brings up the offer straight
-away: **Stop mail from Acme?**, with what it will do in one line (a click, a
-mail, or their page opened) and a tick to move the rest of that sender's mail to
-the Trash with it. Deleting one is the moment you decided you did not want it,
-and this is that moment.
+Deleting a single message that says how to be taken off its list (a
+newsletter, an advert) brings up the offer straight away: **Stop mail from
+Acme?**, with one line on what it will do (a click, a mail, or their page
+opened) and a tick to move the rest of that sender's mail to the Trash with
+it.
 
-The offer is only made for a sender you have not unsubscribed from before, and
-never for a message that offers no way off a list — an ordinary delete is
-followed by the [look-alikes](similar.md) as before, and never by both. Turn it
-off in **Settings → General → Deleting mail**, or with **Don't ask again** on
-the sheet itself.
+The offer is only made for a sender you have not unsubscribed from before. A
+message that offers no way off a list is followed by the
+[look-alikes](similar.md) as before, and you never get both. Turn it off in
+**Settings → General → Deleting mail**, or with **Don't ask again** on the
+sheet itself.
