@@ -1005,7 +1005,8 @@ async function openReplyInCompose(messageId, body) {
   await refreshEnvelope();
 }
 
-el("chat-send").onclick = sendToAssistant;
+// Without the arrow the click event would arrive as `again`.
+el("chat-send").onclick = () => sendToAssistant();
 assistant.input.addEventListener("keydown", (event) => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
