@@ -26,8 +26,17 @@ use tracing_subscriber::{reload, EnvFilter, Registry};
 /// previous file. A log is for the recent past.
 const ROTATE_AT: u64 = 4 * 1024 * 1024;
 
+/// The certificate verifier logs every refusal at error level itself. A
+/// refusal is an answer, not a fault: whoever asked gets it back as an error
+/// and says what it means — a failed sync does, and a setup probe of an
+/// `autoconfig.` host with somebody else's certificate rightly says nothing.
+const QUIET: &str = "rustls_platform_verifier=off";
+
+const NORMAL: &str = "info,rustls_platform_verifier=off";
+
 const DETAILED: &str = "info,core_rpc=debug,core_proto=debug,core_store=debug,core_smtp=debug,\
-core_accounts=debug,core_paper=debug,core_ai=debug,core_pgp=debug,kuverta_desktop=debug";
+core_accounts=debug,core_paper=debug,core_ai=debug,core_pgp=debug,kuverta_desktop=debug,\
+rustls_platform_verifier=off";
 
 pub struct Logs {
     dir: PathBuf,
@@ -57,7 +66,12 @@ impl Logs {
         let initial = if detailed {
             EnvFilter::new(DETAILED)
         } else {
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
+            EnvFilter::try_from_default_env()
+                .map(|filter| match QUIET.parse() {
+                    Ok(quiet) => filter.add_directive(quiet),
+                    Err(_) => filter,
+                })
+                .unwrap_or_else(|_| EnvFilter::new(NORMAL))
         };
         let (filter, handle) = reload::Layer::new(initial);
 
@@ -113,7 +127,7 @@ impl Logs {
         let filter = if on {
             EnvFilter::new(DETAILED)
         } else {
-            EnvFilter::new("info")
+            EnvFilter::new(NORMAL)
         };
         self.filter
             .reload(filter)
