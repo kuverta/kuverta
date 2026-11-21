@@ -16,7 +16,7 @@
 //! **No instant is invented.** This is the property worth fuzzing rather
 //! than asserting in one test: `When::at` is an epoch second, and it is
 //! filled only where the sender gave a time that needs no zone database.
-//! A `TZID` names a wall clock, and a date is not an instant at all — so if
+//! A `TZID` names a wall clock, and a date is not an instant at all - so if
 //! either is set, `at` must be empty. A card showing a confident wrong hour
 //! is worse than one showing none, and this is the line between them.
 //!

@@ -1,7 +1,7 @@
 //! The HTML a letter arrives in, made into a page the window's frame shows.
 //!
 //! The reader beside this one (`read_html`) makes text, and text cannot do
-//! anything. This makes markup, and markup can — which is why the page is
+//! anything. This makes markup, and markup can - which is why the page is
 //! held behind a Content-Security-Policy and a sandboxed frame whatever
 //! this file finds. What is checked here is what can be checked of every
 //! input at all, under the same rule as the text reader's: it returns, its
@@ -12,8 +12,8 @@
 //! from an allow-list rather than copied: no element that could run or
 //! fetch is ever named in it. That is checked by looking for the tags
 //! themselves. An input can put the *letters* `<script` into the page by
-//! writing `&lt;script` — that is text, shown as text, which the test in
-//! `crates/core-rpc/tests/html_view.rs` holds to — so what is looked for
+//! writing `&lt;script` - that is text, shown as text, which the test in
+//! `crates/core-rpc/tests/html_view.rs` holds to - so what is looked for
 //! here is the element: `<script` followed by what ends a tag name, and
 //! every `on…=` attribute, which a page made here never has.
 #![no_main]
@@ -45,7 +45,7 @@ fuzz_target!(|html: &str| {
         };
         // Escaping can make six bytes of one, a link adds its own address
         // and words to what it had, and the skeleton is fixed: the bound is
-        // loose, and loose is the point — see `read_html`.
+        // loose, and loose is the point - see `read_html`.
         assert!(
             page.html.len() <= MOST_PAGE + 8 * html.len() + 2048,
             "{} bytes of page out of {} bytes of HTML",
@@ -92,7 +92,7 @@ fuzz_target!(|html: &str| {
         // No `on…` attribute, no `srcdoc`, and no `javascript:` address in
         // any tag the page wrote. Tags are the page's own, so each runs from
         // `<` to the next `>` outside quotes, and every attribute in one is
-        // double-quoted with `"` escaped inside — which is how the page
+        // double-quoted with `"` escaped inside - which is how the page
         // wrote them, and why the names and values can be read back apart.
         // A title that says `a onx=b` is words in a value, not an attribute,
         // and no browser reads it as one.

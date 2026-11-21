@@ -2,14 +2,14 @@
 //!
 //! This is the parser with the widest mouth in the program: anybody who can
 //! send mail can hand it a megabyte of anything. It is also the newest, and
-//! it was written under one rule — prefer refusing to guessing — so what is
+//! it was written under one rule - prefer refusing to guessing - so what is
 //! checked here is that rule, not that the text comes out pretty.
 //!
 //! Four things must hold for every input there is:
 //!
 //! **It returns.** No panic, no arithmetic that overflows (the fuzz profile
 //! turns those into panics on purpose), and no recursion to run the stack
-//! out — the reader counts depth rather than nesting calls, and this is what
+//! out - the reader counts depth rather than nesting calls, and this is what
 //! says so for inputs nobody would think to write down.
 //!
 //! **What comes out is bounded** by the reader's own limit and the length of
@@ -36,7 +36,7 @@
 //!
 //! `<>` is an empty tag. Dropping it leaves `vbscript` next to `:m`, and the
 //! text says `vbscript:` where the sender's bytes never did. That is not a
-//! defect — it is the whole job. `<b>java</b>script:` has to read as
+//! defect - it is the whole job. `<b>java</b>script:` has to read as
 //! `javascript:`, because the words either side of markup are one word.
 //!
 //! So there is no form of this an input-only check can take. Joining text
@@ -76,7 +76,7 @@ fuzz_target!(|html: &str| {
     };
 
     // The limit is checked once round the loop, so the run being read when it
-    // is passed is finished before anyone notices — and a run is at most the
+    // is passed is finished before anyone notices - and a run is at most the
     // whole input. Generous on purpose: a bound that is tight but wrong fails
     // on somebody's mail rather than on a bug, which is the mistake this line
     // used to make.

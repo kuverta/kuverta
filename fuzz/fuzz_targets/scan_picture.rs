@@ -2,7 +2,7 @@
 //! pixels there are.
 //!
 //! None of these functions parses a format. They take a buffer, a width and a
-//! height, and index into it — which is the whole reason they are here. Every
+//! height, and index into it - which is the whole reason they are here. Every
 //! one of them computes offsets from the two numbers rather than from the
 //! buffer's length, so the question this asks is what happens when the three
 //! disagree: a JPEG that decoded short, a camera frame that arrived truncated,
@@ -12,7 +12,7 @@
 //! bounds, which is the right failure and still a failure: `bmp` is served
 //! over the rig's HTTP port, and a panic there is a page of the setup screen
 //! that stops answering. So what is checked is that each one either returns
-//! or declines, for every width and height there is — including the ones that
+//! or declines, for every width and height there is - including the ones that
 //! overflow when multiplied together, which the fuzz profile turns into
 //! panics on purpose.
 #![no_main]
@@ -78,7 +78,7 @@ fuzz_target!(|input: Picture4| {
         assert_eq!(rgb.len(), before, "{width}×{height} changed size");
     }
     // `trim_to_page` asks for three bytes a pixel and hands a buffer it does
-    // not recognise straight back, dimensions and all — so it is fed anything
+    // not recognise straight back, dimensions and all - so it is fed anything
     // to see that it returns, and held to what it promises only when it was
     // given what it asks for.
     let enough = pixels.len() >= (width as usize).saturating_mul(height as usize) * 3;
