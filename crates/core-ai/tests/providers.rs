@@ -255,7 +255,11 @@ async fn ollama_lists_its_models_with_what_each_can_do() {
     let names: Vec<&str> = models.iter().map(|model| model.name.as_str()).collect();
     assert_eq!(
         names,
-        ["nomic-embed-text:latest", "qwen2.5vl:3b", "qwen3:4b-instruct"]
+        [
+            "nomic-embed-text:latest",
+            "qwen2.5vl:3b",
+            "qwen3:4b-instruct"
+        ]
     );
     assert!(models[0].embedding);
     assert_eq!(models[0].vision, Some(false));
