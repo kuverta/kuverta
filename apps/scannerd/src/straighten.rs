@@ -14,7 +14,7 @@ use image::RgbImage;
 use jpeg_encoder::{ColorType, Encoder, SamplingFactor};
 
 /// Four points as fractions of a picture, in the order top left, top right,
-/// bottom right, bottom left — clockwise as the picture is looked at.
+/// bottom right, bottom left - clockwise as the picture is looked at.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Corners(pub [(f64, f64); 4]);
 
@@ -106,8 +106,8 @@ impl Corners {
     /// the photograph at all.
     ///
     /// The room is the point. Cropped to the marks exactly, a letter put down
-    /// a little further left — or a sheet bigger than the one the rig was set
-    /// up with — is cut by the sensor before any of this code runs, and no
+    /// a little further left - or a sheet bigger than the one the rig was set
+    /// up with - is cut by the sensor before any of this code runs, and no
     /// amount of straightening afterwards can find what was never
     /// photographed. That took the letterhead off letters, which is the one
     /// part of a page the sender is read from. The crop costs nothing to
@@ -132,7 +132,7 @@ impl Corners {
         format!("{left:.3},{top:.3},{:.3},{:.3}", right - left, bottom - top)
     }
 
-    /// The same corners as fractions of the crop `x,y,w,h` — of the
+    /// The same corners as fractions of the crop `x,y,w,h` - of the
     /// photograph the camera takes with it.
     pub fn within(&self, crop: &str) -> Option<Corners> {
         let parts: Vec<f64> = crop
@@ -183,7 +183,7 @@ impl Corners {
     }
 
     /// The corners moved outwards by `margin` of the page's size on each
-    /// side, as they would be on the table — so a letter put down a little
+    /// side, as they would be on the table - so a letter put down a little
     /// off the marked page is still inside. The margin shrinks as needed to
     /// keep every corner in the picture.
     pub fn with_margin(&self, margin: f64) -> Corners {
@@ -293,7 +293,7 @@ impl Homography {
 /// it has already been compressed once.
 const QUALITY: u8 = 92;
 
-/// A photograph, warped so that `corners` — fractions of it — become the
+/// A photograph, warped so that `corners` - fractions of it - become the
 /// corners of the whole result. The result is as wide as the average of the
 /// top and bottom edges and as tall as the average of the sides, so a page
 /// keeps roughly the proportions it has on the table.
@@ -334,12 +334,12 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
     // would be asking the same question of the same edges twice, and the
     // second answer can only be worse: this picture was made from the first
     // one, and where an edge was too dim to find it is dimmer here. It cut
-    // real page off letters. The measurement is still wanted — it is what
-    // tells an envelope from a sheet — so only the warp is skipped.
+    // real page off letters. The measurement is still wanted - it is what
+    // tells an envelope from a sheet - so only the warp is skipped.
     let look_again = page.corners.filter(|_| overhanging.is_none());
     let (rgb, width, height) = match look_again {
         // Worth a second look: the page is somewhere inside what the corners
-        // enclose, so the picture is warped onto the page itself — from the
+        // enclose, so the picture is warped onto the page itself - from the
         // photograph, not from the picture just made of it.
         Some(page) => {
             let page = Corners(page.0.map(|(x, y)| first.apply(x, y)));
@@ -364,7 +364,7 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
         tone,
         // Always against the marks, never against whatever was warped onto.
         // `covered` is how an envelope is told from a page, and the widening
-        // above would otherwise shrink it for a page that overhangs — which
+        // above would otherwise shrink it for a page that overhangs - which
         // is a letter reported as the envelope it came in.
         covered: page
             .covered
@@ -373,10 +373,10 @@ pub fn straighten_trimmed(jpeg: &[u8], corners: &Corners) -> Result<Straightened
 }
 
 /// A photograph straightened and trimmed, and how much of the corners'
-/// area the paper in it covered — which tells an envelope from a page.
+/// area the paper in it covered - which tells an envelope from a page.
 pub struct Straightened {
     pub jpeg: Vec<u8>,
-    /// What the page looked like **before** its light was flattened — the
+    /// What the page looked like **before** its light was flattened - the
     /// paper and the ink the exposure is steered by. `None` when it was left
     /// as it was. See [`crate::flatten::Tone`] for why it has to travel.
     pub tone: Option<crate::flatten::Tone>,
@@ -385,14 +385,14 @@ pub struct Straightened {
     /// DL envelope and 0.6 for a C5. `None` when no paper was found.
     ///
     /// Against the marks rather than against the picture that came out,
-    /// because those are not always the same quad any more — see
-    /// [`paper_overhanging`] — and this number only means anything if its
+    /// because those are not always the same quad any more - see
+    /// [`paper_overhanging`] - and this number only means anything if its
     /// yardstick never moves.
     pub covered: Option<f64>,
 }
 
 /// Paper covering less than this share of what a page covers is an
-/// envelope: every envelope a page is folded into is smaller — DL about 0.4 of
+/// envelope: every envelope a page is folded into is smaller - DL about 0.4 of
 /// an A4 page, C5 about 0.6. C4, the size of an unfolded page, is not told
 /// apart.
 pub const ENVELOPE: f64 = 0.72;
@@ -402,19 +402,19 @@ pub const ENVELOPE: f64 = 0.72;
 /// The two errors here do not cost the same, which the caller's own comments
 /// have said for a while: an envelope taken for a page becomes page one of the
 /// letter it holds, which is where it belongs anyway, while a page taken for
-/// an envelope ends the letter it was part of and starts another — one letter
+/// an envelope ends the letter it was part of and starts another - one letter
 /// filed as two, each with half of itself missing.
 ///
 /// So the measurement is asked twice, with a different bar each time. Calling
-/// a photograph an envelope — for the display, for the folder, for not judging
-/// it on its text — is cheap, and keeps [`ENVELOPE`]. Letting it finish the
+/// a photograph an envelope - for the display, for the folder, for not judging
+/// it on its text - is cheap, and keeps [`ENVELOPE`]. Letting it finish the
 /// letter being collected costs a letter when it is wrong, and asks for this:
 /// unmistakably smaller, not marginally.
 ///
 /// Why a margin rather than a better measurement. On the rig a six-page SCHUFA
 /// letter was filed as two three-page letters, by this test, on the fourth
 /// page: `letter closed by the next envelope`. What is measured is where the
-/// straightener found the paper's edge, and that moves with the exposure — the
+/// straightener found the paper's edge, and that moves with the exposure - the
 /// photograph that did it had just been taken again two thirds of a stop
 /// darker, and across the pages of that one letter the straightener's own
 /// output varied from 0.75 to 0.91 of the marked corners' area. A spread of
@@ -438,7 +438,7 @@ const PAPER_AT_LEAST: f64 = 0.1;
 /// Whether paper covering `covered` of the corners' area is an envelope,
 /// where a page covers `page` of it. Measured against a page rather than the
 /// corners, because the corners may be set generously round where letters
-/// land — a page then covers only some of them, and would otherwise be taken
+/// land - a page then covers only some of them, and would otherwise be taken
 /// for an envelope.
 pub fn is_envelope(covered: Option<f64>, page: f64) -> bool {
     covered.is_some_and(|covered| covered >= PAPER_AT_LEAST && covered < page * ENVELOPE)
@@ -470,8 +470,8 @@ const TRIM_EDGE: f64 = 0.015;
 const TRIM_SAMPLE: usize = 400;
 
 /// Packed RGB straightened once more, onto the page it shows: setup's corners
-/// mark where a page lay then, and the next letter lies a little off them —
-/// further along, or a few degrees round — so its photograph has strips and
+/// mark where a page lay then, and the next letter lies a little off them -
+/// further along, or a few degrees round - so its photograph has strips and
 /// wedges of table beside it. The page's own corners are found in a small grey
 /// copy ([`crate::locate::page_corners`]) and the picture warped onto them,
 /// with a thin edge. Left as it is when no page is found, or when what is found
@@ -484,7 +484,7 @@ pub fn trim_to_page(rgb: Vec<u8>, width: u32, height: u32) -> (Vec<u8>, u32, u32
 
 /// Where the paper is inside a straightened picture, and how much of the
 /// picture it covers: the corners as fractions, for whoever warps onto them.
-/// `None` corners mean "leave the picture as it is" — no paper found, too
+/// `None` corners mean "leave the picture as it is" - no paper found, too
 /// little of it, or it already fills the picture.
 struct Page {
     corners: Option<Corners>,
@@ -513,7 +513,7 @@ fn outside(quad: &Corners, (x, y): (f64, f64)) -> f64 {
 /// The paper's own corners, when the marked ones are cutting it.
 ///
 /// Setup's corners say where a page lay when the rig was set up. A letter put
-/// down further left, or a bigger sheet, reaches past them — and everything
+/// down further left, or a bigger sheet, reaches past them - and everything
 /// outside them is thrown away by the first warp, before the page is ever
 /// looked for, so no amount of trimming afterwards can bring it back. That is
 /// a letterhead cut off its own letter, which is both the worst part of the
@@ -570,15 +570,15 @@ const MOST_STEPS: usize = 40;
 /// Sides of a found page that still have paper beyond them, put back where
 /// the picture ends.
 ///
-/// The page is found by its brightness, so an edge lying in shadow — the far
-/// one, usually, under a camera on a stalk — is found short. Trimming to it
+/// The page is found by its brightness, so an edge lying in shadow - the far
+/// one, usually, under a camera on a stalk - is found short. Trimming to it
 /// then cuts into the sheet, which is how letters lost the column down their
 /// right-hand side while the rest of the page looked perfectly well framed.
 ///
 /// So before a side is cut, the strip it would cut away is looked at. If that
 /// strip is as bright as the page, it is more page, and the side goes back
 /// out to the edge of the picture. Only a side with something darker beyond
-/// it — the table — is a side worth trimming to.
+/// it - the table - is a side worth trimming to.
 fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
     let at = |x: f64, y: f64| {
         let (px, py) = (
@@ -625,7 +625,7 @@ fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
     /// of the picture.
     ///
     /// The side found by the corner-finder is a guess made on a small grey
-    /// copy, and it comes in short wherever the light falls off — which is
+    /// copy, and it comes in short wherever the light falls off - which is
     /// the far edge of a sheet under a camera on a stalk. Cutting to it takes
     /// page with it. Jumping to the edge of the picture instead, which is
     /// what this used to do, keeps whatever table lies there: on the rig,
@@ -662,7 +662,7 @@ fn keep_paper(small: &[u8], sw: usize, sh: usize, page: Corners) -> Corners {
     let [out_left, out_right, out_top, out_bottom] = walked;
 
     // Only the sides that moved move. A side that did not is left exactly as
-    // it was found, corner by corner — which is what keeps the turn of a
+    // it was found, corner by corner - which is what keeps the turn of a
     // letter lying a few degrees off. Whether a side moved is asked of the
     // walk, not of the corner: a corner of a crooked page is not on the side
     // it belongs to.
@@ -817,7 +817,7 @@ fn encode(straight: &[u8], width: u32, height: u32, size_hint: usize) -> Result<
 }
 
 /// A small greyscale frame straightened as a photograph would be, for the
-/// live view on the LCD — so it shows the page the corners mark, the way the
+/// live view on the LCD - so it shows the page the corners mark, the way the
 /// photograph will show it, and not the crop around it.
 ///
 /// `aspect` is the frame's true width over its height: a preview frame is

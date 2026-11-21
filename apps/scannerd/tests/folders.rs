@@ -1,6 +1,6 @@
 //! Which folder a letter goes in: the folders, the Paperless calls that set
 //! their tags up and read what a letter got, and the loop following a letter
-//! from upload to folder — against a Paperless on loopback.
+//! from upload to folder - against a Paperless on loopback.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
@@ -159,8 +159,8 @@ fn paperless(reading: usize) -> (String, Log) {
             let reply = match request.as_str() {
                 "GET /api/tags/?name__iexact=Car" => r#"{"results":[{"id":3,"name":"Car"}]}"#.into(),
                 "GET /api/tags/?name__iexact=House" => r#"{"results":[{"id":5,"name":"House"}]}"#.into(),
-                // The shelf as Paperless holds it: `home` matches nothing —
-                // a label put on by hand — and the other two are folders.
+                // The shelf as Paperless holds it: `home` matches nothing -
+                // a label put on by hand - and the other two are folders.
                 "GET /api/tags/?page_size=500" => r#"{"count":3,"results":[
                      {"id":1,"name":"home","matching_algorithm":0,"match":""},
                      {"id":3,"name":"Car","matching_algorithm":1,"match":"Kfz \"Grüne Karte\""},
@@ -363,7 +363,7 @@ async fn the_shelf_can_be_taken_from_paperless_when_nothing_here_names_one() {
         vec![
             folder("Car", "Kfz, Grüne Karte", false),
             folder("Werbung", "", false),
-            // Marked as a person in Paperless, so it comes back as one — with
+            // Marked as a person in Paperless, so it comes back as one - with
             // the mark taken off the name again.
             Folder {
                 words: "Erika Mustermann".into(),
@@ -565,8 +565,8 @@ async fn a_letter_can_be_filed_by_hand_in_no_folder_or_in_the_bin() {
         Some(&Outcome::Nowhere)
     );
 
-    // The folders' tags come off; what is not a folder — the address, who the
-    // post is for — stays.
+    // The folders' tags come off; what is not a folder - the address, who the
+    // post is for - stays.
     let patch = requests(&log)
         .into_iter()
         .filter(|(request, _)| request.starts_with("PATCH /api/documents/"))

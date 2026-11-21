@@ -52,7 +52,7 @@ fn a_deleted_page_leaves_the_letter_and_the_others_keep_their_order() {
     assert!(spool.delete_page(&mistake).unwrap());
 
     assert_eq!(names(&spool), vec![first, last]);
-    // Deleted twice — two taps, or a letter sent in between — is not an error.
+    // Deleted twice - two taps, or a letter sent in between - is not an error.
     assert!(!spool.delete_page(&mistake).unwrap());
 }
 

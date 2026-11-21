@@ -91,7 +91,7 @@ pub const LYING_SECS: u64 = 20;
 /// How long a letter that is due to close waits for a page still being read.
 /// Its folder is decided from what its pages say the moment it closes, and a
 /// one-page letter finished as its page was put down was decided from
-/// nothing — sent with no folder, and "Sorting..." until Paperless had read
+/// nothing - sent with no folder, and "Sorting..." until Paperless had read
 /// it, a minute later, only to say the same. A page takes 5–11 s on the rig,
 /// longer while Paperless reads on the same cores; a reader that hangs is
 /// not waited for past this.
@@ -128,7 +128,7 @@ pub struct Scanner {
     /// Their tags' ids, once Paperless has them set up.
     folder_tags: Option<Vec<(u64, Folder)>>,
     /// Why the folders could not be set up last time, so the same failure is
-    /// said once and not every thirty seconds — where it buried everything
+    /// said once and not every thirty seconds - where it buried everything
     /// else on the page.
     folders_failed: Option<String>,
     filings: Filings,
@@ -143,7 +143,7 @@ pub struct Scanner {
     /// The open letter is so far only its envelope: the table is empty while
     /// the letter is taken out of it, which is not the letter being done.
     envelope_only: bool,
-    /// The letter closed last, by file name, and when — what "Undo last
+    /// The letter closed last, by file name, and when - what "Undo last
     /// letter" takes back. `None` once it has been.
     last_letter: Option<(String, u64)>,
     /// How each page was last cut up for reading, so asking again gives the
@@ -220,7 +220,7 @@ impl Scanner {
         self
     }
 
-    /// What the pages of the letter in front of the camera say — the open
+    /// What the pages of the letter in front of the camera say - the open
     /// one, or the one just sent while Paperless is still reading it.
     pub fn read_pages(&self) -> &[PageText] {
         if self.page_texts.is_empty() {
@@ -230,7 +230,7 @@ impl Scanner {
         }
     }
 
-    /// Whether a page of the open letter is still being read here — `None`
+    /// Whether a page of the open letter is still being read here - `None`
     /// when nothing reads pages here, or there are no folders to read them
     /// for. Once none is, [`Self::guessed`] is where the letter goes as far
     /// as its pages so far can say, which is what it will be decided from
@@ -247,8 +247,8 @@ impl Scanner {
     ///
     /// One folder, not every folder it matches. A letter is a piece of paper
     /// and goes in one place on the shelf, so naming two is asking for a
-    /// decision the rig is there to make. People are different — a letter can
-    /// be for two of them — and are all kept.
+    /// decision the rig is there to make. People are different - a letter can
+    /// be for two of them - and are all kept.
     pub fn guessed(&self) -> Vec<Folder> {
         let text = self.read_text();
         let ranked = crate::folders::rank(&text, &self.folders);
@@ -270,7 +270,7 @@ impl Scanner {
     /// folder the letter fits best first.
     ///
     /// Paperless tags a document with every folder whose words it matches,
-    /// and it is right to — a document can carry two labels. The paper
+    /// and it is right to - a document can carry two labels. The paper
     /// cannot: it goes in one folder, so the one named first had better be
     /// the one it belongs in. Ranked by the rig's own reading of the pages,
     /// which is the only measure it has; with nothing read, Paperless's order
@@ -303,7 +303,7 @@ impl Scanner {
     ///
     /// For a page that came out as soup. Tesseract is deterministic, so
     /// reading it the same way twice is the same text; what this changes is
-    /// the page segmentation, which is what usually went wrong — a letter's
+    /// the page segmentation, which is what usually went wrong - a letter's
     /// columns read as lines, or its lines read as columns.
     pub fn read_again(&mut self, spool: &Spool, name: &str) -> bool {
         let Some(reader) = &self.reader else {
@@ -453,7 +453,7 @@ impl Scanner {
     }
 
     /// Warps every photograph so that these corners, as fractions of it,
-    /// become its own, in order — which is also how a photograph is turned.
+    /// become its own, in order - which is also how a photograph is turned.
     /// `None` keeps photographs as the camera takes them.
     pub fn straighten_with(&mut self, corners: Option<Corners>) {
         self.straighten = corners;
@@ -483,7 +483,7 @@ impl Scanner {
 
     /// Says which of these folders each letter goes in, once Paperless has
     /// read it. Their tags are set up in Paperless before the next letter is
-    /// sent — again, whenever this is called, because the words may have
+    /// sent - again, whenever this is called, because the words may have
     /// changed or the Paperless may be a different one.
     pub fn file_into(&mut self, folders: Vec<Folder>) {
         self.folders = folders;
@@ -560,7 +560,7 @@ impl Scanner {
     }
 
     /// The page photographed last was the one before it with a hand pressing
-    /// it flat — the detector saw that page again once the hand had gone.
+    /// it flat - the detector saw that page again once the hand had gone.
     /// Taken back as "Undo last page" would, and said.
     fn retract_page(&mut self, spool: &Spool, now: u64) {
         match spool.discard_last_page() {
@@ -646,7 +646,7 @@ impl Scanner {
     /// paper rather than by what Paperless made of the words on it.
     ///
     /// Paperless may still be reading it, and the answer is wanted before
-    /// then — that is the point of the buttons. In that case the letter is
+    /// then - that is the point of the buttons. In that case the letter is
     /// marked, and filed this way the moment it is read.
     ///
     /// Whether it was filed, or will be.
@@ -721,8 +721,8 @@ impl Scanner {
     }
 
     /// Takes the folders' tags off a document in Paperless, and puts the
-    /// bin's on when that is where it goes. Tags that are not folders — the
-    /// address, who the post is for — are left alone.
+    /// bin's on when that is where it goes. Tags that are not folders - the
+    /// address, who the post is for - are left alone.
     async fn refile_document(
         &self,
         uploader: &Uploader,
@@ -760,7 +760,7 @@ impl Scanner {
     }
 
     /// "Undo last letter": out of the queue if it is still waiting there;
-    /// otherwise deleted from Paperless — into its trash — now, or as soon as
+    /// otherwise deleted from Paperless - into its trash - now, or as soon as
     /// Paperless has read it.
     pub async fn undo_letter(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
         if !self.can_undo_letter(now) {
@@ -839,7 +839,7 @@ impl Scanner {
         self.ev = ev.clamp(crate::quality::EV_DARKEST, crate::quality::EV_BRIGHTEST);
     }
 
-    /// How many letters have been closed since start — by the button, the
+    /// How many letters have been closed since start - by the button, the
     /// page, or being left alone.
     pub fn letters_closed(&self) -> u64 {
         self.letters_closed
@@ -879,7 +879,7 @@ impl Scanner {
     }
 
     /// Seconds until the open letter is finished for the table being clear,
-    /// while that is counting down — for the display to say so.
+    /// while that is counting down - for the display to say so.
     pub fn finishing_in(&self, now: u64) -> Option<u64> {
         let after = self.letters.as_ref()?.when_clear?.as_secs();
         let since = self.clear_since?;
@@ -1012,7 +1012,7 @@ impl Scanner {
                         }) => {
                             // Paper first: on the rig a photograph of the
                             // dark table covered 0.71 of the corners, which is
-                            // an envelope's share — but there was no paper in
+                            // an envelope's share - but there was no paper in
                             // it at all, and the check had already said so.
                             let is_paper = quality
                                 .as_ref()
@@ -1020,7 +1020,7 @@ impl Scanner {
                             // Nothing is an envelope until a page has been
                             // seen. An envelope is told apart by being
                             // smaller than a page, so with no page to measure
-                            // against there is nothing to tell — and guessing
+                            // against there is nothing to tell - and guessing
                             // costs more than waiting: an envelope taken for
                             // a page is page one of the letter it holds,
                             // which is where it belongs anyway, while a page
@@ -1031,14 +1031,14 @@ impl Scanner {
                             // Nothing is an envelope until a page has been
                             // seen. An envelope is told apart by being
                             // smaller than a page, so with no page to measure
-                            // against there is nothing to tell — and guessing
+                            // against there is nothing to tell - and guessing
                             // costs more than waiting: an envelope taken for a
                             // page becomes page one of the letter it holds,
                             // which is where it belongs anyway, while a page
                             // taken for an envelope cuts a letter in two. It
                             // used to be measured against the whole of the
                             // corners, and the corners are set generously
-                            // round where letters land — so a page covers
+                            // round where letters land - so a page covers
                             // about 0.7 of them and sat on the threshold.
                             let envelope = is_paper
                                 && self.page_covers.is_some_and(|page| {
@@ -1054,7 +1054,7 @@ impl Scanner {
                                 });
                             // Said on every photograph, because without these
                             // two numbers a letter cut in two cannot be
-                            // explained afterwards — which is how the rig's was
+                            // explained afterwards - which is how the rig's was
                             // found, by measuring the straightener's output in
                             // the log instead.
                             tracing::info!(
@@ -1069,7 +1069,7 @@ impl Scanner {
                                 // odd photograph does not move it far. Paper
                                 // whose edge could not be measured is paper
                                 // filling the corners, which is what corners
-                                // set close round a page look like — and that
+                                // set close round a page look like - and that
                                 // is worth learning, because otherwise a rig
                                 // set up that way never learns anything and
                                 // can never tell an envelope at all.
@@ -1083,8 +1083,8 @@ impl Scanner {
                                 self.event(now, false, warning);
                             }
                             // An envelope is a new letter: whatever was being
-                            // collected is finished — and sent now, so its
-                            // folder is known by the time this one's is asked —
+                            // collected is finished - and sent now, so its
+                            // folder is known by the time this one's is asked -
                             // and the envelope is its first page.
                             let mut sent_before = false;
                             if cuts_a_letter && collecting {
@@ -1140,7 +1140,7 @@ impl Scanner {
                             };
                             // Nothing on it: the table, photographed because
                             // it no longer looks like the one that was learnt
-                            // — a page taken away, the light changed, the
+                            // - a page taken away, the light changed, the
                             // paper under the camera moved. It is not a page
                             // of the letter, so it is not kept, and the view
                             // is learnt as the table so the next one is not
@@ -1210,7 +1210,7 @@ impl Scanner {
                             });
                             // A single page goes straight away: it is the
                             // letter someone is standing next to. A page of a
-                            // letter waits for the rest — unless an envelope
+                            // letter waits for the rest - unless an envelope
                             // just finished the one before. Nothing is sent
                             // for a photograph of the table.
                             if (!collecting && kept) || sent_before {
@@ -1249,7 +1249,7 @@ impl Scanner {
 
         // On a timer as well as after a capture. Draining only after a capture
         // meant a letter photographed while the network was down waited for
-        // the next letter — or a restart — however soon the network came
+        // the next letter - or a restart - however soon the network came
         // back. And whatever the camera is doing: a broken camera is no reason
         // to keep post that is already photographed.
         if self.drain_due(now) {
@@ -1277,7 +1277,7 @@ impl Scanner {
         self.cap_events();
     }
 
-    /// Sends everything waiting, whatever its backoff says — for someone who
+    /// Sends everything waiting, whatever its backoff says - for someone who
     /// has just fixed the network and does not want to wait five minutes to
     /// see whether it worked.
     pub async fn retry_all(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
@@ -1300,7 +1300,7 @@ impl Scanner {
     /// Before anything is sent: the folders' tags, so Paperless can give them
     /// to the letter as it reads it. Only when there is something to send,
     /// so an unreachable Paperless is not asked twice every thirty seconds.
-    /// A failure is said and the letter sent anyway — it is filed without a
+    /// A failure is said and the letter sent anyway - it is filed without a
     /// folder, not kept back.
     async fn prepare_folders(&mut self, spool: &Spool, uploader: &Uploader, now: u64) {
         if self.folders.is_empty() || self.folder_tags.is_some() {
@@ -1495,7 +1495,7 @@ impl Scanner {
         }
 
         // The last page taken away and nothing put down after it: the letter
-        // is done. Only while the camera is watched — stopped, the table is
+        // is done. Only while the camera is watched - stopped, the table is
         // not looked at, and an empty-looking one means nothing.
         let open = spool.last_page_at().ok().flatten().is_some();
         self.lying_since = if self.detector.lying_untouched() {
@@ -1524,7 +1524,7 @@ impl Scanner {
 
         // Not while a page is settling. Putting the last page down and
         // pressing the button is one movement, and the press arrives before
-        // the page has been still long enough to photograph — closing then
+        // the page has been still long enough to photograph - closing then
         // would send the letter without its last page.
         //
         // But not for ever. On the Pi, with the room in view, something was
@@ -1631,7 +1631,7 @@ struct Taken {
 
 /// Photographs the page at `ev`, straightens it if the camera is at an angle,
 /// judges it, and takes it again darker or lighter while the exposure is what
-/// makes it unreadable — keeping the best of them. Then puts it in the spool:
+/// makes it unreadable - keeping the best of them. Then puts it in the spool:
 /// in the open letter when collecting, or straight in the queue.
 fn capture(
     camera: &dyn Camera,
@@ -1758,7 +1758,7 @@ fn capture(
 }
 
 /// Whether a photograph is good enough to read. After straightening, so the
-/// page is judged as it will be sent — at the cost, on a Pi Zero, of reading
+/// page is judged as it will be sent - at the cost, on a Pi Zero, of reading
 /// it a second time. A photograph that cannot be read is not judged, and is
 /// sent all the same.
 ///
@@ -1793,7 +1793,7 @@ fn judge(path: &std::path::Path, tone: Option<Tone>) -> (Option<Quality>, Option
     }
 }
 
-/// Replaces a photograph with its straightened self — whole, by rename, so a
+/// Replaces a photograph with its straightened self - whole, by rename, so a
 /// crash leaves one or the other and never half of each.
 fn straighten_file(
     path: &std::path::Path,
@@ -1806,7 +1806,7 @@ fn straighten_file(
     Ok((straight.covered, straight.tone))
 }
 
-/// Sends everything waiting — and due, unless `force` — oldest first.
+/// Sends everything waiting - and due, unless `force` - oldest first.
 async fn drain(
     spool: &Spool,
     uploader: &Uploader,
@@ -1869,7 +1869,7 @@ async fn drain(
                 });
                 if let Err(err) = spool.done(&item) {
                     // The upload succeeded, so this is not a failure of the
-                    // capture — but it will be uploaded again next time, and
+                    // capture - but it will be uploaded again next time, and
                     // Paperless will deduplicate it by checksum.
                     tracing::warn!(%err, "uploaded but could not clear the spool");
                 }

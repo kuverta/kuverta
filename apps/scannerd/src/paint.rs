@@ -1,7 +1,7 @@
 //! Drawing for the LCD: smooth shapes and smooth type.
 //!
-//! The panel's first screens were drawn straight into pixels — rectangles with
-//! hard edges and a bitmap font — and looked it. Here the picture is painted
+//! The panel's first screens were drawn straight into pixels - rectangles with
+//! hard edges and a bitmap font - and looked it. Here the picture is painted
 //! with `tiny-skia`, which draws paths with anti-aliasing, and the type is
 //! Inter (SIL Open Font License, in `assets/fonts`) rasterised by `fontdue`, so
 //! letters have soft edges at any size. Both are pure Rust and build for the Pi
@@ -136,7 +136,7 @@ pub fn text(
     }
 }
 
-/// `words` at the size that fits `width`, the first of `sizes` that does —
+/// `words` at the size that fits `width`, the first of `sizes` that does -
 /// cut short with an ellipsis when even the smallest does not.
 pub fn fitted(words: &str, weight: Weight, sizes: &[f32], width: f32) -> (String, f32) {
     let smallest = *sizes.last().unwrap_or(&12.0);
@@ -302,7 +302,7 @@ pub fn down(rect: (f32, f32, f32, f32), top: Color, bottom: Color) -> Shader<'st
     .unwrap_or_else(|| flat(top))
 }
 
-/// Draws `picture` — greyscale, `width`×`height` — to fit `rect`, with the
+/// Draws `picture` - greyscale, `width`×`height` - to fit `rect`, with the
 /// corners rounded off. Returns where it ended up.
 pub fn grey_picture(
     pixmap: &mut Pixmap,

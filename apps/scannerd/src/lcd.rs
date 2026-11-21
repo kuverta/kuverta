@@ -2,8 +2,8 @@
 //!
 //! Identified on the rig: nothing on HDMI, and on SPI chip select 1 an
 //! XPT2046 touch controller whose temperature channels read the room. That is
-//! the common 3.5″ Pi display — an ILI9486, 480×320, data/command on GPIO 24,
-//! reset on 25, touch interrupt on 17 — which the kernel's `piscreen` overlay
+//! the common 3.5″ Pi display - an ILI9486, 480×320, data/command on GPIO 24,
+//! reset on 25, touch interrupt on 17 - which the kernel's `piscreen` overlay
 //! drives as `/dev/fb0`:
 //!
 //! ```text
@@ -16,15 +16,15 @@
 //!
 //! The words are the e-paper's ([`Screen`]); the room is not. A card holds the
 //! headline at four times the size, with an icon and a bar in the colour of
-//! the news — green ready, amber working, teal done, red look, blue a folder —
+//! the news - green ready, amber working, teal done, red look, blue a folder -
 //! so it can be read from across the room.
 //!
 //! It is also touched. Between letters it offers **Start scanning** and
 //! **Learn empty table**; scanning, it shows what the camera sees beside the
 //! page it photographed last, with **Finish letter** and **Stop scanning**
 //! under them. Every button is a band the width of the screen, because the
-//! touch film on the rig's panel reports only how far down a finger is — its
-//! other axis reads the same wherever it is pressed — and a band needs nothing
+//! touch film on the rig's panel reports only how far down a finger is - its
+//! other axis reads the same wherever it is pressed - and a band needs nothing
 //! more. See [`crate::touch`].
 
 use std::fs::OpenOptions;
@@ -373,8 +373,8 @@ fn paint_scanning(pixmap: &mut Pixmap, screen: &Screen, panes: &Panes, bottom: f
     let bar_height = 36.0;
 
     // Where a letter goes: a pill, top right. The letter in your hand comes
-    // first — that is the live question, and it is answered from the first
-    // page read rather than after Paperless has the letter — and it is drawn
+    // first - that is the live question, and it is answered from the first
+    // page read rather than after Paperless has the letter - and it is drawn
     // as an outline, because it is still only a guess. Where the letter
     // before went is filled in, and gives up the corner while there is a
     // guess to show.

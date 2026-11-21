@@ -1,7 +1,7 @@
 //! Making a photograph of paper look like paper.
 //!
 //! A page on the rig's table is lit by whatever is in the room, and the camera
-//! exposes for the whole frame — brown table included. What comes out is a
+//! exposes for the whole frame - brown table included. What comes out is a
 //! sheet that is grey where it should be white, warm on one side and cool on
 //! the other, with the text a dull grey rather than black. It is readable, and
 //! it looks like a photograph of a letter instead of a scan of one. Tesseract
@@ -9,8 +9,8 @@
 //! ink and the paper than there should be.
 //!
 //! So the paper is found and told it is white. In tiles, because the light
-//! across a page is never even — a lamp to one side leaves a gradient that a
-//! single white point cannot take out — and per channel, because paper is
+//! across a page is never even - a lamp to one side leaves a gradient that a
+//! single white point cannot take out - and per channel, because paper is
 //! neutral and the difference between its channels is the colour of the light.
 //! Correcting each channel by its own paper level is a white balance measured
 //! off the one thing in the frame whose colour is known.
@@ -34,7 +34,7 @@
 /// that a tile still has paper in it between the lines of a letter.
 const TILES: usize = 24;
 /// Where in a tile's own brightness the paper is taken to be. Not the
-/// brightest pixel — that is a specular glint off a staple or a fold — and
+/// brightest pixel - that is a specular glint off a staple or a fold - and
 /// well above the median, which on a dense tile is ink.
 const PAPER_AT: f64 = 0.92;
 /// A tile's paper is never believed darker than this share of the page's. A
@@ -68,7 +68,7 @@ const BLACK_AT_MOST: f64 = 0.70;
 /// They are carried out of here because flattening destroys them on purpose.
 /// Every page that comes out of it has paper at [`PAPER_BECOMES`], which is
 /// exactly what [`crate::quality::exposure`] reads to decide whether the next
-/// page should be taken darker — so a rig judging its own flattened pages
+/// page should be taken darker - so a rig judging its own flattened pages
 /// would see a perfect exposure every time, walk the camera down half a stop
 /// a page, and never learn otherwise.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,7 +82,7 @@ pub struct Tone {
 /// Flattens the light off a page and puts the paper at white, in place.
 ///
 /// `rgb` is packed three bytes a pixel, row-major. Returns what the page
-/// looked like before, or `None` when it was left alone — too small to tile,
+/// looked like before, or `None` when it was left alone - too small to tile,
 /// or with no paper in it to measure.
 pub fn flatten(rgb: &mut [u8], width: u32, height: u32) -> Option<Tone> {
     let (width, height) = (width as usize, height as usize);

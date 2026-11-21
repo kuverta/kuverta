@@ -142,7 +142,7 @@ async fn a_guessed_empty_table_is_not_kept() {
 #[tokio::test]
 async fn starting_on_a_page_and_lifting_it_photographs_nothing() {
     // The failure from the Pi: started with a page lying there, so the first
-    // frame — the only guess available — became the table, and lifting the
+    // frame - the only guess available - became the table, and lifting the
     // page changed everything and was photographed as a page. The empty table
     // is not paper, whatever the baseline was, and enough frames of it become
     // the table: the rig gets itself going again.

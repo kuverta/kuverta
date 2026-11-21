@@ -5,7 +5,7 @@
 //! software reset it holds BUSY high for a few milliseconds, which the SSD16xx
 //! family does and the older UC81xx panels do not; its status register reads
 //! 0x01; and its temperature sensor reads the room. The panel's size is not
-//! something the controller knows — 250×122 is what fits on a board the size
+//! something the controller knows - 250×122 is what fits on a board the size
 //! of a Pi Zero.
 //!
 //! The sequence is Waveshare's own for this panel, in `epd2in13_V4.py`: a full

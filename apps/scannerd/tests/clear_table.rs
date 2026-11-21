@@ -140,7 +140,7 @@ async fn with_nothing_photographed_an_empty_table_finishes_nothing() {
 // -- envelopes ----------------------------------------------------------------------------
 
 /// Photographs as the rig takes them: a page filling the corners, or an
-/// envelope — smaller paper on the table — whichever is next.
+/// envelope - smaller paper on the table - whichever is next.
 struct Photos {
     frames: Mutex<Vec<Vec<u8>>>,
     photos: Mutex<Vec<bool>>,
@@ -201,7 +201,7 @@ impl Camera for Photos {
 }
 
 /// A letter's page is photographed, then an envelope is put down on the
-/// cleared table, then the table is left empty — with `frames` after the
+/// cleared table, then the table is left empty - with `frames` after the
 /// first page. Says how many letters were finished and how many pages are
 /// open.
 async fn page_then_envelope(name: &str) -> (u64, usize) {
@@ -245,8 +245,8 @@ async fn page_then_envelope(name: &str) -> (u64, usize) {
 #[tokio::test]
 async fn an_envelope_finishes_the_letter_before_it_and_starts_the_next() {
     let (closed, open) = page_then_envelope("next").await;
-    // The page's letter was finished by the envelope, and the envelope —
-    // alone on an empty table for half a minute — is still the open letter,
+    // The page's letter was finished by the envelope, and the envelope -
+    // alone on an empty table for half a minute - is still the open letter,
     // waiting for what is inside it.
     assert_eq!(closed, 1);
     assert_eq!(open, 1);

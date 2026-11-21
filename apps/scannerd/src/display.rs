@@ -3,11 +3,11 @@
 //!
 //! The setup page answers the same questions, but it needs a phone in one hand
 //! while the other holds a letter. A 2.13″ Waveshare panel on the Pi's header
-//! says it where the post is: *Ready*, *Hold still*, *Scanned* — and, under
+//! says it where the post is: *Ready*, *Hold still*, *Scanned* - and, under
 //! that, whether the photograph is good enough for the OCR or should be taken
 //! again. Once a letter is sent and Paperless has read it, the display says
 //! which folder on the shelf it goes in, or that it can be thrown away (see
-//! [`crate::folders`]) — until the next letter is started.
+//! [`crate::folders`]) - until the next letter is started.
 //!
 //! Two kinds of display, one set of words. What the screen says is
 //! [`Screen`], worked out here from the loop's state. The e-paper HAT the rig
@@ -70,7 +70,7 @@ pub struct Screen {
     /// Where the letter *being* scanned looks like going, from what the Pi
     /// has read of it so far. A guess, drawn as one: it is on screen from
     /// the first page, long before Paperless has the letter, which is the
-    /// point — you are standing there with the paper in your hand.
+    /// point - you are standing there with the paper in your hand.
     pub guess: Option<String>,
     /// A line for each button that is a letter waiting to be sent.
     pub queue: Vec<String>,
@@ -207,7 +207,7 @@ pub struct Facts<'a> {
     pub finishing_in: Option<u64>,
     /// Whether the last letter can still be taken back.
     pub can_undo_letter: bool,
-    /// Whether the last letter can still be filed by hand — in no folder, or
+    /// Whether the last letter can still be filed by hand - in no folder, or
     /// in the bin.
     pub can_refile: bool,
     /// What is waiting to be sent, oldest first.
@@ -313,7 +313,7 @@ impl Screen {
                 live: facts.live.clone(),
                 last: facts.last.and_then(|last| last.thumbnail.clone()),
             });
-            // What this letter looks like, as soon as a page has been read —
+            // What this letter looks like, as soon as a page has been read -
             // in the corner while another page is still being read, because
             // that page may say otherwise. With them all read the headline
             // says it, and has the whole bar to say it in.
@@ -498,7 +498,7 @@ impl Screen {
     }
 }
 
-/// A letter's time of day, as the display says it — in the Pi's own time
+/// A letter's time of day, as the display says it - in the Pi's own time
 /// zone. Seconds since the epoch are UTC, and dividing them by an hour said
 /// 11:54 for a letter photographed at 13:54 in Hamburg.
 fn clock(at: u64) -> String {
@@ -521,7 +521,7 @@ fn undo_letter(facts: &Facts<'_>) -> Action {
 /// known for [`VERDICT_SECS`].
 /// "No folder" and "Throw away", less whichever the last letter was already
 /// given. Both stayed up after a tap, which looked as if the tap had not
-/// taken — and was tapped again. The other one stays, for a change of mind.
+/// taken - and was tapped again. The other one stays, for a change of mind.
 fn refile_buttons(facts: &Facts<'_>) -> Vec<Action> {
     let chosen = facts.filing.and_then(|filing| match filing.shown() {
         // Tapped while Paperless was still reading: waiting to be done.
@@ -545,7 +545,7 @@ fn refile_buttons(facts: &Facts<'_>) -> Vec<Action> {
 ///
 /// With every page so far read, that starts with where the letter goes. It
 /// is the answer whoever is standing there is waiting for, and it used to
-/// come only as the letter closed — twenty-eight seconds after a page left
+/// come only as the letter closed - twenty-eight seconds after a page left
 /// lying, for something the rig had known since the eleventh.
 fn next_page(facts: &Facts<'_>) -> String {
     let folder = match facts.read {
@@ -585,8 +585,8 @@ fn tone_of(outcome: &Outcome) -> Tone {
 /// The folder in large letters, and a line saying what to do with it.
 fn where_it_goes(outcome: &Outcome) -> (String, String) {
     // Who the letter is for is said as well as where it goes: in a household
-    // where more than one person gets post — a spouse, someone whose papers
-    // are being kept — the folder alone does not say whose pile it joins.
+    // where more than one person gets post - a spouse, someone whose papers
+    // are being kept - the folder alone does not say whose pile it joins.
     let (folders, people): (Vec<&Folder>, Vec<&Folder>) = match outcome {
         Outcome::Folders(all) => all.iter().partition(|folder| !folder.person),
         _ => (Vec::new(), Vec::new()),
@@ -602,8 +602,8 @@ fn where_it_goes(outcome: &Outcome) -> (String, String) {
             (folders[0].name.clone(), "Put the letter in this folder")
         }
         // It fits more than one, but it is a piece of paper and goes in one
-        // of them. The best fit is named — `Scanner::best_first` has already
-        // put it at the front — and the others are said underneath, where
+        // of them. The best fit is named - `Scanner::best_first` has already
+        // put it at the front - and the others are said underneath, where
         // they are a remark rather than a decision to make standing there.
         Outcome::Folders(_) if !folders.is_empty() => {
             (folders[0].name.clone(), "Put it here; it fits others too")

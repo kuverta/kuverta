@@ -3,7 +3,7 @@
 //! Dragging a box over a small picture on a phone is fiddly, and the crop
 //! matters: outside it, people and shadows are ignored, and inside it the page
 //! gets the camera's pixels. So setup asks for a page to be put where letters
-//! will lie, and this finds it — paper being the largest bright thing in view.
+//! will lie, and this finds it - paper being the largest bright thing in view.
 //!
 //! Brightness rather than colour or edges: the frames are greyscale already,
 //! and paper under a lamp or daylight is brighter than any table worth scanning
@@ -36,13 +36,13 @@ impl Area {
 const MIN_SHARE: f32 = 0.02;
 
 /// Room left around the page, as a share of its size on each side. It was
-/// 12%, so that a letter put down a little off would still be inside — and
+/// 12%, so that a letter put down a little off would still be inside - and
 /// every photograph then had a band of table round it, which is what setup
 /// was meant to get rid of. Letters that land off the mark are trimmed after
 /// straightening instead ([`page_bounds`]); this is only for the edge.
 const MARGIN: f32 = 0.03;
 
-/// The largest bright area in a greyscale picture, with room around it —
+/// The largest bright area in a greyscale picture, with room around it -
 /// `None` when nothing in view looks like a page.
 pub fn find_page(luma: &[u8], width: usize, height: usize) -> Option<Area> {
     let region = largest_page(luma, width, height)?;
@@ -64,7 +64,7 @@ pub fn find_page(luma: &[u8], width: usize, height: usize) -> Option<Area> {
 }
 
 /// The four corners of the page, for a camera that looks at the table at an
-/// angle, with the same room around it as [`find_page`] leaves — measured on
+/// angle, with the same room around it as [`find_page`] leaves - measured on
 /// the table rather than in the picture, so the corners still mark a
 /// rectangle there. `None` when nothing in view looks like a page, or its
 /// corners cannot be told apart.
@@ -89,7 +89,7 @@ pub fn find_page_corners(luma: &[u8], width: usize, height: usize) -> Option<Cor
 /// The page's own corners in a greyscale picture, as fractions, with no room
 /// round them, and the share of the picture the page covers. For finding the
 /// letter in a photograph already straightened by setup's corners, which lies
-/// a little off them — see [`crate::straighten::straighten_trimmed`].
+/// a little off them - see [`crate::straighten::straighten_trimmed`].
 pub fn page_corners(luma: &[u8], width: usize, height: usize) -> Option<(Corners, f64)> {
     let region = largest_page(luma, width, height)?;
     let at = |(x, y): (usize, usize)| {

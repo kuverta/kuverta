@@ -1,5 +1,5 @@
-//! The photograph check against synthetic pages: a sheet of "text" — dark bars
-//! with sharp edges — on bright paper, and the ways it goes wrong.
+//! The photograph check against synthetic pages: a sheet of "text" - dark bars
+//! with sharp edges - on bright paper, and the ways it goes wrong.
 
 use scannerd::quality::{assess, Problem};
 

@@ -1,4 +1,4 @@
-//! Reading a page on the Pi itself, for the preview — not for the archive.
+//! Reading a page on the Pi itself, for the preview - not for the archive.
 //!
 //! Paperless is what reads a letter properly: it has the language data, the
 //! deskewing and the tags, and what it decides is what the letter is filed
@@ -11,8 +11,8 @@
 //! is going under the camera. Nothing is filed on it; when the letter is sent,
 //! Paperless's answer replaces the guess.
 //!
-//! Reading happens on a thread of its own — the loop must keep watching the
-//! table — and the text comes back through a channel, one message a page.
+//! Reading happens on a thread of its own - the loop must keep watching the
+//! table - and the text comes back through a channel, one message a page.
 //! Without `tesseract` installed there is simply no preview text, and
 //! everything else works as before.
 
@@ -97,7 +97,7 @@ impl Reader {
         self.start_as(page, Layout::default());
     }
 
-    /// The same, cutting the page up another way — for a page the usual
+    /// The same, cutting the page up another way - for a page the usual
     /// reading mangles.
     pub fn start_as(&self, page: &Path, how: Layout) {
         let Some(name) = page
@@ -152,7 +152,7 @@ impl Reader {
 /// [`Layout::Column`] gave fifteen of the words a German reader recognises
 /// against thirteen for tesseract's default, with a quarter less of the
 /// punctuation-soup that marks a misread line; on a second page, nine against
-/// eight. [`Layout::Block`] finds many more "words" and no more real ones —
+/// eight. [`Layout::Block`] finds many more "words" and no more real ones -
 /// it is reading the noise between the columns.
 ///
 /// [`Layout::Block`] is still worth having, because a page the other two
@@ -199,7 +199,7 @@ fn read_page(program: &str, languages: &str, page: &PathBuf, how: Layout) -> Res
         .args(["--psm", how.psm()])
         // One thread. More are a second faster on an idle Pi, but the rig
         // runs Paperless too, and while it reads the last letter a page took
-        // 26 s with tesseract's threads waiting on each other for cores —
+        // 26 s with tesseract's threads waiting on each other for cores -
         // or a minute, and was given up on, and the letter matched no folder.
         // On one thread it is 5 s either way.
         .env("OMP_THREAD_LIMIT", "1")

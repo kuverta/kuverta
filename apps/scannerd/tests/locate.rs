@@ -118,7 +118,7 @@ fn the_corners_of_a_page_seen_at_an_angle_are_found_with_a_thin_edge_round_them(
     let outwards = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)];
     for ((&(x, y), (ex, ey)), (ox, oy)) in corners.0.iter().zip(expected).zip(outwards) {
         let (dx, dy) = (x * W as f64 - ex, y * H as f64 - ey);
-        // Moved outwards by the edge: a pixel or a few, and no more — a band
+        // Moved outwards by the edge: a pixel or a few, and no more - a band
         // of table round every photograph is what setup is for getting rid of.
         assert!(dx * ox > 0.5 && dx * ox < 12.0, "{corners:?}");
         assert!(dy * oy > 0.5 && dy * oy < 12.0, "{corners:?}");

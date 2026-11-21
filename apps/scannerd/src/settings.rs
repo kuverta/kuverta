@@ -2,7 +2,7 @@
 //!
 //! The env file and the command line say how scannerd starts; the setup page
 //! says what the person at the camera chose since, and wins. Kept as TOML in the
-//! spool directory — the one place the unit file lets the daemon write — with
+//! spool directory - the one place the unit file lets the daemon write - with
 //! the token in it, so the file is readable by its owner only, like the env file.
 
 use std::fs;
@@ -24,21 +24,21 @@ pub struct Settings {
     pub token: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
-    /// `x,y,w,h`, or empty for no crop at all — which is different from not
+    /// `x,y,w,h`, or empty for no crop at all - which is different from not
     /// set, where the env file's crop applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub roi: Option<String>,
     /// The four corners of a page on the table, `x,y` each, top left first
-    /// and clockwise — for a camera at an angle. Empty for none. When set,
+    /// and clockwise - for a camera at an angle. Empty for none. When set,
     /// the crop is the area they span, whatever `roi` says.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub corners: Option<String>,
-    /// Degrees clockwise to turn every photograph: 0, 90, 180 or 270 — for a
+    /// Degrees clockwise to turn every photograph: 0, 90, 180 or 270 - for a
     /// camera mounted so that letters do not read upright.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotate: Option<u16>,
     /// The folders on the shelf, in the order the display prefers them. An
-    /// empty list means none — not following letters at all — which is
+    /// empty list means none - not following letters at all - which is
     /// different from not set, where the env file's apply.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folders: Option<Vec<Folder>>,
@@ -207,7 +207,7 @@ impl View {
     }
 
     /// What straightening is given: the corners in the photograph, started as
-    /// far round as the turn says — or `None` when a photograph is to be kept
+    /// far round as the turn says - or `None` when a photograph is to be kept
     /// as the camera took it.
     pub fn warp(&self) -> Option<Corners> {
         let quarters = self.rotate / 90;
@@ -220,8 +220,8 @@ impl View {
 }
 
 impl Settings {
-    /// What the camera looks at: the page's choice if it made one — a crop
-    /// or corners, which it always saves together — or else what scannerd was
+    /// What the camera looks at: the page's choice if it made one - a crop
+    /// or corners, which it always saves together - or else what scannerd was
     /// started with. Corners decide the crop when there are any.
     /// The turn is separate: the page's if it chose one, else the start's.
     pub fn effective_view(
@@ -282,7 +282,7 @@ pub fn valid_folders(folders: &[Folder]) -> Result<()> {
         }
     }
     // Paperless refuses more than this, and would refuse it when the folders
-    // are set up there — long after the words were saved here.
+    // are set up there - long after the words were saved here.
     for folder in folders {
         let length = folder.paperless_match().chars().count();
         if length > crate::folders::MATCH_LIMIT {

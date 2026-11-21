@@ -1,7 +1,7 @@
 //! The page on the Pi: what the camera sees, what has been sent, and setup.
 //!
 //! Served by scannerd itself, so a headless Pi Zero needs no desktop, no
-//! browser and no second program — open `http://<pi>.local:8080` on a phone.
+//! browser and no second program - open `http://<pi>.local:8080` on a phone.
 //! hyper, which reqwest already builds, and a page that is one HTML file
 //! compiled in.
 //!
@@ -85,7 +85,7 @@ impl Web {
         // A browser attaches a saved password to any request for this address,
         // including one a different site makes it send. It will not add a
         // custom header to such a request without asking this server first,
-        // which never agrees — so requiring one keeps other pages from pressing
+        // which never agrees - so requiring one keeps other pages from pressing
         // these buttons.
         if !parts.headers.contains_key("x-scannerd") {
             return text(StatusCode::FORBIDDEN, "missing the X-Scannerd header");
@@ -155,7 +155,7 @@ impl Web {
         }
     }
 
-    /// A page of the letter being collected, by file name — and nothing that
+    /// A page of the letter being collected, by file name - and nothing that
     /// could climb out of the spool's `open/` directory.
     fn page(&self, name: &str) -> Reply {
         if !is_page_name(name) {
@@ -204,7 +204,7 @@ pub async fn serve(listener: TcpListener, web: Arc<Web>) {
 
 /// `{"name": "<page file name>"}`, checked to be a page's name before the loop
 /// ever sees it.
-/// The same, under another field name — the reread asks by `page`.
+/// The same, under another field name - the reread asks by `page`.
 async fn read_page_name_field(body: Incoming, field: &str) -> Result<String, String> {
     let bytes = Limited::new(body, 1024)
         .collect()
@@ -241,7 +241,7 @@ async fn read_page_name(body: Incoming) -> Result<String, String> {
     Ok(page.name)
 }
 
-/// `{"name": "<letter file name>"}` — a letter of the queue, checked to be
+/// `{"name": "<letter file name>"}` - a letter of the queue, checked to be
 /// one before the loop sees it.
 async fn read_letter_name(body: Incoming) -> Result<String, String> {
     #[derive(serde::Deserialize)]

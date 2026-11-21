@@ -2,8 +2,8 @@
 //! it last photographed.
 //!
 //! Greyscale because that is what scannerd has of both without decoding
-//! colour — a preview frame is the luma plane, and the photograph check reads
-//! only the luma of a JPEG — and small because the panes they go in are a few
+//! colour - a preview frame is the luma plane, and the photograph check reads
+//! only the luma of a JPEG - and small because the panes they go in are a few
 //! hundred pixels across. The pixels are shared, so a screen that holds one
 //! can be copied and compared cheaply.
 

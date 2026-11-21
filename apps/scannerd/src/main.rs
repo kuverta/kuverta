@@ -1,4 +1,4 @@
-//! `scannerd` — the capture half of the paper pipeline.
+//! `scannerd` - the capture half of the paper pipeline.
 //!
 //! Watches a surface through a camera, and when a page is put down and stops
 //! moving, photographs it and hands it to Paperless-ngx. Paperless does the
@@ -7,7 +7,7 @@
 //!
 //! That division is the whole design, and it is why this is a few hundred
 //! lines rather than a few thousand. The temptation is to do image processing
-//! here — find the page, straighten it, crop it — and every bit of that either
+//! here - find the page, straighten it, crop it - and every bit of that either
 //! already exists upstream or reduces to configuration once the camera is
 //! bolted above a fixed spot.
 //!
@@ -61,7 +61,7 @@ struct Args {
     )]
     spool: PathBuf,
 
-    /// Tag every upload with these, so post from this rig is identifiable —
+    /// Tag every upload with these, so post from this rig is identifiable -
     /// and so one Paperless can serve several addresses.
     /// Or `SCANNERD_TAGS=a,b`, which is how a tag with a space in it gets
     /// through a systemd environment file.
@@ -78,14 +78,14 @@ struct Args {
     roi: Option<String>,
 
     /// For a camera that looks at the table at an angle: the four corners of
-    /// a page lying where letters go, as `x,y` fractions of the whole view —
+    /// a page lying where letters go, as `x,y` fractions of the whole view -
     /// top left, top right, bottom right, bottom left. Every photograph is
     /// straightened so they become a rectangle's, and the crop is the area
     /// they span.
     #[arg(long, env = "SCANNERD_CORNERS")]
     corners: Option<String>,
 
-    /// Turn every photograph this many degrees clockwise — 90, 180 or 270 —
+    /// Turn every photograph this many degrees clockwise - 90, 180 or 270 -
     /// for a camera mounted so that letters do not read upright.
     #[arg(long, env = "SCANNERD_ROTATE")]
     rotate: Option<u16>,
@@ -95,8 +95,8 @@ struct Args {
     camera: String,
 
     /// The camera sensor's full width in pixels, which a crop's photograph is
-    /// a share of. Left out, the camera is asked — 2592×1944 for the Pi
-    /// camera v1, 3280×2464 for the v2, 4608×2592 for the v3 — and a camera
+    /// a share of. Left out, the camera is asked - 2592×1944 for the Pi
+    /// camera v1, 3280×2464 for the v2, 4608×2592 for the v3 - and a camera
     /// that cannot be asked is taken for a v1.
     #[arg(long, env = "SCANNERD_SENSOR_WIDTH")]
     sensor_width: Option<u32>,
@@ -112,7 +112,7 @@ struct Args {
 
     /// Preview frames a second, from a stream kept running between
     /// photographs (`rpicam-vid`). 0: a still for every frame, as before the
-    /// stream — half a second each.
+    /// stream - half a second each.
     #[arg(long, env = "SCANNERD_PREVIEW_FPS", default_value_t = 5)]
     preview_fps: u32,
 
@@ -158,13 +158,13 @@ struct Args {
     ui_password: Option<String>,
 
     /// The folders on the shelf, which the display says a letter goes in once
-    /// Paperless has read it — each a Paperless tag of the same name, which
+    /// Paperless has read it - each a Paperless tag of the same name, which
     /// scannerd creates. `-` before a name marks the bin:
     /// `Car,House,Taxes,-Throw away`. The setup page sets words for each.
     #[arg(long, env = "SCANNERD_FOLDERS")]
     folders: Option<String>,
 
-    /// What reads a page on the Pi for the preview — `tesseract` by default,
+    /// What reads a page on the Pi for the preview - `tesseract` by default,
     /// where it is installed (`apt install tesseract-ocr tesseract-ocr-deu`).
     /// Empty for none: the preview then shows the page without its text, and
     /// the folder only once Paperless has said.
@@ -188,7 +188,7 @@ struct Args {
     #[arg(long, env = "SCANNERD_BIN_FOLDER")]
     bin_folder: Option<String>,
 
-    /// The exposure to start from, in stops from the camera's own choice —
+    /// The exposure to start from, in stops from the camera's own choice -
     /// negative is darker. scannerd learns it from the photographs and keeps
     /// what it learnt, which wins over this.
     #[arg(long, env = "SCANNERD_EV", allow_hyphen_values = true)]
@@ -293,7 +293,7 @@ async fn main() -> Result<()> {
     camera.roi = view.roi.clone();
     recognise(&args, &mut camera);
     // The stream is rpicam-vid's, beside rpicam-still. Another camera program
-    // — the ffmpeg stand-in on a laptop — takes a still for every frame.
+    // - the ffmpeg stand-in on a laptop - takes a still for every frame.
     if args.preview_fps > 0 && args.camera == "rpicam-still" {
         camera.video_program = Some("rpicam-vid".to_string());
         camera.stream_fps = args.preview_fps;
@@ -516,7 +516,7 @@ async fn main() -> Result<()> {
                 }
                 Command::Refile(into) => {
                     // Said on the display, or a tap there looks as if it
-                    // did nothing — the letter's own line changes only a
+                    // did nothing - the letter's own line changes only a
                     // little, and only once Paperless has read it.
                     let filed = scanner.refile_letter(&uploader, into.clone(), now).await;
                     let words = match (filed, into) {
@@ -586,7 +586,7 @@ async fn main() -> Result<()> {
                         Err(err) => hub.event(now, false, format!("{err:#}")),
                     }
                     // Set up again before the next letter: the words, or the
-                    // Paperless, may be new — and the shelf is Paperless's,
+                    // Paperless, may be new - and the shelf is Paperless's,
                     // so a saved change of address means a different shelf.
                     adopted = adopt_folders(&args, &settings, &uploader).await;
                     adopted_at = now;
@@ -725,7 +725,7 @@ fn view_for(args: &Args, settings: &Settings) -> Result<View> {
 /// Asks the camera which sensor it is, and has it photographed with as that
 /// one: at its own pixels, so another camera on the rig needs nothing set,
 /// and in modes that see the whole of it. A size that was given stands. A
-/// camera that cannot be asked — the ffmpeg stand-in among them — is left as
+/// camera that cannot be asked - the ffmpeg stand-in among them - is left as
 /// `camera` came, a Pi camera v1 in whatever modes the program picks.
 fn recognise(args: &Args, camera: &mut RpiCamera) {
     match Sensor::detect(&camera.program) {
@@ -759,16 +759,16 @@ const ADOPT_FOLDERS_EVERY_SECS: u64 = 300;
 /// The folders in force: Paperless's shelf, and only failing that what the
 /// rig was started with.
 ///
-/// Paperless is the one that actually files a letter — its tags match the
-/// text and put it in a folder — so its shelf is the only one worth showing
+/// Paperless is the one that actually files a letter - its tags match the
+/// text and put it in a folder - so its shelf is the only one worth showing
 /// on the rig. A second list kept here could only ever disagree with it, and
 /// did: the panel said one folder while Paperless used another, because the
 /// two lists of words had drifted a long way apart. The words are edited in
 /// one place, the desktop app's assistant, and reach the rig from Paperless.
 ///
 /// The env file still names folders, for a rig standing in front of a
-/// Paperless that has no shelf yet — the first run, or one that has just been
-/// reinstalled — and the setup page's own list is kept for the same reason.
+/// Paperless that has no shelf yet - the first run, or one that has just been
+/// reinstalled - and the setup page's own list is kept for the same reason.
 /// Whichever of those is in force, Paperless replaces it as soon as it has
 /// tags of its own.
 fn folders_for(args: &Args, settings: &Settings, adopted: &[Folder]) -> Vec<Folder> {
@@ -782,7 +782,7 @@ fn folders_for(args: &Args, settings: &Settings, adopted: &[Folder]) -> Vec<Fold
     settings.effective_folders(&started)
 }
 
-/// The shelf Paperless has — the desktop app's assistant sets the folders up
+/// The shelf Paperless has - the desktop app's assistant sets the folders up
 /// there, and this is the other end of it.
 ///
 /// Which of them is the bin is the one thing a Paperless tag cannot say, so
@@ -923,7 +923,7 @@ fn publish(hub: &Hub, scanner: &mut Scanner, spool: &Spool, settings: SettingsVi
 
 /// What the camera sees, as the photograph will show it: in the crop's own
 /// proportions, straightened by the page's corners when there are any, and
-/// turned — so the live view and the last photograph beside it are the same
+/// turned - so the live view and the last photograph beside it are the same
 /// shape and the same way up.
 fn live_view(frame: &[u8], camera: &RpiCamera, view: &View) -> Picture {
     let (width, height) = (
@@ -978,7 +978,7 @@ fn state_name(turn: &Turn, state: State) -> &'static str {
     }
 }
 
-/// The display, if it answers — and for an LCD, where its buttons are and how
+/// The display, if it answers - and for an LCD, where its buttons are and how
 /// tall it is, for the touchscreen. A display that does not answer is logged
 /// and done without: it shows what the loop does, and is no reason to stop it.
 fn open_display(kind: &str, flip: bool) -> Option<(Display, Option<(Bands, u32)>)> {

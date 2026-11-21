@@ -2,7 +2,7 @@
 //!
 //! Found on the Pi: with the room in view something was always moving, a
 //! finish waits while a page settles, and so the press on the page did nothing
-//! — silently — until the letter closed itself five minutes later.
+//! - silently - until the letter closed itself five minutes later.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -105,7 +105,7 @@ async fn a_finish_is_acknowledged_at_once_and_given_up_waiting_on_movement() {
     ));
     // Real time, not a made-up clock: pages are named for when they were
     // taken, and a letter whose last page looks years old is "left alone" and
-    // closes on the next turn — which is what this test's first run did.
+    // closes on the next turn - which is what this test's first run did.
     let mut clock = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()

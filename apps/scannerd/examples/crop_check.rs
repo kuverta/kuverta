@@ -6,7 +6,7 @@
 //!
 //! For asking a real photograph the question that matters when a letter comes
 //! out cut: where is the paper, where are the marks, and which of the two
-//! steps — the warp onto the marks, or the trim onto the page inside them —
+//! steps - the warp onto the marks, or the trim onto the page inside them -
 //! took the missing part. It writes each step out beside the photograph:
 //!
 //! - `-roi.jpg`, the sensor crop, when an roi is given;
@@ -16,7 +16,7 @@
 //! - `-paper.jpg`, the photograph warped onto the paper's own corners.
 //!
 //! and prints where the paper lies in the marks' own frame, where 0 and 1 are
-//! their edges — so anything outside that range is page the marks would cut.
+//! their edges - so anything outside that range is page the marks would cut.
 use anyhow::{bail, Context, Result};
 use scannerd::straighten::{Corners, Homography};
 

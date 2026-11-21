@@ -74,7 +74,7 @@ pub enum Command {
     FullView,
     /// Connect to Paperless and say whether the token and tags work.
     CheckPaperless,
-    /// Delete a page of the open letter, by file name — one photographed by
+    /// Delete a page of the open letter, by file name - one photographed by
     /// mistake.
     DeletePage(String),
     /// Read a page again, cutting it up the other way.
@@ -143,7 +143,7 @@ pub struct Status {
     pub paper_share: f32,
     pub paper_fill: f32,
     pub open_pages: Vec<String>,
-    /// What those pages say, as the Pi read them for the preview — empty
+    /// What those pages say, as the Pi read them for the preview - empty
     /// where nothing could read them.
     pub read_pages: Vec<crate::read::PageText>,
     /// Which folders that text looks like, before Paperless has said. Each is
@@ -155,14 +155,14 @@ pub struct Status {
     pub settings: SettingsView,
     /// The last connection check, if one was asked for.
     pub check: Option<Event>,
-    /// What just came of a button that does its work at once — learning the
-    /// table — pressed here or on the display, while it is news.
+    /// What just came of a button that does its work at once - learning the
+    /// table - pressed here or on the display, while it is news.
     pub notice: Option<Event>,
     /// Counters, not times: the page reloads an image when its number changes.
     pub frame_at: u64,
     pub full_view_at: u64,
     /// Where setup found a page in the last picture of the whole view, as a
-    /// crop — `None` when it found none.
+    /// crop - `None` when it found none.
     pub suggested_crop: Option<String>,
     /// The corners of the page found there, as the `corners` setting takes
     /// them.
@@ -170,7 +170,7 @@ pub struct Status {
     /// Finishing was asked for and is waiting for things to be still.
     pub finishing: bool,
     /// The last frame's change from the empty table, and from the frame
-    /// before, as fractions — what a person tuning the rig looks at.
+    /// before, as fractions - what a person tuning the rig looks at.
     pub table_change: f32,
     pub movement: f32,
 }

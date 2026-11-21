@@ -1,8 +1,8 @@
 //! Pages into one PDF, with no image library.
 //!
 //! A letter of several pages has to reach Paperless as one document, and
-//! Paperless takes a PDF. A JPEG goes into a PDF as it is — PDF has carried
-//! JPEG data natively since 1.2 (`/DCTDecode`) — so assembling one needs only
+//! Paperless takes a PDF. A JPEG goes into a PDF as it is - PDF has carried
+//! JPEG data natively since 1.2 (`/DCTDecode`) - so assembling one needs only
 //! each image's size and colour components, which sit in its frame header,
 //! and a few hundred bytes of objects around it. Nothing is re-encoded, so
 //! nothing is lost before the OCR sees it.

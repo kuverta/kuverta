@@ -1,6 +1,6 @@
 //! Captures on disk, until Paperless has them.
 //!
-//! The §3.5 rule — queue the intent before acting, not after — applied to
+//! The §3.5 rule - queue the intent before acting, not after - applied to
 //! paper. A photograph is written to the spool *before* any upload is
 //! attempted and removed only once Paperless has confirmed it, so a crash, a
 //! flat battery or a Wi-Fi drop between the two loses nothing and the retry
@@ -38,7 +38,7 @@ const LETTER: &str = "pdf";
 const OPEN: &str = "open";
 /// The pages of the letter just sent, kept only so the setup page can still
 /// show what went. Emptied when the next letter starts, which is the same
-/// moment the text of those pages stops being shown — see
+/// moment the text of those pages stops being shown - see
 /// `Scanner::read_pages`. A page here is not in any queue and is never sent.
 const SENT: &str = "sent";
 /// Beside a letter waiting to be sent: the folders it was decided to go in,
@@ -53,7 +53,7 @@ pub struct Spool {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
     pub path: PathBuf,
-    /// Seconds since the epoch, from the filename rather than the filesystem —
+    /// Seconds since the epoch, from the filename rather than the filesystem -
     /// copying a spool between machines must not change when a letter arrived.
     pub captured_at: u64,
     /// How many uploads have been tried and failed.
@@ -69,7 +69,7 @@ impl Pending {
     /// Measured from the last failed attempt, not from when the page was
     /// photographed: measured from the capture, anything more than five
     /// minutes old was always due, and a spool that had been failing for an
-    /// hour was retried on every pass — the backoff reduced to decoration.
+    /// hour was retried on every pass - the backoff reduced to decoration.
     pub fn due(&self, now: u64) -> bool {
         let since = self.last_attempt.unwrap_or(self.captured_at);
         // A Pi has no real-time clock, and time can jump when NTP arrives. A
@@ -171,7 +171,7 @@ impl Spool {
         Ok(pages)
     }
 
-    /// Deletes a page of the letter being collected — one photographed by
+    /// Deletes a page of the letter being collected - one photographed by
     /// mistake: a hand, the empty table, the same page twice.
     ///
     /// False when the page is not there any more: deleted already, or the
@@ -188,14 +188,14 @@ impl Spool {
         }
     }
 
-    /// Moves one capture — a page of the open letter, or one queued on its
-    /// own — to `discarded/`.
+    /// Moves one capture - a page of the open letter, or one queued on its
+    /// own - to `discarded/`.
     pub fn discard_capture(&self, path: &Path) -> Result<PathBuf> {
         self.discard(path)
     }
 
     /// Moves the newest page of the open letter to `discarded/`, and returns
-    /// where it went — the display's "Undo last page".
+    /// where it went - the display's "Undo last page".
     pub fn discard_last_page(&self) -> Result<Option<PathBuf>> {
         match self.open_pages()?.last() {
             Some(page) => self.discard(page).map(Some),
@@ -204,7 +204,7 @@ impl Spool {
     }
 
     /// Moves every page of the open letter to `discarded/`, and says how many
-    /// there were — "Cancel letter".
+    /// there were - "Cancel letter".
     pub fn discard_open_letter(&self) -> Result<usize> {
         let pages = self.open_pages()?;
         for page in &pages {
@@ -214,7 +214,7 @@ impl Spool {
     }
 
     /// Takes a letter still waiting to be sent out of the queue, into
-    /// `discarded/` — "Undo last letter" before it has gone. False when it is
+    /// `discarded/` - "Undo last letter" before it has gone. False when it is
     /// not waiting any more.
     pub fn discard_queued(&self, name: &str) -> Result<bool> {
         if name.contains('/') || name.contains("..") {
@@ -268,11 +268,11 @@ impl Spool {
     ///
     /// Written as `.partial` and renamed, like a capture, and the pages are
     /// removed only after the rename. A crash in between leaves the letter
-    /// twice — as a PDF and as pages that make the same PDF again, byte for
+    /// twice - as a PDF and as pages that make the same PDF again, byte for
     /// byte, which Paperless refuses by checksum. The other order could leave
     /// it nowhere.
     /// Closes the open letter without `keep`, which stays open as the first
-    /// page of the next — the envelope that just told the letters apart.
+    /// page of the next - the envelope that just told the letters apart.
     pub fn close_letter_except(&self, keep: &Path) -> Result<Option<PathBuf>> {
         let name = keep.file_name().context("a page with no name")?;
         // Beside the spool under a name nothing reads, for as long as the
@@ -397,7 +397,7 @@ impl Spool {
     /// and a backoff that never backs off.
     ///
     /// Kept beside the capture as a sidecar rather than in the filename, so a
-    /// retry never renames the thing it is retrying — a rename that failed
+    /// retry never renames the thing it is retrying - a rename that failed
     /// halfway would be a capture that exists twice or not at all.
     pub fn failed(&self, pending: &Pending) -> Result<u32> {
         let attempts = self.attempts(&pending.path).saturating_add(1);
@@ -437,7 +437,7 @@ impl Spool {
 /// `<seconds>-<nanoseconds>`: sortable, and unique for one camera.
 ///
 /// The nanoseconds replace the process id this used to carry, which was the
-/// same for every capture a daemon made — so two captures within one second
+/// same for every capture a daemon made - so two captures within one second
 /// shared a name, and the rename of the second replaced the first.
 fn unique_stem() -> String {
     let elapsed = SystemTime::now()

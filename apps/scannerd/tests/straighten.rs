@@ -140,8 +140,8 @@ fn a_page_seen_at_an_angle_comes_out_square() {
     let picture = image::load_from_memory(&straight).unwrap().into_rgb8();
 
     // The top edge is 160 pixels, the bottom 320; the sides are each
-    // hypot(80, 210). The picture is as wide as the widest edge — the one
-    // nearest the camera, with the most pixels on it — rather than the
+    // hypot(80, 210). The picture is as wide as the widest edge - the one
+    // nearest the camera, with the most pixels on it - rather than the
     // average of the two, which would throw half of them away.
     assert_eq!(picture.width(), 320);
     assert_eq!(picture.height(), (80f64.hypot(210.0)).round() as u32);
@@ -171,7 +171,7 @@ fn a_page_seen_at_an_angle_comes_out_square() {
             assert!(value > 200, "({fx},{fy}) should be light, is {value}");
         }
     }
-    // The quarters meet in the middle, where the page's middle is — not
+    // The quarters meet in the middle, where the page's middle is - not
     // where the trapezium's middle is in the picture, which is lower.
     assert!(grey(0.25, 0.46) < 50 && grey(0.25, 0.54) > 200);
     assert!(grey(0.46, 0.25) < 50 && grey(0.54, 0.25) > 200);
@@ -268,7 +268,7 @@ fn table_with_page(w: usize, h: usize, page: [(f64, f64); 4]) -> Vec<u8> {
 }
 
 /// A table with a white page on it and a dark band across the page's own top
-/// left corner — a letterhead, which is the first thing a crop takes and the
+/// left corner - a letterhead, which is the first thing a crop takes and the
 /// thing the sender is read from.
 fn table_with_letterhead(w: usize, h: usize, page: [(f64, f64); 4]) -> Vec<u8> {
     let mut rgb = table_with_page(w, h, page);
@@ -315,7 +315,7 @@ fn the_trim_takes_table_and_leaves_paper_it_only_thought_was_table() {
     let mut rgb = vec![235u8; w * h * 3];
     for y in 0..h {
         for x in 0..(w / 5) {
-            // Still clearly paper, just dimmer — a shadow, not a table.
+            // Still clearly paper, just dimmer - a shadow, not a table.
             let at = (y * w + x) * 3;
             rgb[at..at + 3].fill(205);
         }
@@ -333,7 +333,7 @@ fn a_letter_that_overhangs_the_marked_corners_is_kept_whole() {
     use scannerd::straighten::straighten_trimmed;
     let (w, h) = (600usize, 800usize);
     // Marks from a setup where the page lay further right. This letter sticks
-    // out to the left of them — which is where its letterhead is, so the
+    // out to the left of them - which is where its letterhead is, so the
     // marks would take the sender off the letter before anything else sees it.
     let marks = Corners::new([(0.18, 0.05), (0.95, 0.05), (0.95, 0.95), (0.18, 0.95)]).unwrap();
     let page = [(0.04, 0.06), (0.93, 0.06), (0.93, 0.94), (0.04, 0.94)];
@@ -478,7 +478,7 @@ fn what_the_paper_covers_is_measured_against_the_marks_and_nothing_else() {
     // A letter overhanging the marks, so the picture is warped onto more than
     // the marks enclose. The bug this is here for: the share was reported
     // against that wider quad instead, so a page came out at an envelope's
-    // share — and the rig finished the letter it was collecting and called
+    // share - and the rig finished the letter it was collecting and called
     // this page the envelope of the next one.
     //
     // The sizes are chosen so the two answers fall on opposite sides of the

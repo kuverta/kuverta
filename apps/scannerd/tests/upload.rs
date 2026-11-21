@@ -1,7 +1,7 @@
 //! The uploader, against a Paperless on loopback.
 //!
 //! The multipart body is written out by hand, which is the kind of code that
-//! works against one server and silently not against another — so the test
+//! works against one server and silently not against another - so the test
 //! asserts on the bytes rather than only on the outcome.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -254,7 +254,7 @@ async fn without_tags_nothing_is_looked_up() {
 #[tokio::test]
 async fn the_body_ends_with_a_closing_boundary() {
     // Without the trailing `--`, Django reads the body as truncated and
-    // rejects it — the classic hand-rolled-multipart bug.
+    // rejects it - the classic hand-rolled-multipart bug.
     let (base, sent) = paperless!("200 OK", "\"ok\"");
     uploader(&base, &["post"])
         .send("a.jpg", b"x".to_vec(), &[])

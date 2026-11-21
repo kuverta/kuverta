@@ -3,7 +3,7 @@
 //! The 3.5″ panel on the rig carries an XPT2046 resistive touch controller on
 //! SPI chip select 1, and the `piscreen` overlay binds the kernel's `ads7846`
 //! driver to it. That driver waits for the controller's pen interrupt before it
-//! reads anything — and on this board the interrupt never arrives: pressed
+//! reads anything - and on this board the interrupt never arrives: pressed
 //! for forty seconds, GPIO 17 did not move, nor did any other pin. So scannerd
 //! asks instead, thirty times a second, over `/dev/spidev0.1` (the kernel
 //! driver kept off it; see the readme).
@@ -11,7 +11,7 @@
 //! It asks for two things: how hard the film is pressed, and how far down.
 //! Only how far down, because on this panel that is all there is: the
 //! controller's X channel runs from about 560 at the top of the screen to 3644
-//! at the bottom, and its Y channel reads 4095 wherever it is pressed — one
+//! at the bottom, and its Y channel reads 4095 wherever it is pressed - one
 //! half of the film is not connected. The screen's buttons are bands its whole
 //! width ([`crate::lcd::rows`]), so a tap's row is enough to know which.
 
@@ -45,7 +45,7 @@ impl Rows {
         at_bottom: 4000.0,
     };
 
-    /// `channel:at_top:at_bottom`, channel `x` or `y` — as the env file
+    /// `channel:at_top:at_bottom`, channel `x` or `y` - as the env file
     /// gives it, for a panel mounted or wired the other way.
     pub fn parse(text: &str) -> Result<Self> {
         let parts: Vec<&str> = text.split(':').map(str::trim).collect();

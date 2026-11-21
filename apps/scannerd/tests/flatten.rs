@@ -1,13 +1,13 @@
 //! Flattening the light off a photographed page.
 //!
 //! Every page here is built rather than photographed, because what is being
-//! asked is not "does this look nicer" — it is what the arithmetic does to a
+//! asked is not "does this look nicer" - it is what the arithmetic does to a
 //! page with a lamp on one side of it, to a page with nothing on it, and to a
 //! page whose darkest thing is not ink.
 
 use scannerd::flatten::{flatten, Tone};
 
-/// A page `width`×`height` lit by `light(x, y)` — a paper value 0–255 — with
+/// A page `width`×`height` lit by `light(x, y)` - a paper value 0–255 - with
 /// `ink(x, y)` true where the page is written on. Ink is a fifth of whatever
 /// light is falling there, which is how ink behaves.
 fn page(
@@ -169,7 +169,7 @@ fn a_blank_page_is_not_stretched_into_its_own_grain() {
 #[test]
 fn a_shadow_with_no_paper_in_it_is_not_scaled_up_into_a_grey_cloud() {
     let (width, height) = (400u32, 560u32);
-    // A well-lit page with one corner in deep shadow — a curled corner, or a
+    // A well-lit page with one corner in deep shadow - a curled corner, or a
     // hand still on the sheet. Nothing in that corner is paper.
     let mut rgb = page(
         width,
@@ -198,7 +198,7 @@ fn what_the_page_was_before_is_carried_out_and_is_not_what_it_became() {
     let tone = flatten(&mut rgb, width, height).expect("flattened");
 
     // The exposure is steered by these, and they have to be the camera's
-    // numbers rather than this module's — see `Quality::exposed_as`.
+    // numbers rather than this module's - see `Quality::exposed_as`.
     assert_eq!(
         tone,
         Tone {

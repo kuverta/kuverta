@@ -2,7 +2,7 @@
 //!
 //! Detection is a fraction of changed pixels over a luma plane, which means it
 //! can be reasoned about here rather than guessed at on a Pi. The behaviour
-//! that matters is not "does it see paper" — that is a threshold — but the
+//! that matters is not "does it see paper" - that is a threshold - but the
 //! transitions: never capture while a hand is still in shot, and never capture
 //! the same page twice.
 
@@ -27,7 +27,7 @@ fn desk_with_page(fraction: f32) -> Vec<u8> {
     frame
 }
 
-/// The same scene, moved — a hand still in shot.
+/// The same scene, moved - a hand still in shot.
 fn jittered(frame: &[u8], fraction: f32) -> Vec<u8> {
     let mut moved = frame.to_vec();
     let changed = (PIXELS as f32 * fraction) as usize;
@@ -80,7 +80,7 @@ fn a_page_put_down_and_left_alone_is_captured() {
     detector.observe(&desk());
 
     let page = desk_with_page(0.4);
-    // Arrives — something is there, but one frame proves nothing.
+    // Arrives - something is there, but one frame proves nothing.
     assert_eq!(detector.observe(&page), Step::Wait);
     // Three consecutive still frames, which is what `settle_frames` asks for.
     assert_eq!(detector.observe(&page), Step::Wait);
@@ -185,7 +185,7 @@ fn the_baseline_is_relearnt_when_the_desk_is_seen_empty() {
         detector.observe(&page);
     }
 
-    // The desk, but brighter — later in the day, nothing on it.
+    // The desk, but brighter - later in the day, nothing on it.
     let brighter: Vec<u8> = desk().iter().map(|p| p.saturating_add(6)).collect();
     detector.observe(&brighter);
     assert_eq!(detector.state(), State::Waiting);
@@ -300,7 +300,7 @@ fn the_last_measurements_are_kept_for_the_setup_page() {
 use scannerd::detect::page_changed;
 
 /// A page on the desk, its top left at (`x`, `y`), with lines of text on it
-/// in a pattern chosen by `layout` — or none, for the back of a page.
+/// in a pattern chosen by `layout` - or none, for the back of a page.
 fn page_at(x: usize, y: usize, layout: Option<usize>) -> Vec<u8> {
     let mut frame = desk();
     for row in y..(y + 190).min(H) {
@@ -406,7 +406,7 @@ fn steps_after_the_first(first: &[u8], frames: Vec<Vec<u8>>) -> (usize, usize) {
 fn a_hand_left_resting_on_a_page_is_taken_back_once_it_goes() {
     // On the rig: the back of a page photographed, then photographed again
     // with a hand pressing it flat, then a third time once the hand had gone
-    // — the last differed from the hand's photograph as much as another page
+    // - the last differed from the hand's photograph as much as another page
     // does. The hand's photograph is taken back, and nothing new is taken.
     let front = page_at(40, 20, Some(0));
     let back = page_at(40, 20, Some(1));
@@ -517,7 +517,7 @@ fn a_page_the_camera_darkened_is_still_a_page() {
     // it pull everything down, so the page reads far darker than the paper on
     // the table looks to a person, and the table around it darker still. The
     // first version of this asked for paper to reach a level and stopped
-    // seeing pages altogether — paper is *the pale thing in the frame*, not a
+    // seeing pages altogether - paper is *the pale thing in the frame*, not a
     // number.
     let mut frame: Vec<u8> = (0..PIXELS).map(|i| 65 + (i % 3) as u8).collect();
     for pixel in frame.iter_mut().take(PIXELS / 2) {
@@ -542,7 +542,7 @@ fn the_sun_going_down_is_not_photographed() {
     detector.learn_empty(&desk());
 
     // Frame after frame of a room getting darker, each still against the one
-    // before — which is exactly what a page settling looks like by every other
+    // before - which is exactly what a page settling looks like by every other
     // measure.
     for shade in 1..=40 {
         for _ in 0..3 {
@@ -607,7 +607,7 @@ fn a_page_lying_at_an_angle_is_still_one_lump() {
 
 #[test]
 fn one_lit_block_in_a_corner_does_not_make_a_page_look_scattered() {
-    // On the rig a real page measured share 0.47 and fill 0.47 — the same
+    // On the rig a real page measured share 0.47 and fill 0.47 - the same
     // number, which is the giveaway: the box was the whole frame, because a
     // stray block at the far edge stretched it there. Measured on the lump
     // itself, a page is a page.
@@ -618,7 +618,7 @@ fn one_lit_block_in_a_corner_does_not_make_a_page_look_scattered() {
             frame[y * W + x] = 225;
         }
     }
-    // And one bright speck in the far corner — a cup's rim catching the light.
+    // And one bright speck in the far corner - a cup's rim catching the light.
     for y in 0..20 {
         for x in W - 20..W {
             frame[y * W + x] = 200;
@@ -631,7 +631,7 @@ fn one_lit_block_in_a_corner_does_not_make_a_page_look_scattered() {
 
 #[test]
 fn a_page_refused_is_never_learnt_as_the_table() {
-    // What broke the rig: a page was refused — the rule was too strict — and
+    // What broke the rig: a page was refused - the rule was too strict - and
     // then, because something had changed and it did not look like paper, the
     // page was learnt as the table. After that the page *was* the table and
     // nothing was ever seen again, not even after learning the empty table by
@@ -675,7 +675,7 @@ fn a_table_the_light_has_moved_over_is_learnt_again() {
     detector.learn_empty(&desk());
     let generation = detector.baseline_generation();
 
-    // A shadow that stays — the sun is where it is now.
+    // A shadow that stays - the sun is where it is now.
     for _ in 0..40 {
         detector.observe(&shadow_band(60));
     }
@@ -694,7 +694,7 @@ fn a_table_the_light_has_moved_over_is_learnt_again() {
 ///
 /// Which is the rig. The table there is creased paper with the corners drawn
 /// on it in marker, and a letter lying on it is barely paler than the table
-/// is — close enough to the twelve counts a block has to move to count as
+/// is - close enough to the twelve counts a block has to move to count as
 /// something lying there that the answer turns on very little.
 fn faint_page() -> Vec<u8> {
     let mut frame = desk();
@@ -707,7 +707,7 @@ fn faint_page() -> Vec<u8> {
 /// The same page, lying exactly where it was, in a frame the paper test does
 /// not see a page in.
 ///
-/// Every other 16×16 block — the block the paper test measures — taken down
+/// Every other 16×16 block - the block the paper test measures - taken down
 /// by 28 counts. The frame's own brightness moves with them, and once that is
 /// taken out no pixel has moved by the 24 counts that count as changed: by
 /// every measure of movement, the page is lying perfectly still. But the paper
@@ -763,7 +763,7 @@ fn a_page_the_paper_test_sees_only_now_and_then_is_still_photographed() {
 
     // On the rig this was a page that lay still on the table and was never
     // photographed. Settling was entered on a frame that saw the page and left
-    // on the next frame that did not — four times in four seconds — so the
+    // on the next frame that did not - four times in four seconds - so the
     // still frames a photograph needs were never in a row.
     let mut detector = detector();
     detector.learn_empty(&desk());
@@ -785,7 +785,7 @@ fn a_page_lying_there_is_never_learnt_as_the_table() {
 
     // The worse half of the same wobble. The table is learnt again when the
     // light over it moves, and the guard against learning a page away with it
-    // used to ask the frame in hand — which the wobble defeats: on the rig the
+    // used to ask the frame in hand - which the wobble defeats: on the rig the
     // table was learnt again on a frame that read a share of 0.013 while a
     // page lay on it. A page inside the baseline can never be seen again,
     // however long it lies there, and nothing says why.

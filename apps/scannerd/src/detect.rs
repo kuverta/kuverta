@@ -3,7 +3,7 @@
 //! Arithmetic over a luma plane, and nothing else. `rpicam-still --encoding
 //! yuv420` hands back raw YUV, whose first plane *is* the greyscale image, so
 //! there is no JPEG to decode and no image library in this binary at all. That
-//! is not a trick to save a dependency — it is what makes this file testable
+//! is not a trick to save a dependency - it is what makes this file testable
 //! on a laptop with no camera, which is the difference between a detector that
 //! is reasoned about and one that is guessed at.
 //!
@@ -18,7 +18,7 @@
 //! photograph of a thumb.
 //!
 //! **Is it another page?** After a photograph the detector waits for the
-//! surface to be cleared — but a letter's pages are often laid one on top of
+//! surface to be cleared - but a letter's pages are often laid one on top of
 //! the other, or turned over where they lie, and the surface is never clear.
 //! So once a hand has been over it and it is still again, what lies there is
 //! compared with what was photographed: in blocks of 8×8 pixels, allowing a
@@ -48,8 +48,8 @@ pub struct Thresholds {
     /// This fraction of blocks changed from the photographed page, and what
     /// lies there now is another page.
     pub new_page: f32,
-    /// What share of the frame must have changed *the way paper changes it* —
-    /// paler than a dark table, darker than a pale one — for the change to be
+    /// What share of the frame must have changed *the way paper changes it* -
+    /// paler than a dark table, darker than a pale one - for the change to be
     /// a page rather than the light shifting.
     pub paper_share: f32,
     /// And how densely those blocks must sit inside the box they span: paper
@@ -67,7 +67,7 @@ impl Default for Thresholds {
             handled: 0.05,
             new_page: 0.22,
             // A DL envelope on the rig's corners covers about 0.4 of the
-            // frame and an A4 page nearly all of it, so this is generous —
+            // frame and an A4 page nearly all of it, so this is generous -
             // it is there to rule out the light, not to measure the paper.
             paper_share: 0.06,
             // Generous too, and for a reason measured on the rig: a page lies
@@ -88,7 +88,7 @@ impl Default for Thresholds {
 /// page in view darkens everything around it, and the table left behind comes
 /// back a shade lighter or darker than the one learnt; compared raw, a shade
 /// of more than `pixel` is every pixel "changed", and the page never seems to
-/// have gone — the likeliest reason each page on the Pi needed the table
+/// have gone - the likeliest reason each page on the Pi needed the table
 /// learning again before the next. A page, a hand or a shadow changes some
 /// pixels far more than others, which one offset for the whole frame does not
 /// hide.
@@ -105,7 +105,7 @@ const SHIFT: usize = 8;
 const SHIFT_STEP: usize = 2;
 
 /// The fraction of 8×8 blocks that differ between two frames `width` pixels
-/// wide, at the best of the shifts of up to [`SHIFT`] pixels either way — so a
+/// wide, at the best of the shifts of up to [`SHIFT`] pixels either way - so a
 /// page moved a little, or turned a few degrees, compares as itself, and
 /// another page, or the other side of this one, does not. On the rig's frames:
 /// a page nudged 5 pixels 1%, nudged 10 and turned 4° 17%, the blank back of
@@ -176,7 +176,7 @@ pub fn page_changed(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
 }
 
 /// Of the blocks that differ between `a` and `b`, the share that is darker in
-/// `a` — at the shift that lines the two up best, and with the frames'
+/// `a` - at the shift that lines the two up best, and with the frames'
 /// overall brightness taken out. A hand over a page only ever darkens it; the
 /// other side of a page, or another page, moves its text about and is darker
 /// in some blocks and paler in others, and a blank back is paler throughout.
@@ -249,8 +249,8 @@ pub fn darker_share(a: Luma<'_>, b: Luma<'_>, width: usize) -> f32 {
     }
 }
 
-/// A photograph this much darker than the page seen again after it — of the
-/// blocks that differ — was that page with a hand on it.
+/// A photograph this much darker than the page seen again after it - of the
+/// blocks that differ - was that page with a hand on it.
 const HAND_DARKER: f32 = 0.8;
 
 /// The side of a block [`paper_like`] compares. Larger than [`BLOCK`]: this
@@ -266,7 +266,7 @@ const PAPER_BY: f32 = 12.0;
 /// Measured inside the frame rather than against a level, because the camera
 /// sets its exposure for every frame: a white page in view makes the camera
 /// pull everything down, so paper can read barely brighter than the table did
-/// on its own — and asking for an absolute level then stops seeing paper at
+/// on its own - and asking for an absolute level then stops seeing paper at
 /// all, which is what the first version of this did.
 const PAPER_STANDS_OUT: f32 = 18.0;
 /// Where a page covers this much of the frame there is nothing left to stand
@@ -300,8 +300,8 @@ impl PaperLike {
 /// Where the change between two frames is, and which way it went.
 ///
 /// The sun going down was photographed as a letter: the light over the table
-/// changes, [`changed_fraction`] climbs past `present` — one offset for the
-/// whole frame cannot hide a shadow crossing it — and a photograph of the bare
+/// changes, [`changed_fraction`] climbs past `present` - one offset for the
+/// whole frame cannot hide a shadow crossing it - and a photograph of the bare
 /// table is taken. What tells the two apart is not how much changed but the
 /// shape of it: paper is one lump, in one direction (paler than a dark table,
 /// darker than a pale one), and an evening is a wash over everything, mostly
@@ -383,7 +383,7 @@ pub fn paper_like(baseline: Luma<'_>, frame: Luma<'_>, width: usize) -> PaperLik
     // The largest lump of them, and how solidly it fills its own box. Measured
     // on the lump rather than on every lit block, because one lit block in a
     // corner would otherwise stretch the box over the whole frame and make a
-    // page look as scattered as an evening — which on the rig it did.
+    // page look as scattered as an evening - which on the rig it did.
     let Some(lump) = largest_lump(&lit, bw, bh) else {
         return PaperLike::NOTHING;
     };
@@ -470,8 +470,8 @@ pub fn changed_fraction(a: Luma<'_>, b: Luma<'_>, pixel: u8) -> f32 {
 /// Where the capture loop has got to.
 ///
 /// Written as a state machine rather than as sleeps and flags because the one
-/// behaviour that matters — never capture twice without the surface being
-/// cleared in between — is a property of the transitions, and a property is
+/// behaviour that matters - never capture twice without the surface being
+/// cleared in between - is a property of the transitions, and a property is
 /// much easier to test than a sequence of delays.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
@@ -507,8 +507,8 @@ const PAGES_KEPT: usize = 30;
 ///
 /// The test is asked of one frame at a time, and its answer wobbles. It
 /// compares each block with the table as it was learnt and takes no offset out
-/// — on purpose, because an offset is what let a shadow over half the table
-/// make the other half look like paper — so a camera still choosing its
+/// - on purpose, because an offset is what let a shadow over half the table
+/// make the other half look like paper - so a camera still choosing its
 /// exposure moves every block at once, and the lump the test finds is the
 /// whole frame on one frame and none of it on the next. On the rig a page lay
 /// still on the table and read a share of between 0.0 and 0.21, and a fill of
@@ -517,7 +517,7 @@ const PAGES_KEPT: usize = 30;
 ///
 /// Asked afresh of every frame, that page was never photographed. `Settling`
 /// was entered on a frame that saw it and left again on the next frame that
-/// did not — four times in four seconds — and the frames of stillness a
+/// did not - four times in four seconds - and the frames of stillness a
 /// photograph needs were never in a row. So the frame in hand is enough to
 /// *start* waiting for a page to settle, and it takes this whole window with
 /// no paper in any of it to give up on one. A page that flickers is a page.
@@ -525,7 +525,7 @@ const PAGES_KEPT: usize = 30;
 /// It is also what keeps the table from being learnt with a page lying on it.
 /// The light moving over the table is learnt as the table after a while, and
 /// the guard against learning a page away with it used to be the frame in hand
-/// alone — which the same wobble defeats: on the rig the table was learnt
+/// alone - which the same wobble defeats: on the rig the table was learnt
 /// again on a frame that read a share of 0.013 while a page lay on it, and a
 /// page inside the baseline is a page that can never be seen again, however
 /// long it lies there. Nothing is learnt as the table now unless no frame in
@@ -551,7 +551,7 @@ pub struct Detector {
     /// The frame a photograph was taken at: what the next page is told
     /// apart from.
     photographed: Option<Vec<u8>>,
-    /// Every page of the letter photographed so far, oldest first — the last
+    /// Every page of the letter photographed so far, oldest first - the last
     /// is `photographed`. A page is told apart from all of them, not only
     /// from the last: a hand resting on a page is photographed as a page of
     /// its own, and once it goes, the page under it differs from that
@@ -633,7 +633,7 @@ impl Detector {
         self.pages.clear();
     }
 
-    /// A new letter that begins with the page just photographed — the
+    /// A new letter that begins with the page just photographed - the
     /// envelope that finished the one before.
     pub fn new_letter_from_last(&mut self) {
         self.pages = self.photographed.iter().cloned().collect();
@@ -727,8 +727,8 @@ impl Detector {
 
     /// Feeds one preview frame in and says what to do.
     pub fn observe(&mut self, frame: Luma<'_>) -> Step {
-        // A baseline of another size — one kept on disk from a different
-        // camera setting — compares as "nothing changed" forever, because
+        // A baseline of another size - one kept on disk from a different
+        // camera setting - compares as "nothing changed" forever, because
         // `changed_fraction` answers 0 for frames of different sizes. That
         // would be a detector that silently never sees a page.
         if self
@@ -788,7 +788,7 @@ impl Detector {
                     // Something paper-like is in the frame, or was in one of
                     // the last [`PAPER_FRAMES`] of them, but never enough of it
                     // to be a page. Not learnt as the table: that swallows the
-                    // page, and then nothing is ever seen again — which is
+                    // page, and then nothing is ever seen again - which is
                     // exactly what happened on the rig, both when this was let
                     // through on any refusal and when the guard asked the frame
                     // in hand rather than the window.
@@ -815,7 +815,7 @@ impl Detector {
                 } else {
                     // Changed, but not the way paper changes it: the sun has
                     // moved over the table. Seen that way for a while, that is
-                    // what the table looks like now — otherwise every frame
+                    // what the table looks like now - otherwise every frame
                     // from here to nightfall is a page about to be
                     // photographed.
                     self.almost_frames = 0;
@@ -848,7 +848,7 @@ impl Detector {
 
             State::Settling { frames_still } => {
                 if against_baseline < self.thresholds.present || self.recent_paper == 0 {
-                    // Whatever it was has gone again — a hand passing over, or
+                    // Whatever it was has gone again - a hand passing over, or
                     // something that has not looked like paper once in the
                     // last [`PAPER_FRAMES`] frames.
                     self.state = State::Waiting;
@@ -876,8 +876,8 @@ impl Detector {
                     // page will be judged against.
                     self.rearm(frame);
                 } else if against_baseline < self.thresholds.present {
-                    // Not quite the surface that was learnt — a cup moved, a
-                    // shadow, a hand at the edge — but no page either. Seen
+                    // Not quite the surface that was learnt - a cup moved, a
+                    // shadow, a hand at the edge - but no page either. Seen
                     // that way for as long as a page takes to settle, it is
                     // the surface now: waiting for the old picture of it is how
                     // a detector stops photographing anything at all.

@@ -1,13 +1,13 @@
 //! Handing a capture to Paperless.
 //!
 //! `POST /api/documents/post_document/`, which is the same endpoint the
-//! Paperless web UI uses. Paperless answers with a task id and does the rest —
-//! OCR, deskew, rotation, tagging, archiving — which is the whole reason this
+//! Paperless web UI uses. Paperless answers with a task id and does the rest -
+//! OCR, deskew, rotation, tagging, archiving - which is the whole reason this
 //! daemon is six hundred lines and not six thousand.
 //!
 //! The multipart body is written out by hand. `reqwest`'s multipart support is
 //! a feature this workspace does not enable, and turning it on for six crates
-//! to save thirty lines in one is the wrong trade — the same call made in
+//! to save thirty lines in one is the wrong trade - the same call made in
 //! `core-paper` for its query strings.
 
 use std::sync::Mutex;
@@ -47,7 +47,7 @@ pub struct Uploader {
     tags: Vec<String>,
     /// The same tags as Paperless's ids, once looked up.
     ///
-    /// The upload endpoint takes only ids — a name is refused with a 400 — but
+    /// The upload endpoint takes only ids - a name is refused with a 400 - but
     /// a name is what a person writes in a unit file. Looked up lazily rather
     /// than at start, because a Pi on post duty boots before its network does,
     /// and cached only once every name resolved.
@@ -95,7 +95,7 @@ impl Uploader {
     /// The folders are named rather than matched: where a letter goes is
     /// settled on the rig, while somebody is holding the paper, and the
     /// record has to agree with the drawer they put it in. Paperless does not
-    /// match folder tags itself any more — see `Paperless::set_folders` — so
+    /// match folder tags itself any more - see `Paperless::set_folders` - so
     /// what is named here is what the document ends up with.
     pub async fn send(&self, filename: &str, jpeg: Vec<u8>, folders: &[String]) -> Result<String> {
         if self.token.trim().is_empty() {
@@ -148,7 +148,7 @@ impl Uploader {
         Ok(text.trim().trim_matches('"').to_string())
     }
 
-    /// Connects, checks the token, and looks the tags up afresh — for the
+    /// Connects, checks the token, and looks the tags up afresh - for the
     /// setup page, which wants what is wrong in words.
     pub async fn check(&self) -> Result<String> {
         if self.token.trim().is_empty() {
@@ -203,8 +203,8 @@ impl Uploader {
     /// so the shelf is named in one place and not in two.
     ///
     /// Tags that match nothing are left out: those are the labels a person
-    /// puts on by hand — the one that says which address the post belongs to,
-    /// among them — and no letter would ever be told to go in them.
+    /// puts on by hand - the one that says which address the post belongs to,
+    /// among them - and no letter would ever be told to go in them.
     pub async fn folders_in_paperless(&self) -> Result<Vec<Folder>> {
         let text = self.get("/api/tags/?page_size=500").await?;
         let page: serde_json::Value = serde_json::from_str(&text)
@@ -213,7 +213,7 @@ impl Uploader {
             .as_array()
             .into_iter()
             .flatten()
-            // A folder is a tag with words of its own — the ones the rig
+            // A folder is a tag with words of its own - the ones the rig
             // reads a page against. Paperless does not match them itself any
             // more; a tag with no words is a label put on by hand, the
             // address among them.
@@ -371,7 +371,7 @@ impl Uploader {
         })
     }
 
-    /// Deletes a document — into Paperless's trash, from which it can still
+    /// Deletes a document - into Paperless's trash, from which it can still
     /// be restored there.
     pub async fn delete_document(&self, document: u64) -> Result<()> {
         let response = self
@@ -515,7 +515,7 @@ fn stem(filename: &str) -> String {
         .to_string()
 }
 
-/// Percent-encodes everything that is not unreserved — the same rule as
+/// Percent-encodes everything that is not unreserved - the same rule as
 /// `core-paper`, for the same reason: tag names are written by people, and an
 /// unencoded `&` or space silently looks up a different tag.
 fn encode(value: &str) -> String {

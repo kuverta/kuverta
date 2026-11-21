@@ -1,11 +1,11 @@
 //! Which of the folders on the shelf a letter goes in, or whether it can go in
 //! the bin.
 //!
-//! The Pi cannot read a letter — OCR on a Zero W takes minutes a page — but
+//! The Pi cannot read a letter - OCR on a Zero W takes minutes a page - but
 //! Paperless reads every one, and it already has the machinery for deciding
 //! what a document is: tags that match themselves, by words or by learning
 //! from documents tagged by hand. So a folder is a Paperless tag of the same
-//! name. scannerd makes sure each exists and says how it matches — by the
+//! name. scannerd makes sure each exists and says how it matches - by the
 //! folder's words when it has some, which works from the first letter, or by
 //! Paperless's own "auto" matching when it has none, which learns from the
 //! documents tagged with it. Then, after each upload, it waits for Paperless to
@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Folder {
     pub name: String,
-    /// Words that put a letter in this folder, separated by commas — any one
+    /// Words that put a letter in this folder, separated by commas - any one
     /// is enough. None: Paperless learns from what is tagged with it.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub words: String,
@@ -28,7 +28,7 @@ pub struct Folder {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub discard: bool,
     /// Somebody in the household rather than somewhere on the shelf: a letter
-    /// that matches is *for* this person. The display says both — the folder
+    /// that matches is *for* this person. The display says both - the folder
     /// it goes in, and who it is for.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub person: bool,
@@ -45,7 +45,7 @@ impl Folder {
     }
 
     /// Somebody in the household. With no words of their own, their name is
-    /// what is looked for — which is what stands on the letter.
+    /// what is looked for - which is what stands on the letter.
     pub fn person(name: &str) -> Self {
         Self {
             person: true,
@@ -63,7 +63,7 @@ impl Folder {
 
     /// What the tag is called in Paperless. People are marked, so that a
     /// shelf read back out of Paperless still knows who is a person and what
-    /// is a folder — and so that the two do not collide when somebody files
+    /// is a folder - and so that the two do not collide when somebody files
     /// their post under their own name.
     pub fn tag_name(&self) -> String {
         if self.person {
@@ -94,7 +94,7 @@ impl Folder {
 
 /// The other way round: a tag's match as Paperless keeps it, back into the
 /// comma-separated words the setup page shows. A phrase is one word in
-/// quotes, so this cannot simply split on spaces — `"Grüne Karte"` is one
+/// quotes, so this cannot simply split on spaces - `"Grüne Karte"` is one
 /// thing to look for, not two.
 pub fn words_from_match(text: &str) -> String {
     let mut words = Vec::new();
@@ -125,7 +125,7 @@ pub const PERSON_TAG_PREFIX: &str = "Person: ";
 pub const MATCH_LIMIT: usize = 256;
 
 /// The people the env file names: `Erika Mustermann,Max Mustermann`. Words
-/// are not given here — a person is looked for by their name — and can be set
+/// are not given here - a person is looked for by their name - and can be set
 /// on the setup page for someone who is written to in more than one way.
 pub fn parse_env_people(text: &str) -> Vec<Folder> {
     text.split(',')
@@ -136,7 +136,7 @@ pub fn parse_env_people(text: &str) -> Vec<Folder> {
 }
 
 /// Folders as the env file names them: `Car,House,Work`. A name starting with
-/// `-` is the bin — `-Throw away`.
+/// `-` is the bin - `-Throw away`.
 pub fn parse_env(text: &str) -> Vec<Folder> {
     text.split(',')
         .map(str::trim)
@@ -152,13 +152,13 @@ pub fn parse_env(text: &str) -> Vec<Folder> {
         .collect()
 }
 
-/// Which folders a page's own text looks like, before Paperless has said —
+/// Which folders a page's own text looks like, before Paperless has said -
 /// the preview's guess, made here from the same words Paperless is given.
 ///
 /// Paperless's "any word" matching is what this copies: a folder matches when
 /// any one of its words stands in the text, whole and whatever its case. A
 /// phrase counts as one word. What Paperless learns for a folder with no
-/// words of its own cannot be copied, so those folders never show in a guess —
+/// words of its own cannot be copied, so those folders never show in a guess -
 /// the display says so when the letter is filed for real.
 /// The strongest first, because a letter is one piece of paper and goes in
 /// one folder on the shelf.
@@ -172,7 +172,7 @@ pub fn guess<'a>(text: &str, folders: &'a [Folder]) -> Vec<&'a Folder> {
 /// How many of each folder's words stand in the text, strongest first.
 ///
 /// Ordered rather than merely filtered, because a letter fits more than one
-/// folder often enough — a tax letter that is also a Mahnung — and it still
+/// folder often enough - a tax letter that is also a Mahnung - and it still
 /// has to go in exactly one of them. The count is the whole of the judgement:
 /// a letter carrying five of Taxes' words and one of Rechnungen's is a tax
 /// letter. Folders that tie keep the order they are on the shelf in, so the
@@ -271,7 +271,7 @@ pub struct Filing {
     /// To be filed by hand as soon as Paperless has read it: the display was
     /// told where it goes before Paperless had an answer.
     pub refile: Option<Refiling>,
-    /// Where the rig decided it goes as it was closed, strongest first — and
+    /// Where the rig decided it goes as it was closed, strongest first - and
     /// wrote on it as it was sent. Paperless takes half a minute or more to
     /// read a letter on a Pi and then only says the same back.
     pub decided: Vec<Folder>,
@@ -285,7 +285,7 @@ pub struct Filing {
 impl Filing {
     /// What to say about the letter: where it was decided to go while
     /// Paperless is still reading it, rather than "sorting" for as long as
-    /// Paperless takes. Paperless's own answer replaces it — a duplicate, a
+    /// Paperless takes. Paperless's own answer replaces it - a duplicate, a
     /// failure, a folder changed by hand.
     pub fn shown(&self) -> Outcome {
         match &self.outcome {
@@ -368,7 +368,7 @@ impl Filings {
     }
 
     /// That where it was decided to go is the rig's answer, from its pages,
-    /// even if that is nowhere — rather than nothing having been read.
+    /// even if that is nowhere - rather than nothing having been read.
     pub fn settled(&mut self, task: &str) {
         if let Some(filing) = self.filings.iter_mut().find(|f| f.task == task) {
             filing.settled = true;

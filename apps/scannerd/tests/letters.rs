@@ -319,7 +319,7 @@ async fn a_press_with_nothing_photographed_does_not_close_the_next_letter_early(
 #[test]
 fn the_pages_of_the_letter_just_sent_are_kept_for_the_setup_page() {
     // The bug this is here for: the text read from a page went on being shown
-    // after the letter was sent, but the page itself had been deleted — so
+    // after the letter was sent, but the page itself had been deleted - so
     // the preview said what the letter said beside an empty frame.
     let dir = TempDir::new("sent-pages");
     let spool = Spool::open(&dir.0).unwrap();
@@ -445,7 +445,7 @@ async fn a_finished_letter_waits_for_its_page_to_be_read() {
 
     std::fs::remove_file(&gate).unwrap();
     // The reader is a process of its own: a turn at a time, in real time,
-    // until its text is in — well inside READ_WAIT_SECS of turns.
+    // until its text is in - well inside READ_WAIT_SECS of turns.
     for _ in 0..15 {
         std::thread::sleep(Duration::from_millis(100));
         rig.camera.then([desk()]);
@@ -485,7 +485,7 @@ fn reader_running(rig: &mut Rig, script: &str) {
 }
 
 /// Turns, a frame of `frame` each, until the reader has answered for every
-/// page — in real time, since the reader is a process of its own.
+/// page - in real time, since the reader is a process of its own.
 async fn until_read(rig: &mut Rig, frame: fn() -> Vec<u8>) {
     for _ in 0..30 {
         std::thread::sleep(Duration::from_millis(100));

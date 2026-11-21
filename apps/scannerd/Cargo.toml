@@ -20,15 +20,15 @@ clap.workspace = true
 # Its own reqwest rather than the workspace's, so the TLS provider is ring and
 # not aws-lc. The workspace's `rustls` feature makes aws-lc the provider, and on
 # a Pi Zero W (ARMv6) that is untried assembly; ring's handshake has been run on
-# one. aws-lc is still compiled — the workspace rustls keeps its default
-# features — but with `rustls-no-provider`, and ring installed as the process
+# one. aws-lc is still compiled - the workspace rustls keeps its default
+# features - but with `rustls-no-provider`, and ring installed as the process
 # default when the uploader is made, it is never what runs.
 reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider"] }
 rustls.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 # Straightening a page photographed at an angle: the only thing that decodes a
-# photograph. JPEG alone, and no rayon — the Zero W has one core. The encoder is
+# photograph. JPEG alone, and no rayon - the Zero W has one core. The encoder is
 # jpeg-encoder's rather than image's: on the Zero W, image's took 5.2 seconds
 # for a 5-megapixel page.
 image = { version = "0.25.10", default-features = false, features = ["jpeg"] }

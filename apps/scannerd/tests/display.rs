@@ -1,4 +1,4 @@
-//! What the e-paper display says, and when it is redrawn — without a panel.
+//! What the e-paper display says, and when it is redrawn - without a panel.
 
 use std::sync::mpsc;
 
@@ -38,7 +38,7 @@ fn facts(state: &str) -> Facts<'_> {
 #[test]
 fn the_letter_in_hand_says_where_it_looks_like_going_from_its_first_page() {
     // The bug this is here for: the panel said nothing about the letter you
-    // were holding until Paperless had it — minutes later, and long after you
+    // were holding until Paperless had it - minutes later, and long after you
     // had put the paper down somewhere.
     let guess = vec!["Lawstuff".to_string()];
     let scanning = Screen::for_facts(&Facts {
@@ -100,7 +100,7 @@ fn the_headline_names_the_folder_as_soon_as_the_pages_are_read() {
     assert_eq!(second.headline, "Page 2 added - reading it...");
 
     // Read: the folder leads the headline, in the folder's colour, and the
-    // corner is given up — the bar says one folder, not two.
+    // corner is given up - the bar says one folder, not two.
     let filings = filed(Outcome::Folders(vec![Folder::named("Taxes")]));
     let read = Screen::for_facts(&Facts {
         guess: &guess,
@@ -277,7 +277,7 @@ fn the_screen_says_who_the_letter_is_for_as_well_as_where_it_goes() {
     assert_eq!(screen.headline, "Taxes", "the folder, not the person");
     assert_eq!(screen.detail, "For Erika Mustermann");
 
-    // Post for two — an estate, a couple's insurer — names both.
+    // Post for two - an estate, a couple's insurer - names both.
     let both = filed(Outcome::Folders(vec![
         Folder::named("Taxes"),
         Folder::person("Erika Mustermann"),
@@ -859,7 +859,7 @@ fn a_letter_just_finished_can_be_taken_back_between_letters() {
 #[test]
 fn learning_the_table_is_still_offered_with_a_letter_waiting_to_be_filed() {
     // The bug this is here for: refiling took the row, so for the ten minutes
-    // after every letter there was no way to learn the table from the panel —
+    // after every letter there was no way to learn the table from the panel -
     // which is exactly when the table has just been cleared and you want to.
     let filings = filed(Outcome::Folders(vec![Folder::named("Car")]));
     let screen = Screen::for_facts(&Facts {

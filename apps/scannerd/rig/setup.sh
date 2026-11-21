@@ -29,7 +29,7 @@ fi
 apt-get update
 # iw: raspi-config sets the Wi-Fi country with it. tesseract: the rig reads
 # each page itself, and decides its folder from that while the paper is in
-# your hand — without it the display waits for Paperless, which does not
+# your hand - without it the display waits for Paperless, which does not
 # match folders at all.
 apt-get install -y rpicam-apps-lite ca-certificates curl iw tesseract-ocr tesseract-ocr-deu
 

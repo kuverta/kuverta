@@ -14,7 +14,7 @@
 //! **Cropping is a sensor setting.** A capture rig has the camera fixed above
 //! a fixed spot, so the page is always in the same part of the frame.
 //! `--roi` crops on the sensor, which makes cropping a line of configuration
-//! rather than a page of geometry — and geometry that cannot be tested against
+//! rather than a page of geometry - and geometry that cannot be tested against
 //! real photographs is geometry that is guessed at.
 
 use std::io::Read;
@@ -32,7 +32,7 @@ pub trait Camera {
     fn preview(&self) -> Result<Vec<u8>>;
     /// A full-resolution JPEG, written to `path`.
     fn capture(&self, path: &Path) -> Result<()>;
-    /// The same, exposed `ev` stops brighter than the camera would choose —
+    /// The same, exposed `ev` stops brighter than the camera would choose -
     /// darker, for a negative `ev`. White paper fools a camera's exposure:
     /// the rig's OV5647 turned it pure white and the text pale grey until it
     /// was told two stops less. A camera that cannot be told takes it as it
@@ -41,14 +41,14 @@ pub trait Camera {
         let _ = ev;
         self.capture(path)
     }
-    /// A small greyscale frame of the whole view, ignoring the crop — what
+    /// A small greyscale frame of the whole view, ignoring the crop - what
     /// setup finds the page in. The same as a preview for a camera with no
     /// crop.
     fn full_view(&self) -> Result<Vec<u8>> {
         self.preview()
     }
     /// A colour JPEG of the whole view, ignoring the crop, big enough to see
-    /// a table on a phone — what setup shows to choose the crop on.
+    /// a table on a phone - what setup shows to choose the crop on.
     fn snapshot(&self) -> Result<Vec<u8>> {
         bail!("this camera takes no snapshots")
     }
@@ -68,7 +68,7 @@ pub struct RpiCamera {
     /// the camera that is there.
     pub sensor_width: u32,
     pub sensor_height: u32,
-    /// The sensor mode — a width and height the sensor is read at — for
+    /// The sensor mode - a width and height the sensor is read at - for
     /// previews and pictures of the whole view, and the one for photographs.
     /// `None` leaves it to the camera program, which takes the mode nearest
     /// the picture's size: and a sensor's small modes may be a cut from its
@@ -78,8 +78,8 @@ pub struct RpiCamera {
     /// whole of the sensor.
     pub view_mode: Option<(u32, u32)>,
     pub capture_mode: Option<(u32, u32)>,
-    /// Previews from a video stream this program keeps running —
-    /// `rpicam-vid` — at `stream_fps` frames a second. `None`: a still for
+    /// Previews from a video stream this program keeps running -
+    /// `rpicam-vid` - at `stream_fps` frames a second. `None`: a still for
     /// each frame, as before.
     ///
     /// A still costs half a second of starting the camera every frame, which
@@ -97,7 +97,7 @@ pub struct RpiCamera {
 
 /// The camera that is attached, as the capture program lists it.
 ///
-/// The sensor's size was a setting, with the v1's as its default — and a v2
+/// The sensor's size was a setting, with the v1's as its default - and a v2
 /// put where the v1 had been was photographed at the v1's pixels, its extra
 /// ones scaled away, until somebody remembered the setting.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -172,7 +172,7 @@ impl Sensor {
     /// all of the sensor, and the cheapest of those that can be told.
     ///
     /// Which modes are a cut from the middle the listing says, but not so it
-    /// can be believed — the rig's lists every mode's as 65535×65535. What
+    /// can be believed - the rig's lists every mode's as 65535×65535. What
     /// does hold for the Pi's cameras is that the mode of exactly half the
     /// sensor each way is the whole of it, its pixels read four at a time. A
     /// sensor without one is read whole.
@@ -276,7 +276,7 @@ impl RpiCamera {
     /// sensor's pixels.
     ///
     /// Without it `rpicam-still` scales whatever the crop is to its full 4:3
-    /// output, so a crop the shape of a page came out stretched — which is why
+    /// output, so a crop the shape of a page came out stretched - which is why
     /// the first setup page could only draw 4:3 boxes, and why that was no use
     /// for a page. `None` without a crop, where the camera's own size applies.
     pub fn capture_size(&self) -> Option<(u32, u32)> {
@@ -297,14 +297,14 @@ impl RpiCamera {
         ))
     }
 
-    /// Stops the stream, so a still can have the camera — or because nothing
+    /// Stops the stream, so a still can have the camera - or because nothing
     /// is being watched. The next preview starts it again.
     pub fn stop_stream(&self) {
         *self.stream_state.stream.lock().unwrap() = None;
     }
 
-    /// The next frame of the stream, starting it — or starting it again, for
-    /// a new crop or after it stopped — when it is not running.
+    /// The next frame of the stream, starting it - or starting it again, for
+    /// a new crop or after it stopped - when it is not running.
     fn streamed(&self, program: &str) -> Result<Vec<u8>> {
         let latest = {
             let mut stream = self.stream_state.stream.lock().unwrap();

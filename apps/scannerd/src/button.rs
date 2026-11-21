@@ -11,7 +11,7 @@
 //! driver. So there is no GPIO code here, no library, and no version of
 //! libgpiod to match: reading the button is reading fixed-size records from
 //! `/dev/input/…`, and a USB keypad or any keyboard works exactly the same
-//! way. On a laptop, standard input stands in — press Enter.
+//! way. On a laptop, standard input stands in - press Enter.
 
 use std::fs::File;
 use std::io::{BufRead, Read};
@@ -21,7 +21,7 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use anyhow::{Context, Result};
 
 /// Where an event's type starts: after its `timeval`, two `long`s. Eight bytes
-/// for a 32-bit program, sixteen for a 64-bit one — whatever the kernel is.
+/// for a 32-bit program, sixteen for a 64-bit one - whatever the kernel is.
 /// The Pi 4 moved to runs a 64-bit kernel under 32-bit Raspberry Pi OS, and the
 /// kernel hands a 32-bit reader the 32-bit layout.
 pub const TIMEVAL: usize = 2 * std::mem::size_of::<std::os::raw::c_long>();
@@ -57,7 +57,7 @@ pub struct Button {
 }
 
 impl Button {
-    /// A button pressed whenever something is sent — for tests, and for
+    /// A button pressed whenever something is sent - for tests, and for
     /// anything that is not a device.
     pub fn channel() -> (Sender<()>, Self) {
         let (sender, presses) = mpsc::channel();

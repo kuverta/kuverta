@@ -18,8 +18,8 @@
 //!
 //! **Is there any text?** A letter has lines of it, and each line has edges:
 //! on the first pages from the rig, 14–32% of the small blocks the middle is
-//! cut into held one. A photograph with hardly any is a blank page — the back
-//! of a letter, which is worth saying but not wrong — or not a page at all: the
+//! cut into held one. A photograph with hardly any is a blank page - the back
+//! of a letter, which is worth saying but not wrong - or not a page at all: the
 //! first photographs with the display attached were of the ceiling, grey and
 //! bright enough to pass for paper, with a lamp in it whose edges filled 1%.
 //!
@@ -82,7 +82,7 @@ impl Quality {
     }
 
     /// The same judgement, with the ink and the paper of the page **as the
-    /// camera took it** — before [`crate::flatten`] put its paper at white.
+    /// camera took it** - before [`crate::flatten`] put its paper at white.
     ///
     /// Only the two exposure problems are decided again: whether the page is
     /// sharp and whether there is any text on it are read off the picture
@@ -144,7 +144,7 @@ const BLOCK_CONTRAST: i16 = 30;
 /// with no text in it, whose sharpness is not judged.
 const TEXT: f32 = 0.03;
 
-/// The paper in a greyscale picture, one byte per pixel, row-major — or its
+/// The paper in a greyscale picture, one byte per pixel, row-major - or its
 /// middle three fifths, when no paper is made out.
 fn where_the_paper_is(luma: &[u8], width: usize, height: usize) -> (usize, usize, usize, usize) {
     let middle = (width / 5, height / 5, width * 4 / 5, height * 4 / 5);
@@ -188,7 +188,7 @@ fn where_the_paper_is(luma: &[u8], width: usize, height: usize) -> (usize, usize
 ///
 /// The paper rather than the middle of the picture: a photograph is trimmed to
 /// the page it shows before it is judged, and the middle of a page whose
-/// letter ends half way down is blank — which read as no text and as ink of
+/// letter ends half way down is blank - which read as no text and as ink of
 /// 203 against paper of 217, and called a perfectly good second page
 /// unreadable.
 pub fn assess(luma: &[u8], width: usize, height: usize) -> Quality {
@@ -277,7 +277,7 @@ pub enum Exposure {
 ///
 /// Too bright is the common case: white paper fools the camera, which exposes
 /// for a grey world. A stop darker at a time, while the page is still lying
-/// there. Too dark is only believed when there is text in the photograph —
+/// there. Too dark is only believed when there is text in the photograph -
 /// a dark middle with nothing in it is the table, and brightening the camera
 /// for the table would wash out the next page.
 pub fn exposure(ev: f32, quality: &Quality) -> Exposure {
