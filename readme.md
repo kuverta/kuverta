@@ -333,6 +333,8 @@ no deskew (ocrmypdf's job), no page-finding (the camera is bolted above a fixed
 spot, so cropping is `--roi` rather than geometry), and no image library at all,
 because raw YUV's first plane is already the greyscale image.
 
+![The scanner rig: a Pi with a camera and a touchscreen on an aluminium rail over a paper bed](website/docs/assets/scanner-rig.jpg)
+
 ```sh
 cargo test -p scannerd        # 26 tests, no camera needed
 scannerd --drain-only         # upload whatever is spooled, and exit

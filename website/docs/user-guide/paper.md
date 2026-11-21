@@ -94,3 +94,11 @@ letter.
 It has a setup page you open on your phone, and optionally a button to press
 when a letter of several pages is complete. Building and installing it is
 described for [developers](../developers/scanner.md).
+
+![The scanner rig: a Raspberry Pi with a camera and a small touchscreen on an aluminium rail above a paper-covered bed, a lamp lighting the spot where the letter goes](../assets/scanner-rig.jpg)
+
+The current rig: a Pi with a camera and a touchscreen on a length of aluminium
+profile, a lamp, and a sheet of kraft paper with corner marks for the page. The
+screen says what to do next ("New letter: put page 1 down") and has a button
+for the last page of a letter. The frame and the camera mount are 3D-printed
+and in the repository under `3dprints/`.

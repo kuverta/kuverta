@@ -7,6 +7,8 @@ description: scannerd — a Raspberry Pi with a camera that notices a letter bei
 `apps/scannerd` watches a surface through a camera. When a page is put down and
 stops moving, it photographs it and hands it to Paperless-ngx.
 
+![The scanner rig](../assets/scanner-rig.jpg)
+
 That is all it does, and the restraint is the design. Paperless already does
 OCR, deskewing, rotation, tagging, archiving and search; scannerd does the one
 thing Paperless cannot, which is noticing that a letter has arrived.
