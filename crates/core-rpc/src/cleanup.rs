@@ -2,7 +2,7 @@
 //!
 //! Three things, each answering a question the Inbox raises:
 //!
-//! - **How much is there to clear?** [`Core::cleanup_counts`] — bulk mail
+//! - **How much is there to clear?** [`Core::cleanup_counts`] - bulk mail
 //!   still in the Inbox, and how many senders could be unsubscribed from.
 //! - **Can I stop it coming?** [`Core::unsubscribe_senders`] lists everyone
 //!   whose mail carries `List-Unsubscribe`, and [`Session::unsubscribe`] does
@@ -13,9 +13,9 @@
 //!   on a page that wants a click anyway. RFC 8058 exists because that was
 //!   unsafe to automate.
 //! - **Is this one of many?** [`Core::similar`] finds the messages that look
-//!   like one just deleted — the same sender with the same kind of subject,
+//!   like one just deleted - the same sender with the same kind of subject,
 //!   the same list, or the same text from different senders, which is what
-//!   spam looks like — so they can go together.
+//!   spam looks like - so they can go together.
 
 use std::collections::HashSet;
 use std::time::Duration;
@@ -75,13 +75,13 @@ impl UnsubscribeMethod {
 
 /// The best way to unsubscribe, from the two headers a sender provides.
 ///
-/// Returns `None` when neither holds anything usable — a header of only
+/// Returns `None` when neither holds anything usable - a header of only
 /// unknown schemes is the same as no header.
 pub fn unsubscribe_method(header: &str, post: Option<&str>) -> Option<UnsubscribeMethod> {
     unsubscribe_method_from(header, post, None)
 }
 
-/// As [`unsubscribe_method`], for mail from `sender` — a From address or a
+/// As [`unsubscribe_method`], for mail from `sender` - a From address or a
 /// `List-Id`. A mail unsubscribe is only offered when its address belongs to
 /// the sender: the header is whatever the sender wrote, and a forged
 /// newsletter could otherwise have this account mail anyone anything. With
@@ -260,7 +260,7 @@ impl From<&Unsubscription> for UnsubscribeAttemptView {
 pub struct UnsubscribeResult {
     pub key: String,
     pub name: String,
-    /// `done`, `open` (a page for the person to open — `url` says which) or
+    /// `done`, `open` (a page for the person to open - `url` says which) or
     /// `failed`.
     pub state: String,
     pub detail: Option<String>,
@@ -372,7 +372,7 @@ impl Core {
     /// from: for the offer made as a message is deleted.
     ///
     /// `None` when the message carries no usable `List-Unsubscribe`, and also
-    /// when this sender has been unsubscribed from already — once is enough,
+    /// when this sender has been unsubscribed from already - once is enough,
     /// and the mail that was already on its way is no reason to ask again.
     pub fn unsubscribe_for_message(
         &self,
@@ -462,7 +462,7 @@ impl Core {
     ///
     /// Three kinds of likeness, strongest first. The same mailing list is the
     /// same thing by definition. The same sender with a subject built the same
-    /// way — "Your order #1234 has shipped", "Your order #5678 has shipped" —
+    /// way - "Your order #1234 has shipped", "Your order #5678 has shipped" -
     /// is a series. And the same text from different senders is what a spam
     /// run looks like, since rotating the sender is the cheapest evasion there
     /// is and rewriting the text is not.
@@ -472,8 +472,8 @@ impl Core {
         id: MessageId,
         trash: Option<&str>,
     ) -> Result<SimilarReport> {
-        // Mail only somewhere the person put it themselves — the Trash, Sent,
-        // Drafts — is not offered: it is not arriving, so it is not a run.
+        // Mail only somewhere the person put it themselves - the Trash, Sent,
+        // Drafts - is not offered: it is not arriving, so it is not a run.
         let mut skip: Vec<String> = trash.map(str::to_string).into_iter().collect();
         for folder in self.store().folder_summaries(account)? {
             if matches!(folder.rank(), 1 | 2 | 6) {
@@ -622,7 +622,7 @@ impl<'a> Shape<'a> {
             return Some("same sender, similar subject".into());
         }
         // From here on the senders differ, so neither a shared subject line
-        // nor a shared domain is enough — "Rückfrage zum Angebot" is written
+        // nor a shared domain is enough - "Rückfrage zum Angebot" is written
         // by many people, some of them colleagues. The text has to be alike.
         let same_subject = !self.subject_line.is_empty()
             && self.subject.len() >= 3
@@ -814,7 +814,7 @@ fn display_name(name: Option<&str>, address: Option<&str>) -> String {
 
 impl Session {
     /// Reads the headers the store came to keep, back out of mail synced
-    /// before it kept them. Returns how many messages are still waiting —
+    /// before it kept them. Returns how many messages are still waiting -
     /// zero once the account is done.
     ///
     /// Its own connection, like a sync, so the window's store stays free
@@ -845,7 +845,7 @@ impl Session {
     }
 
     /// Decides again, with today's rules, what the rules filed under older
-    /// ones — up to `batch` messages — and returns what changed and how many
+    /// ones - up to `batch` messages - and returns what changed and how many
     /// are still behind. Each message is read from its stored copy, so every
     /// header counts, including ones kuverta did not keep when it first filed
     /// it. Corrections and model verdicts are untouched: they outrank the
@@ -919,7 +919,7 @@ impl Session {
     ///
     /// One-click and mail unsubscribes happen here. A sender that offers only
     /// a web page comes back as `open` with its address, for the window to
-    /// open in the browser — the person finishes those, since this cannot see
+    /// open in the browser - the person finishes those, since this cannot see
     /// what the page asks for.
     pub async fn unsubscribe(
         &self,
@@ -1045,7 +1045,7 @@ mod tests {
                 url: "https://list.example/u?x=1".into()
             })
         );
-        // Without the POST header, the mail is the automatic choice — when
+        // Without the POST header, the mail is the automatic choice - when
         // its address is the sender's own.
         assert!(matches!(
             unsubscribe_method_from(header, None, Some(&["news@list.example"])),

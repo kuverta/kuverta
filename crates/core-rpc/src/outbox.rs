@@ -1,7 +1,7 @@
 //! Sending later.
 //!
-//! A scheduled message is checked when it is scheduled — built exactly as
-//! sending it would build it — so a typo in an address is refused now, while
+//! A scheduled message is checked when it is scheduled - built exactly as
+//! sending it would build it - so a typo in an address is refused now, while
 //! the person is still looking, rather than failing at eight in the morning
 //! with nobody watching. Then the draft is kept as it was described, and sent
 //! through the same path as any other message when its time comes.

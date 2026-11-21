@@ -3,7 +3,7 @@
 //!
 //! Reads and prints. The words this proposes are only ever worth as much as
 //! the letters behind them, so the count of letters each folder had to learn
-//! from is printed beside them — a folder with three letters in it saying
+//! from is printed beside them - a folder with three letters in it saying
 //! nothing is the right answer, not a broken one.
 
 use core_paper::{learn, Paperless};

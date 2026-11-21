@@ -3,7 +3,7 @@
 //! A physical address is an account. Post that arrives at it is mail: the
 //! correspondent wrote it, the title is what it is about, the OCR text is the
 //! body, and the date it was created is when it arrived. Paperless is the
-//! server — it does the scanning, OCR, tagging and archiving — and this crate
+//! server - it does the scanning, OCR, tagging and archiving - and this crate
 //! is the client, in exactly the sense `core-proto` is the client for IMAP.
 //!
 //! That framing is the whole design. Nothing downstream should need to know
@@ -61,7 +61,7 @@ pub const PERSON_TAG_PREFIX: &str = "Person: ";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShelfFolder {
     pub name: String,
-    /// Words separated by commas — any one of them is enough. Empty: Paperless
+    /// Words separated by commas - any one of them is enough. Empty: Paperless
     /// learns the folder from the documents tagged with it. For a person,
     /// their name is looked for when this is empty, and other spellings of it
     /// go here.
@@ -111,7 +111,7 @@ impl ShelfFolder {
 
 /// The other way round: a tag's match as Paperless keeps it, back into the
 /// comma-separated words the window and the scanner edit. A phrase is one
-/// word in quotes, so this cannot simply split on spaces — `"Offener Betrag"`
+/// word in quotes, so this cannot simply split on spaces - `"Offener Betrag"`
 /// is one thing to look for, not two.
 fn words_from_match(text: &str) -> String {
     let mut words = Vec::new();
@@ -136,7 +136,7 @@ fn words_from_match(text: &str) -> String {
 
 /// Where a physical address's post lives, and which of it is that address's.
 ///
-/// One Paperless instance usually holds the post of several addresses — a home
+/// One Paperless instance usually holds the post of several addresses - a home
 /// and an office, or a person and a company. The selector is what separates
 /// them, and it is a Paperless concept rather than one invented here, so a
 /// mailbox is set up by tagging in Paperless rather than by configuring
@@ -170,7 +170,7 @@ impl Selector {
     ///
     /// `__iexact` throughout: these names are typed by a person into two
     /// different systems, and a mailbox that silently shows nothing because of
-    /// a capital letter is the worst possible failure here — it looks exactly
+    /// a capital letter is the worst possible failure here - it looks exactly
     /// like no post having arrived.
     fn params(&self) -> Vec<(&'static str, String)> {
         match self {
@@ -186,10 +186,10 @@ impl Selector {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Order {
-    /// The date on the letter, as Paperless read it — when it was written.
+    /// The date on the letter, as Paperless read it - when it was written.
     #[default]
     Created,
-    /// When it reached Paperless — when it was scanned.
+    /// When it reached Paperless - when it was scanned.
     Added,
 }
 
@@ -212,7 +212,7 @@ pub struct Document {
     /// Who sent it. `None` when Paperless has not worked out a correspondent,
     /// which is the paper equivalent of a missing `From`.
     pub correspondent: Option<String>,
-    /// When it is dated — the date on the letter, not when it was scanned.
+    /// When it is dated - the date on the letter, not when it was scanned.
     pub created_utc: Option<i64>,
     /// When it reached the archive. The paper "received" date.
     pub added_utc: Option<i64>,
@@ -227,8 +227,8 @@ pub struct Document {
 impl Document {
     /// Who sent it: Paperless's correspondent, or failing that the letterhead.
     ///
-    /// A freshly scanned letter has no correspondent — Paperless only suggests
-    /// ones it already knows — so without this the first letters from anyone
+    /// A freshly scanned letter has no correspondent - Paperless only suggests
+    /// ones it already knows - so without this the first letters from anyone
     /// show a dash, and filing them teaches nothing. The letterhead is the first
     /// line of the OCR text with words in it, cut before any address that
     /// follows on the same line: on a letter, that is who it is from far more
@@ -242,7 +242,7 @@ impl Document {
     ///
     /// Paperless keeps no address for a correspondent, so this is the only
     /// place one can come from, and the only real difficulty is that the
-    /// recipient's address block — the address of whoever lives here — sits
+    /// recipient's address block - the address of whoever lives here - sits
     /// right under the letterhead and looks exactly the same. Naming that as
     /// the sender's would be wrong in the most confusing way available, so
     /// this answers only in the two layouts where it cannot be:
@@ -254,7 +254,7 @@ impl Document {
     ///   the sender's and the second the recipient's, by the same standard.
     ///
     /// Anything else is `None`. A letter that names its sender once, above an
-    /// address block that turns out to be yours, is the common scan — and no
+    /// address block that turns out to be yours, is the common scan - and no
     /// address is a better answer there than somebody else's.
     pub fn postal_address(&self) -> Option<String> {
         let text = self.content.as_deref()?;
@@ -293,7 +293,7 @@ impl Document {
     }
 
     /// Whether [`Document::sender`] was read off the page rather than set in
-    /// Paperless — worth showing, since a guess should look like one.
+    /// Paperless - worth showing, since a guess should look like one.
     pub fn sender_is_inferred(&self) -> bool {
         self.correspondent.is_none() && self.letterhead().is_some()
     }
@@ -303,7 +303,7 @@ impl Document {
     /// `scannerd` titles uploads `Post <timestamp>`, and Paperless titles
     /// anything else from its filename. A list of those says nothing, so a
     /// machine-made title gives way to the line a letter states its business
-    /// on — after the letterhead and the address block, and not the date. A
+    /// on - after the letterhead and the address block, and not the date. A
     /// title a person set is always kept.
     pub fn subject(&self) -> &str {
         if !machine_made(&self.title) {
@@ -320,7 +320,7 @@ impl Document {
         // Not simply the first line. OCR reads a letter's top in blocks and
         // does not always start with the leftmost one, so the line above the
         // sender's name is often the address beside it, the date, or a
-        // reference — none of which is anybody. The first line that could be
+        // reference - none of which is anybody. The first line that could be
         // a name is.
         lines(text)
             .take(LETTERHEAD_LINES)
@@ -340,7 +340,7 @@ impl Document {
     ///
     /// The correspondent is used as the *address* as well as the name. Paper
     /// has no address to key on, and the learned overrides need something
-    /// stable to remember a correction against — "everything from the
+    /// stable to remember a correction against - "everything from the
     /// Stadtwerke is transactional" is exactly the rule a person wants to
     /// teach it, and the correspondent is what carries that.
     ///
@@ -381,7 +381,7 @@ pub struct DocumentPage {
 ///
 /// The §3.6 lesson, applied to paper: a preflight is worth more than it costs.
 /// Connect, say what the credentials are, say how much post is there and how
-/// much of it this mailbox's selector matches — before anyone waits on a list
+/// much of it this mailbox's selector matches - before anyone waits on a list
 /// that turns out to be empty for a reason nobody can see.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperReport {
@@ -411,7 +411,7 @@ pub struct Download {
 pub enum Probe {
     /// A Paperless, asking for credentials.
     Paperless,
-    /// Something answers, and it is not a Paperless — or not one this can
+    /// Something answers, and it is not a Paperless - or not one this can
     /// recognise.
     SomethingElse,
     /// Nothing answers.
@@ -422,7 +422,7 @@ pub enum Probe {
 /// look in the usual places.
 ///
 /// Its document list refuses an anonymous request with
-/// `WWW-Authenticate: Token` — Django REST framework's token scheme, which
+/// `WWW-Authenticate: Token` - Django REST framework's token scheme, which
 /// few other servers on port 8000 will be using. An instance that lets
 /// anonymous requests through answers the list itself, and that counts too.
 pub async fn probe(base_url: &str) -> Probe {
@@ -461,7 +461,7 @@ pub async fn probe(base_url: &str) -> Probe {
     Probe::SomethingElse
 }
 
-/// Exchanges a Paperless user's name and password for their API token — the
+/// Exchanges a Paperless user's name and password for their API token - the
 /// token the account page in Paperless shows, created if there is none yet.
 ///
 /// So setup can ask for what a person knows rather than send them looking
@@ -525,7 +525,7 @@ impl Paperless {
     /// One window of a mailbox.
     ///
     /// `query` is Paperless's own full-text search when set, which means search
-    /// over OCR'd text costs nothing here — the index already exists upstream.
+    /// over OCR'd text costs nothing here - the index already exists upstream.
     pub async fn documents(
         &self,
         selector: &Selector,
@@ -537,7 +537,7 @@ impl Paperless {
             .await
     }
 
-    /// Every document id the selector matches, and nothing else about them —
+    /// Every document id the selector matches, and nothing else about them -
     /// what telling read from unread needs, at a few bytes a letter.
     pub async fn document_ids(&self, selector: &Selector) -> Result<Vec<i64>> {
         const PAGE: usize = 1000;
@@ -578,7 +578,7 @@ impl Paperless {
         // Paperless pages by number, not by offset, and the page number means
         // nothing without the size: page 2 of 4 and page 2 of 5 start in
         // different places. So the size stays fixed at the caller's limit and a
-        // second page is fetched when the offset does not land on a boundary —
+        // second page is fetched when the offset does not land on a boundary -
         // rather than inflating the size to cover the remainder, which quietly
         // shifts every page under it.
         let page_size = limit.max(1);
@@ -725,7 +725,7 @@ impl Paperless {
 
         // The failure this exists to catch: a selector that matches nothing
         // looks exactly like an address that has had no post. A name that does
-        // not exist in Paperless is said whether or not there are documents —
+        // not exist in Paperless is said whether or not there are documents -
         // an empty instance is exactly when one is set up, typos and all.
         if mine.count == 0 {
             let known = |names: &[String], name: &str| {
@@ -786,15 +786,15 @@ impl Paperless {
     /// A document's file, for a reader that wants the page rather than its
     /// OCR text.
     ///
-    /// What Paperless's download serves: the archived PDF it made — pages
-    /// turned the right way up and straightened, with a text layer — when it
+    /// What Paperless's download serves: the archived PDF it made - pages
+    /// turned the right way up and straightened, with a text layer - when it
     /// made one, and the original otherwise, which may be a JPEG.
     pub async fn download(&self, id: i64) -> Result<Download> {
         self.fetch_file(id, false).await
     }
 
     /// The document as it was uploaded, before Paperless re-encoded it into
-    /// its archive — for scannerd's letters, the photographs themselves, which
+    /// its archive - for scannerd's letters, the photographs themselves, which
     /// is what a vision model should read.
     pub async fn download_original(&self, id: i64) -> Result<Download> {
         self.fetch_file(id, true).await
@@ -846,7 +846,7 @@ impl Paperless {
             .results
             .into_iter()
             // A folder is a tag with words of its own. Not one Paperless
-            // matches by itself — it no longer matches any of them — but one
+            // matches by itself - it no longer matches any of them - but one
             // that says which letters belong in it. A tag with no words is a
             // label somebody puts on by hand, the address among them.
             .filter(|tag| tag.matches_something())
@@ -875,7 +875,7 @@ impl Paperless {
     /// neither is evidence about anything on the shelf now.
     ///
     /// Paperless keeps the OCR text with the document, so this is one listing
-    /// and no downloads — but the text is the bulk of it, so it is asked for
+    /// and no downloads - but the text is the bulk of it, so it is asked for
     /// a page at a time and the whole archive is never held twice.
     pub async fn filed(&self, folders: &[ShelfFolder]) -> Result<Vec<(String, String)>> {
         const PAGE: usize = 50;
@@ -948,7 +948,7 @@ impl Paperless {
             let mut fields = serde_json::json!({
                 // Paperless does not match folder tags itself. Where a letter
                 // goes is settled on the rig, while somebody is holding the
-                // paper, and written on the document as it is uploaded — so
+                // paper, and written on the document as it is uploaded - so
                 // the record says the drawer the paper is actually in. A
                 // second opinion arriving a minute later, from better OCR but
                 // after the filing, would only ever make the two disagree.
@@ -1048,7 +1048,7 @@ impl Paperless {
 /// `?a=b&c=d`, or nothing at all.
 ///
 /// Written out rather than reached for through `reqwest`'s `query`, which this
-/// workspace's trimmed feature set does not include — and adding a feature to a
+/// workspace's trimmed feature set does not include - and adding a feature to a
 /// dependency six crates share, to save ten lines here, is the wrong trade.
 fn query_string(params: &[(String, String)]) -> String {
     if params.is_empty() {
@@ -1065,7 +1065,7 @@ fn query_string(params: &[(String, String)]) -> String {
 ///
 /// Deliberately conservative: correspondents and tags are written by people and
 /// contain spaces, umlauts and ampersands, and an under-encoded ampersand does
-/// not fail — it silently splits one filter into two and returns the wrong
+/// not fail - it silently splits one filter into two and returns the wrong
 /// documents.
 fn encode(value: &str) -> String {
     let mut out = String::with_capacity(value.len());
@@ -1117,7 +1117,7 @@ fn letterhead_name(line: &str) -> &str {
 
 /// Whether a line could be who a letter is from: enough letters to be a name,
 /// not mostly numbers, and not one of the things that share the top of a
-/// letter with the letterhead — a postcode and a place, a date, a reference.
+/// letter with the letterhead - a postcode and a place, a date, a reference.
 fn could_be_a_name(line: &str) -> bool {
     let letters = line.chars().filter(|c| c.is_alphabetic()).count();
     let digits = line.chars().filter(|c| c.is_ascii_digit()).count();
@@ -1231,7 +1231,7 @@ struct TagRow {
 }
 
 impl TagRow {
-    /// Whether this tag says which letters belong in it — a folder — rather
+    /// Whether this tag says which letters belong in it - a folder - rather
     /// than being a label put on by hand.
     ///
     /// Words of its own, or an algorithm that finds its own: Paperless's
@@ -1309,7 +1309,7 @@ impl RawDocument {
                 .collect(),
             created_utc: self.created.as_deref().and_then(parse_timestamp),
             added_utc: self.added.as_deref().and_then(parse_timestamp),
-            // An untitled document is legal and does happen — the paper
+            // An untitled document is legal and does happen - the paper
             // equivalent of a message with no subject, and it must not read as
             // a document that failed to load.
             title: if self.title.trim().is_empty() {
@@ -1327,7 +1327,7 @@ impl RawDocument {
 /// Seconds since the epoch from what Paperless sends.
 ///
 /// It sends two shapes depending on the field and the version: a full RFC 3339
-/// timestamp — with the offset of the time zone Paperless is set to — and a
+/// timestamp - with the offset of the time zone Paperless is set to - and a
 /// bare `YYYY-MM-DD` for dates that have no time. Parsed by
 /// hand because the alternative is a date library in a crate that otherwise
 /// needs none, and the two shapes are both fixed-width.
@@ -1339,7 +1339,7 @@ fn parse_timestamp(raw: &str) -> Option<i64> {
 
     // The offset, if the shape carries one: "+02:00" after the time, or "Z".
     // Paperless answers in the time zone it is set to, and a scan at 13:57 in
-    // Hamburg came back as `13:57:31+02:00` — read as UTC, that put every
+    // Hamburg came back as `13:57:31+02:00` - read as UTC, that put every
     // scanned letter in the inbox two hours late.
     let (time, offset_seconds) = match time {
         Some(time) => {

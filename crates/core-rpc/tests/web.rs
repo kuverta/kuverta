@@ -279,7 +279,7 @@ async fn the_download_tool_takes_only_an_address_the_person_gave_and_never_a_loc
     );
     assert!(outcome.event.is_none());
 
-    // Named by the person — but on this computer, which the assistant's
+    // Named by the person - but on this computer, which the assistant's
     // fetcher does not reach, whoever named it.
     let person = vec![Turn::User {
         content: format!("install the skill at {address} please"),

@@ -1,7 +1,7 @@
 //! Skills: instructions for one kind of job, fetched from somewhere, waiting
 //! to be read.
 //!
-//! A skill is a text file — Markdown, usually — that tells the assistant how
+//! A skill is a text file - Markdown, usually - that tells the assistant how
 //! to do one kind of job: how a cancellation letter for a German contract is
 //! worded, what to check on an invoice from a particular supplier. It comes
 //! from an address the person gave, and it is kept here with where it came

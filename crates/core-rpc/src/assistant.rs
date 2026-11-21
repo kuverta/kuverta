@@ -1,7 +1,7 @@
 //! The assistant: a model with tools, working on one account's mail.
 //!
-//! It is asked something — "what needs me today?", "move all invoices to
-//! Rechnungen", "from now on, archive the shop mails" — and answers by looking
+//! It is asked something - "what needs me today?", "move all invoices to
+//! Rechnungen", "from now on, archive the shop mails" - and answers by looking
 //! and acting through tools: search, list, read, the urgency ranking, a
 //! conversation; move, archive, trash, mark read, file; draft a reply; create
 //! and run tasks. Each exchange is one pass of a loop: the model answers or
@@ -17,11 +17,11 @@
 //! and the model is told so.
 //!
 //! It also writes PDF documents and signs PDFs with the person's stored
-//! signature — only when asked to, and the signed copy is a new document,
+//! signature - only when asked to, and the signed copy is a new document,
 //! shown as a card, that goes nowhere until the person sends it themselves.
 //!
 //! When the person has switched them on, it also searches the web and reads
-//! pages, and downloads skills for the person to accept — each behind the
+//! pages, and downloads skills for the person to accept - each behind the
 //! rules in [`crate::web`]: only addresses that were given, nothing on this
 //! computer's network, and nothing read from the web leading to a change.
 
@@ -39,12 +39,12 @@ use crate::{Core, Result, RpcError};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AssistantEvent {
-    /// It looked at mail: "searched for invoice — 12 messages".
+    /// It looked at mail: "searched for invoice - 12 messages".
     Looked { what: String },
     /// It changed mail. `changes` are the queued changes, for an Undo.
     Changed { what: String, changes: Vec<i64> },
     /// It drafted mail, for the person to read, change and send: a reply to
-    /// a message, or — with no `message_id` — a new one. `documents` are
+    /// a message, or - with no `message_id` - a new one. `documents` are
     /// documents it made that go with it, `attachments` files out of received
     /// mail. A forward is a new message whose `body` already holds the text
     /// of the messages in `forwards`, and whose `attachments` are their files.
@@ -61,7 +61,7 @@ pub enum AssistantEvent {
         forwards: Vec<i64>,
     },
     /// It created a task: what it selects, in words, and how much of the
-    /// mail there is now it selects — so a wrong rule shows before it acts.
+    /// mail there is now it selects - so a wrong rule shows before it acts.
     TaskCreated {
         id: i64,
         name: String,
@@ -80,7 +80,7 @@ pub enum AssistantEvent {
         /// Why this one, in the assistant's words.
         note: Option<String>,
     },
-    /// It made a document — wrote one, or signed one — and the person sees a
+    /// It made a document - wrote one, or signed one - and the person sees a
     /// card to open, save, attach or delete it.
     Document {
         document: crate::DocumentView,
@@ -103,7 +103,7 @@ pub enum AssistantEvent {
 }
 
 /// A file out of received mail that goes with a draft: the message it came
-/// in, and which of its attachments. Named, not carried — the window fetches
+/// in, and which of its attachments. Named, not carried - the window fetches
 /// the bytes when the person sends the draft or opens it in compose.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DraftFile {
@@ -123,7 +123,7 @@ pub struct AssistantTurn {
 }
 
 /// How many rounds of tools one question may take. A job with several
-/// steps — find, make a folder, move, read what is in it, report — is a
+/// steps - find, make a folder, move, read what is in it, report - is a
 /// dozen rounds before the reading starts, so ten was where such a job
 /// stopped half done.
 const MAX_STEPS: usize = 25;
@@ -439,7 +439,7 @@ fn row_json(row: &crate::MessageRow) -> Value {
 }
 
 /// A list the model was asked for, whether it sent a list, a JSON string of
-/// one, or — small models do — a string with the list somewhere inside it.
+/// one, or - small models do - a string with the list somewhere inside it.
 fn list(args: &Value, key: &str) -> Vec<Value> {
     match args.get(key) {
         Some(Value::Array(items)) => items.clone(),
@@ -490,7 +490,7 @@ fn ids(args: &Value) -> std::result::Result<Vec<i64>, String> {
 }
 
 /// What a form tool works on: a message's attachment, or a document made
-/// here — the same sources sign_pdf takes.
+/// here - the same sources sign_pdf takes.
 fn pdf_source(args: &Value) -> std::result::Result<crate::DocumentSource, String> {
     let number = |key: &str| {
         args.get(key)
@@ -1426,7 +1426,7 @@ fn forwarded(detail: &crate::MessageDetail) -> core_smtp::Draft {
 }
 
 /// Whether the files a draft names can go in one message. Said to the model
-/// while it can still do something about it — fewer files, two drafts —
+/// while it can still do something about it - fewer files, two drafts -
 /// rather than to the person when Send refuses.
 fn fits_one_message(
     documents: &[crate::DocumentView],
@@ -1727,8 +1727,8 @@ fn smart_query(args: &Value) -> std::result::Result<core_store::SmartQuery, Stri
 impl Session {
     /// One question to the assistant: the conversation so far and the new
     /// message in, the conversation and the answer out. `about` are messages
-    /// the person has open — selected in the list, or the one they are
-    /// reading — which arrive with the question, so that "answer this and
+    /// the person has open - selected in the list, or the one they are
+    /// reading - which arrive with the question, so that "answer this and
     /// confirm the appointment" needs no search first. `on_event` hears each
     /// thing the assistant does as it does it.
     ///
@@ -1770,7 +1770,7 @@ impl Session {
             },
         });
 
-        // A tool the person has not switched on is not offered — and, asked
+        // A tool the person has not switched on is not offered - and, asked
         // for by name anyway, is refused below.
         let specs: Vec<ToolSpec> = tools()
             .into_iter()
@@ -1786,7 +1786,7 @@ impl Session {
             {
                 Ok(reply) => reply,
                 // A hosted service's content filter took offence at something
-                // in the mail it was shown — spam, usually. Once, the mail
+                // in the mail it was shown - spam, usually. Once, the mail
                 // this question fetched is taken back out and it is asked
                 // again; the answer is then from less, and says so.
                 Err(err) if is_content_refusal(&err.to_string()) && !withheld => {

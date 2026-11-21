@@ -15,8 +15,8 @@ use crate::{Result, Store};
 /// Everything one sender has sent that can be unsubscribed from.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnsubscribeSender {
-    /// What identifies the sender: the `List-Id` when there is one — a list
-    /// can change its From address and stay the same list — else the address.
+    /// What identifies the sender: the `List-Id` when there is one - a list
+    /// can change its From address and stay the same list - else the address.
     pub key: String,
     pub from_name: Option<String>,
     pub from_addr: Option<String>,
@@ -59,7 +59,7 @@ pub struct SimilarityRow {
     pub date_utc: Option<i64>,
     /// The category the list shows it under.
     pub category: Option<String>,
-    /// Set when it answers another message — a conversation, not a run.
+    /// Set when it answers another message - a conversation, not a run.
     pub in_reply_to: Option<String>,
 }
 
@@ -128,7 +128,7 @@ impl Store {
     ///
     /// Grouped here rather than in SQL because the grouping key falls back
     /// from list to address, and the row to take links from is the newest in
-    /// each group — both easy in Rust and awkward in one statement.
+    /// each group - both easy in Rust and awkward in one statement.
     pub fn unsubscribe_senders(&self, account_id: AccountId) -> Result<Vec<UnsubscribeSender>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT m.id, m.from_name, m.from_addr, m.list_id, m.date_utc, m.list_unsubscribe,
@@ -189,7 +189,7 @@ impl Store {
         Ok(senders)
     }
 
-    /// The sender of one message, as something to unsubscribe from — for the
+    /// The sender of one message, as something to unsubscribe from - for the
     /// offer made when that message is deleted. `None` when the message
     /// carries no `List-Unsubscribe`, which is most of them.
     ///
@@ -240,7 +240,7 @@ impl Store {
         }))
     }
 
-    /// How much mail one sender has here, and how much of it is unread —
+    /// How much mail one sender has here, and how much of it is unread -
     /// counted the same way `unsubscribe_senders` counts it, the messages
     /// carrying the header included and no others.
     fn count_from_sender(&self, account_id: AccountId, key: &str) -> Result<(usize, usize)> {
@@ -346,7 +346,7 @@ impl Store {
     }
 
     /// The messages a similarity check compares against: everything on the
-    /// account with a copy outside `skip` — the Trash, Sent, Drafts — and not
+    /// account with a copy outside `skip` - the Trash, Sent, Drafts - and not
     /// on its way somewhere, newest first.
     pub fn similarity_candidates(
         &self,

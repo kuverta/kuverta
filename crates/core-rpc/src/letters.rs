@@ -1,7 +1,7 @@
 //! Documents posted on paper, through LetterXpress.
 //!
-//! A PDF document — a letter the assistant wrote with its address in the
-//! envelope window, or a signed form — goes to LetterXpress, which prints
+//! A PDF document - a letter the assistant wrote with its address in the
+//! envelope window, or a signed form - goes to LetterXpress, which prints
 //! it, puts it in a window envelope and hands it to Deutsche Post. The
 //! settings are one for the whole store: the LetterXpress user name in a
 //! preference, the API key in the keychain, and whether letters are printed
@@ -15,16 +15,16 @@
 //! The network half is in free functions over a [`LetterOrder`], not in
 //! `Core`, for the reason sync is: a call to LetterXpress is held as long as
 //! the network takes, and the store must not be locked while it is. So a
-//! send is three steps for the caller — make the order, write the letter
+//! send is three steps for the caller - make the order, write the letter
 //! down as `sending` ([`Core::begin_letter`]), then ask LetterXpress and
-//! record what it said — and a crash between the last two leaves a row that
+//! record what it said - and a crash between the last two leaves a row that
 //! says a letter may have gone, which is the truth.
 //!
 //! A letter that went to be printed is then filed in the account's Sent
 //! folder, as sent mail is: a message from the account that says where the
 //! letter went and how, with the PDF attached ([`Session::file_letter`]).
-//! That is best-effort, as it is for mail — the letter has gone whether or
-//! not its record could be filed — and a record that could not be filed, or
+//! That is best-effort, as it is for mail - the letter has gone whether or
+//! not its record could be filed - and a record that could not be filed, or
 //! never was, is filed after a later sync ([`Session::file_letters`]). A
 //! letter in test mode was never printed, and has no record.
 
@@ -507,8 +507,8 @@ fn local_time(timestamp: i64) -> String {
 /// account, under the letter's name, saying where it went and how, with the
 /// PDF attached. Dated when the letter went.
 ///
-/// `pdf` is what was posted. With `late` — when a record is filed some time
-/// after its letter, and the time it is — it is the document as it is kept
+/// `pdf` is what was posted. With `late` - when a record is filed some time
+/// after its letter, and the time it is - it is the document as it is kept
 /// now, and the record says so: an address given by hand is not kept.
 pub fn filed_message(
     account: &Account,
@@ -633,7 +633,7 @@ impl Session {
     ///
     /// The folder it was filed in, or `None` when there is nothing to file:
     /// a letter in test mode was never printed, and one already filed is not
-    /// filed again. An error here is the record's and not the letter's —
+    /// filed again. An error here is the record's and not the letter's -
     /// the letter has gone, and stays as it is; its record is tried again
     /// after a later sync.
     pub async fn file_letter(&self, id: i64, pdf: &[u8]) -> Result<Option<String>> {
@@ -655,8 +655,8 @@ impl Session {
     /// filed letters at all. How many were filed.
     ///
     /// Each carries its document as it is kept now, and says so. It stops at
-    /// the first that cannot be filed — the server that refused one will
-    /// refuse the next — and what is left waits for the next time.
+    /// the first that cannot be filed - the server that refused one will
+    /// refuse the next - and what is left waits for the next time.
     pub async fn file_letters(&self, email: &str) -> Result<usize> {
         let (store, blobs) = self.open_store()?;
         let account = store

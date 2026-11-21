@@ -3,7 +3,7 @@
 //! Three things happen per folder, in order: new messages are fetched, flag
 //! changes are applied, and messages the server no longer has are removed.
 //! A folder whose `HIGHESTMODSEQ` is unchanged since the last pass is skipped
-//! entirely — on a quiet mailbox that is every folder, and a sync costs one
+//! entirely - on a quiet mailbox that is every folder, and a sync costs one
 //! `EXAMINE` each.
 
 use core_store::model::{AccountId, FolderId, Location, MessageId};
@@ -21,7 +21,7 @@ pub struct SyncReport {
     pub folders_skipped: usize,
     /// Messages new to the store.
     pub inserted: usize,
-    /// Messages already known — the same mail under another folder or a
+    /// Messages already known - the same mail under another folder or a
     /// re-sync. On Gmail this is routinely large and is not a problem.
     pub deduplicated: usize,
     /// Locations whose flags actually changed.
@@ -157,7 +157,7 @@ pub async fn sync_account_reporting(
 
     // Only now, with every folder seen. A message that moved was out of its
     // old folder before it turned up in the new one, and collecting orphans
-    // per folder would delete it in between — taking its classifier verdict,
+    // per folder would delete it in between - taking its classifier verdict,
     // the user's corrections and any queued operation with it. See
     // `Store::delete_orphaned_messages`.
     report.deleted = store.delete_orphaned_messages()?;
@@ -165,7 +165,7 @@ pub async fn sync_account_reporting(
     Ok(report)
 }
 
-/// Syncs one folder, as a whole-account sync would — for mail that is known
+/// Syncs one folder, as a whole-account sync would - for mail that is known
 /// to have just arrived in it, like the copy of a message just sent.
 ///
 /// Leaves orphaned messages alone: those are collected only by a sync that
@@ -319,7 +319,7 @@ async fn fetch_new(
     // arrives in is the difference between a window showing this morning's
     // mail after a few seconds and one showing mail from years ago for an
     // hour. So the first pass walks down from the newest, writing after every
-    // batch how far it has come — the hole underneath it is then known, and
+    // batch how far it has come - the hole underneath it is then known, and
     // filled by the passes after it.
     //
     // Mail above a folder already held is fetched upwards, as it always was.
@@ -415,7 +415,7 @@ fn store_message(
             // verdict, and the same mail seen in a second folder has not
             // changed. The rules run on every message so that when the
             // model lands its verdicts can be compared against a baseline
-            // that already exists for the whole mailbox — plan section 4.
+            // that already exists for the whole mailbox - plan section 4.
             record_rules_verdict(ctx, message_id, &parsed);
         }
         Upsert::Deduplicated => report.deduplicated += 1,
@@ -425,7 +425,7 @@ fn store_message(
 
 /// Records the deterministic verdict for a freshly stored message.
 ///
-/// A classification failure must never fail a sync — the mail is already
+/// A classification failure must never fail a sync - the mail is already
 /// safely stored, and an unclassified message simply shows as Unknown. So this
 /// logs and moves on rather than propagating.
 fn record_rules_verdict(ctx: &Context<'_>, message_id: MessageId, parsed: &Parsed) {

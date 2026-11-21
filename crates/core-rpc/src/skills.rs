@@ -1,8 +1,8 @@
 //! Skills: how the assistant is taught a job, and why a model can fetch one
 //! but never accept it.
 //!
-//! A skill is a text file — Markdown, with or without the front matter the
-//! Agent Skills format puts on it — that tells the assistant how to do one
+//! A skill is a text file - Markdown, with or without the front matter the
+//! Agent Skills format puts on it - that tells the assistant how to do one
 //! kind of job: the wording of a cancellation under German law, what to
 //! check on an invoice from one supplier, how the person likes a summary
 //! laid out. Accepted skills go into the system prompt, fenced, after the
@@ -12,8 +12,8 @@
 //! A skill is also the most direct injection there is: it is instructions,
 //! on purpose, from somebody else. So the rule is the one a person already
 //! applies to a program: read it before you run it. The assistant, or the
-//! settings page, can *download* one — only from an address the person gave
-//! — and it lands as a file waiting to be read. Nothing in it reaches a
+//! settings page, can *download* one - only from an address the person gave
+//! - and it lands as a file waiting to be read. Nothing in it reaches a
 //! model until the person has had the whole text in front of them in the
 //! settings and pressed Accept, which no tool can do. Beside the text, the
 //! settings show the lines that stood out: addresses it names, words about

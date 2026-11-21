@@ -2,7 +2,7 @@
 //!
 //! Deliberately thin: it opens a connection, authenticates with the account's
 //! existing [`AuthProvider`], and hands over the bytes [`crate::compose`]
-//! produced. No retry, no queue, no scheduling — a failed submission is
+//! produced. No retry, no queue, no scheduling - a failed submission is
 //! reported to the caller, which is the only honest thing to do while there is
 //! a person watching. The queue arrives with stage 2 (plan section 1a), where
 //! it is needed for mailbox mutations anyway.
@@ -91,7 +91,7 @@ pub async fn submit(
     match config.security {
         // `connect_plain` speaks no TLS at all, which is what the local sink
         // wants. It is not `implicit_tls(false)`: that one still requires
-        // STARTTLS and fails if the server does not offer it — the right
+        // STARTTLS and fails if the server does not offer it - the right
         // behaviour for a real submission endpoint, and the reason STARTTLS
         // cannot silently degrade to cleartext here.
         SmtpSecurity::Plaintext => deliver(builder.connect_plain().await?, envelope).await,
@@ -134,8 +134,8 @@ async fn deliver<T: AsyncRead + AsyncWrite + Unpin>(
 /// Builds the TLS connector, naming the crypto provider explicitly.
 ///
 /// rustls picks a process-wide default provider only when exactly one is
-/// compiled in. This workspace has two — reqwest's rustls feature pulls
-/// aws-lc-rs, mail-send pulls ring — so anything relying on that default
+/// compiled in. This workspace has two - reqwest's rustls feature pulls
+/// aws-lc-rs, mail-send pulls ring - so anything relying on that default
 /// panics at the first handshake rather than failing at build time. Naming the
 /// provider here avoids both the panic and the process-global install, which a
 /// library has no business performing on its caller's behalf.
@@ -146,7 +146,7 @@ fn tls_connector() -> Result<TlsConnector> {
     let tls = |err: rustls::Error| SubmitError::Tls(err.to_string());
 
     // The OS trust store rather than a bundled root list, so enterprise or
-    // pinned roots keep working — matching the IMAP transport.
+    // pinned roots keep working - matching the IMAP transport.
     let config =
         ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
             .with_safe_default_protocol_versions()
@@ -174,7 +174,7 @@ async fn credentials_for(username: &str, auth: &dyn AuthProvider) -> Result<Cred
 }
 
 /// Built field by field rather than via `SmtpClientBuilder::new`, which
-/// constructs its own TLS connector eagerly — and panics doing so, for the
+/// constructs its own TLS connector eagerly - and panics doing so, for the
 /// reason [`tls_connector`] explains. Every field is part of mail-send's public
 /// API.
 fn client_builder(
@@ -247,7 +247,7 @@ mod tests {
     #[tokio::test]
     async fn plaintext_submission_to_localhost_gets_past_the_transport_check() {
         // Reaches the credential lookup, which fails because the variable is
-        // unset — proving the transport check let it through rather than that
+        // unset - proving the transport check let it through rather than that
         // the connection succeeded.
         let config = SmtpConfig {
             host: "127.0.0.1".into(),

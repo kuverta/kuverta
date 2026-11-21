@@ -205,7 +205,7 @@ fn exclusions_are_replaced_by_the_form_rather_than_added_to() {
     let mut with = form();
     with.excluded_folders = vec!["\\All".into(), "Junk".into()];
     let id = core.save_account(&with).unwrap();
-    // Order is the store's, not the form's — the set is what matters.
+    // Order is the store's, not the form's - the set is what matters.
     let mut stored = core.account_settings(id).unwrap().excluded_folders;
     stored.sort();
     assert_eq!(stored, vec!["Junk", "\\All"]);

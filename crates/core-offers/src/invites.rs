@@ -2,7 +2,7 @@
 //!
 //! An invitation arrives as an iTIP object (RFC 5546): a `VCALENDAR` with a
 //! `METHOD`, carrying one `VEVENT`. The method is what makes it a question
-//! rather than a notice — `REQUEST` asks, `CANCEL` tells, `REPLY` is
+//! rather than a notice - `REQUEST` asks, `CANCEL` tells, `REPLY` is
 //! somebody else answering a question of yours.
 //!
 //! This is a parser over bytes a stranger wrote, which is the same footing
@@ -12,7 +12,7 @@
 //! to end.
 //!
 //! One thing it will not do is guess a time. A `DTSTART` that names a zone
-//! — `TZID=Europe/Berlin:20261104T140000` — is a wall-clock time whose
+//! - `TZID=Europe/Berlin:20261104T140000` - is a wall-clock time whose
 //! instant depends on a zone database, and an invite card showing the wrong
 //! hour is worse than one showing none. So [`When::at`] is filled only when
 //! the sender gave an instant that needs no lookup, and [`When::written`]
@@ -34,13 +34,13 @@ use calcard::{
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Intent {
-    /// `METHOD:REQUEST` — somebody is asking.
+    /// `METHOD:REQUEST` - somebody is asking.
     Request,
-    /// `METHOD:CANCEL` — it is off.
+    /// `METHOD:CANCEL` - it is off.
     Cancel,
-    /// `METHOD:REPLY` — an answer to something this mailbox sent.
+    /// `METHOD:REPLY` - an answer to something this mailbox sent.
     Reply,
-    /// `METHOD:COUNTER` — a different time is proposed.
+    /// `METHOD:COUNTER` - a different time is proposed.
     Counter,
     /// `METHOD:PUBLISH`, anything else, or no method at all: an event sent
     /// as news. A `VCALENDAR` without a `METHOD` is not an iTIP message,
@@ -69,7 +69,7 @@ impl Intent {
 /// When something happens, as the sender wrote it.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct When {
-    /// Epoch seconds — only when the sender gave an instant that needs no
+    /// Epoch seconds - only when the sender gave an instant that needs no
     /// zone database: a UTC time, or one carrying its own offset. `None`
     /// for a wall-clock time named by zone, and for a date.
     pub at: Option<i64>,

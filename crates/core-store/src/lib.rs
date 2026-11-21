@@ -194,7 +194,7 @@ impl Store {
     /// Removes an account and everything hanging off it.
     ///
     /// Folders, messages, locations, classifications, corrections and queued
-    /// operations all cascade. The blobs on disk do not — they are addressed
+    /// operations all cascade. The blobs on disk do not - they are addressed
     /// by content and shared, so removing them is a sweep of its own rather
     /// than something to do while deleting a row.
     pub fn delete_account(&self, id: AccountId) -> Result<()> {
@@ -385,7 +385,7 @@ impl Store {
     /// Stores a message and, optionally, the folder location it was seen at.
     ///
     /// If the account already holds a message with the same identity (see
-    /// [`dedup`]) no new message row is created — only the location is added.
+    /// [`dedup`]) no new message row is created - only the location is added.
     /// This is the path Gmail's labels take.
     pub fn upsert_message(
         &self,
@@ -587,7 +587,7 @@ impl Store {
             .map_err(Into::into)
     }
 
-    /// Cancels a pending operation. Returns false if it had already settled —
+    /// Cancels a pending operation. Returns false if it had already settled -
     /// undo cannot reach something the server has been told.
     pub fn cancel_operation(&self, id: OperationId) -> Result<bool> {
         let changed = self.conn.execute(
@@ -603,7 +603,7 @@ impl Store {
     ///
     /// This is `undo`: the last thing you did that has not yet left the
     /// machine. A change queued with no undo window was never offered for
-    /// undo — a message marked read because it was opened — and is passed
+    /// undo - a message marked read because it was opened - and is passed
     /// over, so `z` after archiving one and reading the next undoes the
     /// archive.
     pub fn cancel_latest_operation(&self, account_id: AccountId) -> Result<Option<Operation>> {
@@ -672,7 +672,7 @@ impl Store {
     /// Scoped rather than global so a stale id from another account cannot
     /// silently address someone else's mail.
     /// Whose message this is, for a caller that has the id and not the
-    /// account — a row in a list over several accounts.
+    /// account - a row in a list over several accounts.
     pub fn account_of_message(&self, id: MessageId) -> Result<Option<AccountId>> {
         self.conn
             .query_row(
@@ -812,7 +812,7 @@ impl Store {
     /// left with no location at all.
     ///
     /// A message expunged from one folder but still present in another keeps
-    /// its remaining location and stays in the store — the same property that
+    /// its remaining location and stays in the store - the same property that
     /// makes Gmail labels work.
     ///
     /// Note: the message's body blob is not removed here. Blob pruning is a
@@ -841,7 +841,7 @@ impl Store {
     /// Separate from [`Self::remove_locations`], and this is load-bearing
     /// rather than tidy. A message being moved is out of its old folder before
     /// it is seen in the new one, so a sync that collected orphans as it went
-    /// would destroy the row in between — and with it the classifier verdict,
+    /// would destroy the row in between - and with it the classifier verdict,
     /// the corrections the user made, and any queued operation, all of which
     /// cascade. Whether that happened came down to the order the server
     /// happened to list the two folders in.
@@ -995,7 +995,7 @@ impl Store {
         if let Some(folder_id) = filter.folder {
             // A message is "in" a folder if any of its copies is. On Gmail a
             // message is routinely in several at once. A message on its way
-            // here — moved but not yet synced — counts too.
+            // here - moved but not yet synced - counts too.
             clauses.push(
                 "(EXISTS (SELECT 1 FROM message_location fl
                           WHERE fl.message_id = m.id AND fl.folder_id = ?)
@@ -1101,7 +1101,7 @@ impl Store {
             // A message with a queued move counts where it is going, not
             // where it still sits, so the badge agrees with the list.
             // Messages here, less those with a queued move elsewhere, plus
-            // those on their way here — a subquery, because a message coming
+            // those on their way here - a subquery, because a message coming
             // here has no copy in this folder to join on yet. The badge then
             // agrees with the list under it.
             "SELECT f.id, f.name, f.special_use,
@@ -1142,7 +1142,7 @@ impl Store {
     /// Counts each message once, under the one category it is shown as. The
     /// join is what makes that true: a message reclassified on a later sync
     /// has several rows, and joining them all counted it under every category
-    /// it had ever been given — which `DISTINCT` hid within a category but not
+    /// it had ever been given - which `DISTINCT` hid within a category but not
     /// across them.
     /// In `folder`, when one is given: a category means something different
     /// in the Inbox than in Sent, and the sidebar counts what the list would
@@ -1189,7 +1189,7 @@ impl Store {
     /// first.
     ///
     /// Keyed on the model's name as well as the source, so trying a second
-    /// model is a fresh pass rather than a no-op — and so comparing two models
+    /// model is a fresh pass rather than a no-op - and so comparing two models
     /// is possible at all.
     pub fn awaiting_model_verdict(
         &self,
@@ -1263,7 +1263,7 @@ impl Store {
     }
 
     /// What a search box searches for: the words typed, forgivingly, as
-    /// [`Store::search_terms`] matches them — or, in double quotes, that exact
+    /// [`Store::search_terms`] matches them - or, in double quotes, that exact
     /// phrase. In the order asked for: the box sits over a list sorted by
     /// date, and a result in the other order under a toggle that says
     /// "newest" is a list that does not do what it says.
@@ -1286,8 +1286,8 @@ impl Store {
         }
     }
 
-    /// The query every search runs, with its order. By date, the ties — the
-    /// same minute twice — fall back to rank, so the order is still a
+    /// The query every search runs, with its order. By date, the ties - the
+    /// same minute twice - fall back to rank, so the order is still a
     /// definite one.
     fn search_fts(
         &self,
@@ -1320,12 +1320,12 @@ impl Store {
 
     /// A forgiving search, for looking for something rather than for an exact
     /// phrase: mail matching any of `terms`, where a term matches when each of
-    /// its words begins a word in the message — in any order, and in the
+    /// its words begins a word in the message - in any order, and in the
     /// spellings [`word_variants`] adds. "esim aktivierung" finds "Ihre eSIM:
     /// Aktivierungscode"; "e-SIM" finds "eSIM".
     ///
     /// Each word becomes a quoted FTS5 phrase with a prefix star, so nothing a
-    /// caller passes — a model, say — can become query syntax.
+    /// caller passes - a model, say - can become query syntax.
     pub fn search_terms(
         &self,
         account_id: AccountId,
@@ -1536,7 +1536,7 @@ impl Store {
     /// Marks a letter read or unread here.
     ///
     /// Unread is the absence of a row: a letter nobody has opened in kuverta
-    /// is unread, however long it has been in Paperless — which is what a
+    /// is unread, however long it has been in Paperless - which is what a
     /// freshly scanned letter should be.
     pub fn set_paper_read(&self, base_url: &str, document_id: i64, read: bool) -> Result<()> {
         let base = base_url.trim_end_matches('/');
@@ -1796,7 +1796,7 @@ impl Store {
     /// Separate from [`Store::current_category`] because the two answer
     /// different questions once an assistant can file mail. "Is this already
     /// where it is shown?" includes the assistant's filing; "has the user
-    /// already said so?" must not — otherwise a user confirming an assistant's
+    /// already said so?" must not - otherwise a user confirming an assistant's
     /// suggestion would record nothing, and the one filing that teaches the
     /// classifier would be silently dropped.
     pub fn user_category(&self, message_id: MessageId) -> Result<Option<String>> {
@@ -1829,7 +1829,7 @@ impl Store {
     /// The categories the user has assigned by correcting messages, expressed
     /// as (sender, list_id, category) so the classifier can key on either.
     ///
-    /// Only the most recent correction per message counts — a later correction
+    /// Only the most recent correction per message counts - a later correction
     /// supersedes an earlier one. Where several messages from one sender were
     /// corrected differently, the most recent wins, which matches the
     /// intuition that the latest decision is the current one.
@@ -1943,7 +1943,7 @@ pub struct StoredPaperMailbox {
     pub selector_kind: String,
     pub selector_value: Option<String>,
     /// What the token is filed under in the keychain. Random, fixed when the
-    /// address is added, and unique across stores — unlike `id`.
+    /// address is added, and unique across stores - unlike `id`.
     pub token_key: String,
 }
 
@@ -1999,7 +1999,7 @@ pub struct Disagreement {
 /// it.
 ///
 /// Written once and shared, because three queries have to agree about this and
-/// a fourth — `disagreements` — has to deliberately not.
+/// a fourth - `disagreements` - has to deliberately not.
 pub(crate) const CURRENT_CATEGORY_JOIN: &str = "\
     LEFT JOIN classification c
       ON c.id = (
@@ -2020,7 +2020,7 @@ const COMING_HERE: &str = "(SELECT COUNT(DISTINCT o.message_id) FROM operation o
                             WHERE o.account_id = f.account_id AND o.state = 'pending'
                               AND o.kind = 'move' AND o.target_folder = f.name)";
 
-/// Whether a message is unread: no copy of it anywhere carries `\\Seen` —
+/// Whether a message is unread: no copy of it anywhere carries `\\Seen` -
 /// unless a read or unread change is still queued, which says it first.
 ///
 /// The queue is consulted because the flags here are the server's, and a
@@ -2045,7 +2045,7 @@ pub(crate) const UNREAD_PREDICATE: &str = "COALESCE(
 ///
 /// Two ways because each catches what the other misses. The flag is what
 /// every other mail program writes and reads, and it arrives with the next
-/// sync — including for a reply sent from a phone. The reply itself is in
+/// sync - including for a reply sent from a phone. The reply itself is in
 /// the store as soon as the copy is filed in Sent, which is while the send
 /// is still returning, so the list says so at once rather than in a minute.
 /// `from_addr` is compared against the account's own address so that a
@@ -2160,7 +2160,7 @@ fn row_to_summary(row: &rusqlite::Row<'_>) -> rusqlite::Result<MessageSummary> {
 ///
 /// `kuverta_lower` lowercases the way Rust does. SQLite's own `lower()` knows
 /// only ASCII without ICU, so "Änderung" stayed "Änderung" and a smart mailbox
-/// for "änderung" never matched it — in a mailbox that is half German.
+/// for "änderung" never matched it - in a mailbox that is half German.
 fn register_functions(conn: &Connection) -> Result<()> {
     use rusqlite::functions::FunctionFlags;
     conn.create_scalar_function(

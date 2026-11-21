@@ -333,7 +333,7 @@ fn senders_to_unsubscribe_from_are_grouped_newest_link_first() {
 #[test]
 fn one_message_says_what_there_is_to_unsubscribe_from_and_how_much_of_it() {
     // What the offer made when a newsletter is deleted is built from: this
-    // message's own link, and how much of that sender's mail is here — so the
+    // message's own link, and how much of that sender's mail is here - so the
     // offer can say what else goes with it.
     let (store, account, _, _) = mailbox();
     let senders = store.unsubscribe_senders(account).unwrap();

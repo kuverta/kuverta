@@ -1,7 +1,7 @@
 //! OAuth2 authorization code flow with a loopback redirect (RFC 8252).
 //!
 //! Gmail needs this and cannot use the device flow next door: Google does not
-//! grant `https://mail.google.com/` — the IMAP and SMTP scope — to the
+//! grant `https://mail.google.com/` - the IMAP and SMTP scope - to the
 //! limited-input device grant, whatever the client asks for. The supported
 //! route for a desktop mail client is an authorization code redirected to
 //! `http://127.0.0.1:<port>`, which is what this is.
@@ -13,8 +13,8 @@
 //! Three things make this safe rather than merely working:
 //!
 //! 1. **PKCE (RFC 7636).** The authorization code is useless without the
-//!    verifier, so another process that sees the code — a loopback redirect is
-//!    not confidential — cannot exchange it.
+//!    verifier, so another process that sees the code - a loopback redirect is
+//!    not confidential - cannot exchange it.
 //! 2. **`state`.** The callback is rejected unless it carries back the value
 //!    sent, so an unrelated request to the listening port cannot inject a code.
 //! 3. **Loopback only.** The listener binds `127.0.0.1`, never `0.0.0.0`, so
@@ -42,8 +42,8 @@ pub struct LoopbackConfig {
     pub user: String,
     pub client_id: String,
     /// Google issues one for "Desktop app" clients and requires it in the
-    /// token exchange. RFC 8252 is clear that it is not actually a secret —
-    /// anyone with the binary has it — which is why PKCE, not this, is what
+    /// token exchange. RFC 8252 is clear that it is not actually a secret -
+    /// anyone with the binary has it - which is why PKCE, not this, is what
     /// protects the exchange.
     pub client_secret: Option<String>,
     pub auth_url: String,
@@ -56,7 +56,7 @@ impl LoopbackConfig {
     ///
     /// The client id comes from a Google Cloud project with an OAuth client of
     /// type "Desktop app". `https://mail.google.com/` is a restricted scope, so
-    /// a *published* client would need Google's CASA assessment — but a client
+    /// a *published* client would need Google's CASA assessment - but a client
     /// left in testing with your own address as a test user does not, which is
     /// the whole basis of decision 4 in the plan.
     pub fn google(
@@ -250,7 +250,7 @@ async fn wait_for_code(listener: &TcpListener, expected_state: &str) -> Result<S
         }
 
         let (Some(code), Some(state)) = (params.get("code"), params.get("state")) else {
-            // Not the callback — a favicon request, or a stray probe.
+            // Not the callback - a favicon request, or a stray probe.
             respond(&mut socket, "Waiting for the authorisation redirect…").await;
             continue;
         };

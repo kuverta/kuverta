@@ -1,8 +1,8 @@
 //! Creating and deleting folders on the server.
 //!
 //! Creating is harmless. Deleting is the one thing an IMAP client can do that
-//! destroys mail wholesale — `DELETE` takes every message in the folder with
-//! it — and this client's first rule is that nothing it does destroys mail. So
+//! destroys mail wholesale - `DELETE` takes every message in the folder with
+//! it - and this client's first rule is that nothing it does destroys mail. So
 //! a folder is deleted only when it is empty, as the server says immediately
 //! before, and never when it is one the account depends on (the Inbox, Sent,
 //! Drafts, Archive, Junk, Trash) or has folders inside it.

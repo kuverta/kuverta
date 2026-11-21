@@ -1,7 +1,7 @@
 //! The assistant's chats, kept so they can be opened again.
 //!
-//! A chat is kept twice over: as the model sees it — the turns, which is what
-//! going on with it takes — and as the window showed it, question by
+//! A chat is kept twice over: as the model sees it - the turns, which is what
+//! going on with it takes - and as the window showed it, question by
 //! question with what the assistant did on the way, which is what reading it
 //! again takes. Both are JSON that core-rpc and the window own; the store
 //! keeps them whole and lists them by when they were last added to.

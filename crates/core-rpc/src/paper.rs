@@ -20,7 +20,7 @@ use crate::{Core, Result, RpcError};
 ///
 /// Keyed on the row rather than the URL so that moving an instance does not
 /// orphan its token, and so two addresses on one instance keep separate
-/// credentials — which they may well need, since Paperless tokens carry a
+/// credentials - which they may well need, since Paperless tokens carry a
 /// user's permissions. On the row's random key rather than its id, because ids
 /// start at 1 in every store and two stores would share one entry.
 fn token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPassword {
@@ -41,7 +41,7 @@ fn legacy_token_entry(mailbox: &StoredPaperMailbox) -> core_accounts::KeychainPa
 
 /// An address's token, moving it from where it used to be filed if need be.
 ///
-/// The old entry cannot say which store it belonged to — that is the bug. So
+/// The old entry cannot say which store it belonged to - that is the bug. So
 /// the first store to ask claims it. If that was the wrong store, the token is
 /// for another instance and the check says it was rejected: a token to enter
 /// again, rather than one store quietly reading with the other's credentials
@@ -108,7 +108,7 @@ pub struct PaperRow {
     pub id: i64,
     /// The date on the letter.
     pub date_utc: Option<i64>,
-    /// When it reached Paperless — when it was scanned.
+    /// When it reached Paperless - when it was scanned.
     pub added_utc: Option<i64>,
     pub from: String,
     pub subject: String,
@@ -136,7 +136,7 @@ pub struct PaperPage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaperDetail {
     pub row: PaperRow,
-    /// Who sent it, as Paperless knows it — `None` when it does not.
+    /// Who sent it, as Paperless knows it - `None` when it does not.
     pub correspondent: Option<String>,
     /// Who sent it as far as can be told: the correspondent, or failing that
     /// the letterhead. What filing the letter teaches. Carried separately from
@@ -144,7 +144,7 @@ pub struct PaperDetail {
     /// learned from as if a dash were a sender.
     pub sender: Option<String>,
     /// What the rules read, so a letter's verdict is explained the way mail's
-    /// is — from the same facts the classifier filed it by.
+    /// is - from the same facts the classifier filed it by.
     pub facts: crate::FactsView,
     /// The body: a vision model's transcript when there is one, Paperless's
     /// OCR text otherwise.
@@ -251,7 +251,7 @@ impl Core {
             .store(token)
             .map_err(|err| RpcError::Auth(err.to_string()))?;
         // An old entry left behind would be claimed later by whichever store
-        // shares this id — the very mix-up the new key exists to end.
+        // shares this id - the very mix-up the new key exists to end.
         let _ = legacy_token_entry(&mailbox).delete();
         Ok(())
     }
@@ -297,7 +297,7 @@ impl Core {
 
     /// Marks a letter read or unread in kuverta.
     ///
-    /// Paperless keeps no read state, so this is kuverta's own — kept per
+    /// Paperless keeps no read state, so this is kuverta's own - kept per
     /// instance, so a letter read under one address is read under any other
     /// that shows it.
     pub fn set_paper_read(&self, mailbox_id: i64, document_id: i64, read: bool) -> Result<()> {
@@ -349,7 +349,7 @@ impl Core {
     ///
     /// Two effects, deliberately. The document itself shows the chosen
     /// category from now on, whatever the rules say. And if it can be told who
-    /// sent it — the correspondent, or the letterhead when Paperless has none —
+    /// sent it - the correspondent, or the letterhead when Paperless has none -
     /// the sender is learned: the next letter from them is filed the same way
     /// without being asked. A document with neither teaches nothing, because
     /// there is nothing to key it on.
@@ -432,7 +432,7 @@ impl Core {
     /// account of its own, and a correspondent a user has already filed once
     /// on the mail side should not have to be filed again because the letter
     /// came on paper. Corrections made on post are loaded after, so where the
-    /// two disagree about a correspondent the letter's filing wins — it is the
+    /// two disagree about a correspondent the letter's filing wins - it is the
     /// one made about paper.
     fn paper_classifier(&self) -> Result<core_rules::Classifier> {
         let mut learned = core_rules::Learned::new();
@@ -473,7 +473,7 @@ pub struct PaperSession {
     selector: Selector,
     classifier: core_rules::Classifier,
     /// Documents the user filed by hand, and where. A person's filing of one
-    /// letter is not evidence to weigh against the rules — it is the answer.
+    /// letter is not evidence to weigh against the rules - it is the answer.
     overrides: HashMap<i64, core_rules::Category>,
     /// Letters opened in kuverta.
     read: HashSet<i64>,
@@ -537,8 +537,8 @@ impl PaperSession {
         })
     }
 
-    /// [`PaperSession::documents_in_order`] with the order by name — `"added"`
-    /// for when a letter was scanned, anything else for its date — for callers
+    /// [`PaperSession::documents_in_order`] with the order by name - `"added"`
+    /// for when a letter was scanned, anything else for its date - for callers
     /// on the far side of a bridge.
     pub async fn documents_by(
         &self,
@@ -609,7 +609,7 @@ impl PaperSession {
     /// Has a vision model read the letter's scan, page by page, and returns
     /// the text. Keeping it is the caller's: this holds no store.
     ///
-    /// From the original upload rather than Paperless's archive — for a
+    /// From the original upload rather than Paperless's archive - for a
     /// scannerd letter, the photographs as the camera took them rather than a
     /// re-encoding. A document that is a photograph is read as it is; a PDF
     /// with no photographs in it was never a scan, has nothing for a vision
@@ -653,11 +653,11 @@ impl PaperSession {
     /// from paper instead of from mail.
     ///
     /// Their other letters are found by the correspondent where Paperless
-    /// has one, and by the letterhead where it has not — the same two
+    /// has one, and by the letterhead where it has not - the same two
     /// answers the list shows, in that order. A letter whose sender could not
     /// be read at all is a card about that one letter: every such letter
     /// shows a dash, and counting the dashes together would say "seventeen
-    /// letters from —", which is not a person.
+    /// letters from - ", which is not a person.
     pub async fn sender_card(&self, document_id: i64) -> Result<crate::SenderView> {
         let document = self
             .client
@@ -670,7 +670,7 @@ impl PaperSession {
 
         // A correspondent Paperless knows is one request. A sender read off
         // a letterhead exists nowhere upstream, so those are matched here,
-        // over the whole address — the sweep `category_counts` already makes.
+        // over the whole address - the sweep `category_counts` already makes.
         let theirs: Vec<PaperRow> = match (&document.correspondent, readable.sender()) {
             (Some(correspondent), _) => self
                 .client
@@ -767,7 +767,7 @@ impl PaperSession {
         })
     }
 
-    /// Every letter the address holds, as rows — for what Paperless cannot
+    /// Every letter the address holds, as rows - for what Paperless cannot
     /// filter or count by. Capped, so a runaway instance is not read whole.
     async fn all_rows(&self, query: Option<&str>, order: Order) -> Result<Vec<PaperRow>> {
         const PAGE: usize = 100;
@@ -845,7 +845,7 @@ impl PaperSession {
         Ok(core_paper::learn::learn(&filed, &folders))
     }
 
-    /// The document's file — the scan itself, for when its OCR text is no use.
+    /// The document's file - the scan itself, for when its OCR text is no use.
     pub async fn download(&self, document_id: i64) -> Result<core_paper::Download> {
         self.client.download(document_id).await.map_err(paper_error)
     }

@@ -8,16 +8,16 @@
 //! different mistake:
 //!
 //! 1. **Decoders written in Rust.** PDFs are drawn by hayro, which forbids
-//!    unsafe code; pictures by the `image` crate's codecs; everything else —
-//!    Word, Excel, a web page, a forwarded message — is read as text by
+//!    unsafe code; pictures by the `image` crate's codecs; everything else -
+//!    Word, Excel, a web page, a forwarded message - is read as text by
 //!    [`crate::readable`]. A malformed file is a panic or an error there, not a
 //!    write past the end of a buffer.
 //! 2. **In a process of its own, locked down before it looks.** The worker is
 //!    this program again, started with [`WORKER_FLAG`]. It reads the file from
-//!    its standard input, then takes away what it could do with a foothold —
+//!    its standard input, then takes away what it could do with a foothold -
 //!    on macOS by the system's sandbox, denying everything
 //!    (`SANDBOX_PROFILE`), everywhere on Unix by resource limits (no new
-//!    files or sockets, no new processes, no core file, a CPU budget) — and
+//!    files or sockets, no new processes, no core file, a CPU budget) - and
 //!    only then parses. It fails closed: a worker that cannot lock itself
 //!    down draws nothing.
 //! 3. **Bounded, and killed if it is not done.** A wall-clock limit, input and
@@ -26,7 +26,7 @@
 //! 4. **Only pixels come back.** The worker answers with raw RGB and the size
 //!    of each page. This side checks that the sizes add up and encodes the PNG
 //!    itself, so the window's image decoder only ever sees a PNG kuverta wrote
-//!    — even a worker that had been taken over could hand it nothing else.
+//! - even a worker that had been taken over could hand it nothing else.
 //!
 //! A PDF locked with a password is the one thing the worker asks about: it
 //! answers `Reply::Password`, the window asks the person, and the password
@@ -91,7 +91,7 @@ impl Worker {
 static WORKER: OnceLock<Worker> = OnceLock::new();
 
 /// Says how to start the worker, once, at startup. Without it, files the
-/// assistant reads are read in this process — which is what the CLI does.
+/// assistant reads are read in this process - which is what the CLI does.
 pub fn set_worker(worker: Worker) {
     let _ = WORKER.set(worker);
 }
@@ -162,8 +162,8 @@ enum Reply {
     Text {
         text: String,
     },
-    /// The PDF is locked, and the password it was tried with — none, or the
-    /// one the person typed — did not open it.
+    /// The PDF is locked, and the password it was tried with - none, or the
+    /// one the person typed - did not open it.
     Password {
         wrong: bool,
     },
@@ -273,7 +273,7 @@ fn serve() -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
-/// What the file is, by its first bytes — not by what the sender called it.
+/// What the file is, by its first bytes - not by what the sender called it.
 fn is_pdf(request: &Request, bytes: &[u8]) -> bool {
     bytes.starts_with(b"%PDF")
         || request.content_type == "application/pdf"
@@ -381,7 +381,7 @@ fn pdf(request: &Request, bytes: &[u8]) -> (Reply, Vec<Vec<u8>>) {
 
     let data: hayro::hayro_syntax::PdfData = Arc::new(bytes.to_vec());
     // The empty password on the first look: that alone opens a PDF locked
-    // only against printing or copying, which is most of them — the lock is
+    // only against printing or copying, which is most of them - the lock is
     // on what may be done with it, not on reading it, and nobody need be
     // asked for anything.
     let password = request.password.as_deref().unwrap_or("");
@@ -499,19 +499,19 @@ fn probe() -> Vec<(String, bool)> {
 /// Two words in the language the system's own profiles are written in: deny
 /// everything. No file opened for reading or writing, nothing reached over
 /// the network, nothing looked up from another program. Descriptors open
-/// before it — standard input and output — stay usable, which is how the
+/// before it - standard input and output - stay usable, which is how the
 /// worker still reads the file and answers with pixels.
 ///
 /// It used to be `kSBXProfilePureComputation`, the system's own named
 /// profile, which said the same thing in one word. macOS 27 removed the
 /// named profiles, and a program built against its SDK that asks for one is
-/// *killed* rather than told no — SIGKILL inside `sandbox_init`, before the
+/// *killed* rather than told no - SIGKILL inside `sandbox_init`, before the
 /// worker can fail closed and say why. So the profile is written here, where
 /// it cannot be withdrawn under us, and passed as a profile rather than as a
 /// name. That is the call `sandbox-exec -p` makes and it is honoured on
 /// every macOS kuverta runs on.
 ///
-/// What this does not stop — making a socket, forking — the worker's
+/// What this does not stop - making a socket, forking - the worker's
 /// resource limits do, which is why both layers are there.
 #[cfg(target_os = "macos")]
 const SANDBOX_PROFILE: &[u8] = b"(version 1)\n(deny default)\n\0";
@@ -730,7 +730,7 @@ pub fn preview(
     }
 }
 
-/// A PNG, base64, written here from pixels the worker drew — after checking
+/// A PNG, base64, written here from pixels the worker drew - after checking
 /// that they are as many as it says.
 fn png_of(width: u32, height: u32, rgb: &[u8]) -> Result<String, String> {
     use base64::Engine as _;

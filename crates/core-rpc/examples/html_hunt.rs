@@ -1,7 +1,7 @@
 //! The fragments that make this parser interesting, in every order.
 //!
 //! A fuzzer has to discover structure; this starts from it. The pieces are
-//! the ones the reader has special cases for — quotes inside a tag, an
+//! the ones the reader has special cases for - quotes inside a tag, an
 //! unterminated comment, a link round a block, an element whose content is
 //! skipped unread, a multi-byte character where an index might land.
 //!

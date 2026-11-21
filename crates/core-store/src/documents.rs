@@ -1,7 +1,7 @@
 //! Documents: files kuverta made, and the signature it puts on them.
 //!
-//! The assistant writes documents — a letter, a cancellation, a confirmation,
-//! a spreadsheet of a table it was asked for — and signs PDFs: its own, or one
+//! The assistant writes documents - a letter, a cancellation, a confirmation,
+//! a spreadsheet of a table it was asked for - and signs PDFs: its own, or one
 //! that came as an attachment. Each is kept here, bytes and all, on the
 //! account it was made for, so the person can open, save, attach or throw it
 //! away later, and the assistant can list and read them again.
@@ -37,7 +37,7 @@ pub struct StoredDocument {
     /// For a signed document: what it was signed from and where the
     /// signature was put, as JSON the caller writes and reads. Kept so the
     /// signature can be moved, which means signing the original again
-    /// somewhere else — a stamp on a page cannot be taken off it.
+    /// somewhere else - a stamp on a page cannot be taken off it.
     pub signed_from: Option<String>,
 }
 

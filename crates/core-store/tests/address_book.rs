@@ -1,5 +1,5 @@
 //! The address book the To field suggests from: who is in it, under what
-//! name, in what order — and who is left out.
+//! name, in what order - and who is left out.
 
 use core_store::model::*;
 use core_store::Store;
@@ -123,7 +123,7 @@ use core_store::Contact;
 fn who_is_written_to_comes_first_and_who_only_sends_bulk_is_not_there() {
     let mut m = mailbox("rank");
     let (inbox, sent, trash) = (m.inbox, m.sent, m.trash);
-    // Written to twice, lately, and she writes back — under a name she has
+    // Written to twice, lately, and she writes back - under a name she has
     // changed how she signs.
     m.mail(
         sent,

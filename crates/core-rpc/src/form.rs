@@ -1,4 +1,4 @@
-//! A PDF form — an AcroForm, fields laid over the page to type into — read
+//! A PDF form - an AcroForm, fields laid over the page to type into - read
 //! and filled.
 //!
 //! [`fields`] lists what a form asks: each field's name, what kind it is, the
@@ -10,7 +10,7 @@
 //! its cross, and each filled widget a fresh appearance stream, so every
 //! reader shows the values. NeedAppearances stays unset: a reader that
 //! honours it throws the drawn appearances away and lays the values out
-//! again with the form's own font — which usually names no encoding, and
+//! again with the form's own font - which usually names no encoding, and
 //! there go the umlauts. The original is never touched: filling makes new
 //! bytes.
 
@@ -58,7 +58,7 @@ const FF_MULTILINE: i64 = 1 << 12;
 const FF_PUSHBUTTON: i64 = 1 << 16;
 const FF_RADIO: i64 = 1 << 15;
 
-/// One widget of a field: where it is drawn, and — for a button — the name
+/// One widget of a field: where it is drawn, and - for a button - the name
 /// of its ticked state.
 #[derive(Debug, Clone)]
 struct Widget {
@@ -149,7 +149,7 @@ fn string_of(object: &Object) -> Option<String> {
     }
 }
 
-/// What is in a field: the text of a string, the state of a button — `Off`
+/// What is in a field: the text of a string, the state of a button - `Off`
 /// read as empty.
 fn value_of(object: &Object) -> Option<String> {
     match object {
@@ -456,7 +456,7 @@ fn text_value(value: &Value) -> Result<String, String> {
 }
 
 /// The font a field draws its text with: the name its default appearance
-/// gives, and its size — 0 meaning pick one for the field's height.
+/// gives, and its size - 0 meaning pick one for the field's height.
 fn parse_da(da: &str) -> (Option<String>, f32) {
     let tokens: Vec<&str> = da.split_whitespace().collect();
     let mut font = None;
@@ -474,8 +474,8 @@ fn parse_da(da: &str) -> (Option<String>, f32) {
 /// us, so every appearance stream has a font to point at.
 ///
 /// The form's own font is only taken when it says it is WinAnsi: the text is
-/// drawn as WinAnsi octal escapes, and a font without that encoding — the
-/// usual `/Helv` of a form writer carries none — would drop every umlaut it
+/// drawn as WinAnsi octal escapes, and a font without that encoding - the
+/// usual `/Helv` of a form writer carries none - would drop every umlaut it
 /// is handed.
 fn form_font(doc: &mut Document, name: Option<&str>) -> Result<(String, ObjectId), String> {
     let named = |doc: &Document, name: &str| -> Option<ObjectId> {
@@ -501,7 +501,7 @@ fn form_font(doc: &mut Document, name: Option<&str>) -> Result<(String, ObjectId
         return Ok(("Helv".to_string(), id));
     }
     // No usable font among the form's own: one of ours, left out of the
-    // form's resources — each appearance stream carries its own reference.
+    // form's resources - each appearance stream carries its own reference.
     let id = doc.add_object(pdf::font("Helvetica"));
     Ok(("Helv".to_string(), id))
 }
@@ -587,7 +587,7 @@ fn text_appearance(
     Ok(())
 }
 
-/// Writes `values` — field name to text, or to yes/no for a checkbox — into
+/// Writes `values` - field name to text, or to yes/no for a checkbox - into
 /// a copy of the form. A name the form does not have refuses the whole call,
 /// so what comes back is never half of what was asked.
 pub fn fill(pdf_bytes: &[u8], values: &serde_json::Map<String, Value>) -> Result<Filled, String> {

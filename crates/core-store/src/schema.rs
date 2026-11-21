@@ -8,7 +8,7 @@ use crate::Result;
 
 /// Each entry is applied in order; the index + 1 becomes `user_version`.
 const MIGRATIONS: &[&str] = &[
-    // v1 — accounts, folders, messages, locations, search, classifier output.
+    // v1 - accounts, folders, messages, locations, search, classifier output.
     r#"
 CREATE TABLE account (
     id            INTEGER PRIMARY KEY,
@@ -108,25 +108,25 @@ CREATE TABLE correction (
     created_at    INTEGER NOT NULL
 );
 "#,
-    // v2 — OAuth2 app registration, for accounts that cannot use a password.
+    // v2 - OAuth2 app registration, for accounts that cannot use a password.
     // No secret is stored here: the device flow is a public-client grant, and
     // the refresh token lives in the OS keychain.
     r#"
 ALTER TABLE account ADD COLUMN oauth_client_id TEXT;
 ALTER TABLE account ADD COLUMN oauth_tenant TEXT;
 "#,
-    // v3 — SMTP submission endpoint, for accounts that can send.
+    // v3 - SMTP submission endpoint, for accounts that can send.
     //
     // Nullable as a group: an account registered before send existed has no
     // SMTP endpoint and stays receive-only until one is configured. There is
-    // no separate credential — submission reuses the account's `AuthProvider`,
+    // no separate credential - submission reuses the account's `AuthProvider`,
     // so nothing secret lands here either.
     r#"
 ALTER TABLE account ADD COLUMN smtp_host TEXT;
 ALTER TABLE account ADD COLUMN smtp_port INTEGER;
 ALTER TABLE account ADD COLUMN smtp_security TEXT;
 "#,
-    // v4 — the pending-operation queue for mailbox mutations (plan section 1a,
+    // v4 - the pending-operation queue for mailbox mutations (plan section 1a,
     // stage 2).
     //
     // Intent is recorded here *before* the server is touched, never after. A
@@ -137,7 +137,7 @@ ALTER TABLE account ADD COLUMN smtp_security TEXT;
     //
     // The source columns exist for exactly that re-check. A UID means nothing
     // without the UIDVALIDITY it was issued under, and neither proves the UID
-    // still refers to the mail the user acted on — so the Message-ID they
+    // still refers to the mail the user acted on - so the Message-ID they
     // expected is recorded too, and the executor verifies all three before it
     // mutates anything.
     r#"
@@ -176,7 +176,7 @@ CREATE TABLE operation (
 CREATE INDEX operation_due ON operation (account_id, state, execute_after);
 CREATE INDEX operation_by_message ON operation (message_id, state);
 "#,
-    // v5 — folders a sync should leave alone.
+    // v5 - folders a sync should leave alone.
     //
     // Gmail is the reason. Its `[Gmail]/All Mail` holds a copy of every
     // message, so a mailbox whose mail averages two labels is fetched twice
@@ -185,7 +185,7 @@ CREATE INDEX operation_by_message ON operation (message_id, state);
     // mailbox once and downloading it twice.
     //
     // Stored per account rather than per folder because it has to be settable
-    // *before* the first sync — which is exactly when it matters, and before
+    // *before* the first sync - which is exactly when it matters, and before
     // any folder row exists to hang a flag on. `kuverta check` prints the
     // names without syncing anything.
     r#"
@@ -198,10 +198,10 @@ CREATE TABLE folder_exclusion (
     PRIMARY KEY (account_id, pattern)
 );
 "#,
-    // v6 — which OAuth2 provider an account authorises against.
+    // v6 - which OAuth2 provider an account authorises against.
     //
     // Not cosmetic: the grant differs. Microsoft uses the device flow, and
-    // Google cannot — it does not issue `https://mail.google.com/` to the
+    // Google cannot - it does not issue `https://mail.google.com/` to the
     // limited-input device grant at all, so Gmail needs the loopback redirect
     // instead. Inferring this from the hostname would work until somebody used
     // a custom domain in front of Google.
@@ -211,10 +211,10 @@ CREATE TABLE folder_exclusion (
     r#"
 ALTER TABLE account ADD COLUMN oauth_provider TEXT;
 "#,
-    // v7 — postal addresses. A physical address is an account and Paperless is
+    // v7 - postal addresses. A physical address is an account and Paperless is
     // its server, so this is the paper counterpart of `account`: where the
     // instance lives, and which of its documents belong to this address. The
-    // API token is not here — it goes in the OS keychain, exactly as an
+    // API token is not here - it goes in the OS keychain, exactly as an
     // account's password does.
     r#"
 CREATE TABLE paper_mailbox (
@@ -232,7 +232,7 @@ CREATE TABLE paper_mailbox (
 CREATE UNIQUE INDEX paper_mailbox_target
     ON paper_mailbox (base_url, selector_kind, IFNULL(selector_value, ''));
 "#,
-    // v8 — corrections to post. `correction` hangs off a message row and a
+    // v8 - corrections to post. `correction` hangs off a message row and a
     // document is not one, so post has its own table. Append-only for the
     // reason §3.4 gives: a correction reversed is two events, not an edit, and
     // the reversals are the most interesting rows.
@@ -252,7 +252,7 @@ CREATE TABLE paper_correction (
 CREATE INDEX paper_correction_by_document ON paper_correction (mailbox_id, document_id);
 CREATE INDEX paper_correction_by_correspondent ON paper_correction (correspondent);
 "#,
-    // v9 — what an address's API token is filed under in the keychain. It was
+    // v9 - what an address's API token is filed under in the keychain. It was
     // the row id, and row ids start at 1 in every store: `.devdata` and the
     // real store would share `paper:1`, and saving a token in one silently
     // replaced the other's. A random key is unique across stores and, being
@@ -262,7 +262,7 @@ ALTER TABLE paper_mailbox ADD COLUMN token_key TEXT;
 UPDATE paper_mailbox SET token_key = lower(hex(randomblob(16))) WHERE token_key IS NULL;
 CREATE UNIQUE INDEX paper_mailbox_token_key ON paper_mailbox (token_key);
 "#,
-    // v10 — what kuverta knows about post that Paperless does not keep:
+    // v10 - what kuverta knows about post that Paperless does not keep:
     // whether a letter has been read here, and a vision model's transcript of
     // a scan whose OCR text is no use. Keyed by instance and document rather
     // than by postal address, because two addresses on one instance can show
@@ -284,7 +284,7 @@ CREATE TABLE paper_transcript (
     PRIMARY KEY (base_url, document_id)
 );
 "#,
-    // v11 — where models run, and which model each job uses. The local Ollama
+    // v11 - where models run, and which model each job uses. The local Ollama
     // is there from the start, as it was before this was configurable; a
     // hosted service is added beside it, its key in the keychain under
     // `key_name`. A job with no row uses its default.
@@ -308,7 +308,7 @@ CREATE TABLE ai_task (
     model       TEXT NOT NULL
 );
 "#,
-    // v12 — sending later, smart mailboxes, and cleaning up.
+    // v12 - sending later, smart mailboxes, and cleaning up.
     //
     // The outbox is a ledger of promises: the draft as JSON (core-rpc owns its
     // shape), when it is due, and what happened. Smart mailboxes are saved
@@ -318,7 +318,7 @@ CREATE TABLE ai_task (
     //
     // The message columns are headers the store threw away until now. Mail
     // synced before this migration has them NULL and `headers_read = 0`, and is
-    // read back from the stored raw message once — see `hygiene.rs`.
+    // read back from the stored raw message once - see `hygiene.rs`.
     r#"
 ALTER TABLE message ADD COLUMN recipients TEXT;
 ALTER TABLE message ADD COLUMN list_unsubscribe TEXT;
@@ -368,10 +368,10 @@ CREATE TABLE unsubscription (
 );
 CREATE INDEX unsubscription_by_sender ON unsubscription (account_id, sender);
 "#,
-    // v13 — how soon a message needs acting on. One verdict per message, the
+    // v13 - how soon a message needs acting on. One verdict per message, the
     // rules' first and a model's in its place when one is asked: advice that
     // orders the "needs attention" view and moves nothing. `in_reply_to` and
-    // the sender are indexed for the questions urgency asks — has this been
+    // the sender are indexed for the questions urgency asks - has this been
     // answered, and has this person been written to.
     r#"
 CREATE TABLE urgency (
@@ -391,7 +391,7 @@ CREATE TABLE urgency (
 CREATE INDEX urgency_by_score ON urgency (score);
 CREATE INDEX message_by_reply ON message (account_id, in_reply_to);
 "#,
-    // v14 — profiles: private, one company, another. Accounts and postal
+    // v14 - profiles: private, one company, another. Accounts and postal
     // addresses point at one or at none; the window shows one profile at a
     // time, or all. Nothing else changes with them.
     r#"
@@ -404,11 +404,11 @@ CREATE TABLE profile (
 ALTER TABLE account ADD COLUMN profile_id INTEGER REFERENCES profile(id) ON DELETE SET NULL;
 ALTER TABLE paper_mailbox ADD COLUMN profile_id INTEGER REFERENCES profile(id) ON DELETE SET NULL;
 "#,
-    // v15 — tasks: standing jobs the assistant does to mail. A task is a smart
+    // v15 - tasks: standing jobs the assistant does to mail. A task is a smart
     // mailbox's rules and an action (JSON; core-rpc owns its shape).
     // `task_seen` is what each has dealt with, so it deals with it once.
     // `task_proposal` is what a task or the assistant would do and is waiting
-    // for a person's yes — for tasks that ask first, and anything that sends.
+    // for a person's yes - for tasks that ask first, and anything that sends.
     r#"
 CREATE TABLE task (
     id           INTEGER PRIMARY KEY,
@@ -448,13 +448,13 @@ CREATE TABLE task_proposal (
 );
 CREATE INDEX task_proposal_pending ON task_proposal (account_id, state);
 "#,
-    // v16 — which rules decided. A rules verdict made by older rules — or
-    // from headers kuverta had not stored yet — is decided again when the
+    // v16 - which rules decided. A rules verdict made by older rules - or
+    // from headers kuverta had not stored yet - is decided again when the
     // rules change; this says which verdicts are behind.
     r#"
 ALTER TABLE classification ADD COLUMN rules_version INTEGER NOT NULL DEFAULT 1;
 "#,
-    // v17 — how far down a folder the first pass has come. A first sync walks
+    // v17 - how far down a folder the first pass has come. A first sync walks
     // a folder newest first, so that this morning's mail is on screen in
     // seconds rather than after the whole history; this is the UID it has
     // reached, and everything from 1 up to it is still owed. NULL means the
@@ -463,7 +463,7 @@ ALTER TABLE classification ADD COLUMN rules_version INTEGER NOT NULL DEFAULT 1;
     r#"
 ALTER TABLE folder ADD COLUMN backfill_uid INTEGER;
 "#,
-    // v18 — who a letter was *to*, in the search index.
+    // v18 - who a letter was *to*, in the search index.
     //
     // The index held the subject, the sender and the body, which is most of a
     // letter but not the part that matters in Sent: there, the only name worth
@@ -471,7 +471,7 @@ ALTER TABLE folder ADD COLUMN backfill_uid INTEGER;
     // twenty-six fewer messages than Thunderbird did on the same mailbox,
     // every one of them sent by the person doing the search.
     //
-    // The body text lives only here — it is not a column on `message` — so
+    // The body text lives only here - it is not a column on `message` - so
     // this carries the old rows across rather than rebuilding from scratch,
     // which would silently empty every body. The recipients come from
     // `message`, where they have been all along.
@@ -488,14 +488,14 @@ CREATE TRIGGER message_fts_delete AFTER DELETE ON message BEGIN
     DELETE FROM message_fts WHERE rowid = old.id;
 END;
 "#,
-    // v19 — a smart mailbox that takes its mail out of the Inbox. `folder` is
+    // v19 - a smart mailbox that takes its mail out of the Inbox. `folder` is
     // the server folder it moves Inbox mail into; NULL keeps it a search. The
     // moving is a task's, one that belongs to the mailbox and goes with it.
     r#"
 ALTER TABLE smart_mailbox ADD COLUMN folder TEXT;
 ALTER TABLE task ADD COLUMN smart_mailbox_id INTEGER REFERENCES smart_mailbox(id) ON DELETE CASCADE;
 "#,
-    // v20 — documents the assistant writes and signs, the signature, and the
+    // v20 - documents the assistant writes and signs, the signature, and the
     // assistant's chats.
     //
     // A document is a PDF kuverta made: written from text, or a copy of an
@@ -542,15 +542,15 @@ CREATE TABLE assistant_chat (
 );
 CREATE INDEX assistant_chat_account ON assistant_chat (account_id, updated_at);
 "#,
-    // v21 — what the models cost, and what the
+    // v21 - what the models cost, and what the
     // assistant remembers.
     //
     // Usage is a tally, a row per day, job and model, not a row per request:
     // what the settings show is sums, and a log of every request would grow
     // with every sync for nothing.
     //
-    // A memory is a short note the assistant keeps about one account — "the
-    // tax adviser is Erika Mustermann", "invoices go to Rechnungen" — so it
+    // A memory is a short note the assistant keeps about one account - "the
+    // tax adviser is Erika Mustermann", "invoices go to Rechnungen" - so it
     // need not search for it again. Its key is random and the same on every
     // device it is synced to; a forgotten note keeps its row, emptied, so
     // that forgetting it reaches the other devices instead of being undone by
@@ -588,15 +588,15 @@ CREATE TABLE memory_sync (
 "#,
     // What a signed document was signed from, and where the signature was
     // put: the source as a message and attachment or another document, and
-    // the placement in millimetres. Kept so the signature can be moved —
+    // the placement in millimetres. Kept so the signature can be moved -
     // which means signing the original again somewhere else, because a
     // stamp on a page cannot be taken off it.
     r#"
 ALTER TABLE document ADD COLUMN signed_from TEXT;
 "#,
-    // v23 — settings that are one value for the whole store, and skills.
+    // v23 - settings that are one value for the whole store, and skills.
     //
-    // A preference is a named value — whether the assistant may research
+    // A preference is a named value - whether the assistant may research
     // online, whether it uses skills, where searches go. In the store rather
     // than the window's storage because the core enforces them: a tool the
     // person has not switched on is never offered to a model, whichever
@@ -625,7 +625,7 @@ CREATE TABLE skill (
     enabled     INTEGER NOT NULL DEFAULT 1
 );
 "#,
-    // v24 — Claude as a provider of its own kind. SQLite cannot change a
+    // v24 - Claude as a provider of its own kind. SQLite cannot change a
     // CHECK, so the table is built again with the wider one. Foreign keys are
     // off while it is, so that dropping the old table does not take `ai_task`
     // rows with it; the new table takes the old one's name, which is the name
@@ -646,7 +646,7 @@ DROP TABLE ai_provider;
 ALTER TABLE ai_provider_new RENAME TO ai_provider;
 PRAGMA foreign_keys = ON;
 "#,
-    // v25 — older model replies could say both "no action" and "today".
+    // v25 - older model replies could say both "no action" and "today".
     // They are cached, so fixing new replies alone would leave those false
     // alarms in the attention list indefinitely. Keep the explanation and
     // provenance; there is no action to schedule and no mail needs moving.
@@ -655,7 +655,7 @@ UPDATE urgency SET score = 0, deadline = NULL
 WHERE source = 'model' AND action = 'none'
   AND (score <> 0 OR deadline IS NOT NULL);
 "#,
-    // v26 — the ledger for things found in mail and handed on: an
+    // v26 - the ledger for things found in mail and handed on: an
     // invitation accepted, and later a todo kept or a statement filed.
     //
     // One row per thing, keyed by what identifies the thing itself rather
@@ -668,7 +668,7 @@ WHERE source = 'model' AND action = 'none'
     // meeting sends the same UID again with a higher `SEQUENCE`, and that
     // is a new question, not a repeat: a row answers for the revision it
     // was written at and no higher. `sink` and `reference` are where it
-    // went and what that place calls it — both empty for now, since
+    // went and what that place calls it - both empty for now, since
     // nothing writes to a calendar yet, and both needed by the first thing
     // that does, if only to take an event back out when the meeting is
     // cancelled.
@@ -686,7 +686,7 @@ CREATE TABLE IF NOT EXISTS handoff (
     at        INTEGER NOT NULL
 );
 "#,
-    // v27 — letters on paper, posted by LetterXpress. One row per letter,
+    // v27 - letters on paper, posted by LetterXpress. One row per letter,
     // written as `sending` before LetterXpress is asked, for the outbox's
     // reason: a letter costs money and cannot be unposted, so a crash in the
     // middle must leave a row saying one may have gone. `job_id` is
@@ -718,7 +718,7 @@ CREATE TABLE IF NOT EXISTS letter (
 );
 CREATE INDEX IF NOT EXISTS letter_account ON letter (account_id, created_at);
 "#,
-    // v28 — which letters have their record in the account's Sent folder. A
+    // v28 - which letters have their record in the account's Sent folder. A
     // posted letter is filed there as a message, as sent mail is; a row here
     // says that was done, or is being done. It is written before the message
     // is appended and taken away again if the append fails, so a letter is

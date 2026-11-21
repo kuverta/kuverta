@@ -2,7 +2,7 @@
 //!
 //! The append itself needs IMAP, which the dev stack provides and these tests do
 //! not. What can be checked without it is everything that must happen before a
-//! connection is ever made — and the refusal of Bcc is the one that matters.
+//! connection is ever made - and the refusal of Bcc is the one that matters.
 
 use core_rpc::{DraftInput, RpcError, Session};
 
@@ -27,7 +27,7 @@ impl Drop for TempDir {
 #[tokio::test]
 async fn a_draft_with_bcc_is_refused_before_anything_is_built() {
     // Bcc is never written into the message, so a draft saved to the server
-    // would lose its blind recipients — and whoever sent it later would send
+    // would lose its blind recipients - and whoever sent it later would send
     // it without them, from any client, with nothing to say so.
     let dir = TempDir::new("bcc");
     let err = Session::new(dir.0.clone())
@@ -204,8 +204,8 @@ fn a_forward_carries_the_files_of_the_message_it_forwards() {
 ///
 /// The folder decides, not the `\Draft` flag: a copy in Sent or Trash can keep
 /// the flag its draft had, and a draft appended by hand can lack it. When the
-/// one message sits in Drafts and Sent at once — the draft never cleared away
-/// after sending — it is sent, not a draft.
+/// one message sits in Drafts and Sent at once - the draft never cleared away
+/// after sending - it is sent, not a draft.
 #[test]
 fn a_message_in_drafts_is_reported_as_a_draft_unless_it_was_sent() {
     use core_store::model::*;

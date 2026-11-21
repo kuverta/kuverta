@@ -6,8 +6,8 @@
 //! and are not here yet.
 //!
 //! The shape is the point. What one kind needs and another does not sits in
-//! [`Detail`]; what they all have — where it was found, what identifies it,
-//! whether its sender is a stranger, whether it may be answered — sits in
+//! [`Detail`]; what they all have - where it was found, what identifies it,
+//! whether its sender is a stranger, whether it may be answered - sits in
 //! [`Offer`]. That is the trick `core-paper` plays by giving a document the
 //! shapes a message has: unify on the data rather than on an interface, so
 //! the surface above learns one thing once.
@@ -85,8 +85,8 @@ pub enum Detail {
 pub struct Offer {
     pub origin: Origin,
     /// What identifies the thing itself rather than the mail that carried
-    /// it, so that the same invitation arriving twice — forwarded, synced
-    /// again, or filed under two of Gmail's labels — is recognised as one.
+    /// it, so that the same invitation arriving twice - forwarded, synced
+    /// again, or filed under two of Gmail's labels - is recognised as one.
     /// Falls back to the origin when the sender gave nothing to go on.
     pub key: String,
     /// One line, for the head of the card.

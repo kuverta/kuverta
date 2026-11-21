@@ -1,8 +1,8 @@
 //! Device-flow behaviour, exercised against a scripted OAuth endpoint.
 //!
 //! A mock rather than a real tenant: the interesting cases here are the ones
-//! that are awkward to reproduce against Microsoft on demand — a rejected
-//! refresh token, a `slow_down`, an expired code — and they are exactly the
+//! that are awkward to reproduce against Microsoft on demand - a rejected
+//! refresh token, a `slow_down`, an expired code - and they are exactly the
 //! paths that would otherwise only be discovered in production.
 
 use std::sync::atomic::{AtomicUsize, Ordering};

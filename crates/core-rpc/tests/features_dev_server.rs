@@ -170,7 +170,7 @@ async fn a_folder_is_made_on_the_server_and_deleted_only_when_empty() {
         "a parent is refused"
     );
 
-    // Nor is one holding mail — as the server says, not the store, which has
+    // Nor is one holding mail - as the server says, not the store, which has
     // not synced it yet.
     append(
         &user,

@@ -6,7 +6,7 @@
 //!
 //! [`ImapClient::append`] is the one write, and it does not weaken that.
 //! `APPEND` creates a message; it cannot modify or remove one, and it names its
-//! target mailbox rather than acting on a selected one — so no folder is ever
+//! target mailbox rather than acting on a selected one - so no folder is ever
 //! opened writable. It exists so a sent message can be filed in Sent, which is
 //! stage 1 of the write capability in docs/implementation-plan.md section 1a.
 //! Stage 2 is where `SELECT`, `STORE` and `EXPUNGE` arrive, and where this
@@ -78,7 +78,7 @@ pub struct ImapClient {
 /// Most messages to pull in one `FETCH`, regardless of how small they are.
 ///
 /// A cap on the command length and on the per-response bookkeeping, not on
-/// memory — [`MAX_BATCH_BYTES`] does that.
+/// memory - [`MAX_BATCH_BYTES`] does that.
 pub const MAX_BATCH_MESSAGES: usize = 200;
 
 /// Roughly how many bytes of message body to hold in memory at once.
@@ -173,7 +173,7 @@ impl ImapClient {
         let opened = open_transport(config).await?;
 
         let mut client = Client::new(opened.transport);
-        // The server greeting must be consumed before any command is sent —
+        // The server greeting must be consumed before any command is sent -
         // unless STARTTLS already did, since no second greeting follows the
         // upgrade.
         if !opened.greeting_consumed {
@@ -242,7 +242,7 @@ impl ImapClient {
     /// Deletes a folder.
     ///
     /// IMAP `DELETE` removes a folder *and every message in it*, which is the
-    /// one command here that can destroy mail outright — so this refuses
+    /// one command here that can destroy mail outright - so this refuses
     /// unless the server itself says the folder is empty, checked on the same
     /// connection immediately before. A caller's own count is not enough: it
     /// is only as fresh as the last sync, and another client may have filed
@@ -294,7 +294,7 @@ impl ImapClient {
     /// Looks at what is actually at `uid` in the open folder.
     ///
     /// This is the conflict check. UIDs are stable within a UIDVALIDITY, but
-    /// "stable" only means the server will not reissue one — it says nothing
+    /// "stable" only means the server will not reissue one - it says nothing
     /// about the message still being there, and a stale UID acted on blindly is
     /// how a client archives the wrong mail.
     ///
@@ -325,8 +325,8 @@ impl ImapClient {
     /// Moves `uid` out of the open folder and into `target`.
     ///
     /// Prefers RFC 6851 `UID MOVE`, which is atomic. Without it the move is a
-    /// copy, a `\\Deleted` flag, and — only if the server offers RFC 4315
-    /// `UIDPLUS` — a `UID EXPUNGE` of that one message.
+    /// copy, a `\\Deleted` flag, and - only if the server offers RFC 4315
+    /// `UIDPLUS` - a `UID EXPUNGE` of that one message.
     ///
     /// A bare `EXPUNGE` is deliberately never sent: it removes every
     /// `\\Deleted` message in the folder, including ones another client marked,
@@ -390,8 +390,8 @@ impl ImapClient {
     /// someone's mail server is the kind of thing that should happen because
     /// they asked, not because a command needed somewhere to put something.
     ///
-    /// Returns whether the special-use attribute was applied. Dovecot — and so
-    /// most of the small providers — advertises `SPECIAL-USE`, meaning it
+    /// Returns whether the special-use attribute was applied. Dovecot - and so
+    /// most of the small providers - advertises `SPECIAL-USE`, meaning it
     /// reports attributes in `LIST`, but not `CREATE-SPECIAL-USE`, meaning it
     /// will not let you set one. There the folder is created plainly and found
     /// by name instead, which is why [`find_archive`] keeps a name fallback.
@@ -459,7 +459,7 @@ impl ImapClient {
     /// which is what stops a first sync of a real mailbox from loading every
     /// body into memory at once.
     ///
-    /// `lo:*` has an IMAP quirk — `*` is the *highest existing UID*, so a `lo`
+    /// `lo:*` has an IMAP quirk - `*` is the *highest existing UID*, so a `lo`
     /// past the end returns the last message rather than nothing. Filtering on
     /// `uid >= lo` here handles that in one place, for every caller.
     pub async fn uid_sizes(&mut self, lo: u32) -> Result<Vec<(u32, u32)>, ProtoError> {
@@ -622,8 +622,8 @@ pub use core_store::model::{ARCHIVE_NAMES, DRAFTS_NAMES, SENT_NAMES, TRASH_NAMES
 ///
 /// Attributes are tried in the order given and win outright over names: a
 /// server that puts `\\Sent` on a folder called something else is right and the
-/// name list is wrong. Names are only the fallback, for servers — Dovecot in
-/// its default configuration among them — that declare no special use at all.
+/// name list is wrong. Names are only the fallback, for servers - Dovecot in
+/// its default configuration among them - that declare no special use at all.
 ///
 /// A name matches either in full or as the last path segment, because real
 /// servers nest these: Gmail has `[Gmail]/All Mail`, and a Dovecot configured
@@ -670,7 +670,7 @@ pub fn find_archive<'a>(
 ) -> Option<&'a str> {
     find_special(folders.clone(), &["\\Archive"], ARCHIVE_NAMES).or_else(|| {
         // Gmail has no Archive folder at all. Archiving there means removing
-        // the INBOX label, which over IMAP is a move into All Mail — the
+        // the INBOX label, which over IMAP is a move into All Mail - the
         // folder it marks `\\All`. Tried last so a server with a real Archive
         // folder is never sent here instead.
         //
@@ -730,7 +730,7 @@ pub fn find_drafts(folders: &[RemoteFolder]) -> Option<&RemoteFolder> {
 
 /// A connection, and whether opening it already consumed the server greeting.
 ///
-/// STARTTLS has to read the greeting itself, before the IMAP client exists —
+/// STARTTLS has to read the greeting itself, before the IMAP client exists -
 /// and the server does not send a second one after the upgrade, so the caller
 /// must know not to wait for one.
 struct Opened {
@@ -757,8 +757,8 @@ async fn open_transport(config: &ImapConfig) -> Result<Opened, ProtoError> {
             // user's own enterprise or pinned roots keep working.
             //
             // The crypto provider is named rather than left to rustls to infer.
-            // Since `core-smtp` arrived the workspace links two of them —
-            // reqwest's rustls pulls aws-lc-rs, mail-send pulls ring — and with
+            // Since `core-smtp` arrived the workspace links two of them -
+            // reqwest's rustls pulls aws-lc-rs, mail-send pulls ring - and with
             // both present rustls cannot choose a process-wide default, so
             // `ClientConfig::with_platform_verifier()` panics at the first
             // handshake. `core_smtp::submit::tls_connector` is the same code
@@ -818,7 +818,7 @@ async fn negotiate_starttls(mut tcp: TcpStream, host: &str) -> Result<Transport,
                 "server refused STARTTLS ({rest}); refusing to continue in cleartext"
             )));
         }
-        // An untagged line — a CAPABILITY listing, usually. Discarded on
+        // An untagged line - a CAPABILITY listing, usually. Discarded on
         // purpose: see the note about stripping above.
     }
 
@@ -1004,7 +1004,7 @@ mod tests {
     }
 
     /// A Dovecot that declares nothing and nests under INBOX with a `.`
-    /// delimiter — the case the name fallback exists for.
+    /// delimiter - the case the name fallback exists for.
     fn bare_dovecot() -> Vec<(&'static str, Option<&'static str>)> {
         vec![
             ("INBOX", None),
@@ -1025,7 +1025,7 @@ mod tests {
 
     #[test]
     fn all_mail_is_found_by_name_when_the_attribute_is_missing() {
-        // A server that nests like Gmail but reports no special use at all —
+        // A server that nests like Gmail but reports no special use at all -
         // which is what happens if only the older XLIST is offered.
         let bare = vec![
             ("INBOX", None),
@@ -1107,7 +1107,7 @@ mod tests {
     fn a_tls_connector_can_be_built() {
         // Regression test with no server in it. Two crypto providers are linked
         // into this workspace, so any rustls config that leaves the choice to
-        // the process-wide default panics here rather than returning an error —
+        // the process-wide default panics here rather than returning an error -
         // and it would do so at the first real TLS sync, which is exactly the
         // path no test reaches (the dev server is plaintext).
         assert!(tls_connector().is_ok());

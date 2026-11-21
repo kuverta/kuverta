@@ -3,7 +3,7 @@
 //! The case this exists for arrived from DHL: a parcel notice whose own
 //! `text/plain` part its converter had given up on halfway, so the reading
 //! pane showed `<table border="0" cellpadding="0">` and Outlook conditional
-//! comments between the sentences. These are the two halves of the answer —
+//! comments between the sentences. These are the two halves of the answer -
 //! noticing that a plain part is that bad, and making a better one.
 
 use core_rpc::html::{looks_converted_badly, to_text, Refused};
@@ -61,7 +61,7 @@ fn a_parcel_notice_reads_as_words_rather_than_as_markup() {
 #[test]
 fn a_button_is_not_read_out_twice_because_its_icon_repeats_it() {
     // Every button in the real notice is an icon and a label inside one
-    // link, and the icon's alt text is the label — so it came out as
+    // link, and the icon's alt text is the label - so it came out as
     // "[Ablageort buchen] Ablageort buchen". The label is written with a
     // line break through the middle of it, which is why this looks past one.
     let html = r#"<a href="https://x"><img src="i.png" alt="Ablageort<br>buchen">
@@ -80,7 +80,7 @@ fn a_button_is_not_read_out_twice_because_its_icon_repeats_it() {
 fn a_tag_ends_where_the_tag_ends_and_not_at_a_quoted_angle_bracket() {
     // The bug this is here for: `alt="Ablageort<br>buchen"` ended the tag at
     // the `>` inside the quotes, and the rest of the attribute spilled into
-    // the message as words — style declarations and all.
+    // the message as words - style declarations and all.
     let html = r#"<p><img alt="a<br>b" style="width:66px;height:58px;">Text</p>"#;
     let text = to_text(html).unwrap();
     assert_eq!(
@@ -180,7 +180,7 @@ fn an_entity_window_that_lands_inside_a_character_does_not_cut_it_in_half() {
     // second `Ľ`, and slicing a `str` there is a panic. A letter carrying it
     // would have taken down the thread rendering it, from anyone who can send
     // mail.
-    // Returning at all is the whole assertion — the bug was a panic, and
+    // Returning at all is the whole assertion - the bug was a panic, and
     // either answer about this string is a fine one.
     let found = "&\n\0Ľ!Ľ&6\0Ľ<";
     let _ = to_text(found);
@@ -202,7 +202,7 @@ fn an_entity_window_that_lands_inside_a_character_does_not_cut_it_in_half() {
 fn a_letter_about_html_gets_its_html_back_as_words_rather_than_as_markup() {
     // `&lt;script&gt;` is somebody writing about a script tag, not sending
     // one, and what they wrote is what they should read back. It comes out
-    // as the characters `<script>` — text, which the window renders as text.
+    // as the characters `<script>` - text, which the window renders as text.
     //
     // This is here because the fuzzer's first run in CI asserted the opposite
     // and failed on ordinary mail: a target that forbids the *bytes* `<script`
@@ -229,7 +229,7 @@ fn a_letter_about_html_gets_its_html_back_as_words_rather_than_as_markup() {
 fn an_empty_link_shows_an_address_somebody_could_follow_and_no_other_kind() {
     // The reason an empty link shows its address at all is that showing
     // nothing would be worse. That reasoning does not reach a `javascript:`
-    // address, which means nothing to a person reading it — and a fuzzer
+    // address, which means nothing to a person reading it - and a fuzzer
     // found this one printed into the message word for word.
     for href in [
         "javascript:alert(1)",
@@ -275,7 +275,7 @@ fn a_link_wrapped_round_a_paragraph_does_not_take_the_reader_with_it() {
     // The text is not only ever appended to. A block element runs `newline`,
     // which pops the trailing spaces, so by the closing `</a>` the text can
     // be shorter than it was at the opening one. Reading the link's own words
-    // back by the offset noted at the `<a>` then panicked — index 104 into a
+    // back by the offset noted at the `<a>` then panicked - index 104 into a
     // string of 101 bytes, from a fuzzer, on markup like this.
     let text = to_text("<p><a href=\"https://example.de\"> </h2><p></a>Danach</p>").unwrap();
     assert!(text.contains("Danach"), "{text:?}");
@@ -313,8 +313,8 @@ fn the_words_either_side_of_a_tag_are_one_word() {
 
     // Which means the text can hold bytes the markup never had side by side.
     // A fuzzer found `Tom Fisher!vbscript<>:m`, whose text says `vbscript:`.
-    // Nothing is wrong with that — the alternative is refusing to join words
-    // — and it is written down here because it is the reason the fuzz target
+    // Nothing is wrong with that - the alternative is refusing to join words
+    // - and it is written down here because it is the reason the fuzz target
     // asserts nothing about executable content: it cannot tell this from a
     // parser carrying markup through, and neither can any input-only rule.
     let text = to_text("<p>Tom Fisher!vbscript<>:m</p>").unwrap();

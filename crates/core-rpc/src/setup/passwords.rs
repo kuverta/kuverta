@@ -1,7 +1,7 @@
 //! The passwords Thunderbird has saved, so an import needs none typed again.
 //!
 //! Thunderbird keeps logins in `logins.json`, encrypted with a key in
-//! `key4.db` beside it — the same profile the servers are read from. Without a
+//! `key4.db` beside it - the same profile the servers are read from. Without a
 //! primary password the key is protected by an empty one, which is why
 //! anything that can read the profile can read the passwords: the file is the
 //! secret. With a primary password set, that password is needed here too.
@@ -14,7 +14,7 @@
 //! 2. `nssPrivate` holds the key the logins are encrypted with, encrypted the
 //!    same way.
 //! 3. Each login's fields are DER: a key id, the cipher and its IV, and the
-//!    ciphertext — 3DES on older profiles, AES-256 on newer ones.
+//!    ciphertext - 3DES on older profiles, AES-256 on newer ones.
 //!
 //! Nothing here writes to the profile, and no password is returned to a
 //! window: [`crate::setup`] puts them straight into the keychain.
@@ -112,7 +112,7 @@ fn key_for(profile: &Path, primary_password: &str) -> Result<Keys> {
         return Err(PasswordError::None);
     }
     // A copy, because Thunderbird may be running and the database is then in
-    // use — the same reason Apple Mail's accounts are read from a copy.
+    // use - the same reason Apple Mail's accounts are read from a copy.
     let copy = copy_aside(&db)?;
     let result = key_from_db(&copy.0, primary_password);
     let _ = std::fs::remove_dir_all(&copy.1);

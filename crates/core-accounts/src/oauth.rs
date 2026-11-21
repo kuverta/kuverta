@@ -2,7 +2,7 @@
 //!
 //! Microsoft 365 has disabled basic authentication for IMAP, so a token is the
 //! only way in. The device flow is the right grant for a desktop mail client:
-//! it needs no redirect URI, no embedded browser, and no client secret — the
+//! it needs no redirect URI, no embedded browser, and no client secret - the
 //! user opens a URL, types a short code, and the app polls until that happens.
 //!
 //! Two rules shape the design:
@@ -40,7 +40,7 @@ impl OAuth2Config {
     /// Microsoft 365 / Outlook.com.
     ///
     /// `tenant` is your directory ID, or `"common"` for personal accounts. The
-    /// client ID comes from an app registration in Azure AD — for your own
+    /// client ID comes from an app registration in Azure AD - for your own
     /// tenant that is a few minutes of clicking, with none of the verification
     /// process Google requires of a distributed client.
     pub fn microsoft(user: impl Into<String>, client_id: impl Into<String>, tenant: &str) -> Self {
@@ -51,7 +51,7 @@ impl OAuth2Config {
             device_code_url: format!("{authority}/devicecode"),
             token_url: format!("{authority}/token"),
             scopes: vec![
-                // The IMAP scope proper, plus offline_access — without it the
+                // The IMAP scope proper, plus offline_access - without it the
                 // token response carries no refresh token and the user would
                 // have to re-authorise every hour.
                 "https://outlook.office.com/IMAP.AccessAsUser.All".into(),
@@ -71,7 +71,7 @@ pub struct DeviceCodePrompt {
 
 /// Where the refresh token is kept.
 ///
-/// A trait so tests never touch the real keychain — on macOS every keychain
+/// A trait so tests never touch the real keychain - on macOS every keychain
 /// read from a test binary raises a GUI prompt, which would make `cargo test`
 /// interactive.
 pub trait TokenStore: Send + Sync {
@@ -172,7 +172,7 @@ struct ErrorResponse {
 /// first authorised.
 ///
 /// Refreshing, caching and rotating the stored token are the same whether the
-/// grant was a device code or an authorization code — and they are the subtle
+/// grant was a device code or an authorization code - and they are the subtle
 /// part, so they live in one place rather than once per flow.
 pub(crate) struct TokenSession {
     pub(crate) user: String,
@@ -232,7 +232,7 @@ impl TokenSession {
     /// Completes a token-endpoint form with the client identity.
     ///
     /// Every grant sends `client_id`, and sends `client_secret` too when the
-    /// provider issued one — which Google does even for installed apps.
+    /// provider issued one - which Google does even for installed apps.
     pub(crate) fn token_form<'a>(
         &'a self,
         mut form: Vec<(&'a str, &'a str)>,
@@ -446,7 +446,7 @@ impl AuthProvider for OAuth2Device {
 /// Decodes a response, turning an OAuth error body into a typed error.
 ///
 /// Providers signal `authorization_pending` with HTTP 400, so status alone
-/// cannot distinguish "still waiting" from "broken" — the body has to be read
+/// cannot distinguish "still waiting" from "broken" - the body has to be read
 /// either way.
 async fn parse_json<T: serde::de::DeserializeOwned>(response: reqwest::Response) -> Result<T> {
     let status = response.status();

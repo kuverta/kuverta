@@ -2,13 +2,13 @@
 //!
 //! A vision model reads images, not PDFs. scannerd's PDFs carry each page's
 //! photograph unchanged as a JPEG (`/DCTDecode`), so taking them back out is
-//! finding those streams — no PDF renderer, no image library. A PDF from
+//! finding those streams - no PDF renderer, no image library. A PDF from
 //! anywhere else may compress its images another way or give a stream's length
 //! only by reference; those yield nothing here, and a caller falls back to the
 //! text Paperless already has, which for a PDF that was never a photograph is
 //! usually good.
 
-/// Each JPEG embedded in `pdf`, in the order they appear — for scannerd's
+/// Each JPEG embedded in `pdf`, in the order they appear - for scannerd's
 /// letters, one per page.
 pub fn jpeg_pages(pdf: &[u8]) -> Vec<Vec<u8>> {
     let mut pages = Vec::new();

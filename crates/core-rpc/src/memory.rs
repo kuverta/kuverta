@@ -4,7 +4,7 @@
 //! look up again with each question: who the tax adviser is, which folder
 //! invoices go to, that the person signs letters with their first name. The
 //! notes go into the system prompt, so a question they answer needs no search
-//! at all — and they cost their length on every question, which is why they
+//! at all - and they cost their length on every question, which is why they
 //! are kept few and short.
 //!
 //! ## Who may write one
@@ -23,7 +23,7 @@
 //! message holding every note, signed with the account's own OpenPGP key and
 //! encrypted to it alone: the server sees a message to and from the account,
 //! and nothing of what it says. A snapshot is only believed if it decrypts
-//! *and* carries a valid signature by a key whose secret half is here —
+//! *and* carries a valid signature by a key whose secret half is here -
 //! anyone can encrypt to a public key, and a note is read by the model.
 //!
 //! Notes merge one by one, the later change winning, so two devices that
@@ -87,7 +87,7 @@ const END: &str = "-----END KUVERTA MEMORY-----";
 const SUBJECT: &str = "kuverta assistant memory";
 
 /// The text of a snapshot message: a line for whoever opens it in another
-/// program, and the notes as base64 between markers — no line of JSON for a
+/// program, and the notes as base64 between markers - no line of JSON for a
 /// mail program to wrap or re-encode.
 fn snapshot_body(snapshot: &Snapshot) -> String {
     use base64::Engine as _;

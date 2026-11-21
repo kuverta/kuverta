@@ -4,14 +4,14 @@
 //! is not something to rely on: a calendar program may put it inside a
 //! `multipart/alternative` beside the text and the HTML, attach it as
 //! `invite.ics`, or both. So every part is looked at by its own declared
-//! type rather than asking which of them the parser took for a body — the
+//! type rather than asking which of them the parser took for a body - the
 //! same invitation must be found whichever shape it arrives in.
 //!
 //! Whether it may be answered turns on one question, and the answer comes
 //! from the mail there is: **has this mailbox ever written to the sender?**
 //!
 //! Not "have they written to us", which is the obvious test and the wrong
-//! one. Inbound volume is the sender's to manufacture — a newsletter has
+//! one. Inbound volume is the sender's to manufacture - a newsletter has
 //! written fifty times and is still a stranger, and an unsolicited invitation
 //! is fishing for exactly the confirmation that answering it would give. A
 //! letter *sent* from this mailbox is the one signal nobody outside it can
@@ -71,8 +71,8 @@ impl Core {
             };
             let standing = self.standing_of(account, from)?;
             let offer = Offer::from_invite(origin, invite, standing);
-            // The same invitation can be in a message twice — once in the
-            // alternative and once attached — and it is one offer.
+            // The same invitation can be in a message twice - once in the
+            // alternative and once attached - and it is one offer.
             if found
                 .iter()
                 .any(|seen: &OfferView| seen.offer.key == offer.key)

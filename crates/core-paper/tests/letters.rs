@@ -3,7 +3,7 @@
 //!
 //! Found on the dev stack: freshly scanned post has no correspondent and a title
 //! of `Post <timestamp>`, so triage listed a dash and a number, and filing a
-//! letter taught nothing. These are pure — a `Document` in, strings out.
+//! letter taught nothing. These are pure - a `Document` in, strings out.
 
 use core_paper::Document;
 use core_rules::{Category, Classifier, Learned};

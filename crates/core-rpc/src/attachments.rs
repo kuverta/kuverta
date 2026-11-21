@@ -6,15 +6,15 @@
 //! time and nothing is stored twice.
 //!
 //! For encrypted mail the attachments are inside the encryption, so they are
-//! listed from what decrypting yields — in memory, for the one request, like
+//! listed from what decrypting yields - in memory, for the one request, like
 //! the decrypted text. Mail that cannot be decrypted lists none: its only
 //! part is the ciphertext.
 //!
 //! An attachment is written by whoever sent the mail. Its name is theirs, so
 //! it is made safe to use as a file name; its type is theirs, so the bytes are
 //! looked at when the declared type says nothing; and a file that would run a
-//! program when opened — or a web page, which would open in a browser with
-//! whatever it asks for — is marked **risky**: the window offers to save it,
+//! program when opened - or a web page, which would open in a browser with
+//! whatever it asks for - is marked **risky**: the window offers to save it,
 //! never to open it.
 
 use mail_parser::{Message as MimeMessage, MessageParser, MessagePart, MimeHeaders};
@@ -33,8 +33,8 @@ pub struct AttachmentView {
     pub index: usize,
     /// Safe to use as a file name: no directories, no control characters.
     pub name: String,
-    /// `type/subtype`, lowercase. The declared type, or — when the sender's
-    /// program declared nothing useful — what the bytes are.
+    /// `type/subtype`, lowercase. The declared type, or - when the sender's
+    /// program declared nothing useful - what the bytes are.
     pub content_type: String,
     pub size: usize,
     /// Part of the text rather than attached for its own sake: an image the
@@ -292,7 +292,7 @@ fn preview_for(content_type: &str) -> &'static str {
 
 /// A name the sender chose, made safe to write to disk: the last path
 /// component, no control or reserved characters, no leading dots, not too
-/// long — with the extension kept, since that is what opens it.
+/// long - with the extension kept, since that is what opens it.
 pub fn safe_file_name(name: &str) -> String {
     let last = name.rsplit(['/', '\\']).next().unwrap_or_default();
     let cleaned: String = last
@@ -359,7 +359,7 @@ fn describe(index: usize, part: &MessagePart<'_>) -> AttachmentView {
 
 /// The message's own pictures, for its HTML to show inline: each part's
 /// Content-ID, without the angle brackets it is written in, and the index
-/// [`Core::attachment`] fetches it by. Only pictures — a `cid:` that names
+/// [`Core::attachment`] fetches it by. Only pictures - a `cid:` that names
 /// a PDF or a program is a `cid:` that shows nothing.
 pub(crate) fn pictures(parsed: &MimeMessage<'_>) -> Vec<(String, usize)> {
     attachment_parts(parsed)

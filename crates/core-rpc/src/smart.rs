@@ -1,7 +1,7 @@
 //! Smart mailboxes: saved searches that live in the sidebar.
 //!
 //! The rules are `core_store::smart`'s; this adds what a window needs around
-//! them — counts for the sidebar, validation with reasons, and bringing over
+//! them - counts for the sidebar, validation with reasons, and bringing over
 //! the ones a person already built in another program.
 //!
 //! ## Importing
@@ -18,8 +18,8 @@
 //!
 //! A smart mailbox is a search, and a search moves nothing: what it gathers
 //! stays in the Inbox. One that is given a `folder` also takes its mail out
-//! of the Inbox — into that folder on the server, so every device sees it
-//! gone — now, and from then on for every new message, before the list shows
+//! of the Inbox - into that folder on the server, so every device sees it
+//! gone - now, and from then on for every new message, before the list shows
 //! it. The moving is done by a task that belongs to the mailbox: an ordinary
 //! queued move with its Undo, each message once, so mail put back in the
 //! Inbox by hand stays there. The mailbox then lists its folder, and the
@@ -128,7 +128,7 @@ impl Core {
     }
 
     /// What the list shows for a smart mailbox: its folder, when it takes its
-    /// mail into one — mail moved there by hand included — or else what its
+    /// mail into one - mail moved there by hand included - or else what its
     /// rules select, wherever it is.
     pub fn smart_filter(&self, id: i64) -> Result<ListFilter> {
         let mailbox = self
@@ -819,8 +819,8 @@ impl crate::session::Session {
         })
     }
 
-    /// Runs the tasks that need no model on one account — the smart
-    /// mailboxes' and the person's — so new mail is where they put it before
+    /// Runs the tasks that need no model on one account - the smart
+    /// mailboxes' and the person's - so new mail is where they put it before
     /// the list shows it. How many messages were acted on.
     pub fn sort_new_mail(&self, email: &str) -> Result<usize> {
         let core = Core::open(self.data_dir())?;

@@ -34,7 +34,7 @@ fn a_mailing_list_is_a_newsletter() {
         ..Default::default()
     };
     // A newsletter from a two-word "name" to a single recipient must not be
-    // mistaken for personal mail — the bulk headers suppress that.
+    // mistaken for personal mail - the bulk headers suppress that.
     assert_eq!(classify(&facts).0, Category::Newsletter);
 }
 

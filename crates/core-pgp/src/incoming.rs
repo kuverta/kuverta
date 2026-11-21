@@ -1,7 +1,7 @@
 //! Reading protected mail: PGP/MIME encrypted and signed, and inline PGP.
 //!
-//! Everything here is local CPU work on a message already on disk — parsing,
-//! a session-key decryption, a hash — so it runs when a message is opened
+//! Everything here is local CPU work on a message already on disk - parsing,
+//! a session-key decryption, a hash - so it runs when a message is opened
 //! rather than at sync time. Nothing decrypted is ever written back to the
 //! store: the plaintext exists for as long as the reading pane shows it.
 //!
@@ -13,7 +13,7 @@
 //! ## What a signature covers
 //!
 //! For `multipart/signed` the first part's bytes, exactly as they sit between
-//! the boundaries, with line endings made CRLF — so those bytes are cut out
+//! the boundaries, with line endings made CRLF - so those bytes are cut out
 //! of the raw message here rather than rebuilt from a parse, which would
 //! normalise exactly the things a signature is sensitive to. The text shown
 //! is the signed part's, so anything a list server tacked on outside it is
@@ -82,7 +82,7 @@ pub struct SignatureView {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct OpenedMessage {
     pub security: Option<SecurityView>,
-    /// The text to show, when protection changed it — decrypted, or the
+    /// The text to show, when protection changed it - decrypted, or the
     /// signed part alone. `None` means "use the message's own text", or,
     /// for a message that could not be decrypted, that there is none.
     pub body_text: Option<String>,
@@ -346,8 +346,8 @@ fn open_signed(
 
 /// Inline PGP in a text body: an armored message, or a cleartext signature.
 ///
-/// The block is replaced by what it stood for; text around it — a greeting
-/// a client put outside the armor, a list footer — is kept as it was.
+/// The block is replaced by what it stood for; text around it - a greeting
+/// a client put outside the armor, a list footer - is kept as it was.
 fn open_inline(text: &str, context: &Context<'_>) -> Option<(SecurityView, String)> {
     let mut security = SecurityView {
         format: "inline".into(),

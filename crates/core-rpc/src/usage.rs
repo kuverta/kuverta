@@ -2,8 +2,8 @@
 //! settings.
 //!
 //! Every client [`Core::ai_for`] hands out carries a [`StoreMeter`], so each
-//! request any job makes — the assistant, sorting, reading a scan, judging
-//! urgency, a task — adds to a tally by day, job and model. Only counts are
+//! request any job makes - the assistant, sorting, reading a scan, judging
+//! urgency, a task - adds to a tally by day, job and model. Only counts are
 //! kept: never what was asked or answered.
 
 use std::collections::BTreeMap;

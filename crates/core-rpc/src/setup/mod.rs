@@ -8,7 +8,7 @@
 //!
 //! Nothing here installs software on its own. Ollama and Docker are the
 //! person's to install, from their makers, and this only says where. The one
-//! thing it runs is Paperless, in Docker, when asked to — a compose file
+//! thing it runs is Paperless, in Docker, when asked to - a compose file
 //! written into kuverta's own data directory, which is where it can be found
 //! and removed again.
 
@@ -511,7 +511,7 @@ pub struct PaperlessInstall {
     /// The first Paperless user, which kuverta then signs in as.
     pub username: String,
     pub password: String,
-    /// Whether other devices on the network may reach it — the scanner has
+    /// Whether other devices on the network may reach it - the scanner has
     /// to, to deliver post.
     pub on_network: bool,
 }
@@ -538,7 +538,7 @@ const PAPERLESS_IMAGE: &str = "ghcr.io/paperless-ngx/paperless-ngx:3.1.3";
 /// installed Paperless on it would stop the dev stack from starting.
 /// The ports an install tries, in order. A dev instance is a hundred above,
 /// so a development build installing its own Paperless can never take the
-/// port the installed app's is on — nor land on it when that one is stopped.
+/// port the installed app's is on - nor land on it when that one is stopped.
 fn port_choices() -> [u16; 5] {
     match core_accounts::instance() {
         Some(_) => [8110, 8120, 8130, 8140, 8988],
@@ -558,7 +558,7 @@ fn free_port() -> u16 {
 /// volumes all hang off this name, so two kuvertas sharing it would be
 /// starting and stopping each other's Paperless and writing to one database.
 /// A dev instance therefore gets its own. The name people already have is
-/// kept as it is: renaming it would leave its volumes — its post — behind.
+/// kept as it is: renaming it would leave its volumes - its post - behind.
 fn compose_project(dir: &Path) -> String {
     if let Some(name) = std::fs::read_to_string(dir.join("docker-compose.yml"))
         .ok()
@@ -880,8 +880,8 @@ fn normal_url(url: &str) -> String {
 }
 
 /// Starts the Paperless kuverta installed, and waits until it answers:
-/// Docker first when its engine is not running — after a restart it usually
-/// is not — then Paperless's containers. Returns its address.
+/// Docker first when its engine is not running - after a restart it usually
+/// is not - then Paperless's containers. Returns its address.
 pub async fn start_paperless(
     data_dir: &Path,
     progress: impl Fn(String) + Send + Sync + Clone + 'static,
@@ -1073,7 +1073,7 @@ fn found(source: &str, input: AccountInput, existing: &[String]) -> FoundAccount
 }
 
 /// A Thunderbird login that matches an account, by its IMAP server and user
-/// name — what Thunderbird itself signs in with.
+/// name - what Thunderbird itself signs in with.
 fn login_for<'a>(
     logins: &'a [passwords::Login],
     input: &AccountInput,
@@ -1425,7 +1425,7 @@ mod tests {
         // without KUVERTA_INSTANCE, so that is the plain one.
         assert_eq!(compose_project(&paperless), "kuverta-paperless");
 
-        // Renaming an install would leave its volumes — its post — behind,
+        // Renaming an install would leave its volumes - its post - behind,
         // so whatever it says stays.
         std::fs::write(
             paperless.join("docker-compose.yml"),
@@ -1505,7 +1505,7 @@ mod tests {
         };
 
         // The user name Thunderbird signs in with, the address, or its local
-        // part — all three are seen in the wild.
+        // part - all three are seen in the wild.
         assert!(login_for(
             &logins,
             &account("erika@example.de", "mail.example.de", Some("erika"))

@@ -135,7 +135,7 @@ async fn a_queued_change_goes_out_and_the_same_pass_shows_the_result() {
     assert_eq!(summary.changes_sent, 1, "{summary:?}");
     assert_eq!(summary.changes_refused, 0, "{summary:?}");
 
-    // The queue is empty and the message has moved — both visible from the
+    // The queue is empty and the message has moved - both visible from the
     // same connection the window reads through, not the one the sync wrote on.
     assert!(core.queue(account).unwrap().is_empty());
     let detail = core.message(account, row.id).unwrap();
@@ -257,8 +257,8 @@ async fn a_preview_shows_the_envelope_without_sending_anything() {
 
 #[tokio::test]
 async fn a_reply_built_from_a_stored_message_threads_and_quotes() {
-    // Compose asks for this before drawing anything, so reply-all's rules —
-    // drop yourself, honour Reply-To — are applied in one place rather than
+    // Compose asks for this before drawing anything, so reply-all's rules -
+    // drop yourself, honour Reply-To - are applied in one place rather than
     // re-implemented in JavaScript.
     if !dev_server_available() {
         return;
@@ -325,8 +325,8 @@ async fn sending_files_a_copy_and_says_where() {
     assert!(sent.filing_error.is_none(), "{:?}", sent.filing_error);
     assert_eq!(sent.filed_in.as_deref(), Some("Sent"));
 
-    // And it is in Sent the moment the send returns — not at the next sync,
-    // which may be minutes away — named by who it went to.
+    // And it is in Sent the moment the send returns - not at the next sync,
+    // which may be minutes away - named by who it went to.
     let core = core(&dir);
     let account = core.accounts().unwrap()[0].id;
     let sent_folder = core

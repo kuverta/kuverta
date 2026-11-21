@@ -489,9 +489,9 @@ fn segments(local: &str) -> impl Iterator<Item = &str> {
         .filter(|segment| !segment.is_empty())
 }
 
-/// A display name that is the sending domain's name — "Sparkasse
+/// A display name that is the sending domain's name - "Sparkasse
 /// Aurich-Norden" from sparkasse-aurich-norden.de, "Vodafone Kundenservice"
-/// from vodafone.com — is the organisation speaking. Unless the address is
+/// from vodafone.com - is the organisation speaking. Unless the address is
 /// the person's own: Anna Weber at anna@weber.de names her domain and still
 /// writes herself.
 fn names_the_domain(name: &str, addr: Option<&str>) -> bool {

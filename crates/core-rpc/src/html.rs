@@ -4,7 +4,7 @@
 //! fine. Some are not: a DHL parcel notice arrives with a plain part its own
 //! converter gave up on halfway, raw `<table>` markup and Outlook conditional
 //! comments and all, and kuverta was showing it faithfully. This reads the
-//! HTML part instead, and only where the plain one is like that — see
+//! HTML part instead, and only where the plain one is like that - see
 //! [`looks_converted_badly`].
 //!
 //! ## What this is not
@@ -19,7 +19,7 @@
 //!
 //! Every limit below is a refusal, not a truncation: [`to_text`] returns
 //! [`Refused`] and the caller keeps what the sender sent. A half-parsed body
-//! is the one outcome worth avoiding — it is indistinguishable from a
+//! is the one outcome worth avoiding - it is indistinguishable from a
 //! well-parsed one to whoever is reading it, and a message that can silently
 //! drop the second half of a sentence is worse than one that admits it could
 //! not be read. There is no recursion, so no input can exhaust the stack; the
@@ -108,7 +108,7 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
         // A comment, which includes every Outlook conditional: `<!--[if mso]>`
         // opens one and the `-->` that follows closes it, so what such a block
         // holds is skipped and what the "downlevel revealed" form leaves
-        // outside the comment is kept — which is what a browser does too.
+        // outside the comment is kept - which is what a browser does too.
         if html[at..].starts_with("<!--") {
             let end = find(html, "-->", at + 4).ok_or(Refused::Unterminated)?;
             at = end + 3;
@@ -127,8 +127,8 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
         if SILENT.contains(&name.as_str()) && !ending {
             // Unread to its own end tag. Not to the next `>`: a stylesheet is
             // full of them. A `<head>` ends where `<body>` begins as well: a
-            // mailer that never writes `</head>` — a cable company's
-            // appointment notice does not — would otherwise have its whole
+            // mailer that never writes `</head>` - a cable company's
+            // appointment notice does not - would otherwise have its whole
             // message read as head and thrown away, where a browser shows it.
             let closed = find_close(html, &name, at);
             let end = if name == "head" {
@@ -153,7 +153,7 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
 
         match name.as_str() {
             // A link is shown as its own words. The address is kept only
-            // for a link that has none — an image or a bare button — because
+            // for a link that has none - an image or a bare button - because
             // a page of addresses beside every word is what made this mail
             // unreadable in the first place.
             "a" if !ending => link = Some((attribute(tag, "href").unwrap_or_default(), out.len())),
@@ -161,14 +161,14 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
                 if let Some((href, from)) = link.take() {
                     // `get`, not a slice. The text is not only ever appended
                     // to: a block element inside the link runs `newline`,
-                    // which pops the trailing spaces — so by the `</a>` the
+                    // which pops the trailing spaces - so by the `</a>` the
                     // text can be *shorter* than it was at the `<a>`, and
                     // `out[from..]` panics. `<p><a ,href=…</h2><p></a` did
                     // it, from a fuzzer, with index 104 into 101 bytes.
                     //
                     // Nothing there to read means the link had nothing but
                     // the whitespace that has since been trimmed, which is
-                    // an empty link — the same answer the slice would have
+                    // an empty link - the same answer the slice would have
                     // given if it had lived to give one.
                     if out.get(from..).unwrap_or("").trim().is_empty() {
                         if let Some(address) = worth_showing(&href) {
@@ -196,12 +196,12 @@ pub fn to_text(html: &str) -> Result<String, Refused> {
     Ok(text)
 }
 
-/// Whether a sender's own plain text is one of the bad conversions — markup
+/// Whether a sender's own plain text is one of the bad conversions - markup
 /// it failed to take out, left in the middle of the words.
 ///
 /// Deliberately narrow: an angle bracket is not enough, and neither is a
-/// stray `<b>`. What is looked for is the wreckage of a converter — table
-/// markup, Outlook's conditionals, a style attribute — because taking the
+/// stray `<b>`. What is looked for is the wreckage of a converter - table
+/// markup, Outlook's conditionals, a style attribute - because taking the
 /// HTML instead of a plain part the sender wrote on purpose is a step down
 /// far more often than it is a step up.
 pub fn looks_converted_badly(plain: &str) -> bool {
@@ -312,8 +312,8 @@ fn attribute(tag: &str, name: &str) -> Option<String> {
             Some(quote @ ('"' | '\'')) => rest[1..].split(quote).next().unwrap_or(""),
             _ => rest.split_whitespace().next().unwrap_or(""),
         };
-        // An attribute can hold markup of its own — DHL writes its button
-        // labels as `alt="Ablageort<br>buchen"` — and an attribute's value is
+        // An attribute can hold markup of its own - DHL writes its button
+        // labels as `alt="Ablageort<br>buchen"` - and an attribute's value is
         // text, so the markup in it is taken out rather than shown.
         return Some(without_tags(&unescape(value)));
     }
@@ -377,13 +377,13 @@ const SCHEMES: [&str; 4] = ["http://", "https://", "mailto:", "tel:"];
 
 /// A link's address, if it is one worth putting in front of somebody.
 ///
-/// Only an empty link reaches here — an icon, a bare button — where showing
+/// Only an empty link reaches here - an icon, a bare button - where showing
 /// the address is better than showing nothing. "Better than nothing" is the
 /// whole justification, and it does not hold for every address: a fuzzer
 /// found `<a href="javascript:alert(1)"></a>`, which was printed into the
 /// message verbatim. Nothing ran, because this produces text and the window
 /// renders text, but it is a line that reads like a link and means nothing
-/// to a person — and it would become a real hazard the day anything turns
+/// to a person - and it would become a real hazard the day anything turns
 /// the addresses in a message back into links.
 ///
 /// So an address is shown when it is one somebody could follow or ring, and
@@ -413,7 +413,7 @@ pub(crate) fn unescape(raw: &str) -> String {
         rest = &rest[at..];
         // Over the bytes, not over the string. `&mdash;` and every other
         // entity is ASCII, and an ASCII byte never appears inside a longer
-        // character — but a *window* of a fixed number of bytes can end
+        // character - but a *window* of a fixed number of bytes can end
         // inside one, and slicing a string there is a panic. A fuzzer found
         // it in two minutes with `&\n\0Ľ!Ľ&6\0Ľ<`: twelve bytes into that
         // is the middle of an `Ľ`.
@@ -486,7 +486,7 @@ fn tidy(text: &str) -> String {
 /// once.
 ///
 /// Every button in a parcel notice is an icon and a label inside one link,
-/// and the icon's `alt` is the label — so the reading came out as
+/// and the icon's `alt` is the label - so the reading came out as
 /// "[Ablageort buchen] Ablageort buchen". This is a reading of the text
 /// rather than of the markup on purpose: the same duplication arrives in a
 /// dozen shapes and they all end up looking like this one.
@@ -503,7 +503,7 @@ fn say_it_once(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut at = 0;
     while at < lines.len() {
-        // `[alt] label`, where the label says what the alt says — over as
+        // `[alt] label`, where the label says what the alt says - over as
         // many lines as the label took, because a button's own words are
         // often written with a line break in the middle of them.
         let repeated = lines[at]

@@ -2,8 +2,8 @@
 //!
 //! `paperless.rs` checks the client against canned answers; this checks the
 //! answers are really shaped that way. Written to hold on an empty instance as
-//! well as a used one, so it asserts on agreement — between the report, the
-//! listing and each document — rather than on what happens to be stored.
+//! well as a used one, so it asserts on agreement - between the report, the
+//! listing and each document - rather than on what happens to be stored.
 //!
 //! Start the stack with `make dev-up`. Skips when Paperless is not answering;
 //! `KUVERTA_REQUIRE_DEV_SERVER=1` makes that a failure.
@@ -141,7 +141,7 @@ async fn every_tag_that_exists_selects_the_documents_that_carry_it() {
             .filter(|document| document.tags.contains(tag))
             .count();
         // Upper-cased on purpose: a tag typed differently from how Paperless
-        // stores it is still the same address. ASCII only — full Unicode
+        // stores it is still the same address. ASCII only - full Unicode
         // upper-casing turns "ß" into "SS", which is another spelling rather
         // than another case, and Paperless (rightly) does not match it.
         let page = client

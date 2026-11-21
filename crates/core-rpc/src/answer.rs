@@ -1,23 +1,23 @@
 //! Answer: the assistant writes what compose is open on, in one click.
 //!
 //! What it is given is what is in front of the person: the message being
-//! answered or forwarded, the files attached to the answer — read, not only
-//! named, so that "anbei die Unterlagen" can say which — and whatever has been
+//! answered or forwarded, the files attached to the answer - read, not only
+//! named, so that "anbei die Unterlagen" can say which - and whatever has been
 //! typed so far. What is typed is taken as the brief: "sag zu, aber erst ab
 //! Mittwoch" is an instruction, and a half-written reply is a start to finish
 //! in its own words.
 //!
-//! It is the assistant's model and its tools, but only the tools that look —
-//! search, read a message, a conversation, an attachment, a form's fields —
+//! It is the assistant's model and its tools, but only the tools that look -
+//! search, read a message, a conversation, an attachment, a form's fields -
 //! and the two that answer an errand in kind: signing, so a message asking
 //! for a contract back signed is answered with the signed contract attached,
 //! and filling, so one asking for a form back filled out is answered with the
-//! filled form — what is known written in, what is not left empty and asked
+//! filled form - what is known written in, what is not left empty and asked
 //! for in the reply instead. A button that writes a reply must not be able to
 //! move, trash or file anything, whatever a message it reads says to it.
 //!
-//! Signing and filling make a document of the person's — a copy, with the
-//! original untouched — and that copy is attached to what is being written.
+//! Signing and filling make a document of the person's - a copy, with the
+//! original untouched - and that copy is attached to what is being written.
 //! It is attached, not sent: it lands in compose with the text, where the
 //! person reads both, takes the file out again if they did not mean it, and
 //! sends it themselves. Sending stays a thing the person does.
@@ -36,7 +36,7 @@ use crate::{Core, DocumentView, Result, RpcError};
 pub struct AnswerDraft {
     /// The text of the message: what goes in compose's body, above any quote.
     pub body: String,
-    /// Documents it made along the way — a contract it signed — to attach to
+    /// Documents it made along the way - a contract it signed - to attach to
     /// what is being written. Nothing is sent: compose takes them as files,
     /// and the person sends them or takes them out.
     #[serde(default)]
@@ -59,7 +59,7 @@ const LOOKING: [&str; 7] = [
 /// And the ones that make something. Signing: the person's signature on a PDF
 /// they were sent, so that "bitte unterschrieben zurück" is one click rather
 /// than a trip through the assistant. Filling: the answers written into a
-/// form they were sent — a Personalfragebogen, an application — so that
+/// form they were sent - a Personalfragebogen, an application - so that
 /// "bitte ausgefüllt zurück" is the same click. Both change no mail and send
 /// nothing: each copy is a new document, and it goes out only with the
 /// message the person then sends.
@@ -71,10 +71,10 @@ fn may_use(name: &str) -> bool {
     LOOKING.contains(&name) || name == SIGNING || name == FILLING
 }
 
-/// Whether a call to sign or fill is about what is in front of the person —
+/// Whether a call to sign or fill is about what is in front of the person -
 /// an attachment of the message being answered or forwarded, or a document
 /// made in this very answer (`made`), the way a filled form then takes the
-/// signature — rather than some other mail.
+/// signature - rather than some other mail.
 ///
 /// Mail is data, and a message that asks for another one's contract to be
 /// signed is asking for the person's signature on a page they never saw. So
@@ -96,7 +96,7 @@ fn about_what_is_open(args: &serde_json::Value, draft: &DraftInput, made: &[i64]
 
 /// Rounds of looking before it must write. A form is the longest errand:
 /// read the message, its attachment and its fields, look something up in
-/// earlier mail, fill, sign the filled copy — and then write.
+/// earlier mail, fill, sign the filled copy - and then write.
 const MAX_STEPS: usize = 8;
 
 /// How much of all the attached files together a model is shown.
@@ -399,8 +399,8 @@ mod tests {
             &[]
         ));
         assert!(about_what_is_open(&about(7), &open(None, Some(7)), &[]));
-        // A document made in this answer — the filled form that now takes the
-        // signature — is the open errand too.
+        // A document made in this answer - the filled form that now takes the
+        // signature - is the open errand too.
         assert!(about_what_is_open(
             &serde_json::json!({"document_id": 3}),
             &open(Some(7), None),

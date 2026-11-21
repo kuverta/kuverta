@@ -2,8 +2,8 @@
 //!
 //! "Send tomorrow at 8" is a promise made now and kept later, so the whole
 //! message is written down now: the draft as the compose window described it,
-//! and when it is due. The store does not know what a draft is — core-rpc
-//! stores it as JSON and reads it back — so this is only the ledger: what is
+//! and when it is due. The store does not know what a draft is - core-rpc
+//! stores it as JSON and reads it back - so this is only the ledger: what is
 //! due, what went, what failed and why.
 //!
 //! A message moves through `scheduled` → `sending` → `sent`, or to `failed`
@@ -110,7 +110,7 @@ impl Store {
     }
 
     /// Takes a due message for sending. False when something else took it
-    /// first, it was cancelled, or it was moved to later in the meantime —
+    /// first, it was cancelled, or it was moved to later in the meantime -
     /// then it is not ours to send, or not yet.
     pub fn claim_outbox(&self, id: i64, now: i64) -> Result<bool> {
         let changed = self.conn.execute(
@@ -161,7 +161,7 @@ impl Store {
 
     /// Messages left `sending` by a window that closed mid-send. Whether they
     /// went is unknowable from here, so they are marked failed with that said,
-    /// for a person to decide — never re-sent on a guess.
+    /// for a person to decide - never re-sent on a guess.
     pub fn recover_interrupted_sends(&self) -> Result<usize> {
         Ok(self.conn.execute(
             "UPDATE outbox SET state = 'failed',

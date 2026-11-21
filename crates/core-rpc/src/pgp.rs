@@ -1,14 +1,14 @@
 //! OpenPGP keys, as a settings view and a compose window use them.
 //!
 //! Thin over [`core_pgp::Keyring`], which keeps certificates as files in the
-//! data directory and passphrases in the keychain — not in the store, so none
+//! data directory and passphrases in the keychain - not in the store, so none
 //! of this touches the schema. What crosses this boundary follows the
 //! passwords rule: a passphrase goes in and is never handed back; a view says
 //! whether one is stored, not what it is. Secret keys are never exported.
 //!
 //! Sending signed or encrypted mail is not here: it is two flags on
 //! [`crate::DraftInput`], honoured by [`crate::Session::send`], so that
-//! anything that sends — the window, the CLI, a scheduled send — protects a
+//! anything that sends - the window, the CLI, a scheduled send - protects a
 //! message the same way.
 
 use core_pgp::{ImportReport, KeyView, Keyring, RecipientKeys};
@@ -62,7 +62,7 @@ impl Core {
         Ok(self.keyring()?.set_passphrase(fingerprint, passphrase)?)
     }
 
-    /// Which recipients have keys and whether the sender can sign — what a
+    /// Which recipients have keys and whether the sender can sign - what a
     /// compose window needs to offer or grey out Sign and Encrypt.
     pub fn pgp_recipients(&self, sender: &str, recipients: &[String]) -> Result<RecipientKeys> {
         Ok(self.keyring()?.recipients(sender, recipients)?)

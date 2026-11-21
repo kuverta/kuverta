@@ -1,7 +1,7 @@
 //! PDFs kuverta writes, and the signature it puts on one.
 //!
-//! Two things, both plain: a document written from text — a letter, a
-//! cancellation, a confirmation, in Helvetica on A4 — and a picture of the
+//! Two things, both plain: a document written from text - a letter, a
+//! cancellation, a confirmation, in Helvetica on A4 - and a picture of the
 //! person's signature placed on a page of an existing PDF, with the place and
 //! the date beneath it when asked. The signature is a picture, as it would be
 //! on paper printed, signed and scanned: not a certificate, and the document
@@ -9,8 +9,8 @@
 //!
 //! Text is written with the standard Helvetica in WinAnsi encoding, which
 //! every reader has and which covers German, French and the other Latin
-//! languages, the euro sign and typographic quotes. What it cannot encode — a
-//! Greek or Cyrillic letter, an emoji — is written as `?` rather than lost.
+//! languages, the euro sign and typographic quotes. What it cannot encode - a
+//! Greek or Cyrillic letter, an emoji - is written as `?` rather than lost.
 //! Line widths come from Helvetica's own metrics, so lines break where they
 //! would on the page.
 //!
@@ -413,8 +413,8 @@ enum Block<'a> {
 }
 
 /// Lines are kept as lines: an address block stays one, as does a line of
-/// a poem. Only what Markdown marks is read as such — a title, a heading, a
-/// list item — and the marker where the signature goes.
+/// a poem. Only what Markdown marks is read as such - a title, a heading, a
+/// list item - and the marker where the signature goes.
 fn blocks(text: &str) -> Vec<Block<'_>> {
     text.lines()
         .map(|raw| {
@@ -726,10 +726,10 @@ fn fit(pixels: &Pixels, width: f32, most_height: f32) -> (f32, f32) {
 }
 
 /// Writes a document. `sign` draws the signature where the text marks it, or
-/// after the text when it does not, with `caption` — the place and the date
+/// after the text when it does not, with `caption` - the place and the date
 /// How tall the blocks from `from` on are, with `signature` standing for
-/// the signature block. A closing — "Mit freundlichen Grussen", the
-/// signature, the name under it — is measured whole and moved whole, so
+/// the signature block. A closing - "Mit freundlichen Grussen", the
+/// signature, the name under it - is measured whole and moved whole, so
 /// that a name never sits alone on a page of its own.
 fn height_from(blocks: &[Block<'_>], from: usize, signature: f32) -> f32 {
     let body = PAGE.0 - 2.0 * MARGIN;
@@ -762,7 +762,7 @@ fn closing_follows(blocks: &[Block<'_>], from: usize) -> bool {
         .is_some_and(|block| matches!(block, Block::Signature))
 }
 
-/// — beneath it; without `sign`, a marker leaves a gap to sign by hand.
+/// - beneath it; without `sign`, a marker leaves a gap to sign by hand.
 /// With `window`, the first page is a letter's: the address sits where an
 /// envelope's window shows it, and the text starts below.
 pub fn write(
@@ -799,7 +799,7 @@ pub fn write(
                 let before = setter.y;
                 let page = setter.pages.len();
                 setter.paragraph(line, BODY_SIZE, false, MARGIN + LIST_INDENT, BODY_LEADING);
-                // The bullet, beside the first line — wherever that ended up.
+                // The bullet, beside the first line - wherever that ended up.
                 let y = if setter.pages.len() == page {
                     before - BODY_LEADING
                 } else {
@@ -1075,7 +1075,7 @@ pub(crate) fn page_geometry(doc: &Document, page_id: ObjectId) -> ([f32; 4], i64
     (boxed, rotate)
 }
 
-/// The page's resources as a dictionary of its own — a copy of what it
+/// The page's resources as a dictionary of its own - a copy of what it
 /// inherited or shared, so that adding to it changes no other page.
 fn own_resources(doc: &mut Document, page_id: ObjectId) -> Result<Dictionary, String> {
     let found = inherited(doc, page_id, b"Resources")
@@ -1105,8 +1105,8 @@ fn add_to(resources: &mut Dictionary, kind: &str, name: &str, id: ObjectId) {
     resources.set(kind, entries);
 }
 
-/// The transform from the page as shown — x right, y up, origin at its lower
-/// left corner — to the page's own coordinates, honouring its rotation.
+/// The transform from the page as shown - x right, y up, origin at its lower
+/// left corner - to the page's own coordinates, honouring its rotation.
 pub(crate) fn display_to_page(boxed: [f32; 4], rotate: i64) -> ([f32; 6], (f32, f32)) {
     let (x0, y0, x1, y1) = (boxed[0], boxed[1], boxed[2], boxed[3]);
     let (w, h) = (x1 - x0, y1 - y0);
@@ -1120,7 +1120,7 @@ pub(crate) fn display_to_page(boxed: [f32; 4], rotate: i64) -> ([f32; 6], (f32, 
 
 /// The other way about: a point in the page's own coordinates, as the page
 /// shows it. What [`display_to_page`] builds is a turn and a shift, so this
-/// is its inverse — which is what reading a place off a page needs.
+/// is its inverse - which is what reading a place off a page needs.
 pub(crate) fn to_display(matrix: [f32; 6], point: (f32, f32)) -> (f32, f32) {
     let [a, b, c, d, e, f] = matrix;
     let det = a * d - b * c;
@@ -1199,7 +1199,7 @@ pub fn stamp(pdf: &[u8], pixels: &Pixels, at: &Placement) -> Result<(Vec<u8>, us
         .map_err(|err| format!("the page could not be changed: {err}"))?;
     page.set("Resources", resources);
     // Appended as a stream of its own, after the page's content, so the
-    // page's own drawing is left exactly as it was — and wrapped in q/Q,
+    // page's own drawing is left exactly as it was - and wrapped in q/Q,
     // so a content stream that left its state unbalanced cannot move it.
     doc.add_page_contents(page_id, content.into_bytes())
         .map_err(|err| format!("the page could not be changed: {err}"))?;

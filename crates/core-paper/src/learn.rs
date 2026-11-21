@@ -1,6 +1,6 @@
 //! Words the letters already filed suggest for the folders they went in.
 //!
-//! A folder's words are typed by hand, once, before any letter has arrived —
+//! A folder's words are typed by hand, once, before any letter has arrived -
 //! and they are guesses. `Taxes` was given `Finanzamt` and `Steuerbescheid`
 //! and not `Kassenzeichen`, because nobody thinks of `Kassenzeichen` sitting
 //! at a keyboard. It is on every letter the tax office sends.
@@ -12,7 +12,7 @@
 //!
 //! **This proposes and never writes.** Nothing here touches Paperless, and a
 //! word only becomes a folder's word when somebody says so. The evidence
-//! travels with the proposal — how many letters here, how many elsewhere — so
+//! travels with the proposal - how many letters here, how many elsewhere - so
 //! the answer to "why is it suggesting that" is on the screen rather than in
 //! this file.
 //!
@@ -23,12 +23,12 @@
 //! second is what keeps `Sehr geehrte` and the household's own street out
 //! without a list of German filler words that would have to be maintained and
 //! would still be wrong. The cost is that a folder nobody has filed anything
-//! into learns nothing, which is correct — there is nothing to learn from.
+//! into learns nothing, which is correct - there is nothing to learn from.
 //!
 //! **People are not learned.** A letter is for somebody because their name
 //! stands on it, and no other word means "this is for Nicolas". Asked for a
 //! person's words, the first run of this against a real archive proposed
-//! `Hambura` — which is not a word, and would have addressed post to whoever
+//! `Hambura` - which is not a word, and would have addressed post to whoever
 //! lives in Hamburg.
 //!
 //! And **nothing at all is proposed until letters have been filed in
@@ -37,7 +37,7 @@
 //! `Kassenzeichen` and `Sehr geehrter Herr` are the same word: both stand on
 //! every letter there is and on no letter anywhere else. The first tests
 //! written here duly proposed filing tax letters on `freundlichen` and on the
-//! household's own street. That is not a threshold to tune — it is the point
+//! household's own street. That is not a threshold to tune - it is the point
 //! at which this can tell one thing from another at all, and before it the
 //! honest answer is that there is nothing to say yet.
 //!
@@ -45,7 +45,7 @@
 //! four letters, so counting letters did not catch it, and it reads like a
 //! word, so looking at its letters did not either. What catches it is that
 //! `Hamburg` is on more letters than it is and differs from it by one
-//! character — a misreading is a rare neighbour of a common word. See
+//! character - a misreading is a rare neighbour of a common word. See
 //! [`misread`].
 
 use crate::ShelfFolder;
@@ -62,7 +62,7 @@ pub struct Filed<'a> {
 /// A word worth adding to a folder, with what says so.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Word {
-    /// As it stands on the letters — German capitalises its nouns, and the
+    /// As it stands on the letters - German capitalises its nouns, and the
     /// commonest spelling of the word is the one shown.
     pub word: String,
     /// Letters in this folder it stands on.
@@ -87,7 +87,7 @@ pub struct Learned {
 pub const AT_LEAST: usize = 2;
 /// Folders that must have letters in them before anything is proposed for
 /// any of them. With one, every word on the shelf is in exactly one folder
-/// and in no other, boilerplate included — see the note at the top.
+/// and in no other, boilerplate included - see the note at the top.
 pub const ENOUGH_FOLDERS: usize = 2;
 /// Shorter than this is not a word that files anything. German runs long and
 /// its short words are all filler.
@@ -103,8 +103,8 @@ pub const MATCH_LIMIT: usize = 256;
 /// folders are given.
 ///
 /// `filed` is every letter that has a folder on it. A letter filed in two
-/// folders counts for both — it was put in both by somebody, and this is not
-/// the place to second-guess that — but a word on it is then not "in no other
+/// folders counts for both - it was put in both by somebody, and this is not
+/// the place to second-guess that - but a word on it is then not "in no other
 /// folder", so in practice such a letter teaches little. That is the right
 /// outcome: a letter that fits two folders is not evidence about either.
 pub fn learn(filed: &[Filed<'_>], folders: &[ShelfFolder]) -> Vec<Learned> {
@@ -181,8 +181,8 @@ pub fn learn(filed: &[Filed<'_>], folders: &[ShelfFolder]) -> Vec<Learned> {
                     letters: here[which],
                 })
                 .collect();
-            // Most letters first, then the longer word — the longer of two
-            // words on the same letters is the more particular one — then by
+            // Most letters first, then the longer word - the longer of two
+            // words on the same letters is the more particular one - then by
             // spelling, so the same shelf gives the same answer twice.
             found.sort_by(|a, b| {
                 b.letters
@@ -206,8 +206,8 @@ pub fn learn(filed: &[Filed<'_>], folders: &[ShelfFolder]) -> Vec<Learned> {
 /// on more letters than it does.
 ///
 /// This is the one thing counting letters cannot do. `Hambura` stood on four
-/// letters of a real archive — the same smudge on the same letterhead four
-/// times over — and it reads like a word, so nothing about its own spelling
+/// letters of a real archive - the same smudge on the same letterhead four
+/// times over - and it reads like a word, so nothing about its own spelling
 /// gives it away. What gives it away is `Hamburg` standing on more letters
 /// than it does, one character apart. A real word that happens to be one
 /// character from a commoner one is lost with it, which is a small price:
@@ -220,7 +220,7 @@ fn misread(word: &str, overall: &std::collections::HashMap<&str, usize>) -> bool
 }
 
 /// Whether two words differ by one character: one changed, one added, or one
-/// taken away. Not a general edit distance — it stops at the first difference
+/// taken away. Not a general edit distance - it stops at the first difference
 /// and checks the rest lines up, which is all "one apart" needs.
 fn one_apart(a: &str, b: &str) -> bool {
     let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
@@ -295,7 +295,7 @@ fn words_in(text: &str) -> impl Iterator<Item = &str> {
 
 /// Whether a run of letters reads like a word. Cheap and deliberately loose:
 /// the real filter is that a word has to stand on two letters, and OCR
-/// wreckage does not repeat. This only catches the wreckage that does — the
+/// wreckage does not repeat. This only catches the wreckage that does - the
 /// same smudge in the same place on a form sent twice.
 fn is_a_word(word: &str) -> bool {
     let mut vowels = 0usize;

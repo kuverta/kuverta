@@ -1,7 +1,7 @@
 //! All inboxes: one list over several accounts, against a real store and
 //! without a server. Newest first across the accounts, each row saying whose
 //! it is, each account's own Sent left out, and the account found again from
-//! a row's id — which is what every action from that list does.
+//! a row's id - which is what every action from that list does.
 
 use core_rpc::Core;
 use core_store::model::*;

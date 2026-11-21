@@ -8,7 +8,7 @@
 //! ## A sync owns its own connection
 //!
 //! The shell holds one [`crate::Core`] behind a lock and serves the list from
-//! it. A sync cannot borrow that — it runs for as long as the network takes,
+//! it. A sync cannot borrow that - it runs for as long as the network takes,
 //! and a lock held across that is a frozen window. So a sync opens its own
 //! connection to the same database instead. SQLite in WAL mode, which
 //! `core-store` sets, is built for exactly this: one writer and any number of
@@ -40,8 +40,8 @@ impl From<core_proto::ProtoError> for RpcError {
     }
 }
 
-/// A refusal from the keyring is a sentence for the person composing — "no
-/// usable key for …", "no passphrase is stored for …" — so it reaches them
+/// A refusal from the keyring is a sentence for the person composing - "no
+/// usable key for …", "no passphrase is stored for …" - so it reaches them
 /// as one.
 impl From<core_pgp::PgpError> for RpcError {
     fn from(err: core_pgp::PgpError) -> Self {
@@ -103,8 +103,8 @@ impl SyncProgress {
 
 /// What one account's sync did.
 ///
-/// Flattened from the two reports underneath — the changes that went out and
-/// the mail that came back — because to the person watching it is one action.
+/// Flattened from the two reports underneath - the changes that went out and
+/// the mail that came back - because to the person watching it is one action.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SyncSummary {
     pub email: String,
@@ -252,7 +252,7 @@ pub fn type_for_name(name: &str) -> &'static str {
 /// How much a draft may carry in files, together.
 ///
 /// Most providers refuse a message over 25 MB, and base64 makes a file a third
-/// larger on the way — so this is already more than some will take. Refusing
+/// larger on the way - so this is already more than some will take. Refusing
 /// here says so before anything is sent; past it, the server would say it
 /// after a long upload, in its own words.
 pub const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
@@ -277,7 +277,7 @@ mod base64_bytes {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DraftPreview {
     pub from: String,
-    /// To, Cc and Bcc together, deduplicated — the SMTP envelope. Worth
+    /// To, Cc and Bcc together, deduplicated - the SMTP envelope. Worth
     /// showing: it is the only place a blind recipient appears, and the one
     /// number a sender should check before committing.
     pub recipients: Vec<String>,
@@ -371,7 +371,7 @@ pub struct Session {
     /// prompt and block a test run on a dialog nobody is watching.
     password_env: Option<String>,
     /// The OpenPGP keyring, when not the data directory's own with its
-    /// passphrases in the keychain — for tests, which must not ask the
+    /// passphrases in the keychain - for tests, which must not ask the
     /// keychain anything.
     keyring: Option<Keyring>,
 }
@@ -419,7 +419,7 @@ impl Session {
     ///
     /// After [`Draft::build`], and only ever wrapping its output: who the
     /// message goes to is decided there, and this changes the bytes and
-    /// nothing else — the envelope, Bcc included, passes through untouched.
+    /// nothing else - the envelope, Bcc included, passes through untouched.
     fn seal(
         &self,
         draft: &Draft,
@@ -506,7 +506,7 @@ impl Session {
         client.logout().await.ok();
 
         // The assistant's notes ride along, when they are synced at all. A
-        // failure is the notes' own business — kept for the settings to show —
+        // failure is the notes' own business - kept for the settings to show -
         // and not the mail's.
         if let Err(err) = self.sync_memory(&account.email).await {
             tracing::warn!(account = %account.email, %err, "the assistant's notes did not sync");
@@ -546,7 +546,7 @@ impl Session {
     ///
     /// The one call worth making before a first sync: it answers whether the
     /// credentials work, which extensions the server has, where mail will be
-    /// filed, and how much a sync would fetch — all of which are cheaper to
+    /// filed, and how much a sync would fetch - all of which are cheaper to
     /// learn now than after downloading a mailbox.
     ///
     /// A failure to connect is part of the report rather than an error. "Your
@@ -724,12 +724,12 @@ impl Session {
     ///
     /// Never sends. Built by the same construction `send` uses, so the draft
     /// cannot differ from what sending it would put on the wire, and appended
-    /// rather than submitted — `APPEND` can only create a message, so there is
+    /// rather than submitted - `APPEND` can only create a message, so there is
     /// nothing to hold in an undo window and nothing another client could lose.
     ///
     /// Refuses Bcc before anything is built. Blind recipients reach the
     /// envelope and never the message (brief §3.5), so the built message has no
-    /// Bcc line — which means a draft saved to the server would silently lose
+    /// Bcc line - which means a draft saved to the server would silently lose
     /// them, and whoever sent it later, from any client, would send it without.
     pub async fn save_draft(&self, email: &str, input: &DraftInput) -> Result<SavedDraft> {
         if input.bcc.iter().any(|address| !address.trim().is_empty()) {
@@ -788,7 +788,7 @@ impl Session {
     /// Sends a message, and files a copy in Sent unless told not to.
     ///
     /// `file_in_sent` is a parameter rather than a field on the draft because
-    /// it is not part of the message — it is what to do afterwards, and the
+    /// it is not part of the message - it is what to do afterwards, and the
     /// only sane default is "yes". A `bool` field that deserialised to `false`
     /// when omitted would silently stop filing anything.
     pub async fn send(
@@ -891,7 +891,7 @@ fn protection(input: &DraftInput) -> Protection {
 /// The account as the sender of a message.
 ///
 /// The label doubles as the display name, unless it is just the address
-/// again — in which case a `Name <addr>` header would only repeat itself.
+/// again - in which case a `Name <addr>` header would only repeat itself.
 pub(crate) fn own_mailbox(account: &Account) -> Mailbox {
     if account.label == account.email {
         Mailbox::new(account.email.clone())
@@ -941,7 +941,7 @@ fn build_draft(
     let parse =
         |address: &String| Mailbox::parse(address).map_err(|e| RpcError::Rejected(e.to_string()));
     // A compose form sends an empty string for an empty field. That is the
-    // absence of a recipient, not a malformed one — the Bcc refusal in
+    // absence of a recipient, not a malformed one - the Bcc refusal in
     // `save_draft` already reads it that way, and so must every field here.
     let present = |address: &&String| !address.trim().is_empty();
     for address in input.to.iter().filter(present) {
@@ -984,8 +984,8 @@ fn build_draft(
     for attachment in &input.attachments {
         draft = draft.attach(core_smtp::Attachment {
             name: attachment.name.clone(),
-            // A file the system had no type for — a .docx on some Linux
-            // desktops — is named by its extension, not sent as bytes of
+            // A file the system had no type for - a .docx on some Linux
+            // desktops - is named by its extension, not sent as bytes of
             // nothing in particular.
             content_type: if attachment.content_type.trim().is_empty() {
                 type_for_name(&attachment.name).into()
@@ -1056,7 +1056,7 @@ async fn file_in_drafts(account: &Account, auth: &dyn AuthProvider, raw: &[u8]) 
 
 /// Files the sent copy, returning the folder it went to.
 /// Appends a copy to the Sent folder, and syncs that folder at once, so the
-/// copy is in the store — and in Sent in the window — when the send returns
+/// copy is in the store - and in Sent in the window - when the send returns
 /// rather than at the next sync. A failure to sync is only logged: the copy
 /// is filed, and the next sync finds it.
 pub(crate) async fn file_copy_in_sent(
@@ -1107,7 +1107,7 @@ pub(crate) async fn file_copy_in_sent(
 /// Builds the auth provider an account is configured for.
 ///
 /// The account row records which provider and which grant, because they are
-/// not interchangeable — Microsoft takes the device flow and Gmail cannot have
+/// not interchangeable - Microsoft takes the device flow and Gmail cannot have
 /// it. The credential is always in the keychain.
 pub fn provider_for(
     account: &Account,

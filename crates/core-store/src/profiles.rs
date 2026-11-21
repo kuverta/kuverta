@@ -1,4 +1,4 @@
-//! Profiles: accounts and postal addresses kept apart by what they are for —
+//! Profiles: accounts and postal addresses kept apart by what they are for -
 //! private, one company, another.
 //!
 //! A profile holds nothing itself. Accounts and addresses point at one, or at

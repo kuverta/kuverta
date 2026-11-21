@@ -52,8 +52,8 @@ fn auth() -> EnvPassword {
 /// Finds the submitted message by its Message-ID.
 ///
 /// Every test in this file shares one container, and `cargo test` runs them
-/// concurrently. Looking a message up by the id we generated for it — rather
-/// than emptying the sink and taking whatever is there — is what makes that
+/// concurrently. Looking a message up by the id we generated for it - rather
+/// than emptying the sink and taking whatever is there - is what makes that
 /// safe, and it costs nothing: the id is already on `BuiltMessage`.
 async fn message_with_id(http: &reqwest::Client, message_id: &str) -> serde_json::Value {
     let listing: serde_json::Value = http
@@ -139,7 +139,7 @@ async fn a_blind_recipient_reaches_the_envelope_but_not_the_message() {
     let message = message_with_id(&http, &built.message_id).await;
 
     // Mailpit reports as Bcc any envelope recipient that appears in no address
-    // header — so this asserts the address really was delivered to.
+    // header - so this asserts the address really was delivered to.
     let bcc: Vec<&str> = message["Bcc"]
         .as_array()
         .expect("bcc array")
@@ -164,8 +164,8 @@ async fn a_blind_recipient_reaches_the_envelope_but_not_the_message() {
 
 /// The part of Mailpit's raw view that we actually sent.
 ///
-/// Mailpit prepends its own `Received`, `Return-Path` and — the reason this
-/// helper exists — a reconstructed `Bcc:` listing the envelope recipients that
+/// Mailpit prepends its own `Received`, `Return-Path` and - the reason this
+/// helper exists - a reconstructed `Bcc:` listing the envelope recipients that
 /// appear in no header. That annotation is Mailpit telling us the blind
 /// delivery worked, but it sits in the same response as the message, so a naive
 /// substring check reads Mailpit's own note as a disclosure by us.

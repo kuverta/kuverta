@@ -2,14 +2,14 @@
 //!
 //! **Conversations** group every message on an account by the other person:
 //! the sender of what arrived, the first recipient of what was sent. That is
-//! what a messenger shows — a list of people, and under each the exchange in
-//! order — and the store can answer it without keeping anything new, because
+//! what a messenger shows - a list of people, and under each the exchange in
+//! order - and the store can answer it without keeping anything new, because
 //! mail sent from any client comes back through the Sent folder with the
 //! account's own address as its sender.
 //!
 //! **Urgency** is a verdict per message: how soon it needs acting on, what
 //! the action is, and why, from the rules or from a model. Like the
-//! classifier's verdicts it is advice — it orders one view and moves nothing.
+//! classifier's verdicts it is advice - it orders one view and moves nothing.
 
 use rusqlite::{params, OptionalExtension};
 
@@ -56,8 +56,8 @@ pub struct ConversationMessage {
 
 /// What is known about one correspondent, for the card that summarises them.
 ///
-/// Counts are of the mail that the conversation view counts — the Trash and
-/// the Junk left out — so the card and the conversation list never disagree
+/// Counts are of the mail that the conversation view counts - the Trash and
+/// the Junk left out - so the card and the conversation list never disagree
 /// about how much mail there is with somebody.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Correspondent {
@@ -198,7 +198,7 @@ const COUNTERPART: &str = "CASE WHEN lower(m.from_addr) = ?1
           ELSE lower(m.from_addr) END";
 
 /// Messages that belong in the conversation view: in some folder that is not
-/// one of `?3` (JSON: the Trash, Junk…), and, unless `?4`, not bulk mail —
+/// one of `?3` (JSON: the Trash, Junk…), and, unless `?4`, not bulk mail -
 /// a newsletter is not somebody to talk to.
 fn conversation_filter() -> String {
     format!(
@@ -293,7 +293,7 @@ impl Store {
         let mut conversations = rows.collect::<rusqlite::Result<Vec<_>>>()?;
 
         // The last message of each, for the line under the name. One query
-        // per row of a page — a page is a screenful.
+        // per row of a page - a page is a screenful.
         let mut last = self.conn.prepare(&format!(
             "SELECT m.subject, m.snippet, lower(m.from_addr) = ?1
              FROM message m
@@ -328,7 +328,7 @@ impl Store {
     /// Everyone the account has written to and everyone who has written to
     /// it, most likely first, at most `limit`. Left out: the account itself,
     /// senders nobody answers (noreply and the like), bulk mail's senders,
-    /// and mail that is only in `skip_folders` — the Trash and the Junk.
+    /// and mail that is only in `skip_folders` - the Trash and the Junk.
     ///
     /// All of an account's mail is read to answer it, once, when compose
     /// opens; the window filters the answer as it is typed into.
@@ -496,7 +496,7 @@ impl Store {
     // -- urgency -----------------------------------------------------------
 
     /// Inbox mail from others since `since_utc`, not bulk, that has no
-    /// verdict yet — or only the rules' when `model` asks for a model's.
+    /// verdict yet - or only the rules' when `model` asks for a model's.
     pub fn urgency_candidates(
         &self,
         account_id: AccountId,
@@ -692,7 +692,7 @@ impl Store {
     }
 
     /// The other person in one message: its sender, or, when the account
-    /// sent it, its first recipient — the same rule the conversation list
+    /// sent it, its first recipient - the same rule the conversation list
     /// groups by, so a card opened from a message and the conversation it
     /// belongs to are about the same person.
     pub fn counterpart_of(

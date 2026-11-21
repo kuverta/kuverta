@@ -1,7 +1,7 @@
 //! How many tokens a model was sent and wrote back.
 //!
-//! Each provider says so in its reply — Ollama as `prompt_eval_count` and
-//! `eval_count`, OpenAI's and Anthropic's APIs as `usage`, each its own way — and the count is handed to a
+//! Each provider says so in its reply - Ollama as `prompt_eval_count` and
+//! `eval_count`, OpenAI's and Anthropic's APIs as `usage`, each its own way - and the count is handed to a
 //! [`Meter`] the caller attached, if any. Counting is the caller's business:
 //! this crate does not know where a tally is kept, or which job asked.
 

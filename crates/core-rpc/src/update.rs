@@ -127,7 +127,7 @@ const ARCH_NAMES: &[(&str, &[&str])] = &[
 ];
 
 /// Whether an installer called `name` runs on `arch`: it names that
-/// processor, or it names none — the universal macOS image.
+/// processor, or it names none - the universal macOS image.
 fn runs_on(name: &str, arch: &str) -> bool {
     let names = |arch: &str| {
         ARCH_NAMES
@@ -189,7 +189,7 @@ pub async fn check(repo: &str, current: &str) -> Result<Option<UpdateInfo>> {
         .map_err(|err| RpcError::Network(format!("could not ask GitHub for updates: {err}")))?;
     match response.status().as_u16() {
         200 => {}
-        // No release yet — or a private repository, which looks the same.
+        // No release yet - or a private repository, which looks the same.
         404 => return Ok(None),
         403 | 429 => {
             return Err(RpcError::Network(

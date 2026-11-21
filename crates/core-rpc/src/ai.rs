@@ -5,7 +5,7 @@
 //! did: on the Ollama on this computer, with the model it was measured with.
 //!
 //! A hosted service is chosen, never fallen back to. Whatever a job sends goes
-//! with it — a letter's scan, a message's sender and subject — so a job moves
+//! with it - a letter's scan, a message's sender and subject - so a job moves
 //! off this computer only when someone points it elsewhere, and the page says
 //! what that sends.
 
@@ -344,8 +344,8 @@ pub const STOPPED_NOTE: &str = "[the model stopped before the end of this page]"
 /// One page's text, as a vision model reads it.
 ///
 /// A plain reading first, because it is the most exact. If it loops or runs
-/// out of room, a second reading that penalises repetition — which gets
-/// through tables the plain one loops on, and gets numbers wrong more often —
+/// out of room, a second reading that penalises repetition - which gets
+/// through tables the plain one loops on, and gets numbers wrong more often -
 /// kept only if it finishes cleanly, and marked as what it is. Failing that,
 /// the first reading, with any loop cut out and marked.
 pub async fn read_page(provider: &core_ai::Provider, model: &str, jpeg: &[u8]) -> Result<String> {

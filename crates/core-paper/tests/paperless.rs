@@ -3,7 +3,7 @@
 //! A canned instance on a loopback socket, because the real one is a Redis and
 //! a Django and a first-run index build, and none of that makes these
 //! assertions any truer. What it cannot check is whether Paperless really
-//! answers in these shapes — that is what `kuverta paper check` against the
+//! answers in these shapes - that is what `kuverta paper check` against the
 //! dev stack is for.
 
 use std::io::{BufRead, BufReader, Write};
@@ -17,7 +17,7 @@ use core_paper::{Paperless, Selector, ShelfFolder};
 ///
 /// It paginates, filters by tag and answers the lookup endpoints, because the
 /// things worth testing here are exactly the things a server that ignored
-/// `page` and `page_size` could not show — an offset that does not land on a
+/// `page` and `page_size` could not show - an offset that does not land on a
 /// page boundary silently returning the wrong window, for one.
 ///
 /// Returns the base URL and a receiver of every request line, so a test can
@@ -83,7 +83,7 @@ fn answer(request: &str) -> String {
     }
 
     // Only documents tagged `home` exist, so a selector naming anything else
-    // matches nothing — which is the case the preflight is for.
+    // matches nothing - which is the case the preflight is for.
     let matching: Vec<&str> = if request.contains("tags__name__iexact=")
         && !request.contains("tags__name__iexact=home")
     {
@@ -156,7 +156,7 @@ async fn a_document_reads_like_a_message() {
     assert_eq!(page.total, 2);
     let first = &page.documents[0];
 
-    // Sender, subject, date, body — the four things a list row needs, from a
+    // Sender, subject, date, body - the four things a list row needs, from a
     // correspondent, a title, a created date and some OCR text.
     assert_eq!(first.correspondent.as_deref(), Some("Stadtwerke München"));
     assert_eq!(first.title, "Abschlagszahlung 2026");
@@ -199,8 +199,8 @@ async fn dates_come_back_as_timestamps_in_both_shapes() {
     //
     // And the offset counts: Paperless answers in the time zone it is set to,
     // so `2026-03-04T00:00:00+01:00` is 23:00 the day before in UTC. Read as
-    // if it were UTC, every scanned letter showed in the inbox an hour — in
-    // summer two — after it was scanned.
+    // if it were UTC, every scanned letter showed in the inbox an hour - in
+    // summer two - after it was scanned.
     assert_eq!(page.documents[0].created_utc, Some(1_772_578_800));
     assert_eq!(page.documents[0].added_utc, Some(1_772_788_364), "Z is UTC");
     assert_eq!(
@@ -307,7 +307,7 @@ async fn a_tag_that_exists_but_matches_nothing_is_told_apart_from_a_typo() {
     let (base, _requests) = serve();
 
     // The canned server matches tag names exactly, so "HOME" finds nothing
-    // although a tag "home" exists — which Paperless itself would not do, but
+    // although a tag "home" exists - which Paperless itself would not do, but
     // it is the case to word: a known tag with no documents yet.
     let report = client(&base)
         .check(&Selector::Tag("HOME".into()))
@@ -362,7 +362,7 @@ async fn post_is_filed_by_the_same_rules_as_mail() {
 
 #[tokio::test]
 async fn a_correction_on_post_can_be_remembered_against_the_correspondent() {
-    // Paper has no address to key on, so the correspondent carries it —
+    // Paper has no address to key on, so the correspondent carries it -
     // "everything from the Stadtwerke is transactional" being exactly the rule
     // someone wants to teach.
     let (base, _requests) = serve();
@@ -455,7 +455,7 @@ async fn setting_the_folders_up_changes_what_is_there_and_makes_what_is_not() {
     );
     assert!(asked[0].starts_with("GET /api/tags/"));
 
-    // `Rechnung` is the `rechnung` that is already there — a folder is not
+    // `Rechnung` is the `rechnung` that is already there - a folder is not
     // made twice because someone typed it with a capital.
     let changed = &asked[1];
     assert!(changed.starts_with("PATCH /api/tags/2/"), "{changed}");
@@ -473,8 +473,8 @@ async fn setting_the_folders_up_changes_what_is_there_and_makes_what_is_not() {
         "a phrase is quoted for Paperless: {changed}"
     );
 
-    // `Auto` is new, and has no words. It is still made — the rig reads the
-    // tags to know what folders there are — and it still matches nothing.
+    // `Auto` is new, and has no words. It is still made - the rig reads the
+    // tags to know what folders there are - and it still matches nothing.
     let made = &asked[2];
     assert!(made.starts_with("POST /api/tags/"), "{made}");
     assert!(made.contains("\"name\":\"Auto\""), "{made}");

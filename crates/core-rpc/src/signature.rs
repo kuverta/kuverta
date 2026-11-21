@@ -8,8 +8,8 @@
 //!
 //! So a picture is cleaned when it is chosen, in four steps:
 //!
-//! 1. **The paper's brightness is measured** block by block — the bright end
-//!    of each block is the paper there — and interpolated, so that a shadow
+//! 1. **The paper's brightness is measured** block by block - the bright end
+//!    of each block is the paper there - and interpolated, so that a shadow
 //!    on one side or a lamp on the other is part of the measurement rather
 //!    than of the ink.
 //! 2. **Each pixel is read against the paper under it**: how much darker it
@@ -17,11 +17,11 @@
 //!    those darknesses separates ink from grain, and the alpha ramps across
 //!    it, so edges stay soft.
 //! 3. **Specks go**: anything inked that is too small to be part of a stroke
-//!    — grain, a hair, a dot of dust — is dropped, by connected component.
+//! - grain, a hair, a dot of dust - is dropped, by connected component.
 //! 4. **The picture is cropped** to the strokes, with a little room.
 //!
-//! A picture that is already cut out — a PNG with a transparent background
-//! — is only cropped. Everything here is bounded by the picture's size,
+//! A picture that is already cut out - a PNG with a transparent background
+//! - is only cropped. Everything here is bounded by the picture's size,
 //! which was checked before.
 
 use image::{DynamicImage, Rgba, RgbaImage};
@@ -32,7 +32,7 @@ const MOST_WIDTH: u32 = 1600;
 /// The least the paper is taken to be, so that a black photograph does not
 /// read as all ink.
 const LEAST_PAPER: f32 = 40.0;
-/// The threshold used when the darknesses are not bimodal — a blank or a
+/// The threshold used when the darknesses are not bimodal - a blank or a
 /// near-blank picture.
 const FALLBACK_THRESHOLD: f32 = 0.3;
 
@@ -140,8 +140,8 @@ fn paper_brightness(luma: &[f32], w: usize, h: usize) -> Vec<f32> {
     out
 }
 
-/// Otsu's threshold between the two populations of darkness — paper and
-/// ink — or a fixed one when there is only one.
+/// Otsu's threshold between the two populations of darkness - paper and
+/// ink - or a fixed one when there is only one.
 fn otsu(darkness: &[f32]) -> f32 {
     let mut histogram = [0u64; 256];
     for d in darkness {

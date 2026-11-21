@@ -2,7 +2,7 @@
 //!
 //! Pure and synchronous: no network, no clock beyond the Message-ID and the
 //! `Date` header. Everything that is easy to get subtly wrong about outgoing
-//! mail — Bcc disclosure, threading headers, header injection, `Re:` stacking —
+//! mail - Bcc disclosure, threading headers, header injection, `Re:` stacking -
 //! is decided here, where it can be tested without a server.
 
 use std::collections::HashSet;
@@ -54,7 +54,7 @@ impl Mailbox {
     /// Parses `Jane Doe <jane@example.com>`, `<jane@example.com>` or a bare
     /// `jane@example.com`.
     ///
-    /// Not a full RFC 5322 address parser — it does not handle groups, comments
+    /// Not a full RFC 5322 address parser - it does not handle groups, comments
     /// or quoted-string local parts with embedded angle brackets. It handles
     /// what a person types on a command line or into a To: field, and
     /// [`Draft::build`] rejects anything that slips through as malformed.
@@ -129,8 +129,8 @@ fn is_header_break(c: char) -> bool {
 /// Rejects anything that is not a plain `local@domain`.
 ///
 /// This is a security check, not a politeness check. `mail-builder` writes the
-/// address into the header verbatim — unlike display names, which it RFC 2047
-/// encodes — so a CR or LF here would let the caller forge headers, and a comma
+/// address into the header verbatim - unlike display names, which it RFC 2047
+/// encodes - so a CR or LF here would let the caller forge headers, and a comma
 /// would silently add a recipient. Being conservative costs us exotic-but-legal
 /// addresses that no personal mailbox uses.
 fn validate_address(address: &str) -> Result<()> {
@@ -205,7 +205,7 @@ impl ReplySource {
             cc: all_mailboxes(parsed.cc()),
             date_utc: parsed.date().map(|date| date.to_timestamp()),
             // Part 0 is the first text/plain part. An HTML-only message yields
-            // nothing here and is quoted as empty rather than as markup —
+            // nothing here and is quoted as empty rather than as markup -
             // rendering HTML to text is a job for the UI layer, not the
             // composer.
             body: parsed.body_text(0).map(|text| text.into_owned()),
@@ -394,12 +394,12 @@ impl Draft {
         // Reply-To wins over From when the sender asked for it.
         let author = source.reply_to.clone().or_else(|| source.from.clone());
 
-        // Never address ourselves, and never the same person twice — a
+        // Never address ourselves, and never the same person twice - a
         // reply-all that CCs you on your own reply is the classic annoyance.
         let mut seen: HashSet<String> = HashSet::new();
         seen.insert(draft.from.key());
 
-        // A message of our own — one read in Sent — has no author to answer,
+        // A message of our own - one read in Sent - has no author to answer,
         // and a reply with nobody in To is a reply nobody can send. It is a
         // follow-up, and goes where the message went: to its recipients.
         let ours = author.as_ref().is_some_and(|a| a.key() == draft.from.key());
@@ -439,7 +439,7 @@ impl Draft {
         draft
     }
 
-    /// Builds a forward. Recipients are left to the caller — a forward has no
+    /// Builds a forward. Recipients are left to the caller - a forward has no
     /// implied audience.
     pub fn forward(from: Mailbox, source: &ReplySource) -> Self {
         let mut draft = Self::new(from);
@@ -508,7 +508,7 @@ impl Draft {
         // Bcc is deliberately absent from the headers. `mail-builder` would
         // happily write it, and `mail-send`'s own MessageBuilder envelope
         // conversion reads Bcc into the envelope *and* leaves the header in the
-        // body — which discloses every blind recipient to everyone. Building
+        // body - which discloses every blind recipient to everyone. Building
         // the envelope ourselves above is what avoids that.
 
         if let Some(parent) = &self.in_reply_to {
@@ -554,8 +554,8 @@ pub struct BuiltMessage {
     pub sender: String,
 }
 
-/// A record of something that went another way than mail — a letter posted
-/// on paper — as a message, so that it can be filed in Sent beside the mail.
+/// A record of something that went another way than mail - a letter posted
+/// on paper - as a message, so that it can be filed in Sent beside the mail.
 ///
 /// It is never submitted, so it has no envelope, and the only address in it
 /// is the account's own, in From. Who it went to is a name, written as a
@@ -665,7 +665,7 @@ fn strip_prefixes(subject: &str, prefixes: &[&str]) -> String {
 
 /// The References chain, capped.
 ///
-/// RFC 5322 allows this to grow without bound, and on a long thread it does —
+/// RFC 5322 allows this to grow without bound, and on a long thread it does -
 /// some servers then reject the message for an oversized header. The
 /// widely-used mitigation is to keep the first reference, which identifies the
 /// thread root, and the most recent ones, which is what clients thread on.
@@ -753,7 +753,7 @@ fn forwarded_body(source: &ReplySource) -> String {
 /// The domain is the sender's, not the local hostname: `mail-builder`'s
 /// fallback would put this machine's name into every outgoing message, which
 /// leaks something about the sender and is worthless for threading. The local
-/// part carries no meaning by design — RFC 5322 only requires global
+/// part carries no meaning by design - RFC 5322 only requires global
 /// uniqueness, and anything readable here is metadata given away for free.
 fn generate_message_id(domain: &str) -> String {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -914,7 +914,7 @@ mod tests {
 
         let all = Draft::reply(me(), &source, ReplyMode::All);
         let to: Vec<&str> = all.to.iter().map(|m| m.address.as_str()).collect();
-        // Jane first, then the original To — minus ourselves.
+        // Jane first, then the original To - minus ourselves.
         assert_eq!(to, vec!["jane@example.com", "bob@example.com"]);
         assert_eq!(all.cc.len(), 1);
         assert_eq!(all.cc[0].address, "carol@example.com");

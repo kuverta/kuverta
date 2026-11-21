@@ -1,16 +1,16 @@
 //! A conversation with a model that can use tools.
 //!
-//! The assistant in the window is a model given a handful of tools — search
-//! mail, read a message, move it, draft a reply — and a loop: it answers, or
+//! The assistant in the window is a model given a handful of tools - search
+//! mail, read a message, move it, draft a reply - and a loop: it answers, or
 //! asks for a tool; the tool runs; its result goes back; again, until it has
 //! an answer. This is the model half of that: the turns of a conversation,
 //! the tools described to the model, and one exchange with either kind of
 //! provider. The loop and the tools themselves are the caller's.
 //!
 //! Ollama and OpenAI's API both take tools as JSON Schema functions and give
-//! calls back on the assistant's message; they differ in detail — Ollama hands
+//! calls back on the assistant's message; they differ in detail - Ollama hands
 //! arguments over as an object and matches results by position, OpenAI as a
-//! JSON string and by call id — and that difference stays in here. Claude's
+//! JSON string and by call id - and that difference stays in here. Claude's
 //! API differs more, and its half is in `anthropic.rs`.
 
 use std::time::Instant;

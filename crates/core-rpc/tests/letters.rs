@@ -3,7 +3,7 @@
 //! The client's own requests are core-letter's to test. What is tested here
 //! is the ledger around them: what is checked before anything is sent, that
 //! the letter is written down before LetterXpress is asked, and what is kept
-//! of what it answered — and, for a letter that was printed, the record of
+//! of what it answered - and, for a letter that was printed, the record of
 //! it filed in the account's Sent folder, on a mail server that is not there
 //! either.
 
@@ -266,7 +266,7 @@ async fn an_address_given_by_hand_goes_on_a_cover_sheet_and_the_sender_is_offere
 // -- the record in Sent --------------------------------------------------------
 
 /// A mail server that takes any login, has one folder and calls it Sent,
-/// keeps what is appended to it, and refuses everything else — fetching the
+/// keeps what is appended to it, and refuses everything else - fetching the
 /// folder back included, which the filing shrugs off.
 struct MailServer {
     port: u16,
@@ -552,7 +552,7 @@ async fn a_record_that_cannot_be_filed_leaves_the_letter_sent_and_is_filed_later
     let (back, _) = posted(&core, account, &base, Mode::Live, Spec::default()).await;
     core.letter_cancelled(back.id).unwrap();
 
-    // The server is there again — as after a sync that reached it.
+    // The server is there again - as after a sync that reached it.
     let server = MailServer::start();
     core.store()
         .connection()

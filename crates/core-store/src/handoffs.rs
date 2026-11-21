@@ -1,7 +1,7 @@
 //! What has already been done with a thing found in mail.
 //!
-//! An invitation arrives more than once — forwarded, synced again, or filed
-//! under two of Gmail's labels — and the mail it arrives in is a different
+//! An invitation arrives more than once - forwarded, synced again, or filed
+//! under two of Gmail's labels - and the mail it arrives in is a different
 //! message every time. So the ledger is keyed by what identifies the thing
 //! itself, which for an invitation is its `UID`. Reading a folder twice is
 //! then as harmless as reading it once, which is the property the whole
@@ -30,7 +30,7 @@ pub struct Handoff {
     /// nothing outside kuverta was touched.
     pub sink: Option<String>,
     /// What that place calls what it made, so the same thing can be found
-    /// again — to take an event back out when the meeting is cancelled.
+    /// again - to take an event back out when the meeting is cancelled.
     pub reference: Option<String>,
     pub at: i64,
 }

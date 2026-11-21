@@ -1,7 +1,7 @@
 //! Cleaning up after a vision model that lost its place.
 //!
-//! A model that loses its place on a page — its context full, or a table it
-//! cannot follow — writes the same lines again and again. As the text of a
+//! A model that loses its place on a page - its context full, or a table it
+//! cannot follow - writes the same lines again and again. As the text of a
 //! letter that is worse than a gap: it fills the reading pane and search with
 //! nothing, and it looks like the letter says it.
 

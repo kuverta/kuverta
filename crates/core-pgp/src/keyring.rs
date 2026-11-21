@@ -13,7 +13,7 @@
 //!
 //! A secret key on disk is always passphrase-protected. One generated without
 //! a passphrase, or imported without one, is given a random passphrase that
-//! only the keychain knows — so the file is useless to whoever copies it off a
+//! only the keychain knows - so the file is useless to whoever copies it off a
 //! backup, and the person never has to type anything.
 //!
 //! ## Meaning
@@ -22,7 +22,7 @@
 //! expires and whether it was revoked is application policy. The rules here
 //! are deliberately plain: the newest self-signature wins, a revocation from
 //! the key itself revokes, and a key or subkey with no key flags at all is
-//! taken to be able to do whatever its algorithm can — which is how keys made
+//! taken to be able to do whatever its algorithm can - which is how keys made
 //! before key flags existed have to be read.
 
 use std::collections::HashMap;
@@ -60,7 +60,7 @@ pub trait Passphrases: Send + Sync {
     fn delete(&self, fingerprint: &str) -> Result<()>;
 }
 
-/// The OS keychain, under the instance's own service name — so a dev build
+/// The OS keychain, under the instance's own service name - so a dev build
 /// and the installed app never share or overwrite each other's entries.
 pub struct KeychainPassphrases;
 
@@ -157,7 +157,7 @@ pub struct KeyView {
     /// We hold a secret key that can sign.
     pub can_sign: bool,
     pub has_secret: bool,
-    /// Whether the secret key can be used without asking — a passphrase is in
+    /// Whether the secret key can be used without asking - a passphrase is in
     /// the keychain. Whether, not what.
     pub has_passphrase: bool,
 }
@@ -197,7 +197,7 @@ pub struct RecipientKeys {
     /// Every recipient, and the sender, has a key mail can be encrypted to.
     pub can_encrypt: bool,
     pub recipients: Vec<RecipientKey>,
-    /// Addresses without a usable key — the sender's own included, because
+    /// Addresses without a usable key - the sender's own included, because
     /// the copy filed in Sent is encrypted to it.
     pub missing: Vec<String>,
 }
@@ -393,7 +393,7 @@ impl Keyring {
     /// Ed25519 to sign and certify, Curve25519 to encrypt: GnuPG's own default
     /// since 2.3, small, fast, and read by every OpenPGP implementation still
     /// in use. v4 rather than v6 keys, because much of the software people
-    /// actually have — GnuPG 2.2 included — cannot read v6 yet.
+    /// actually have - GnuPG 2.2 included - cannot read v6 yet.
     ///
     /// `passphrase` protects the secret key on disk and goes in the keychain.
     /// Without one a random passphrase is made up: the key is still
@@ -482,7 +482,7 @@ impl Keyring {
 
     /// Imports every key in a piece of armored text.
     ///
-    /// Several blocks are fine — people paste a whole exported keyring, or a
+    /// Several blocks are fine - people paste a whole exported keyring, or a
     /// public and a secret key together. Each key has to pass its own
     /// self-signature check before it is written: an unchecked certificate
     /// is a forgery waiting for someone to encrypt to it.
@@ -728,7 +728,7 @@ fn has_email(public: &SignedPublicKey, email: &str) -> bool {
 
 /// The keys mail may be encrypted to, newest first.
 ///
-/// One per certificate is what gets used — the newest — which is what GnuPG
+/// One per certificate is what gets used - the newest - which is what GnuPG
 /// does, and what a recipient who rotated their encryption subkey expects.
 pub(crate) fn encryption_targets(public: &SignedPublicKey, now: i64) -> Vec<EncryptionTarget<'_>> {
     if is_revoked(public) || primary_expiry(public).is_some_and(|at| at <= now) {

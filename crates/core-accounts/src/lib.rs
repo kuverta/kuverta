@@ -98,7 +98,7 @@ const KEYRING_SERVICE: &str = "kuverta";
 ///
 /// An instance keeps its own keychain entries and, unless told otherwise, its
 /// own data directory, so a development build can never read or overwrite the
-/// credentials of the installed app — even for an address configured in both.
+/// credentials of the installed app - even for an address configured in both.
 pub fn instance() -> Option<String> {
     instance_from(std::env::var("KUVERTA_INSTANCE").ok().as_deref())
 }
@@ -129,7 +129,7 @@ pub fn service_for(base: &str, instance: Option<&str>) -> String {
 
 /// Where an instance keeps its data unless `KUVERTA_DATA_DIR` says otherwise:
 /// `~/.local/share/kuverta` on macOS and Linux (or under `XDG_DATA_HOME`),
-/// `%APPDATA%\kuverta` on Windows — and `kuverta-dev` for the dev instance.
+/// `%APPDATA%\kuverta` on Windows - and `kuverta-dev` for the dev instance.
 pub fn default_data_dir() -> std::path::PathBuf {
     let var = |name: &str| std::env::var_os(name).filter(|value| !value.is_empty());
     data_dir_from(
@@ -239,7 +239,7 @@ impl AuthProvider for KeychainPassword {
 /// Reads the password from an environment variable.
 ///
 /// This exists because CI and the dev Docker server must authenticate without a
-/// keychain — on macOS every keychain read from a test binary raises a GUI
+/// keychain - on macOS every keychain read from a test binary raises a GUI
 /// prompt, which would make `cargo test` interactive.
 pub struct EnvPassword {
     var: String,

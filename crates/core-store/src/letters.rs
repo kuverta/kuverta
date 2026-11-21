@@ -1,14 +1,14 @@
 //! Letters posted on paper.
 //!
 //! The ledger of what went to LetterXpress: which document, how it was to be
-//! printed, what it was quoted at, and what LetterXpress made of it — the
+//! printed, what it was quoted at, and what LetterXpress made of it - the
 //! job, the address it read off the page, what it cost, where it is.
 //!
 //! A letter moves `sending` → `sent`, or to `failed` with the reason, and a
 //! sent one to `cancelled` if it is taken back in time. `sending` is written
 //! before LetterXpress is asked, as the outbox does: a row left in it after
 //! a crash says a letter may have gone, which is the truth, and nothing
-//! sends it again by itself. The store does not know what a spec is —
+//! sends it again by itself. The store does not know what a spec is -
 //! core-rpc writes it as JSON and reads it back.
 //!
 //! A letter that was printed is also filed in the account's Sent folder, as

@@ -2,8 +2,8 @@
 //!
 //! The browser is simulated: `login` hands back the authorization URL it would
 //! have opened, and the test plays the part of Google by requesting the
-//! redirect URI itself. That makes the interesting cases — a refused consent,
-//! a mismatched `state`, a browser asking for the favicon on the same port —
+//! redirect URI itself. That makes the interesting cases - a refused consent,
+//! a mismatched `state`, a browser asking for the favicon on the same port -
 //! reproducible, which against the real thing they are not.
 
 mod common;
@@ -94,7 +94,7 @@ async fn a_completed_login_stores_a_refresh_token_and_proves_possession_of_the_v
     // The PKCE check is the point. The mock plays a conforming authorization
     // server: it remembers the challenge from the authorization request and
     // refuses the exchange unless the verifier hashes to it. A client that
-    // sent the wrong verifier — or none — would fail here rather than silently
+    // sent the wrong verifier - or none - would fail here rather than silently
     // work, which is what makes the test worth having.
     let challenge: Arc<std::sync::Mutex<Option<String>>> = Arc::default();
     let recorded = Arc::clone(&challenge);

@@ -160,7 +160,7 @@ fn a_search_moves_nothing_and_one_with_a_folder_empties_the_inbox_of_its_mail() 
     );
     assert_eq!(world.subjects_in(world.inbox).len(), 3);
 
-    // Given a folder, what it gathers in the Inbox leaves — and only that:
+    // Given a folder, what it gathers in the Inbox leaves - and only that:
     // the invoice filed in Archive stays filed.
     world.save(Some(id), Some("rechnungen"));
     assert_eq!(

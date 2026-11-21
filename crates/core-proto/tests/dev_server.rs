@@ -5,7 +5,7 @@
 //! When the server is not reachable these tests skip rather than fail, so
 //! `cargo test` stays useful without Docker. CI sets
 //! `KUVERTA_REQUIRE_DEV_SERVER=1`, which turns a missing server into a
-//! failure — otherwise a broken compose file would look like a green build.
+//! failure - otherwise a broken compose file would look like a green build.
 
 use core_accounts::EnvPassword;
 use core_proto::{ImapClient, ImapConfig};
@@ -206,7 +206,7 @@ use common as tempdir;
 //
 // These use their own IMAP users. Dovecot's dev passdb accepts any username, so
 // each test gets an empty mailbox of its own and cannot disturb the seeded
-// fixtures — or another test running in parallel.
+// fixtures - or another test running in parallel.
 // ---------------------------------------------------------------------------
 
 mod mutate {
@@ -270,7 +270,7 @@ mod mutate {
             .unwrap();
     }
 
-    /// Appends a message with no `Message-ID` header — unusual but legal, and
+    /// Appends a message with no `Message-ID` header - unusual but legal, and
     /// the case that made the executor's identity check ambiguous.
     pub async fn append_without_message_id(session: &mut Session, subject: &str) {
         let raw = format!(
@@ -488,7 +488,7 @@ async fn a_sync_interrupted_on_the_way_down_fills_the_hole_it_left() {
         .unwrap();
 
     // Nothing has changed on the server, so CONDSTORE would have this folder
-    // skipped — but it still owes three messages, and a skipped folder would
+    // skipped - but it still owes three messages, and a skipped folder would
     // owe them for ever.
     let report = core_proto::sync_account(&mut client, &store, &blobs, account)
         .await
@@ -591,7 +591,7 @@ async fn a_message_expunged_on_the_server_is_removed_locally() {
 async fn a_sent_message_is_appended_to_the_sent_folder() {
     // Stage 1 of the write capability (plan section 1a): the only write this
     // client performs. It has to work against a real server, and it has to
-    // leave the read-only property intact — nothing here selects a folder.
+    // leave the read-only property intact - nothing here selects a folder.
     if !dev_server_available() {
         return;
     }
@@ -811,7 +811,7 @@ async fn a_queued_flag_change_reaches_the_server() {
 #[tokio::test]
 async fn an_operation_is_refused_when_the_uid_no_longer_holds_the_expected_message() {
     // The check the whole executor exists for. If this regresses, kuverta
-    // archives whatever happens to sit at a stale UID — the exact failure the
+    // archives whatever happens to sit at a stale UID - the exact failure the
     // read-only design used to make impossible.
     if !dev_server_available() {
         return;
@@ -881,7 +881,7 @@ async fn an_operation_on_a_message_someone_else_removed_is_obsolete_not_an_error
         Some(message_id),
     );
 
-    // Another client gets there first — the ordinary case of a phone and a
+    // Another client gets there first - the ordinary case of a phone and a
     // laptop touching the same mailbox.
     let uids = mutate::uids(&mut writer).await;
     mutate::expunge_uid(&mut writer, uids[0]).await;
@@ -1054,7 +1054,7 @@ async fn a_message_without_a_message_id_can_still_be_filed() {
     // Caught by dogfooding, not by the tests above: a message with no
     // Message-ID header is legal and is in the fixtures, and reading "no
     // Message-ID came back" as "no message here" made such mail impossible to
-    // move — silently, as an operation marked obsolete.
+    // move - silently, as an operation marked obsolete.
     if !dev_server_available() {
         return;
     }
@@ -1172,7 +1172,7 @@ async fn a_sparse_uid_range_fetches_exactly_the_messages_that_remain() {
     }
 
     // Punch holes before the first sync, so the client never sees the gaps
-    // being made — it just meets a folder with non-contiguous UIDs.
+    // being made - it just meets a folder with non-contiguous UIDs.
     let uids = mutate::uids(&mut writer).await;
     mutate::expunge_uid(&mut writer, uids[1]).await;
     mutate::expunge_uid(&mut writer, uids[3]).await;
@@ -1332,7 +1332,7 @@ async fn a_message_moved_between_folders_keeps_its_identity_and_its_history() {
     // A message moving folder is routine: kuverta's own archive does it, and
     // so does every other client touching the same mailbox. What must not
     // happen is the local row being destroyed and rebuilt on the way, because
-    // everything hanging off it goes too — the classifier verdict, and the
+    // everything hanging off it goes too - the classifier verdict, and the
     // corrections the user made, which plan section 4 calls the training data
     // the whole model layer depends on.
     if !dev_server_available() {
@@ -1403,7 +1403,7 @@ async fn identity_survives_a_move_against_the_folder_order_too() {
     // The same thing as the test above, in the direction that puts the source
     // folder before the destination in LIST order. That ordering decides
     // whether the message is briefly in no folder at all part-way through a
-    // sync — and if orphan collection runs then, the row and everything
+    // sync - and if orphan collection runs then, the row and everything
     // hanging off it goes with it. Which direction is safe must not be luck.
     if !dev_server_available() {
         return;
@@ -1414,7 +1414,7 @@ async fn identity_survives_a_move_against_the_folder_order_too() {
     let mut writer = seeded_inbox(user, message_id, "moved the other way").await;
     let (store, account, blobs, _dir, mut client) = synced(user).await;
 
-    // Park it in Archive first, then move it back to INBOX — the direction
+    // Park it in Archive first, then move it back to INBOX - the direction
     // systemli's folder order exposed.
     let uids = mutate::uids(&mut writer).await;
     writer.select("INBOX").await.unwrap();

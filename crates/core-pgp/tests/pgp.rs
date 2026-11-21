@@ -1,4 +1,4 @@
-//! Keys, PGP/MIME both ways, and inline PGP — against real keys and real
+//! Keys, PGP/MIME both ways, and inline PGP - against real keys and real
 //! built messages, with passphrases held in memory so no keychain is asked.
 
 use std::sync::Arc;

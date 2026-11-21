@@ -1,4 +1,4 @@
-//! Profiles — private, one company, another — as the window uses them. See
+//! Profiles - private, one company, another - as the window uses them. See
 //! `core_store::profiles`.
 
 use serde::{Deserialize, Serialize};

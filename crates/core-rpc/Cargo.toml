@@ -56,7 +56,7 @@ serde_json.workspace = true
 roxmltree = "0.21.1"
 # Reading files a person attaches, so the assistant can write about them: the
 # text in a PDF, and the XML inside Word, LibreOffice and Excel files. Deflate
-# only — every office format uses it, and nothing else pulls in a C library.
+# only - every office format uses it, and nothing else pulls in a C library.
 pdf-extract = "0.12.1"
 # Writing PDFs the assistant composes, and putting the person's signature on
 # a page of one: the same crate pdf-extract already reads them with, without
@@ -64,7 +64,7 @@ pdf-extract = "0.12.1"
 lopdf = { version = "0.42.0", default-features = false }
 zip = { version = "9.0.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # Safe preview: attachments drawn by decoders written in Rust, in a worker
-# process locked down before it reads a byte of them — never by the system's
+# process locked down before it reads a byte of them - never by the system's
 # image and PDF frameworks. hayro forbids unsafe code; 0.5 is the last that
 # builds on this toolchain. The image codecs are the ones mail carries, and no
 # rayon: the worker is one thread, which its limits assume.

@@ -1,7 +1,7 @@
 //! The triage taxonomy.
 //!
 //! Deliberately small. Every category has to earn its place by changing what
-//! you would *do* with a message — a taxonomy with twenty buckets is one
+//! you would *do* with a message - a taxonomy with twenty buckets is one
 //! nobody keeps tidy, and the point of this tool is to reduce decisions.
 
 use std::fmt;
@@ -17,7 +17,7 @@ pub enum Category {
     Newsletter,
     /// Unsubscribed or promotional bulk mail.
     Marketing,
-    /// Invoices, receipts, orders, bank statements — money and records.
+    /// Invoices, receipts, orders, bank statements - money and records.
     Transactional,
     /// Machine-generated status: CI, cron, alerts, delivery notices.
     Notification,

@@ -1,5 +1,5 @@
 //! Attachments and finding mail, against a real store: what the reading pane
-//! lists, what it fetches, and what the assistant searches and shows — the
+//! lists, what it fetches, and what the assistant searches and shows - the
 //! "where is the eSIM they sent me" question from end to end, without a model.
 
 use core_ai::ToolCall;
@@ -100,7 +100,7 @@ fn b64(bytes: &[u8]) -> String {
 
 /// The mail a mobile provider sends: text saying where the code is, the QR
 /// code as an image, and the contract as a PDF its mailer called
-/// octet-stream — plus a logo shown inline and a page that is a fake login.
+/// octet-stream - plus a logo shown inline and a page that is a fake login.
 fn esim_mail() -> String {
     format!(
         "From: Service <service@mobilfunk.example>\r\n\
@@ -509,7 +509,7 @@ fn a_draft_carries_a_file_out_of_another_message() {
         "QR-Code? Schickst du ihn mir?",
     );
 
-    // In a reply to someone else — the index as a small model sends it, as
+    // In a reply to someone else - the index as a small model sends it, as
     // text, and named twice.
     let drafted = world.core.assistant_tool(
         world.account,
@@ -589,7 +589,7 @@ async fn the_assistant_reads_what_is_in_an_attachment_not_only_its_name() {
     let id = file(&world, 1, &esim_mail(), "Ihre neue e-SIM ist da QR-Code");
     let mut heard = Vec::new();
 
-    // The index as read_message gives it — and as a small model sends it, as
+    // The index as read_message gives it - and as a small model sends it, as
     // text.
     let read = core_rpc::assistant::read_attachment(
         &world.core,

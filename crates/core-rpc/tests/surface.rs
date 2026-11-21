@@ -1,8 +1,8 @@
 //! The shape the shell sees.
 //!
 //! These run against a real store rather than a mock, because the interesting
-//! part is the translation — which copy of a message a change acts on, what a
-//! row looks like once the store's `Option`s have been resolved — and a mock
+//! part is the translation - which copy of a message a change acts on, what a
+//! row looks like once the store's `Option`s have been resolved - and a mock
 //! would only assert that the translation matches itself.
 
 use core_rpc::{Core, RpcError};
@@ -296,7 +296,7 @@ fn accounts_say_whether_they_can_send() {
 fn html_only_mail_is_readable_as_text() {
     // A large share of real mail carries no text/plain part at all. The
     // reading pane has no HTML renderer, so the question is whether such a
-    // message is readable anyway or just blank — and the answer decides
+    // message is readable anyway or just blank - and the answer decides
     // whether "no plain-text body" is a placeholder or a wall.
     let (core, account, inbox, _, _dir) = core_with("htmlonly", 0);
     let raw = b"Message-ID: <html-only@example.com>\r\n\
@@ -449,7 +449,7 @@ fn an_assistant_can_file_a_message_without_teaching_the_classifier() {
 #[test]
 fn a_user_agreeing_with_the_assistant_is_what_teaches() {
     // The assistant's suggestion is already shown, so a naive "already filed
-    // there" check would record nothing — and drop the one filing that should
+    // there" check would record nothing - and drop the one filing that should
     // be learned from.
     let (core, account, _inbox, _archive, _dir) = core_with("confirm", 1);
     let id = core

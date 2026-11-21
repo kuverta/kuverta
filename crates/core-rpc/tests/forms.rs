@@ -1,5 +1,5 @@
 //! Forms, against a real store: the assistant reads a PDF form's fields and
-//! fills them through its tools — a text field, a multiline one, checkboxes —
+//! fills them through its tools - a text field, a multiline one, checkboxes -
 //! and what it may not do is refused: a flat PDF, a name the form does not
 //! have, a guess at a group. Without a model.
 
@@ -233,7 +233,7 @@ fn the_fields_are_read_in_the_order_the_page_shows_them() {
     assert_eq!(fields[2].kind, "checkbox");
     assert_eq!(fields[2].options, ["On"]);
     assert!(fields[4].multiline);
-    // The merged label — the same words as the name — says nothing, and is
+    // The merged label - the same words as the name - says nothing, and is
     // left out.
     assert_eq!(fields[1].label, None);
 

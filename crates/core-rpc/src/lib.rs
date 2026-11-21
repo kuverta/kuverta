@@ -2,7 +2,7 @@
 //!
 //! Deliberately knows nothing about Tauri. The plan (§2) has this doubling as
 //! the MCP/agent surface later, and a layer that has taken a dependency on one
-//! shell is no longer a surface — so the Tauri commands in `apps/desktop` are
+//! shell is no longer a surface - so the Tauri commands in `apps/desktop` are
 //! thin wrappers over these calls and nothing here mentions a window, an
 //! `invoke`, or a webview.
 //!
@@ -149,7 +149,7 @@ pub struct AccountView {
     /// False when no submission endpoint is configured, which the UI needs in
     /// order to grey out compose rather than fail at send time.
     pub can_send: bool,
-    /// The profile it is in — private, a company — when it is in one.
+    /// The profile it is in - private, a company - when it is in one.
     pub profile_id: Option<i64>,
     /// When mail was last fetched for it, as a Unix time. `None` until the
     /// first sync: nothing has been downloaded yet.
@@ -164,7 +164,7 @@ pub struct AccountView {
 pub struct MessageRow {
     pub id: MessageId,
     /// Whose mail it is. A list over one account knows; a list over several
-    /// — All inboxes — reads it off the row before acting on it.
+    /// - All inboxes - reads it off the row before acting on it.
     #[serde(default)]
     pub account: AccountId,
     pub date_utc: Option<i64>,
@@ -177,7 +177,7 @@ pub struct MessageRow {
     /// First line or so of the body. A list showing only sender and subject
     /// makes you open mail to find out what it is.
     pub snippet: Option<String>,
-    /// Who it went to, by name where they ever signed one — set for mail the
+    /// Who it went to, by name where they ever signed one - set for mail the
     /// account sent, which the list names by recipient: in Sent, the sender
     /// is always the same person.
     #[serde(default)]
@@ -256,7 +256,7 @@ pub struct MessageDetail {
     /// Text rather than the raw message: parsing MIME is not the shell's job,
     /// and sending bytes it would only have to decode wastes the bridge the
     /// whole list design is built around conserving. An HTML-only message
-    /// yields `None` here — rendering that is a UI question, and a later one.
+    /// yields `None` here - rendering that is a UI question, and a later one.
     ///
     /// For OpenPGP mail this is what the protection held: the decrypted
     /// text, or the signed part alone. For an encrypted message that could
@@ -268,23 +268,23 @@ pub struct MessageDetail {
     /// The message carries a public key (`application/pgp-keys`), which
     /// [`Core::pgp_import_from_message`] can add to the keyring.
     pub pgp_keys_attached: bool,
-    /// What the message carries besides its text — for encrypted mail, what
+    /// What the message carries besides its text - for encrypted mail, what
     /// the encryption held. [`Core::attachment`] fetches one.
     #[serde(default)]
     pub attachments: Vec<AttachmentView>,
-    /// The message has an HTML part, so the window can offer it as a page —
+    /// The message has an HTML part, so the window can offer it as a page -
     /// [`Core::message_page`] makes one. For encrypted mail, whether what
     /// the encryption held has one.
     #[serde(default)]
     pub has_html: bool,
     /// What the message is offering: an invitation it carries, and in time
     /// a todo or a statement. Empty for almost every message. Reading one
-    /// changes nothing — an offer is offered, and a person accepts.
+    /// changes nothing - an offer is offered, and a person accepts.
     #[serde(default)]
     pub offers: Vec<OfferView>,
     /// The server marked it `\Draft`: something half-written, kept to finish
-    /// later. A draft opened in the reading pane is a dead end — it is the one
-    /// kind of message whose point is that it is still being written — so the
+    /// later. A draft opened in the reading pane is a dead end - it is the one
+    /// kind of message whose point is that it is still being written - so the
     /// window opens it in compose instead.
     #[serde(default)]
     pub is_draft: bool,
@@ -301,14 +301,14 @@ pub struct ModelPass {
     pub unparseable: usize,
     pub failed: usize,
     pub mean_latency_ms: Option<i64>,
-    /// Set when the pass gave up — three failures in a row — with the last reason.
+    /// Set when the pass gave up - three failures in a row - with the last reason.
     pub stopped: Option<String>,
 }
 
 /// The facts the rules classifier reads, as the shell's classifier takes them.
 ///
 /// camelCase because the other end is `kuverta-bird/core/facts.js`, which runs the
-/// same rules — ported line for line and verified against `core-rules` — to
+/// same rules - ported line for line and verified against `core-rules` - to
 /// explain a verdict in the reading pane. The explanation is the half of the
 /// rules layer that makes a wrong answer arguable rather than annoying, and it
 /// needs exactly these fields and no others.
@@ -350,7 +350,7 @@ impl From<&core_rules::MessageFacts<'_>> for FactsView {
 /// Where archiving and trashing move mail to.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpecialFolders {
-    /// `None` when the account has no Archive folder — which a shell has to
+    /// `None` when the account has no Archive folder - which a shell has to
     /// treat as "cannot archive" rather than failing per keystroke.
     pub archive: Option<String>,
     pub trash: Option<String>,
@@ -358,9 +358,9 @@ pub struct SpecialFolders {
 
 /// Where the store lives unless told otherwise.
 ///
-/// `KUVERTA_DATA_DIR`, else the instance's directory — see
+/// `KUVERTA_DATA_DIR`, else the instance's directory - see
 /// [`core_accounts::default_data_dir`]. The same answer everywhere because the
-/// window and the agent surface must open the same store — an assistant
+/// window and the agent surface must open the same store - an assistant
 /// reading a different mailbox from the one on screen would be worse than no
 /// assistant.
 pub fn default_data_dir() -> std::path::PathBuf {
@@ -382,7 +382,7 @@ pub struct QueuedChange {
 /// What the shell may ask for.
 ///
 /// Holds the store, which `rusqlite` makes `Send` but not `Sync`, so a caller
-/// sharing one across threads wraps it — `Mutex<Core>` in the Tauri app. That
+/// sharing one across threads wraps it - `Mutex<Core>` in the Tauri app. That
 /// is not a limitation worth engineering around: the store is synchronous
 /// because at personal-mailbox scale it is never the bottleneck.
 pub struct Core {
@@ -399,7 +399,7 @@ impl Core {
         let dir = data_dir.as_ref();
         // Created here rather than expected to exist. A first run has no data
         // directory by definition, and failing before the window opens is the
-        // worst possible moment to say so — there is nowhere to say it.
+        // worst possible moment to say so - there is nowhere to say it.
         std::fs::create_dir_all(dir)?;
         Ok(Self {
             store: Store::open(dir.join("kuverta.db"))?,
@@ -417,7 +417,7 @@ impl Core {
         }
     }
 
-    /// Uses this keyring for OpenPGP — for tests, whose passphrases must not
+    /// Uses this keyring for OpenPGP - for tests, whose passphrases must not
     /// come from the keychain.
     pub fn with_keyring(mut self, keyring: Keyring) -> Self {
         self.keyring = Some(keyring);
@@ -490,7 +490,7 @@ impl Core {
         self.messages_in(&[account], offset, limit, filter)
     }
 
-    /// One list over several accounts, newest first across all of them —
+    /// One list over several accounts, newest first across all of them -
     /// All inboxes. Each row says whose it is, which is what every action
     /// on it reads.
     pub fn messages_in(
@@ -574,7 +574,7 @@ impl Core {
     /// Full-text search, as its own call rather than a filter.
     ///
     /// FTS5 ranks by relevance, so a search result is a different ordering of
-    /// a different set — folding it into the list window would mean pretending
+    /// a different set - folding it into the list window would mean pretending
     /// two unrelated orderings were one.
     /// The search box: the words typed, each as the start of a word and in
     /// its other spellings, or an exact phrase in double quotes.
@@ -607,20 +607,20 @@ impl Core {
     }
 
     /// The sender's plain text, unless the sender's own converter made a
-    /// mess of it — then the HTML it was made from, read here instead.
+    /// mess of it - then the HTML it was made from, read here instead.
     ///
     /// A plain part is usually written on purpose and is usually better than
     /// anything a converter would make of the HTML, so it wins by default.
     /// What it does not win is the case it was never written for: a plain
     /// part that is half markup, which is what a DHL parcel notice arrives
     /// as. See [`html::looks_converted_badly`], and note that the HTML is
-    /// only ever turned into text — nothing in it is run, fetched or
+    /// only ever turned into text - nothing in it is run, fetched or
     /// followed, and a conversion that cannot be trusted is refused rather
     /// than half-made.
     /// The recipients a message row keeps, as a list.
     ///
     /// Stored as one string the way the headers had them, which is comma
-    /// separated — except that a display name may hold a comma of its own, as
+    /// separated - except that a display name may hold a comma of its own, as
     /// `"Zemke, Nicolas" <nic@example.de>` does. So this splits on the commas
     /// outside the quotes, which is the rule the header itself is written by.
     ///
@@ -656,7 +656,7 @@ impl Core {
     }
 
     fn better_than(plain: String, parsed: Option<&mail_parser::Message<'_>>) -> String {
-        // The sender's own text, unless it is markup half converted — or
+        // The sender's own text, unless it is markup half converted - or
         // nothing at all: an HTML-only message whose HTML the parser made
         // nothing of is still a message, and the HTML is still there.
         if !html::looks_converted_badly(&plain) && !plain.trim().is_empty() {
@@ -692,7 +692,7 @@ impl Core {
             .iter()
             .filter_map(|location| self.store.folder(location.folder_id).ok().flatten())
             .collect();
-        // A draft is a message in Drafts — the folder, not the `\Draft`
+        // A draft is a message in Drafts - the folder, not the `\Draft`
         // flag. The flag is unreliable both ways: a draft put there by hand
         // may lack it, and a copy in Sent or Trash may keep it. The one
         // message can sit in Drafts and Sent at once, when the draft was
@@ -965,7 +965,7 @@ impl Core {
     /// Not queued, and that is the point rather than an omission: a category
     /// lives in the store and is never sent to a server, so there is no round
     /// trip to hold back and nothing for the undo window to protect. Changing
-    /// your mind is another correction, which is what the log wants anyway —
+    /// your mind is another correction, which is what the log wants anyway -
     /// an event, not an edit.
     ///
     /// Two rows are written. The correction is the training data of §3.4, and
@@ -979,7 +979,7 @@ impl Core {
             .ok_or_else(|| RpcError::Rejected(format!("not a category: {category}")))?;
 
         // Confirms the message is this account's before writing anything about
-        // it — ids are global to the store.
+        // it - ids are global to the store.
         self.store
             .message_by_id(account, id)?
             .ok_or(RpcError::UnknownMessage(id))?;
@@ -1014,7 +1014,7 @@ impl Core {
     /// [`ClassifierSource::Agent`] rather than as a correction. The difference
     /// matters more than it looks: corrections are what the classifier learns
     /// from, and they are trusted because a person made them. An assistant's
-    /// filing is a suggestion that happens to be visible — if the user agrees
+    /// filing is a suggestion that happens to be visible - if the user agrees
     /// and files it the same way, *that* is recorded as a correction.
     ///
     /// [`ClassifierSource::Agent`]: core_store::model::ClassifierSource::Agent
@@ -1053,7 +1053,7 @@ impl Core {
     /// Where archiving and trashing move mail to, for one account.
     ///
     /// Moved here from the desktop app, which was reaching into `core-proto`
-    /// for it — the agent surface needs the same answer, and two shells
+    /// for it - the agent surface needs the same answer, and two shells
     /// deciding separately where "Archive" is would be two places to disagree.
     pub fn special_folders(&self, account: AccountId) -> Result<SpecialFolders> {
         let folders = self.store.folders(account)?;
@@ -1077,7 +1077,7 @@ impl Core {
     /// month moves nobody's mail.
     ///
     /// Stops after three failures in a row rather than grinding through a
-    /// mailbox against a server that is down — each failure can be a long
+    /// mailbox against a server that is down - each failure can be a long
     /// timeout, and a hundred of them is an afternoon.
     pub async fn model_pass(
         &self,
@@ -1104,7 +1104,7 @@ impl Core {
                 Ok(verdict) => {
                     failures_in_a_row = 0;
                     // An answer that names no single category is the model not
-                    // knowing, which is exactly what Unknown means — recorded as
+                    // knowing, which is exactly what Unknown means - recorded as
                     // such, and counted, so a model that cannot follow the
                     // instruction shows up as one.
                     if verdict.category.is_none() {
@@ -1145,7 +1145,7 @@ impl Core {
     /// The facts a model is shown for a stored message.
     ///
     /// Re-parsed from the message on disk where there is one, because the store
-    /// keeps only some of what the rules read at sync time — `List-Unsubscribe`,
+    /// keeps only some of what the rules read at sync time - `List-Unsubscribe`,
     /// `Precedence` and `Auto-Submitted` are read then and not kept. Without the
     /// body on disk the summary stands in, and the model sees less; that is
     /// worth knowing when reading its disagreements.
@@ -1196,7 +1196,7 @@ impl Core {
 
     /// Picks the copy to act on and records the intent.
     ///
-    /// One message can be in several folders — on Gmail routinely — so which
+    /// One message can be in several folders - on Gmail routinely - so which
     /// copy is meant has to be decided rather than assumed. INBOX wins when
     /// there is a choice, because getting it out of the inbox is what filing
     /// means; a copy already in the destination is never the one to move.

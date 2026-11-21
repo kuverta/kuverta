@@ -3,7 +3,7 @@
 //!
 //! No server: a preview is built by the same construction `send` uses, so
 //! what it shows is what would be submitted and filed in Sent. Passphrases
-//! are held in memory — a keychain read from a test would raise a dialog.
+//! are held in memory - a keychain read from a test would raise a dialog.
 
 use std::sync::Arc;
 
@@ -220,7 +220,7 @@ fn an_encrypted_message_opens_decrypted_with_its_status() {
     );
     assert!(!detail.pgp_keys_attached);
 
-    // Without a keyring the message is still shown — as encrypted, and
+    // Without a keyring the message is still shown - as encrypted, and
     // without pretending the preamble is its text.
     let bare = Core::new(
         Store::open(world.dir.0.join("kuverta.db")).unwrap(),

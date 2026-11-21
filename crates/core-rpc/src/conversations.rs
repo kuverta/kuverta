@@ -1,5 +1,5 @@
 //! Mail as conversations: a list of people, and with each the exchange as a
-//! messenger shows it — theirs on one side, yours on the other.
+//! messenger shows it - theirs on one side, yours on the other.
 //!
 //! Mail quotes everything that came before, so an exchange of ten messages
 //! shown whole is the first message ten times. Each bubble shows what that
@@ -19,7 +19,7 @@ pub struct ContactView {
     pub address: String,
     pub name: Option<String>,
     /// Messages sent to them, and from them: said beside the suggestion, so
-    /// "Erika — 12 sent" is told from an Erika written to once.
+    /// "Erika - 12 sent" is told from an Erika written to once.
     pub sent: usize,
     pub received: usize,
     pub last_utc: Option<i64>,
@@ -198,7 +198,7 @@ impl Core {
 ///
 /// Conservative where it cannot tell: a line is only taken as the start of a
 /// quote when it looks like one of the usual introductions, and when stripping
-/// would leave nothing the text is kept whole — an empty bubble says less
+/// would leave nothing the text is kept whole - an empty bubble says less
 /// than a long one.
 pub fn strip_quoted(text: &str) -> String {
     let lines: Vec<&str> = text.lines().collect();

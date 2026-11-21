@@ -1,10 +1,10 @@
 //! OpenPGP: a keyring, PGP/MIME for outgoing mail, and reading what arrives.
 //!
-//! Built on rPGP, which is pure Rust like everything else here — no GnuPG to
+//! Built on rPGP, which is pure Rust like everything else here - no GnuPG to
 //! find on the machine, no agent to talk to, and no C toolchain in the build.
 //! rPGP is deliberately low level: it does packets, signatures and ciphers,
-//! and leaves the *meaning* of a certificate — which subkey is for what, when
-//! a key has expired, whether it was revoked — to the application. That layer
+//! and leaves the *meaning* of a certificate - which subkey is for what, when
+//! a key has expired, whether it was revoked - to the application. That layer
 //! lives in [`keyring`], kept small and conservative.
 //!
 //! ## Where keys live
@@ -13,13 +13,13 @@
 //! keys of our own, the passphrase-protected secret key beside it. Not the
 //! store: a keyring is something a person copies, backs up and inspects, and
 //! keeping it out of SQLite means this never needs a schema migration. The
-//! passphrase goes to the OS keychain, one way — like account passwords it is
+//! passphrase goes to the OS keychain, one way - like account passwords it is
 //! written and never handed back to a window. See [`keyring::Passphrases`].
 //!
 //! ## Outgoing
 //!
 //! [`protect`] takes a message `core-smtp` has already built and wraps it. The
-//! envelope — who actually receives the message, Bcc included — is decided
+//! envelope - who actually receives the message, Bcc included - is decided
 //! there and nowhere else; this only changes the bytes.
 //!
 //! ## Bcc and encryption do not mix

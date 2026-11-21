@@ -97,7 +97,7 @@ impl PromptClassifier {
     /// One category from a reply, or none.
     ///
     /// A reply that leads with a category is that category. Otherwise it counts
-    /// only if exactly one category is named anywhere — "not personal, it is
+    /// only if exactly one category is named anywhere - "not personal, it is
     /// marketing" names two, and guessing which was meant is how a parser
     /// quietly invents accuracy the model does not have.
     pub fn parse(reply: &str) -> Option<Category> {

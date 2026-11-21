@@ -1,7 +1,7 @@
 //! The model pass: after sync, beside the rules, never shown.
 //!
 //! Against a real store and a stand-in Ollama on loopback. The properties that
-//! matter are not whether the model is right — that is `kuverta eval`'s job —
+//! matter are not whether the model is right - that is `kuverta eval`'s job -
 //! but that its verdicts land where they can be compared and nowhere else.
 
 use std::io::{BufRead, BufReader, Read, Write};

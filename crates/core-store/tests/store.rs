@@ -867,7 +867,7 @@ fn an_operation_is_not_due_until_its_undo_window_has_elapsed() {
         })
         .unwrap();
 
-    // Visible as queued straight away — but not yet something to send.
+    // Visible as queued straight away - but not yet something to send.
     assert_eq!(store.pending_operations(account).unwrap().len(), 1);
     assert!(store.due_operations(account, 999).unwrap().is_empty());
     assert_eq!(store.due_operations(account, 1_000).unwrap().len(), 1);
@@ -900,7 +900,7 @@ fn undo_cancels_the_last_thing_queued_and_only_while_it_is_pending() {
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].id, first);
 
-    // Once it has been sent, undo can no longer reach it — the server has
+    // Once it has been sent, undo can no longer reach it - the server has
     // already been told, and pretending otherwise would be a lie.
     store
         .settle_operation(first, OperationState::Done, None)
@@ -1389,7 +1389,7 @@ fn folder_summaries_count_messages_and_read_in_the_conventional_order() {
         .unwrap();
     let project = store.upsert_folder(account, "Projekte", None).unwrap();
 
-    // One message in INBOX and Archive at once — the Gmail case. It counts
+    // One message in INBOX and Archive at once - the Gmail case. It counts
     // once in each, never twice in either.
     let (id, _) = store
         .upsert_message(
@@ -1437,7 +1437,7 @@ fn folder_summaries_count_messages_and_read_in_the_conventional_order() {
     // INBOX first, the user's own folder above the bins, Trash last.
     assert_eq!(names, vec!["INBOX", "Archive", "Projekte", "Trash"]);
 
-    // And the same order when the server declares nothing — which is what a
+    // And the same order when the server declares nothing - which is what a
     // folder created from inside this app looks like, because Dovecot will not
     // let a client set a special-use attribute. Without the name fallback,
     // Archive would sort wherever the alphabet put it.
@@ -1670,8 +1670,8 @@ fn a_correction_outranks_the_rules_verdict_in_the_list() {
 #[test]
 fn a_later_rules_verdict_does_not_overturn_the_user() {
     // The next sync reclassifies, and with the correction loaded it should
-    // reach the same answer anyway. But if it ever does not — a rule changes,
-    // the sender starts sending something else — the user's decision is still
+    // reach the same answer anyway. But if it ever does not - a rule changes,
+    // the sender starts sending something else - the user's decision is still
     // the one that stands.
     let (store, account) = store_with_account();
     let id = classified(&store, account, "newsletter");
@@ -2253,7 +2253,7 @@ fn a_folder_badge_counts_a_queued_move_where_it_is_going() {
 
 #[test]
 fn the_body_text_survives_the_index_being_rebuilt_for_recipients() {
-    // The searchable body is not a column on `message` — it lives only in the
+    // The searchable body is not a column on `message` - it lives only in the
     // index. So v18 had to carry the old rows across rather than rebuild from
     // the message table, which would have left every letter in the mailbox
     // searchable by its subject and by nothing else, quietly.
@@ -2414,7 +2414,7 @@ fn a_message_reads_as_answered_by_the_flag_and_by_the_reply_itself() {
     assert!(!says(&before, replied_to));
     assert!(says(&before, flagged));
 
-    // The reply, filed in Sent, is what says the first one is answered —
+    // The reply, filed in Sent, is what says the first one is answered -
     // the copy lands there while the send is still returning.
     store
         .upsert_message(

@@ -1,7 +1,7 @@
 //! Deterministic classifier.
 //!
 //! This is the baseline the model has to beat. It is cheap, offline, produces
-//! the same answer twice, and — the part that matters most — it can say *why*,
+//! the same answer twice, and - the part that matters most - it can say *why*,
 //! which is what makes a wrong answer correctable instead of infuriating.
 //!
 //! Signals are scored rather than matched first-to-win. Real mail carries
@@ -164,7 +164,7 @@ impl Classifier {
 
     pub fn classify(&self, facts: &MessageFacts<'_>) -> Classification {
         // An explicit correction is not evidence to be weighed against
-        // heuristics — it is the answer.
+        // heuristics - it is the answer.
         if let Some((category, detail, rule)) = self.learned.lookup(facts) {
             return Classification {
                 category,

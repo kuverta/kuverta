@@ -1,7 +1,7 @@
 //! What the assistant remembers about an account.
 //!
-//! Short notes, kept so that a fact found once — who the tax adviser is,
-//! where invoices go — is told to the model with each question instead of
+//! Short notes, kept so that a fact found once - who the tax adviser is,
+//! where invoices go - is told to the model with each question instead of
 //! searched for again. Each has a random key that is the same on every
 //! device the notes are synced to, and a time it last changed: two devices
 //! that both changed a note keep the later change. A forgotten note stays as
@@ -119,7 +119,7 @@ impl Store {
     }
 
     /// Takes a note as another device has it, if it is newer than the one
-    /// here — or the same age and greater, so every device settles on the
+    /// here - or the same age and greater, so every device settles on the
     /// same one. Returns whether anything changed. Does not mark the notes
     /// as changed here: this is the change coming in, not going out.
     pub fn merge_memory(
@@ -219,7 +219,7 @@ impl Store {
 }
 
 /// Whether a note `theirs` replaces `mine`: later wins, and at the same
-/// second a forgetting wins, then the greater text — any rule will do, as long
+/// second a forgetting wins, then the greater text - any rule will do, as long
 /// as every device applies the same one.
 fn wins(theirs: (&str, bool, i64), mine: (&str, bool, i64)) -> bool {
     (theirs.2, theirs.1, theirs.0) > (mine.2, mine.1, mine.0)

@@ -1,7 +1,7 @@
 //! Where a model runs: Ollama, a hosted service that speaks OpenAI's API, or
 //! Claude over Anthropic's own (see `anthropic.rs`).
 //!
-//! Most hosted services — DeepSeek, OpenAI itself, OpenRouter, Mistral, Groq —
+//! Most hosted services - DeepSeek, OpenAI itself, OpenRouter, Mistral, Groq -
 //! take the same `/chat/completions` request, so one client covers them given
 //! the service's address and a key. What differs is what a model can do, and
 //! only some services say: Ollama lists each model's capabilities, OpenRouter
@@ -126,8 +126,8 @@ impl OpenAiCompatible {
 
     /// As [`Ollama::chat_up_to`].
     ///
-    /// A model that thinks first — DeepSeek's `deepseek-flash`, OpenAI's
-    /// reasoning models — counts its thinking against `max_tokens`, and a
+    /// A model that thinks first - DeepSeek's `deepseek-flash`, OpenAI's
+    /// reasoning models - counts its thinking against `max_tokens`, and a
     /// budget sized for one line of JSON is gone before the answer starts:
     /// the reply comes back empty. Such a model is asked again with thinking
     /// off, which a short judgement does not need, and is asked that way from
@@ -255,8 +255,8 @@ impl OpenAiCompatible {
             .await
             .map_err(|err| AiError::Network(err.to_string()))?;
         if !status.is_success() {
-            // The service says why — a refused key, a model the key cannot
-            // use, no credit left — and that is what the person needs to see.
+            // The service says why - a refused key, a model the key cannot
+            // use, no credit left - and that is what the person needs to see.
             return Err(AiError::Status {
                 status: status.as_u16(),
                 body: text.trim().chars().take(500).collect(),

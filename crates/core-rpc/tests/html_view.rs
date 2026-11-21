@@ -1,4 +1,4 @@
-//! HTML mail as a page: what the page keeps, and — mostly — what it does
+//! HTML mail as a page: what the page keeps, and - mostly - what it does
 //! not. Each test is a claim about a particular document, where what the
 //! sender wrote and what the page shows are both known; the fuzz target
 //! `html_page` holds the claims that are true of every input.

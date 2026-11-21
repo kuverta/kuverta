@@ -1,7 +1,7 @@
 //! Tables the assistant writes: a spreadsheet file, not prose.
 //!
 //! "A table of everything I owe, by how much and how pressing it is." "A list
-//! of my investments." The answer to that is not a paragraph and not a PDF —
+//! of my investments." The answer to that is not a paragraph and not a PDF -
 //! it is a file the person opens in Excel or Numbers and sorts and sums for
 //! themselves, because the whole point of asking for a table is to go on
 //! working with it.
@@ -42,7 +42,7 @@ impl Cell {
     /// A number stays a number. A string that *is* a number is one too: a
     /// model writing a table of amounts will sometimes quote them, and a
     /// column that is all figures but written as text sums to nothing. But
-    /// only when the whole of it is a number and nothing is lost by it — not
+    /// only when the whole of it is a number and nothing is lost by it - not
     /// "1.234,56 €", which is a figure with a currency and a thousands
     /// separator and belongs to a locale this does not know, and not "0049",
     /// where the nought in front is the point.
@@ -235,7 +235,7 @@ pub fn xlsx(table: &Table) -> std::io::Result<Vec<u8>> {
             .into(),
     )?;
     // Two formats: the heading row bold, everything else plain. No number
-    // format of our own — a figure left alone is shown the way the person's
+    // format of our own - a figure left alone is shown the way the person's
     // own spreadsheet shows figures, which is the way they want to read it.
     // The "Normal" cell style is named because a workbook without one is a
     // workbook some readers warn about and Excel offers to repair.

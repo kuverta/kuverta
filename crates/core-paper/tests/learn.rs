@@ -171,7 +171,7 @@ fn a_word_somebody_already_typed_is_not_proposed_back_to_them() {
         ("Taxes", letter("Finanzamt Hamburg-Mitte, Steuerbescheid.")),
         ("Taxes", letter("Finanzamt Hamburg-Nord, Steuerbescheid.")),
     ];
-    // Both words are already on the folder — and `Steuerbescheid` is on
+    // Both words are already on the folder - and `Steuerbescheid` is on
     // another folder on purpose, which is a decision, not an oversight.
     let folders = [
         folder("Taxes", "Finanzamt"),
@@ -225,7 +225,7 @@ fn the_word_on_most_of_the_letters_is_proposed_first() {
     letters.push(("Taxes", letter("Nur Säumniszuschlag hier.")));
     letters.push(("Taxes", letter("Und hier auch Säumniszuschlag.")));
     // Another folder with letters in it, so the boilerplate every letter
-    // carries has somewhere else to stand — see `ENOUGH_FOLDERS`.
+    // carries has somewhere else to stand - see `ENOUGH_FOLDERS`.
     letters.push(("House", letter("Die Nebenkostenabrechnung liegt bei.")));
     letters.push(("House", letter("Nebenkostenabrechnung, Nachzahlung.")));
     let folders = [folder("Taxes", ""), folder("House", "")];

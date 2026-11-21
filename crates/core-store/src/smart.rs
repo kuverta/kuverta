@@ -1,7 +1,7 @@
 //! Smart mailboxes: saved questions asked of the store.
 //!
-//! A smart mailbox holds no mail. It is a set of rules — *from contains
-//! "invoice"*, *older than 30 days* — that the list window answers the same way
+//! A smart mailbox holds no mail. It is a set of rules - *from contains
+//! "invoice"*, *older than 30 days* - that the list window answers the same way
 //! it answers a folder or a category, so everything the list can do to a
 //! folder it can do to one of these: page through it, count it, act on it.
 //!
@@ -91,7 +91,7 @@ pub struct StoredSmartMailbox {
 
 impl SmartRule {
     /// Checks a rule before it is saved, so a mailbox that can never match
-    /// anything — a number field holding "soon" — is refused with a reason
+    /// anything - a number field holding "soon" - is refused with a reason
     /// rather than stored and silently empty.
     pub fn validate(&self) -> std::result::Result<(), String> {
         let value = self.value.trim();
@@ -132,7 +132,7 @@ impl SmartRule {
     }
 }
 
-/// The categories a rule can name — the classifier's six.
+/// The categories a rule can name - the classifier's six.
 const CATEGORIES: &[&str] = &[
     "personal",
     "newsletter",
@@ -167,7 +167,7 @@ pub(crate) fn compile(query: &SmartQuery, now: i64) -> Compiled {
 
     for rule in &query.rules {
         // A rule that cannot be read matches nothing. Skipping it instead
-        // would widen the mailbox — an "all of these" box with one rule gone
+        // would widen the mailbox - an "all of these" box with one rule gone
         // shows more than it should, and one with every rule gone shows the
         // whole account, where select-all and Delete are two keys away.
         if rule.validate().is_err() {
@@ -195,7 +195,7 @@ fn compile_rule(rule: &SmartRule, now: i64, args: &mut Vec<Box<dyn rusqlite::ToS
 
     match rule.field {
         // `is` and `ends with` mean the address, which is what a person
-        // comparing a sender has in mind — "is anna@example.de", "ends with
+        // comparing a sender has in mind - "is anna@example.de", "ends with
         // @example.de". The other comparisons see the name as well, so
         // "contains Anna" finds her whichever way she writes her address.
         SmartField::From if matches!(rule.op, SmartOp::Is | SmartOp::IsNot | SmartOp::EndsWith) => {
@@ -391,7 +391,7 @@ impl Store {
         Ok(())
     }
 
-    /// Whether an account already has a smart mailbox by this name — how an
+    /// Whether an account already has a smart mailbox by this name - how an
     /// import avoids adding the same mailbox twice when it is run again.
     pub fn smart_mailbox_named(&self, account_id: AccountId, name: &str) -> Result<bool> {
         Ok(self
@@ -406,7 +406,7 @@ impl Store {
     }
 
     /// How many messages a filter selects, and how many of those are unread,
-    /// without fetching any of them — for a sidebar badge.
+    /// without fetching any of them - for a sidebar badge.
     pub fn count_matching(
         &self,
         account_id: AccountId,

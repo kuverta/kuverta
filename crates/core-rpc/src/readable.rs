@@ -2,13 +2,13 @@
 //!
 //! The assistant writes about files: the ones a person attaches to what they
 //! are writing, and the ones a message it answers came with. A model reads
-//! text, so each file is turned into some — Markdown where the file had
+//! text, so each file is turned into some - Markdown where the file had
 //! structure worth keeping, headings, lists and tables, because that is what
 //! a model reads best and what reads back cleanly if it quotes it.
 //!
 //! What is read, and how:
 //!
-//! - **text** of any kind — plain, CSV, Markdown, calendar, contact — as it is;
+//! - **text** of any kind - plain, CSV, Markdown, calendar, contact - as it is;
 //!   HTML through the same converter the reading pane uses;
 //! - **PDF** by its text layer. A scan has none, and its pages are the
 //!   photographs inside it, which go to the vision model as a letter's do;
@@ -18,8 +18,8 @@
 //!
 //! Everything else is said to be unreadable, by name, rather than guessed at.
 //!
-//! These files come from anywhere — a PDF someone else sent is still someone
-//! else's PDF — so everything here is bounded: how much a zip entry may
+//! These files come from anywhere - a PDF someone else sent is still someone
+//! else's PDF - so everything here is bounded: how much a zip entry may
 //! inflate to, how many rows of a sheet, how many pages go to the vision
 //! model. A PDF reader that panics on a malformed file takes only that file's
 //! text with it.
@@ -196,7 +196,7 @@ pub fn clip(text: &str, most: usize) -> String {
 }
 
 /// Text in whatever encoding it came in, as well as it can be guessed: UTF-8
-/// when it is, Windows-1252 — what an old German CSV is — when it is not.
+/// when it is, Windows-1252 - what an old German CSV is - when it is not.
 fn decode(bytes: &[u8]) -> String {
     let bytes = bytes.strip_prefix(b"\xef\xbb\xbf").unwrap_or(bytes);
     match std::str::from_utf8(bytes) {
@@ -397,7 +397,7 @@ fn docx_paragraph(paragraph: roxmltree::Node<'_, '_>) -> String {
         return String::new();
     }
     // English Word names its heading styles Heading1…; German Word, which is
-    // most of what arrives here, Überschrift1 — stored as "berschrift1".
+    // most of what arrives here, Überschrift1 - stored as "berschrift1".
     let level = ["heading", "berschrift"]
         .iter()
         .find_map(|prefix| style.strip_prefix(prefix)?.trim().parse::<usize>().ok());
@@ -424,7 +424,7 @@ fn docx_runs(paragraph: roxmltree::Node<'_, '_>) -> String {
     text
 }
 
-/// An OpenDocument file — text, spreadsheet or presentation — which keeps
+/// An OpenDocument file - text, spreadsheet or presentation - which keeps
 /// all three in one `content.xml` with the same paragraph elements.
 fn odf(archive: &mut Archive<'_>) -> Option<String> {
     let xml = entry(archive, "content.xml")?;
@@ -535,7 +535,7 @@ fn xlsx(archive: &mut Archive<'_>) -> Option<String> {
             )
         })
         .unwrap_or_default();
-    // Sheet names, in the workbook's order — which is the order sheetN.xml
+    // Sheet names, in the workbook's order - which is the order sheetN.xml
     // are numbered in, for a workbook Excel wrote.
     let names: Vec<String> = entry(archive, "xl/workbook.xml")
         .and_then(|xml| {

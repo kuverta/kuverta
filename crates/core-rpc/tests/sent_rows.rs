@@ -1,5 +1,5 @@
 //! What the list says for mail the account sent: who it went to, by the
-//! names those people sign with — not the account's own name, over and over.
+//! names those people sign with - not the account's own name, over and over.
 
 use core_rpc::Core;
 use core_store::model::*;

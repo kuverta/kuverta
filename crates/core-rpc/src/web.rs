@@ -1,7 +1,7 @@
 //! The assistant on the web, and what keeps the web out of the assistant.
 //!
-//! When the person asks it to find something out — what a company is, what a
-//! form needs, whether a deadline is real — the assistant can search the web
+//! When the person asks it to find something out - what a company is, what a
+//! form needs, whether a deadline is real - the assistant can search the web
 //! and read pages, with two tools: `web_search` and `read_web_page`. Both
 //! exist only while the person has switched research on in the settings; a
 //! model is never offered a tool the person has not asked for.
@@ -9,7 +9,7 @@
 //! A page is read the way a letter is: as text, through the same reader the
 //! reading pane uses, which executes nothing and follows nothing. That is
 //! the easy half. The web is also the first place the assistant reads *and*
-//! can write to — an address is a message to whoever serves it — and that
+//! can write to - an address is a message to whoever serves it - and that
 //! opens three doors that mail never did. Each is closed here, on purpose,
 //! and the rules are in the names of the functions:
 //!
@@ -21,7 +21,7 @@
 //!   redirect is checked the same way, by hand.
 //! - **Only addresses that were given.** [`allowed_urls`] lists what the
 //!   assistant may open: addresses the person wrote, addresses a search
-//!   returned, and links on a page it read — each taken from the structured
+//!   returned, and links on a page it read - each taken from the structured
 //!   part of a tool's result, never from the text of a page or a message. A
 //!   message is written by a stranger, and a model told by that message to
 //!   open `https://evil.example/?q=` followed by the contents of another
@@ -33,7 +33,7 @@
 //!   anything, including "now trash the inbox". [`refusal`] says what a
 //!   tool may not do after the web was read: in the same question, nothing
 //!   that changes mail, signs, or keeps anything; in the same conversation,
-//!   nothing that lasts — a note, a task, a skill. The person is told, and
+//!   nothing that lasts - a note, a task, a skill. The person is told, and
 //!   asks again in a new question or a new conversation, which costs them a
 //!   sentence and costs an injected page everything.
 //!
@@ -65,10 +65,10 @@ pub const SEARCH: &str = "web.search";
 pub const MAX_QUERY_CHARS: usize = 200;
 const MAX_RESULTS: usize = 10;
 /// A page: as much text as the HTML reader will give back, which is half
-/// what it reads — a page cut here still reads, where one that overflows
+/// what it reads - a page cut here still reads, where one that overflows
 /// the reader is refused whole.
 const MOST_PAGE_BYTES: usize = 1 << 19;
-/// A file that is not a page — a PDF — read as an attachment is.
+/// A file that is not a page - a PDF - read as an attachment is.
 const MOST_FILE_BYTES: usize = 8 << 20;
 /// Links told to the model from one page: enough to go on with, few enough
 /// to leave room for the page.
@@ -257,7 +257,7 @@ impl Fetcher {
         ))
     }
 
-    /// Whether an address may be fetched at all, and — guarded — the
+    /// Whether an address may be fetched at all, and - guarded - the
     /// addresses its host resolves to, each one checked, which the request
     /// is then pinned to so that a second lookup cannot answer differently.
     async fn check(&self, url: &Url) -> std::result::Result<Option<Vec<SocketAddr>>, String> {
@@ -496,7 +496,7 @@ fn is_html(content_type: &str) -> bool {
 }
 
 /// One page as text, with its title and the links on it; a file that is not
-/// a page — a PDF, a text file — read the way an attachment is.
+/// a page - a PDF, a text file - read the way an attachment is.
 pub async fn read_page(fetcher: &Fetcher, url: &Url) -> std::result::Result<Page, String> {
     let fetched = fetcher
         .fetch(url, |kind| {
@@ -736,7 +736,7 @@ pub fn urls_in_text(text: &str) -> Vec<String> {
 }
 
 /// Every address the assistant may open in this conversation: those the
-/// person wrote, those a search returned, and the links on pages it read —
+/// person wrote, those a search returned, and the links on pages it read -
 /// each from the structured part of a tool's answer, never from the text of
 /// a page or a message.
 pub fn allowed_urls(turns: &[Turn]) -> HashSet<String> {

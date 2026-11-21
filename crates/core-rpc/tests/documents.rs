@@ -1,6 +1,6 @@
 //! Documents and the signature, against a real store: the assistant writes a
 //! letter, signs it, signs a PDF that came as an attachment, hands documents
-//! to a draft, lists and deletes them — without a model.
+//! to a draft, lists and deletes them - without a model.
 
 use core_ai::ToolCall;
 use core_rpc::{AssistantEvent, Core};
@@ -345,7 +345,7 @@ fn the_signature_lands_on_the_line_the_document_rules_for_it() {
     );
     assert_eq!(world.core.documents(world.account).unwrap().len(), 1);
 
-    // Said which, it signs that one — on page 2, where the line is, and
+    // Said which, it signs that one - on page 2, where the line is, and
     // without writing the date over the words that name the line.
     let signed = world.core.assistant_tool(
         world.account,
@@ -408,7 +408,7 @@ fn a_signature_is_moved_by_signing_the_original_again_into_the_same_document() {
     let text = pdf_extract::extract_text_from_mem(&world.core.document(id).unwrap().bytes).unwrap();
     assert!(text.contains("Musterstadt, "), "{text}");
 
-    // Moved by hand: the same document, and the original signed again —
+    // Moved by hand: the same document, and the original signed again -
     // so the date written under the first one is gone with it rather than
     // left behind on a page that was stamped twice.
     let moved = world
@@ -504,7 +504,7 @@ fn a_contract_that_came_as_an_attachment_is_signed_as_a_copy_and_handed_to_a_dra
     let original = world.core.attachment(world.account, message, 0).unwrap();
     assert_eq!(original.bytes, pdf_saying("Mietvertrag Seite 1"));
 
-    // Signing the signed copy again — moved — is a third document, named once.
+    // Signing the signed copy again - moved - is a third document, named once.
     let again = world.core.assistant_tool(
         world.account,
         &call(

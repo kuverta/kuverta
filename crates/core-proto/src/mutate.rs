@@ -8,7 +8,7 @@
 //! The rule the whole module exists to enforce: **never act on a UID without
 //! first proving it still refers to the message the user acted on.** A UID is
 //! stable within a UIDVALIDITY only in the sense that the server will not
-//! reissue it — the message can be moved or deleted by another client at any
+//! reissue it - the message can be moved or deleted by another client at any
 //! time, and archiving whatever now happens to sit at UID 412 is exactly the
 //! failure the read-only design used to make impossible. Three things are
 //! checked before anything is written: the folder still has the UIDVALIDITY the
@@ -67,7 +67,7 @@ enum Outcome {
 /// before the break is recorded as done, everything after is still pending.
 ///
 /// This does not update the local store's idea of where messages are. The sync
-/// pass that follows does that, by observing the server — which is the same
+/// pass that follows does that, by observing the server - which is the same
 /// path that reconciles changes made from any other client, and therefore the
 /// one already trusted to get it right.
 pub async fn flush_operations(

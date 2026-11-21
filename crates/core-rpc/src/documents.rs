@@ -1,22 +1,22 @@
 //! Documents the assistant makes, and the signature it signs them with.
 //!
 //! A document is a file kept on an account: a PDF written from text the
-//! assistant composed, an attachment — or an earlier document — with the
+//! assistant composed, an attachment - or an earlier document - with the
 //! person's signature put on it, or a spreadsheet of a table it was asked
 //! for. The person sees each as a card in the chat, opens it in the viewer,
 //! saves it, attaches it to a message, or throws it away; the assistant
 //! lists, reads, renames and deletes them by id.
 //!
-//! What kind of file each one is comes from its own name — see
-//! [`DocumentView::content_type`] — so there is one place that says it, and
+//! What kind of file each one is comes from its own name - see
+//! [`DocumentView::content_type`] - so there is one place that says it, and
 //! `pages` is a PDF's and `None` for anything else.
 //!
 //! The signature is a PNG or JPEG of the person's handwritten signature, kept
 //! once for the whole store under Settings → General, with the place written
 //! in front of the date beneath it. Signing is placing that picture: what a
 //! printed, signed and scanned page is, not a certificate. It happens only
-//! when the person asks for it — the assistant is told so, and the tool says
-//! which document it signed — and the signed PDF goes nowhere by itself: the
+//! when the person asks for it - the assistant is told so, and the tool says
+//! which document it signed - and the signed PDF goes nowhere by itself: the
 //! assistant cannot send mail.
 
 use base64::Engine;
@@ -50,7 +50,7 @@ pub struct DocumentView {
     pub content_type: String,
     /// Where the signature sits, for a signed document whose original is
     /// still to hand: the window shows it there and lets it be dragged
-    /// somewhere else. `None` where the signature cannot be moved — a
+    /// somewhere else. `None` where the signature cannot be moved - a
     /// document written with the signature in its text, or one signed by a
     /// build that did not keep the original.
     #[serde(default)]
@@ -88,9 +88,9 @@ pub enum DocumentSource {
 /// Where on the PDF the signature goes.
 ///
 /// Nothing measured means: find the line the document rules for a signature
-/// and sit on it — which is what a contract asks for, and what a number
-/// guessed without reading the page cannot do. A measurement given — a
-/// position, a height above the bottom edge, a distance from the left — is
+/// and sit on it - which is what a contract asks for, and what a number
+/// guessed without reading the page cannot do. A measurement given - a
+/// position, a height above the bottom edge, a distance from the left - is
 /// the caller placing it themselves, which is how one that landed wrong is
 /// moved.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -123,7 +123,7 @@ impl Aim {
 }
 
 /// The signature as settings show it: whether there is one, its measurements,
-/// the place, and — for the preview — the picture, as base64.
+/// the place, and - for the preview - the picture, as base64.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SignatureSettings {
     pub present: bool,
@@ -299,8 +299,8 @@ impl Core {
 
     /// Writes a table as a spreadsheet file, kept as a document.
     ///
-    /// The rows go in the order they are given. Sorting them — by how much,
-    /// by how pressing — is a judgement about what the rows say, made where
+    /// The rows go in the order they are given. Sorting them - by how much,
+    /// by how pressing - is a judgement about what the rows say, made where
     /// they were read; there is nothing here that could do it better.
     pub fn write_table(
         &self,
@@ -357,7 +357,7 @@ impl Core {
     ///
     /// Where it goes is [`Aim`]: the line the document rules for a signature
     /// unless the caller measured a place themselves. `with_date` writes the
-    /// place and today's date beneath it — unless the aim brings a caption of
+    /// place and today's date beneath it - unless the aim brings a caption of
     /// its own, or the line is already named beneath, where the date would be
     /// written over the words that name it.
     pub fn sign(
@@ -467,8 +467,8 @@ impl Core {
     ///
     /// This is what the window's placer saves: the person dragged the
     /// signature to where it belongs, and the document is made again from
-    /// the original with the signature there. The same document — the id,
-    /// the name and anything already holding them stay as they are — because
+    /// the original with the signature there. The same document - the id,
+    /// the name and anything already holding them stay as they are - because
     /// a stamp cannot be lifted off a page, only put on a fresh copy.
     pub fn place_signature(
         &self,
@@ -520,7 +520,7 @@ impl Core {
     }
 
     /// What a source is: its name, its bytes, and where it came from in
-    /// words, for the note on the copy made of it — signed or filled.
+    /// words, for the note on the copy made of it - signed or filled.
     fn pdf_source(
         &self,
         account: AccountId,
@@ -565,7 +565,7 @@ impl Core {
     /// The line in `pdf` the signature belongs on, or `None` where the
     /// document rules none and the measurements stand.
     ///
-    /// A document that rules several — a contract both parties sign — and
+    /// A document that rules several - a contract both parties sign - and
     /// nothing saying which is the person's is refused rather than guessed
     /// at, with the lines named, so the next try can say which.
     fn line_for(
@@ -598,8 +598,8 @@ impl Core {
 
     /// Who the person signing is, as a document would name them: their own
     /// name, which is what tells their line from the other party's. An
-    /// account labelled with its address names nobody — no contract writes
-    /// an address under the line — so it answers with nothing.
+    /// account labelled with its address names nobody - no contract writes
+    /// an address under the line - so it answers with nothing.
     fn signing_as(&self, account: AccountId) -> String {
         self.accounts()
             .unwrap_or_default()
@@ -611,7 +611,7 @@ impl Core {
     }
 
     /// How large each page of a document is, in millimetres, as a reader
-    /// shows it — a rotated page the right way up.
+    /// shows it - a rotated page the right way up.
     ///
     /// The window's placer needs it: what it has is a picture of the page and
     /// a place on it the person dragged the signature to, and what
@@ -689,7 +689,7 @@ impl Core {
 
     /// Keeps a picture of the signature: a PNG or a JPEG, cut out of its
     /// paper (see [`crate::signature`]) and kept as a PNG with the paper
-    /// transparent — which is what the settings show and what goes on a
+    /// transparent - which is what the settings show and what goes on a
     /// page.
     pub fn set_signature(&self, bytes: &[u8], content_type: &str) -> Result<SignatureSettings> {
         if bytes.len() > MOST_SIGNATURE_BYTES {
@@ -741,7 +741,7 @@ impl Core {
         self.signature()
     }
 
-    /// The same, from base64 — what the window has once it has read the
+    /// The same, from base64 - what the window has once it has read the
     /// file the person picked.
     pub fn set_signature_base64(
         &self,

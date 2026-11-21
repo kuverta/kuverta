@@ -104,7 +104,7 @@ pub struct NewAccount {
     /// Submission endpoint. `None` leaves the account receive-only.
     pub smtp: Option<SmtpConfig>,
     /// `"microsoft"` or `"google"`, for `oauth2` accounts. Decides which grant
-    /// the login uses — they are not interchangeable.
+    /// the login uses - they are not interchangeable.
     pub oauth_provider: Option<String>,
 }
 
@@ -215,12 +215,12 @@ pub struct StoredMessage {
     pub body_path: Option<String>,
     /// Who it went to, as the headers had it, comma separated. Kept on the row
     /// rather than read back out of the message, so a letter whose body is not
-    /// on disk still knows who it was for — which in Sent is the only name on
+    /// on disk still knows who it was for - which in Sent is the only name on
     /// it worth anything.
     pub recipients: Option<String>,
 }
 
-/// Where a message lives on the server. One message can have many locations —
+/// Where a message lives on the server. One message can have many locations -
 /// this is what makes Gmail's labels-as-folders behaviour representable.
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -239,7 +239,7 @@ pub enum Upsert {
 }
 
 /// Which classifier produced a verdict. Both run on every message so their
-/// disagreement can be measured — see docs/implementation-plan.md §4.
+/// disagreement can be measured - see docs/implementation-plan.md §4.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassifierSource {
     Rules,
@@ -291,7 +291,7 @@ pub enum OperationKind {
     /// Move the message to `target_folder`.
     ///
     /// Deliberately no `Expunge` sibling. Deleting means moving to Trash, so
-    /// nothing this client does destroys mail permanently — the one part of
+    /// nothing this client does destroys mail permanently - the one part of
     /// the original read-only safety story that survives stage 2 intact.
     Move { target_folder: String },
     /// Add or remove a single IMAP flag, e.g. `\Seen`.
@@ -315,7 +315,7 @@ pub enum OperationState {
     /// The server accepted it.
     Done,
     /// Abandoned. Either the user cancelled it or it was superseded by a
-    /// later change — `last_error` says which.
+    /// later change - `last_error` says which.
     Cancelled,
     /// No longer applicable: the world moved on, and the intent was either
     /// already satisfied or has nothing left to act on. Not an error.
@@ -362,7 +362,7 @@ pub struct NewOperation {
     /// The Message-ID the caller believes lives at that UID.
     ///
     /// `None` means "a message with no `Message-ID` header", which is legal
-    /// and does happen — not "do not check". The executor compares presence
+    /// and does happen - not "do not check". The executor compares presence
     /// and absence alike, so finding an id where none was expected is as much
     /// a conflict as finding the wrong one.
     pub expect_message_id: Option<String>,
@@ -392,8 +392,8 @@ pub struct Operation {
 ///
 /// A pattern beginning with `\` is matched against the folder's RFC 6154
 /// special-use attribute, anything else against its name. The attribute form
-/// is the more robust of the two — `\All` means Gmail's All Mail whatever
-/// Google decides to call it — but the name form is what someone reading
+/// is the more robust of the two - `\All` means Gmail's All Mail whatever
+/// Google decides to call it - but the name form is what someone reading
 /// `kuverta check` can copy.
 ///
 /// Matching is case-insensitive, because IMAP folder names are compared that
@@ -422,20 +422,20 @@ pub struct ListFilter {
     pub unread_only: bool,
     /// Restrict to messages with a copy in this folder.
     pub folder: Option<FolderId>,
-    /// Oldest first instead of newest first — for reading a folder forwards,
+    /// Oldest first instead of newest first - for reading a folder forwards,
     /// or reaching the start of a long one without scrolling to the end.
     pub oldest_first: bool,
     /// A smart mailbox's rules, combined with the rest like any filter.
     pub smart: Option<crate::smart::SmartQuery>,
-    /// Leave out mail you wrote or threw away — see [`holds_incoming`]. What
+    /// Leave out mail you wrote or threw away - see [`holds_incoming`]. What
     /// "All mail" means; a folder listing is of that folder either way.
     pub incoming_only: bool,
 }
 
 /// Names a client might have given the folder behind each RFC 6154 attribute.
 ///
-/// The fallbacks exist because plenty of servers — Dovecot in its default
-/// configuration among them — advertise no special-use attributes at all, and
+/// The fallbacks exist because plenty of servers - Dovecot in its default
+/// configuration among them - advertise no special-use attributes at all, and
 /// guessing from a known list beats creating a second Sent folder beside the
 /// one the user's other clients already use. German names are here for the same
 /// reason the classifier is bilingual.
@@ -460,8 +460,8 @@ pub const ARCHIVE_NAMES: &[&str] = &["Archive", "Archiv", "Archived"];
 /// Gmail has no Archive folder; archiving there means All Mail.
 ///
 /// Kept apart from [`ARCHIVE_NAMES`] because for *resolution* it must be tried
-/// last — a server with both a real Archive and an All Mail should file into
-/// the Archive — while for ordering a sidebar the two belong in the same place.
+/// last - a server with both a real Archive and an All Mail should file into
+/// the Archive - while for ordering a sidebar the two belong in the same place.
 pub const ALL_MAIL_NAMES: &[&str] = &["All Mail"];
 
 pub const DRAFTS_NAMES: &[&str] = &["Drafts", "Entwürfe", "Entwuerfe", "INBOX.Drafts"];
@@ -490,7 +490,7 @@ fn named_like(name: &str, known: &[&str]) -> bool {
 /// "All mail" is the list of what has been sent *to* you: a reply of your own
 /// sitting between two letters is the thread showing up twice, and nothing in
 /// Trash is waiting for anybody. Each folder is still there in the sidebar,
-/// and search looks everywhere, so nothing is hidden — only kept out of the
+/// and search looks everywhere, so nothing is hidden - only kept out of the
 /// one list that is read top to bottom.
 pub fn holds_incoming(name: &str, special_use: Option<&str>) -> bool {
     !matches!(
@@ -536,7 +536,7 @@ impl FolderSummary {
         // Then the name, so a folder the app already treats as the archive
         // does not sit among the user's own folders in the list. Dovecot will
         // not let a client set a special-use attribute at all, so an Archive
-        // created from inside this app has none — and would otherwise sort
+        // created from inside this app has none - and would otherwise sort
         // wherever the alphabet put it.
         if named_like(&self.name, DRAFTS_NAMES) {
             1
@@ -568,7 +568,7 @@ pub struct ListedMessage {
     pub unread: bool,
     /// To and Cc, lowercased and comma separated: who a sent message went to.
     pub recipients: Option<String>,
-    /// True when the account has answered it — by the `\Answered` flag, or
+    /// True when the account has answered it - by the `\Answered` flag, or
     /// because a message it sent answers this one.
     pub answered: bool,
 }

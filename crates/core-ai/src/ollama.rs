@@ -44,8 +44,8 @@ write [?] instead of guessing it. Reply with the transcription only.";
 
 /// The context a page is read in, in tokens.
 ///
-/// A photographed page is most of Ollama's default 4096 on its own — 3,341
-/// tokens for a 1392×1820 scan — which leaves under a thousand for its text,
+/// A photographed page is most of Ollama's default 4096 on its own - 3,341
+/// tokens for a 1392×1820 scan - which leaves under a thousand for its text,
 /// and a dense letter needs more: the context filled and was cut mid-answer.
 /// Sixteen thousand holds a page and a full answer, for a few hundred megabytes
 /// more memory while a page is being read.
@@ -54,7 +54,7 @@ pub const TRANSCRIBE_CONTEXT: u32 = 16384;
 fn transcribe_body(model: &str, jpeg: &[u8], guarded: bool) -> Value {
     use base64::Engine as _;
     // Deterministic, so reading a page twice gives the same text. Room for a
-    // dense page — those measured took 200 to 864 tokens — and not so much
+    // dense page - those measured took 200 to 864 tokens - and not so much
     // that a loop runs for minutes before it ends.
     let mut options = json!({
         "temperature": 0,
@@ -133,7 +133,7 @@ pub struct Ollama {
 
 pub struct ChatReply {
     pub content: String,
-    /// Wall time for the request, which is what a user waits on — not the
+    /// Wall time for the request, which is what a user waits on - not the
     /// server's own `eval_duration`, which leaves out loading and queueing.
     pub latency_ms: i64,
     /// The model ran out of room before it finished: the answer is cut short,
@@ -154,8 +154,8 @@ impl Ollama {
             return Err(AiError::Url(base_url.to_string()));
         }
         let http = reqwest::Client::builder()
-            // Long, because the first request loads the model — twenty-five
-            // seconds for an 8B model on the machine this was written on — and
+            // Long, because the first request loads the model - twenty-five
+            // seconds for an 8B model on the machine this was written on - and
             // a timeout that fires during a load reads as the server being down.
             .timeout(Duration::from_secs(180))
             .build()
@@ -176,7 +176,7 @@ impl Ollama {
         self.chat_up_to(model, system, user, 12).await
     }
 
-    /// As [`Self::chat`], with room for an answer of up to `max_tokens` — a
+    /// As [`Self::chat`], with room for an answer of up to `max_tokens` - a
     /// judgement with its reason rather than one word.
     pub async fn chat_up_to(
         &self,
@@ -216,7 +216,7 @@ impl Ollama {
     /// For a page the plain reading looped on, not for every page. On a tax
     /// office statement the penalty turned a loop of 116 repeats into 30 clean
     /// lines; on pages that read cleanly without it, it cost 5 to 22 points of
-    /// similarity and up to a quarter of the numbers — an IBAN is digits
+    /// similarity and up to a quarter of the numbers - an IBAN is digits
     /// repeating, and so is an amount. See docs/decisions.md §24.
     pub async fn transcribe_guarded(&self, model: &str, jpeg: &[u8]) -> Result<ChatReply, AiError> {
         self.exchange(&transcribe_body(model, jpeg, true)).await
@@ -441,7 +441,7 @@ impl Ollama {
             .map_err(|err| AiError::Network(err.to_string()))?;
 
         if !status.is_success() {
-            // Ollama explains itself in the body — "model not found" is far more
+            // Ollama explains itself in the body - "model not found" is far more
             // use in a log than a bare 404.
             return Err(AiError::Status {
                 status: status.as_u16(),

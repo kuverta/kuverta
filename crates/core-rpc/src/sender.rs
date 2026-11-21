@@ -4,7 +4,7 @@
 //! are to you. The card this builds answers the question the sender line
 //! raises and the sender line cannot hold: how long you have had mail with
 //! them, who spoke last and when, what their mail usually is, where it ends
-//! up filed, and whether any of it is still waiting on you — followed by the
+//! up filed, and whether any of it is still waiting on you - followed by the
 //! last few messages either way, which is the "last correspondence".
 //!
 //! It is asked for by message, not by address: the window has a row under the
@@ -14,8 +14,8 @@
 //! the card and the conversation are always about the same person. An address
 //! may be passed instead, which is what the People list has to hand.
 //!
-//! Post is asked about the same way and answered in the same shape — see
-//! [`Core::paper_sender`] — so the window has one card to draw rather than
+//! Post is asked about the same way and answered in the same shape - see
+//! [`Core::paper_sender`] - so the window has one card to draw rather than
 //! two that would drift apart.
 
 use core_store::model::{AccountId, MessageId};
@@ -71,7 +71,7 @@ pub struct SenderView {
     /// What their mail is most often classified as, and how much of it is.
     pub category: Option<String>,
     pub category_count: usize,
-    /// Their mail is bulk — a newsletter, marketing, a notification — which
+    /// Their mail is bulk - a newsletter, marketing, a notification - which
     /// is worth saying plainly: it is the difference between somebody who
     /// has written to you fifty times and a shop that has mailed you fifty
     /// times.

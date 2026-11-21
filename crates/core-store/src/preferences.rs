@@ -2,7 +2,7 @@
 //!
 //! A preference is a named value: whether the assistant may research online,
 //! whether it uses skills, where its searches go. Kept here, not in the
-//! window, because the core enforces them — a tool the person has not
+//! window, because the core enforces them - a tool the person has not
 //! switched on is never offered to a model, whichever window or command line
 //! asks. What is not set reads as `None`, and the caller knows the default.
 

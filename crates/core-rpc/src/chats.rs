@@ -2,8 +2,8 @@
 //!
 //! The window keeps a chat as two things: the turns, which are the model's
 //! view and what going on with the conversation takes, and the log, which is
-//! what the window showed — each question, its answer and the cards between
-//! — and which only the window reads. The core keeps both whole, names the
+//! what the window showed - each question, its answer and the cards between
+//! - and which only the window reads. The core keeps both whole, names the
 //! chat after its first question, and lists chats by when they were last
 //! added to.
 

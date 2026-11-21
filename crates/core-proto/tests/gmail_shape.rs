@@ -2,8 +2,8 @@
 //!
 //! Gmail is the provider most likely to break this client, and the reasons are
 //! structural: mail lives under a `[Gmail]/` hierarchy, archiving means the
-//! folder marked `\All` rather than one marked `\Archive`, and — the one the
-//! store was designed around — labels are exposed as folders, so the same
+//! folder marked `\All` rather than one marked `\Archive`, and - the one the
+//! store was designed around - labels are exposed as folders, so the same
 //! message is delivered under several names at once.
 //!
 //! All three can be reproduced without a Google account, which is what
@@ -317,7 +317,7 @@ async fn archiving_a_labelled_message_keeps_it_and_its_history() {
         .unwrap();
     assert_eq!(corrections, 1, "the correction was lost with the row");
 
-    // Out of the inbox, still in All Mail — which is what archiving means here.
+    // Out of the inbox, still in All Mail - which is what archiving means here.
     let names: Vec<String> = fx
         .store
         .locations_of(after.id)
@@ -336,7 +336,7 @@ async fn archiving_a_labelled_message_keeps_it_and_its_history() {
 async fn excluding_all_mail_fetches_the_mailbox_once_instead_of_twice() {
     // The reason folder exclusion exists. Gmail's All Mail holds a copy of
     // every message, so a mailbox whose mail carries two labels crosses the
-    // wire twice over. Deduplication already keeps one row and one body — this
+    // wire twice over. Deduplication already keeps one row and one body - this
     // is about the bytes, which dedup cannot give back.
     if !server_available() {
         return;

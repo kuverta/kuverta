@@ -1,16 +1,16 @@
-//! Tasks: standing jobs done to mail as it arrives — "move every invoice to
+//! Tasks: standing jobs done to mail as it arrives - "move every invoice to
 //! Rechnungen", "draft an answer to each support request".
 //!
-//! A task is a smart mailbox's rules and an action. The simple actions — move,
-//! archive, trash, mark read, file under a category — need no model: after
+//! A task is a smart mailbox's rules and an action. The simple actions - move,
+//! archive, trash, mark read, file under a category - need no model: after
 //! each sync every new message the rules select gets the action, as an
 //! ordinary queued change with its own undo. Two actions ask the model chosen
 //! for sorting mail, one message at a time: **reply** drafts an answer from an
 //! instruction, and **decide** picks one of the simple actions (or none) by an
 //! instruction, for what rules alone cannot tell apart.
 //!
-//! Every task either acts or asks first. One that asks leaves **proposals** —
-//! "move this to Rechnungen", "send this reply" — for a person to approve or
+//! Every task either acts or asks first. One that asks leaves **proposals** -
+//! "move this to Rechnungen", "send this reply" - for a person to approve or
 //! reject. A reply is always a proposal: nothing a model writes is sent
 //! without someone reading it. A task deals with each message once; undoing
 //! what it did does not make it do it again.
@@ -287,7 +287,7 @@ impl Core {
         Ok(self.store().set_task_enabled(id, enabled)?)
     }
 
-    /// Messages a query selects, newest first — in one folder, when `within`.
+    /// Messages a query selects, newest first - in one folder, when `within`.
     fn matching(
         &self,
         account: AccountId,
@@ -447,7 +447,7 @@ impl Core {
     }
 
     /// Records what a model decided about one message of a task: a proposal,
-    /// or — for a task that acts and an action that is not a reply — the
+    /// or - for a task that acts and an action that is not a reply - the
     /// action itself. Returns what happened, in words.
     pub fn record_model_outcome(
         &self,
@@ -558,7 +558,7 @@ impl Core {
         }
     }
 
-    /// Says a folder is missing, and which there are — what a person, or a
+    /// Says a folder is missing, and which there are - what a person, or a
     /// model trying again, needs to know next.
     pub(crate) fn no_such_folder(&self, account: AccountId, folder: &str) -> String {
         let names: Vec<String> = self

@@ -14,8 +14,8 @@
 //!
 //! Thinking blocks are never sent back. Claude checks that a thinking block's
 //! conversation is unchanged since it was written, and the assistant does
-//! change its history — mail withheld after a refusal, a cut-off answer
-//! joined to its continuation — so each turn goes back as its text and its
+//! change its history - mail withheld after a refusal, a cut-off answer
+//! joined to its continuation - so each turn goes back as its text and its
 //! tool calls only, which every Claude model accepts.
 
 use std::collections::HashSet;
@@ -45,7 +45,7 @@ pub struct Anthropic {
     base: String,
     key: Option<String>,
     http: reqwest::Client,
-    /// Models that refused to be told an effort level — older ones do — and
+    /// Models that refused to be told an effort level - older ones do - and
     /// are not told from then on.
     effortless: Mutex<HashSet<String>>,
     pub(crate) meter: Option<Arc<dyn Meter>>,
@@ -334,7 +334,7 @@ fn answer(reply: &Value, latency_ms: i64) -> Result<Answer, AiError> {
 /// The turns as Claude takes them: system turns joined into the one system
 /// prompt, the rest as alternating messages of content blocks.
 ///
-/// With no tools on offer — an answer's last round, a continuation — tool
+/// With no tools on offer - an answer's last round, a continuation - tool
 /// calls and their results go as plain text, so a request never carries tool
 /// blocks without the tools they name.
 fn conversation(turns: &[Turn], with_tools: bool) -> (String, Vec<Value>) {
@@ -397,7 +397,7 @@ fn conversation(turns: &[Turn], with_tools: bool) -> (String, Vec<Value>) {
 }
 
 /// A call id Claude accepts: its own pass through, one another provider made
-/// up — `call-0` — is kept to the characters Claude allows.
+/// up - `call-0` - is kept to the characters Claude allows.
 fn tool_id(id: &str) -> String {
     let id: String = id
         .chars()

@@ -59,7 +59,7 @@ const SNIPPET_LEN: usize = 220;
 /// Parses a raw RFC 5322 message.
 ///
 /// Returns `None` only when the bytes are not a message at all. Malformed but
-/// recognisable mail still parses — two decades of broken senders mean strict
+/// recognisable mail still parses - two decades of broken senders mean strict
 /// parsing would reject real mail.
 pub fn parse_message(raw: &[u8], size: Option<i64>) -> Option<Parsed> {
     let parsed = MessageParser::default().parse(raw)?;
@@ -182,7 +182,7 @@ fn recipients(message: &mail_parser::Message<'_>) -> Option<String> {
 }
 
 /// A header as sent, unfolded. For the `List-*` headers `mail-parser` reads
-/// as addresses — which loses the `<https://…>` URIs that are the whole point.
+/// as addresses - which loses the `<https://…>` URIs that are the whole point.
 fn raw_header(message: &mail_parser::Message<'_>, name: &str) -> Option<String> {
     message
         .header_raw(name)

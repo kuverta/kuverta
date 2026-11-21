@@ -25,7 +25,7 @@ use crate::{Core, Result, RpcError};
 
 /// An account as a settings form shows it.
 ///
-/// No password, ever — see the module note.
+/// No password, ever - see the module note.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountSettings {
     pub id: AccountId,
@@ -162,7 +162,7 @@ impl Core {
             oauth_tenant: account.oauth_tenant.clone(),
             // Whether one is stored, never which. A keychain that will not
             // answer is reported as "no password" rather than failing the
-            // whole form — the user can always set one again.
+            // whole form - the user can always set one again.
             has_password: password_entry(&account.email)
                 .peek()
                 .ok()

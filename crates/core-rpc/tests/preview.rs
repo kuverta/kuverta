@@ -178,7 +178,7 @@ fn locked_pdf(password: &str) -> Vec<u8> {
     out
 }
 
-/// A locked PDF asks for its password and is drawn once it has it — through
+/// A locked PDF asks for its password and is drawn once it has it - through
 /// a real worker, which does the decrypting after it has been locked down.
 #[test]
 fn a_locked_pdf_is_opened_with_the_password_the_window_sends() {

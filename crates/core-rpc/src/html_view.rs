@@ -2,8 +2,8 @@
 //!
 //! [`html::to_text`] reads a message's HTML as text, and text is what the
 //! reading pane shows by default. This is the other tab: the message as the
-//! sender laid it out, in a frame of the window that can do nothing — no
-//! scripts, no forms, no reaching the network — and whose page is written
+//! sender laid it out, in a frame of the window that can do nothing - no
+//! scripts, no forms, no reaching the network - and whose page is written
 //! here from an allow-list, element by element, attribute by attribute.
 //! Nothing the sender wrote goes to the frame as it was written; what the
 //! frame gets is a new document that mentions only what this file chose to
@@ -12,8 +12,8 @@
 //! ## What is kept and what is not
 //!
 //! Text, the elements that lay it out (tables, paragraphs, lists, headings,
-//! fonts), their presentation attributes, and style — inline and in `<style>`
-//! — with everything that could fetch or run taken out of the CSS. Scripts,
+//! fonts), their presentation attributes, and style - inline and in `<style>`
+//! - with everything that could fetch or run taken out of the CSS. Scripts,
 //! frames, objects, forms, inputs, `<meta>` (a refresh is a navigation),
 //! `<link>`, `<base>`, SVG and every `on…` attribute are not kept; the
 //! elements are dropped with their content where the content is not text,
@@ -23,7 +23,7 @@
 //!
 //! A picture inside the message (`cid:`) is fetched from the app itself, by
 //! the index the attachments list gives it. A picture written into the
-//! message (`data:image/…`) is kept as it is — it cannot reach anywhere. A
+//! message (`data:image/…`) is kept as it is - it cannot reach anywhere. A
 //! picture on the internet is the sender's way of learning that the message
 //! was opened, and when, from where: it is not shown until the person says
 //! so for this message ([`View::remote`]), and until then it is counted so
@@ -33,8 +33,8 @@
 //!
 //! A link never goes where it says. Its address becomes the app's own
 //! ([`View::open`]) with the real address and the link's words behind it, so
-//! that a click reaches the app and the app can ask — showing the real
-//! address beside what the link said — before anything is opened. A link to
+//! that a click reaches the app and the app can ask - showing the real
+//! address beside what the link said - before anything is opened. A link to
 //! anything but a web page, a mail address or a phone number is not a link.
 //! The real address is also the link's `title`, so hovering shows it.
 //!
@@ -57,7 +57,7 @@ pub struct View<'a> {
     /// so for the message in front of them.
     pub remote: bool,
     /// Where a click on a link goes: the app's own address, to which `?to=`
-    /// and `&text=` are appended. Must be one no message could guess — it
+    /// and `&text=` are appended. Must be one no message could guess - it
     /// carries a secret for that reason.
     pub open: &'a str,
     /// Where the message's own pictures are fetched from, by index: this
@@ -249,7 +249,7 @@ pub fn to_page(html: &str, view: &View<'_>) -> Result<Page, Refused> {
         if name.is_empty() {
             // `<` with nothing after it that names an element, as in
             // `a < b`: a browser shows it as text. Here it is simply not
-            // there — one character, and one that starts markup.
+            // there - one character, and one that starts markup.
             continue;
         }
         if SILENT.contains(&name.as_str()) && !ending {
@@ -332,7 +332,7 @@ pub fn to_page(html: &str, view: &View<'_>) -> Result<Page, Refused> {
             "img" => {
                 out.push_str("<img");
                 let src = attr(&attrs, "src").filter(|src| !src.trim().is_empty());
-                // A picture is something to look at — and one left out is
+                // A picture is something to look at - and one left out is
                 // something to offer: a message that is one picture from
                 // the internet is a page with one thing to say.
                 something |= src.is_some();
@@ -450,8 +450,8 @@ impl Link {
 }
 
 /// A link's real address, when it is one a person could follow: a web
-/// page, a mail address, a phone number. Anything else — `javascript:`,
-/// `data:`, `file:`, a path relative to nowhere — makes the link not one.
+/// page, a mail address, a phone number. Anything else - `javascript:`,
+/// `data:`, `file:`, a path relative to nowhere - makes the link not one.
 pub fn link_target(href: &str) -> Option<String> {
     // Tabs and newlines inside an address are dropped, as a browser drops
     // them, and whitespace around it as well.
@@ -505,7 +505,7 @@ fn picture(src: &str, view: &View<'_>, blocked: &mut usize) -> Option<String> {
 }
 
 /// A picture written into the message: `data:image/png;base64,…` and the
-/// other kinds mail carries. SVG is not one — it is a document, not a
+/// other kinds mail carries. SVG is not one - it is a document, not a
 /// picture, and goes where documents go.
 fn is_inline_picture(lower: &str) -> bool {
     ["png", "jpeg", "jpg", "gif", "webp", "bmp"]
@@ -515,7 +515,7 @@ fn is_inline_picture(lower: &str) -> bool {
 
 /// The attributes kept on any element, after what the element's own branch
 /// wrote. `style` is cleaned; the rest are kept when they look like what
-/// they are — a width is digits, a colour is a colour.
+/// they are - a width is digits, a colour is a colour.
 fn push_common(
     out: &mut String,
     attrs: &[(String, String)],
@@ -711,7 +711,7 @@ fn unescape_css(css: &str) -> String {
     out
 }
 
-/// A tag's attributes, in order, names lowercased and values unescaped —
+/// A tag's attributes, in order, names lowercased and values unescaped -
 /// the first of a name wins, as in a browser. A value is what it is: text.
 fn attributes(tag: &str) -> Vec<(String, String)> {
     let rest = tag.trim_start_matches('/');

@@ -21,7 +21,7 @@ use crate::model::NewMessage;
 /// Strips the angle brackets and surrounding whitespace from a `Message-ID`.
 ///
 /// Case is preserved. RFC 5322 treats the local part as case-sensitive, and
-/// folding case here would risk merging two genuinely distinct messages — a
+/// folding case here would risk merging two genuinely distinct messages - a
 /// worse failure than missing a duplicate.
 pub fn normalize_message_id(raw: &str) -> &str {
     raw.trim()

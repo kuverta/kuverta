@@ -3,7 +3,7 @@
 //! Since macOS 10.13 Mail keeps no account list of its own: its accounts are
 //! the system's Internet Accounts, in `~/Library/Accounts/Accounts4.sqlite`.
 //! macOS guards that directory, so reading it takes Full Disk Access for
-//! whichever program asks — kuverta, or the terminal it was started from.
+//! whichever program asks - kuverta, or the terminal it was started from.
 //!
 //! The database is Core Data's: `ZACCOUNT` rows with a type from
 //! `ZACCOUNTTYPE`, and settings in `ZACCOUNTPROPERTY` as binary property

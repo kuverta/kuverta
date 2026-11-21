@@ -136,7 +136,7 @@ fn a_letter_kept_without_its_body_still_knows_who_it_was_for() {
 #[test]
 fn a_comma_inside_somebody_s_name_does_not_split_them_in_two() {
     // The row keeps the recipients as one string, comma separated, the way
-    // the headers had them — and a display name may hold a comma of its own.
+    // the headers had them - and a display name may hold a comma of its own.
     // A piece with no `@` in it cannot be an address, so it belongs to the
     // one before it.
     let world = world("comma");

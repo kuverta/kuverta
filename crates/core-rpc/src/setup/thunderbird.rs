@@ -3,8 +3,8 @@
 //! Thunderbird keeps its account settings in each profile's `prefs.js`, as
 //! `user_pref("key", value);` lines, and lists its profiles in
 //! `profiles.ini`. Both are plain text and readable without Thunderbird
-//! running. Passwords are not in either — they are in `logins.json`,
-//! encrypted — so an import brings the servers and the person enters the
+//! running. Passwords are not in either - they are in `logins.json`,
+//! encrypted - so an import brings the servers and the person enters the
 //! password once more.
 
 use std::collections::HashMap;

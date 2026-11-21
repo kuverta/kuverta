@@ -1,7 +1,7 @@
 //! PGP/MIME for outgoing mail (RFC 3156).
 //!
 //! Takes a message that has already been built and wraps its body. The outer
-//! headers — From, To, Cc, Subject, Date, Message-ID, the threading headers —
+//! headers - From, To, Cc, Subject, Date, Message-ID, the threading headers -
 //! are kept exactly as they were written; what moves inside the protection is
 //! the MIME entity that was the body: its `Content-*` headers and content.
 //!
@@ -9,7 +9,7 @@
 //!
 //! `multipart/signed`, with the entity as the first part and a detached
 //! signature as the second. The signature covers the entity's bytes exactly
-//! as they appear between the boundaries, with CRLF line endings — so those
+//! as they appear between the boundaries, with CRLF line endings - so those
 //! bytes must survive every hop unchanged. A relay may re-encode 8-bit text,
 //! strip trailing whitespace, or turn a line starting `From ` into `>From `,
 //! and any of those breaks the signature. So a text body is re-encoded as

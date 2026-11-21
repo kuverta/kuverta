@@ -1,9 +1,9 @@
 //! Which mail needs you first: an agent that reads the Inbox for urgency.
 //!
 //! For each recent message that is not bulk, the agent first finds out what
-//! kuverta can check for itself — whether the sender is someone you write to,
+//! kuverta can check for itself - whether the sender is someone you write to,
 //! whether you have answered already, how much they have sent before, whether
-//! the text talks about deadlines or payment — and forms a verdict from that
+//! the text talks about deadlines or payment - and forms a verdict from that
 //! alone. Then, when a model is chosen for sorting mail, it hands the model
 //! those findings with the message and asks for a judgement: how soon (0–3),
 //! what to do (reply, pay, attend, decide, read), by when, and why in one
@@ -238,7 +238,7 @@ impl Core {
         Ok(self.store().record_urgency(id, urgency)?)
     }
 
-    /// Records the rules' verdict for every message still waiting for one —
+    /// Records the rules' verdict for every message still waiting for one -
     /// instant, and what the view shows until a model has spoken.
     pub fn judge_by_rules(&self, account: AccountId) -> Result<usize> {
         let jobs = self.urgency_jobs(account, false, 500)?;

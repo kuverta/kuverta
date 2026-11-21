@@ -1,8 +1,8 @@
 //! The LetterXpress client against a LetterXpress that is not there.
 //!
 //! A canned server on a loopback socket that keeps every request, so the
-//! assertions are on what was sent — the credentials in every body, the
-//! checksum of the base64, the method — as much as on what came back. What
+//! assertions are on what was sent - the credentials in every body, the
+//! checksum of the base64, the method - as much as on what came back. What
 //! it cannot check is whether LetterXpress answers in these shapes; a letter
 //! in test mode, which lands in the Postbox and costs nothing, is for that.
 

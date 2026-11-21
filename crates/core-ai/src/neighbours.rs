@@ -2,14 +2,14 @@
 //!
 //! Plan §4's alternative to prompting: embed the message, find the nearest of
 //! the user's own past filings, and take their category. No prompt to tune, no
-//! taxonomy to explain, and it improves every time the user files something —
+//! taxonomy to explain, and it improves every time the user files something -
 //! which a prompt never does.
 
 use std::cmp::Ordering;
 
 use core_rules::{Category, MessageFacts};
 
-/// Cosine similarity. Zero for vectors that cannot be compared, never NaN — a
+/// Cosine similarity. Zero for vectors that cannot be compared, never NaN - a
 /// NaN would sort unpredictably and quietly pick an arbitrary neighbour.
 pub fn cosine(a: &[f32], b: &[f32]) -> f32 {
     if a.len() != b.len() || a.is_empty() {
@@ -168,7 +168,7 @@ pub struct Hybrid {
 /// senders never filed, accuracy fell below the model's from 0.75 down and
 /// matched it from 0.80 up; on senders filed before, every threshold to 0.90
 /// answered everything from the filings. 0.80 is exactly where the curve
-/// recovers, which is the reason not to choose it — a threshold on the knee of
+/// recovers, which is the reason not to choose it - a threshold on the knee of
 /// one corpus is tuned to that corpus. 0.85 keeps a margin and still answers
 /// every known sender without the model.
 impl Default for Hybrid {

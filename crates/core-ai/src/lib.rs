@@ -15,14 +15,14 @@
 //!   anyone's mail moving.
 //! - **The sender's words are fenced.** A prompt carries mail, and mail is
 //!   written by whoever sent it. The worst an injected instruction can do here
-//!   is change a verdict nobody is shown — but the fence is still built so that
+//!   is change a verdict nobody is shown - but the fence is still built so that
 //!   a subject cannot close it.
 //!
 //! The model server is Ollama by default, spoken to over its HTTP API directly.
 //! It is a local process on a known port, and a client library for a handful
 //! of endpoints would be more code to trust than the endpoints themselves. A
 //! hosted service with an OpenAI-compatible API, or Claude over Anthropic's own
-//! API, can stand in for it, when the person chooses one — see [`Provider`].
+//! API, can stand in for it, when the person chooses one - see [`Provider`].
 
 mod agent;
 mod anthropic;

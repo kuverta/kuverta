@@ -1,7 +1,7 @@
 //! Where a PDF asks to be signed.
 //!
 //! A contract says where to sign: a rule to write on, with the words that
-//! name it beneath — „Unterschrift Darlehensnehmer (…)“ — or beside it. A
+//! name it beneath - „Unterschrift Darlehensnehmer (…)“ - or beside it. A
 //! signature placed without reading those words lands at a measurement
 //! guessed from nothing: 30 mm above the bottom edge, which on the last page
 //! of a contract is under the line, under the names, in the white.
@@ -9,14 +9,14 @@
 //! So the page is read for them. The text is read as the text of an
 //! attachment is, with pdf-extract, but with every character's place kept,
 //! and the lines drawn on the page are read with it. From those come the
-//! rules — a run of underscores, or a flat stroke, or a filled hairline —
+//! rules - a run of underscores, or a flat stroke, or a filled hairline -
 //! and for each the nearest words, which are the words the person would read
 //! to find their own line. Only a rule whose words say a signature belongs
 //! there is a spot: a table's border is a flat stroke too, and nothing here
 //! guesses.
 //!
-//! Everything is in the page as a reader shows it — x from the left edge, y
-//! from the bottom, a rotated page turned upright — which is what
+//! Everything is in the page as a reader shows it - x from the left edge, y
+//! from the bottom, a rotated page turned upright - which is what
 //! [`crate::pdf::stamp`] places by, and in millimetres, which is what the
 //! assistant's tool speaks in.
 
@@ -34,7 +34,7 @@ const LABEL_BELOW: f32 = 30.0;
 /// How far above a rule its words may stand, when none are beneath.
 const LABEL_ABOVE: f32 = 18.0;
 /// The band beneath a rule the place and the date would be written in. Words
-/// standing there — the words that name the line — are what leaves no room.
+/// standing there - the words that name the line - are what leaves no room.
 const CAPTION_BAND: f32 = 24.0;
 /// How far from a rule its own baseline is: a rule typed as underscores sits
 /// a little under the line of text it is part of, and that line is beside it
@@ -93,7 +93,7 @@ fn names_a_signature(text: &str) -> bool {
 
 /// Every place the document names for a signature, first page first and
 /// from the top of each page down. Empty when it names none, or when the
-/// PDF cannot be read — the caller then places by measurement.
+/// PDF cannot be read - the caller then places by measurement.
 pub fn find(pdf: &[u8]) -> Vec<Spot> {
     let Ok(doc) = pdf::load(pdf) else {
         return Vec::new();
@@ -232,8 +232,8 @@ impl OutputDev for Reader {
 }
 
 impl Reader {
-    /// The marks a path draws, each from one end to the other. A rectangle —
-    /// which is how a hairline is often filled — gives its top and bottom
+    /// The marks a path draws, each from one end to the other. A rectangle -
+    /// which is how a hairline is often filled - gives its top and bottom
     /// edges; a curve only moves the pen.
     fn drawn(&mut self, ctm: &Transform, path: &PdfPath) {
         let at = |x: f64, y: f64| {
@@ -346,7 +346,7 @@ impl TextLine {
     /// A page may set two signature blocks side by side, and then one
     /// baseline carries both names with a wide gap between them. So the line
     /// is read as the runs the gaps divide it into, and the rule takes the
-    /// run it lies most under — whole, even where the words run on past the
+    /// run it lies most under - whole, even where the words run on past the
     /// end of the rule, which is where a name usually is.
     fn across(&self, x0: f32, x1: f32) -> String {
         let mut runs: Vec<(f32, f32, String)> = Vec::new();
@@ -373,7 +373,7 @@ impl TextLine {
 
 /// The characters as lines of text: everything on one baseline, left to
 /// right, with a space where the page leaves a gap. A line with nothing on
-/// it but spaces — an empty paragraph — is not a line: it would read as
+/// it but spaces - an empty paragraph - is not a line: it would read as
 /// words standing over a rule where the page is blank.
 fn text_lines(mut glyphs: Vec<Glyph>) -> Vec<TextLine> {
     glyphs.sort_by(|a, b| b.y.total_cmp(&a.y).then(a.x.total_cmp(&b.x)));
@@ -450,8 +450,8 @@ fn under(rule: &Rule, line: &TextLine) -> bool {
 }
 
 /// Whether `rule` is one of a table's borders: a table rules the same width
-/// over and over down the page, and the words in its cells — „Für die GmbH
-/// unterzeichnet“ — are a heading, not a line to sign on.
+/// over and over down the page, and the words in its cells - „Für die GmbH
+/// unterzeichnet“ - are a heading, not a line to sign on.
 fn a_border(rule: &Rule, rules: &[Rule]) -> bool {
     rules
         .iter()
@@ -468,7 +468,7 @@ fn furniture(rule: &Rule, size: (f32, f32)) -> bool {
 }
 
 /// Whether words under a line read as the signatory it is for: a name, a
-/// role, a party — short, and not a sentence or a row of figures.
+/// role, a party - short, and not a sentence or a row of figures.
 fn names_a_signatory(text: &str) -> bool {
     let text = text.trim();
     !text.is_empty()
@@ -481,8 +481,8 @@ fn names_a_signatory(text: &str) -> bool {
 
 /// A rule as a place to sign, when the page says it is one.
 ///
-/// Two ways it says so. The words right above it may ask for a signature —
-/// „Bitte hier unterschreiben:“ — and then they are the whole of the answer.
+/// Two ways it says so. The words right above it may ask for a signature -
+/// „Bitte hier unterschreiben:“ - and then they are the whole of the answer.
 /// Otherwise the line must have air above it, which is where the ink goes,
 /// and words under it that either name a signature or name the person
 /// signing. That second way is what a contract signed by name looks like:
@@ -578,7 +578,7 @@ pub enum Choice {
 }
 
 /// `text` as words, lowercase, with everything that is not a letter or a
-/// digit a gap — so „(Mustermann,“ and „Mustermann“ are the same word.
+/// digit a gap - so „(Mustermann,“ and „Mustermann“ are the same word.
 fn words(text: &str) -> Vec<String> {
     text.to_lowercase()
         .split(|c: char| !c.is_alphanumeric())
@@ -587,7 +587,7 @@ fn words(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Whether `label` says every word of `wanted` — „Erika Mustermann“ under a
+/// Whether `label` says every word of `wanted` - „Erika Mustermann“ under a
 /// line that names Erika Mustermann.
 fn says_all(label: &[String], wanted: &[String]) -> bool {
     !wanted.is_empty()
@@ -607,8 +607,8 @@ fn says_the_most_of_it(label: &[String], wanted: &[String]) -> bool {
         })
 }
 
-/// The lines `wanted` names: the ones that say all of it, or — where none
-/// does — the ones that say the most of it.
+/// The lines `wanted` names: the ones that say all of it, or - where none
+/// does - the ones that say the most of it.
 fn named(spots: &[Spot], wanted: &str) -> Vec<Spot> {
     let wanted = words(wanted);
     let by = |fits: fn(&[String], &[String]) -> bool| -> Vec<Spot> {
@@ -630,7 +630,7 @@ fn named(spots: &[Spot], wanted: &str) -> Vec<Spot> {
 /// or the only one there is.
 ///
 /// `near` are words from the right line, as the person or the model says
-/// them; `who` is the person themselves — their name is often what tells
+/// them; `who` is the person themselves - their name is often what tells
 /// their line from the other party's.
 pub fn choose(spots: &[Spot], near: Option<&str>, page: Option<usize>, who: &str) -> Choice {
     let found: Vec<Spot> = spots
@@ -734,7 +734,7 @@ mod tests {
 
     /// The last page of a resolution: a frame around the paper, a table
     /// whose heading happens to say "unterzeichnet", and a signature block
-    /// of two rules side by side with a name under each — no word anywhere
+    /// of two rules side by side with a name under each - no word anywhere
     /// saying "Unterschrift".
     fn resolution() -> Vec<u8> {
         pdf_of(&[[

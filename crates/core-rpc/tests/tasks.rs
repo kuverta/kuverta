@@ -228,7 +228,7 @@ fn call(name: &str, arguments: serde_json::Value) -> ToolCall {
 
 /// "Put the application mail in a new folder and tell me which replies are
 /// positive" reads a folder's worth of mail in one round, not one per
-/// message — and a folder made a moment ago is one a move can go to.
+/// message - and a folder made a moment ago is one a move can go to.
 #[test]
 fn read_messages_reads_a_batch_and_a_new_folder_takes_a_move() {
     let (core, account, _dir) = mailbox("batch");
@@ -276,7 +276,7 @@ fn read_messages_reads_a_batch_and_a_new_folder_takes_a_move() {
     );
 
     // The folder the store just learnt of, as create_folder leaves it, is
-    // one move_messages finds by name — in any spelling of its case.
+    // one move_messages finds by name - in any spelling of its case.
     core.store()
         .upsert_folder(account, "Bewerbungen", None)
         .unwrap();
