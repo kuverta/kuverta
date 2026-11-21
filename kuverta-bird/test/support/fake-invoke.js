@@ -7,7 +7,7 @@
  * takes a folder id rather than a folder name. Getting any of those wrong in
  * the fake would hide exactly the bug it exists to catch.
  *
- * Undo here is `queued` in name only — the fake applies changes immediately
+ * Undo here is `queued` in name only - the fake applies changes immediately
  * and reverses them on undo. What matters for the contract is that undo
  * reverses the last change and that the list agrees afterwards.
  */
@@ -46,7 +46,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     return message;
   };
 
-  // Documents the assistant made — a PDF it signed — by id, and every
+  // Documents the assistant made - a PDF it signed - by id, and every
   // placement the placer saved.
   const signedDocuments = new Map();
   const placements = [];
@@ -61,7 +61,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     ...madeFolders,
   ];
   // Only the fields the window can write a rule about from the list are
-  // matched — sender, subject, mailing list — and a rule about anything else
+  // matched - sender, subject, mailing list - and a rule about anything else
   // matches nothing rather than quietly matching everything, which would
   // make an editor that gathers the whole mailbox look like it works.
   const gathers = (query, m) => {
@@ -136,7 +136,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
 
   const commands = {
     // The first thing the real mount asks. One account, so the picker stays
-    // hidden — a second would be a test of the picker.
+    // hidden - a second would be a test of the picker.
     accounts: async () => [
       { id: 1, email: 'you@example.com', label: 'Dev', can_send: false, last_synced: lastSynced },
     ],
@@ -264,7 +264,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     },
     // Safe preview, without a worker: a picture comes back as the one pixel
     // it is, a PDF as three pages drawn a few at a time, a web page as its
-    // words — and nothing else as anything.
+    // words - and nothing else as anything.
     attachment_preview: async ({ id, index, first, count }) => {
       const found = need(id).attachments?.[index];
       if (!found) throw new Error(`message ${id} has no attachment ${index + 1}`);
@@ -284,7 +284,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
 
     // The assistant, without a model: it searches the seeded mail for the
     // question's words, longest first, until one finds something, and shows
-    // it as the real one does — a line for looking, a card for the message.
+    // it as the real one does - a line for looking, a card for the message.
     assistant_ask: async ({ turns, message, about, onEvent }) => {
       // Asked about messages the person had open: it answers from those, and
       // drafts what they asked for.
@@ -350,7 +350,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     },
 
     // Compose: what it would send, what it sent, and what the assistant was
-    // asked to write — each recorded for a test to read back.
+    // asked to write - each recorded for a test to read back.
     preview: async ({ draft }) => {
       outgoing.previews.push(draft);
       const recipients = [...draft.to, ...draft.cc, ...draft.bcc].filter(Boolean);
@@ -520,7 +520,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
       // fake that accepted any string would hide an adapter sending one.
       if (!CATEGORIES.includes(category)) throw new Error(`not a category: ${category}`);
       const m = need(id);
-      // Not queued, and so not undoable — matching the real command.
+      // Not queued, and so not undoable - matching the real command.
       m.category = category;
     },
 
@@ -699,7 +699,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
     },
 
     // Saving one that takes its mail out of the Inbox makes its folder when
-    // there is none and moves what it gathers in the Inbox there — as the
+    // there is none and moves what it gathers in the Inbox there - as the
     // core does, so the window can be seen to follow.
     save_smart_mailbox: async ({ input }) => {
       smartLog.push(input);

@@ -2,7 +2,7 @@
  * Turns a `fill-mailbox.py --dump` corpus into the facts the classifier reads.
  *
  * Separated from classification so the facts can be fed to another
- * implementation — the Rust `core-rules` this was ported from — and the two
+ * implementation - the Rust `core-rules` this was ported from - and the two
  * verdict streams diffed message for message. Comparing built facts rather
  * than raw messages keeps the comparison about the classifier.
  */

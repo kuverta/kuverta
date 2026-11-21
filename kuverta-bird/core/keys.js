@@ -69,7 +69,7 @@ export const INTENT_ACTIONS = Object.freeze({
  *
  * Returns null for any key carrying a modifier: `ctrl+r` is the host's reload
  * and `cmd+c` is copy, and stealing either would be rude. The exception is
- * nothing — a triage shortcut worth a modifier does not exist yet.
+ * nothing - a triage shortcut worth a modifier does not exist yet.
  *
  * @param {KeyboardEvent} event
  * @returns {?string} an `INTENT`
@@ -100,7 +100,7 @@ export function isTyping(target) {
  *
  * A keyboard-first list is not the same thing as an undiscoverable one. The
  * first person to open this said, reasonably, that they had no idea what they
- * were supposed to do — so the handful of keys that matter are on screen at
+ * were supposed to do - so the handful of keys that matter are on screen at
  * all times, and `?` is for the rest rather than for the basics.
  */
 export const PRIMARY_KEYS = Object.freeze([

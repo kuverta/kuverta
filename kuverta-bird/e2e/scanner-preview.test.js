@@ -4,9 +4,9 @@
  * Preview mode is a page you stand in front of with a letter in one hand and
  * a keyboard under the other: the page large, where it is going beside it,
  * and every key that does anything along the bottom. All of that has to be on
- * the screen at once. It was not — the panes were sized in fractions of the
+ * the screen at once. It was not - the panes were sized in fractions of the
  * viewport that added up to more than one, so on a laptop the keys were below
- * the fold — and whether it is now is a question about layout, which only an
+ * the fold - and whether it is now is a question about layout, which only an
  * engine that does layout can answer.
  *
  * Kept out of `npm test` with the rest of `e2e/`: they need a browser.
@@ -95,7 +95,7 @@ async function preview(width, height) {
   });
   await page.goto(`${base}${PAGE}`);
   // Without a scanner to talk to, the status never arrives; the layout does
-  // not depend on it, so preview is entered directly — with a page in it, of
+  // not depend on it, so preview is entered directly - with a page in it, of
   // the shape a photographed sheet has.
   await page.evaluate((sheet) => {
     document.getElementById('preview-page').src = sheet;

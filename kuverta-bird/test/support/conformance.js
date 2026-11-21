@@ -25,8 +25,8 @@ import { ACTIONS } from '../../core/host.js';
 /**
  * The first row that allows an action.
  *
- * A list can hold more than one kind of thing — post read from Paperless sits
- * beside mail and allows none of these — so a suite that acted on whatever was
+ * A list can hold more than one kind of thing - post read from Paperless sits
+ * beside mail and allows none of these - so a suite that acted on whatever was
  * at index 0 would be testing whichever source happened to sort first.
  */
 function actionable(rows, action) {
@@ -37,7 +37,7 @@ function actionable(rows, action) {
  * @param {string} name        What to call this host in the test output.
  * @param {Function} makeHost  Returns a *fresh* host each call, or a promise
  *   for one. Always awaited: a host that needs a round trip before it can say
- *   what it is capable of — `kuverta` looks up Archive and Trash — would
+ *   what it is capable of - `kuverta` looks up Archive and Trash - would
  *   otherwise report every capability false and silently skip half this suite.
  *   Tests mutate, so it must be a new host each time.
  */
@@ -71,9 +71,9 @@ export function runConformance(name, makeHost) {
   });
 
   suite('declares which kind of undo it has, if any', async (t) => {
-    // The two are different promises to the user — one cancels a change that
+    // The two are different promises to the user - one cancels a change that
     // has not happened, the other performs a second change to reverse one that
-    // has — so `true` is not an answer.
+    // has - so `true` is not an answer.
     const { undo } = (await makeHost()).capabilities;
     assert.ok(
       undo === false || undo === 'queued' || undo === 'compensating',
@@ -108,8 +108,8 @@ export function runConformance(name, makeHost) {
       assert.ok(row.id !== '', 'an empty id cannot be acted on');
       assert.equal(typeof row.unread, 'boolean');
       assert.equal(typeof row.hasAttachments, 'boolean');
-      // Everything else may legitimately be absent — a message with no subject
-      // and no Message-ID is legal mail (§3.6) — but it must be null, not
+      // Everything else may legitimately be absent - a message with no subject
+      // and no Message-ID is legal mail (§3.6) - but it must be null, not
       // undefined, so the list can tell "absent" from "not fetched".
       for (const field of ['subject', 'from', 'fromAddr', 'date', 'category']) {
         assert.ok(field in row, `row.${field} must be present, even as null`);
@@ -178,7 +178,7 @@ export function runConformance(name, makeHost) {
   // -- acting -------------------------------------------------------------
 
   // Identity across a move is compared by subject, not by id. A move may issue
-  // a new id — Thunderbird's does — so an id is only good until the message is
+  // a new id - Thunderbird's does - so an id is only good until the message is
   // acted on. That is a property of the contract, not a weakness of the test.
 
   suite('archiving takes the message out of the list', async (t) => {
@@ -200,7 +200,7 @@ export function runConformance(name, makeHost) {
 
   suite('anything that can trash can put it back', async (t) => {
     // Brief §3.5: nothing destroys mail. A host with no way back from Trash
-    // cannot honour that, so the two capabilities come as a pair — and this is
+    // cannot honour that, so the two capabilities come as a pair - and this is
     // the only portable way to check it, since where a host *puts* a trashed
     // message is its own business.
     const caps = (await makeHost()).capabilities;
@@ -229,7 +229,7 @@ export function runConformance(name, makeHost) {
   suite('read state can be set both ways and sticks', async (t) => {
     // Checked through the list rather than through `message`, because the list
     // is where read state is shown and not every host carries flags on a
-    // single-message read — `kuverta`'s detail view does not.
+    // single-message read - `kuverta`'s detail view does not.
     const host = await makeHost();
     if (!host.capabilities.setRead) return t.skip('host cannot set read state');
 
@@ -350,7 +350,7 @@ export function runConformance(name, makeHost) {
     // the key appears to work, and nothing happens.
     const host = await makeHost();
     const { rows } = await host.page({ scope: everything(), offset: 0, limit: 50 });
-    // Any row that declares it does not allow archiving — not only one that
+    // Any row that declares it does not allow archiving - not only one that
     // allows nothing, since a letter allows filing and nothing else.
     const limited = rows.find(
       (row) => Array.isArray(row.actions) && !row.actions.includes(ACTIONS.Archive),

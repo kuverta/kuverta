@@ -2,7 +2,7 @@
  * The triage taxonomy.
  *
  * Deliberately small. Every category has to earn its place by changing what
- * you would *do* with a message — a taxonomy with twenty buckets is one
+ * you would *do* with a message - a taxonomy with twenty buckets is one
  * nobody keeps tidy, and the point of this tool is to reduce decisions.
  *
  * Ported from `kuverta`'s `core-rules/src/category.rs`.
@@ -15,7 +15,7 @@ export const Category = Object.freeze({
   Newsletter: 'newsletter',
   /** Unsubscribed or promotional bulk mail. */
   Marketing: 'marketing',
-  /** Invoices, receipts, orders, bank statements — money and records. */
+  /** Invoices, receipts, orders, bank statements - money and records. */
   Transactional: 'transactional',
   /** Machine-generated status: CI, cron, alerts, delivery notices. */
   Notification: 'notification',
@@ -41,7 +41,7 @@ export function parseCategory(value) {
  * What each category means, for the person reading it.
  *
  * The doc comments above say the same thing to whoever is reading the source.
- * These say it in the window, which is where the question actually gets asked —
+ * These say it in the window, which is where the question actually gets asked -
  * a sidebar listing six words nobody defined is a filter you have to guess at.
  */
 export const CATEGORY_MEANINGS = Object.freeze({

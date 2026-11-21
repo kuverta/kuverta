@@ -8,8 +8,8 @@
  * Two things about Thunderbird shape this adapter:
  *
  * **Its lists are cursor-paged and unordered**, where the port asks for an
- * offset into a list sorted newest first. So a scope is materialised once —
- * headers only — sorted here, and cached until something changes it. That is
+ * offset into a list sorted newest first. So a scope is materialised once -
+ * headers only - sorted here, and cached until something changes it. That is
  * the honest trade: a big folder costs a pause the first time it is opened,
  * and every scroll after that is free. Making it lazy is worth doing when
  * there is a real mailbox to measure it against, and not before.
@@ -235,7 +235,7 @@ export class ThunderbirdHost extends MailHost {
    *
    * Not every folder. Querying the whole account would put Archive and Trash
    * in the triage list, so archiving a message would leave it exactly where it
-   * was — and on Gmail it would show most mail twice, because `[Gmail]/All
+   * was - and on Gmail it would show most mail twice, because `[Gmail]/All
    * Mail` holds a copy of everything (§3.6). Both are the same fix: triage
    * looks at the folders you work from, and nothing else.
    *
@@ -269,7 +269,7 @@ export class ThunderbirdHost extends MailHost {
       what,
       undo: async () => {
         // The id is gone with the move, so the message has to be found again
-        // where it landed. Its Message-ID is the only handle that survived —
+        // where it landed. Its Message-ID is the only handle that survived -
         // and a message may legally have none (§3.6), in which case there is
         // nothing to undo and saying so beats moving the wrong message back.
         if (!messageId) throw new Error('this message has no Message-ID to find it by');
@@ -294,7 +294,7 @@ export class ThunderbirdHost extends MailHost {
   /**
    * The Archive or Trash folder.
    *
-   * By `specialUse` where the server said so, and by name where it did not —
+   * By `specialUse` where the server said so, and by name where it did not -
    * §3.6: Dovecot advertises SPECIAL-USE but not CREATE-SPECIAL-USE, so a
    * folder created by other software carries no attribute at all.
    */
@@ -333,8 +333,8 @@ function toRow(header) {
     unread: !header.read,
     // Always false, and not an oversight: `MessageHeader` carries no
     // attachment information in any Thunderbird version, so the only ways to
-    // know are `listAttachments` per message — thousands of round trips for a
-    // paperclip — or a second `query({attachment: true})` per scope, which
+    // know are `listAttachments` per message - thousands of round trips for a
+    // paperclip - or a second `query({attachment: true})` per scope, which
     // doubles the cost of the one operation already flagged as this adapter's
     // scaling limit. The list simply does not show the paperclip here. The
     // classifier is unaffected: it reads attachments off the part tree when a

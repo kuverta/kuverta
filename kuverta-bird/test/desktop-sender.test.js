@@ -10,7 +10,7 @@
  * `sender.js` is a classic script: it defines functions for the window rather
  * than exporting them, and it reads globals the other files define. So it is
  * evaluated inside a function that hands those globals in and gives back what
- * the test needs — the same trick `desktop-i18n.test.js` uses — rather than
+ * the test needs - the same trick `desktop-i18n.test.js` uses - rather than
  * booting the whole window.
  *
  * jsdom, so there is no layout: where the hover card lands on screen is
@@ -164,7 +164,7 @@ test('somebody with no mail at all reads as that, not as an empty card', () => {
   );
   assert.equal(host.querySelector('.sender-stats').textContent, 'no mail with them yet');
   assert.equal(host.querySelector('.sender-recent'), null);
-  // "You wrote — never" is the one line worth keeping: it is the answer to
+  // "You wrote - never" is the one line worth keeping: it is the answer to
   // "have I ever replied to these people".
   assert.match(host.textContent, /You wrote/);
   assert.match(host.textContent, /never/);

@@ -2,8 +2,8 @@
  * The `kuverta` adapter against the host contract.
  *
  * Same suite as the Thunderbird adapter and the in-memory reference. Where the
- * two real hosts differ — queued undo against compensating undo, and one of
- * them unable to file by category at all — the suite tests what each declares
+ * two real hosts differ - queued undo against compensating undo, and one of
+ * them unable to file by category at all - the suite tests what each declares
  * rather than assuming they are the same client.
  */
 
@@ -19,7 +19,7 @@ import { Classifier } from '../core/classify.js';
 
 const account = { id: 1, email: 'you@example.com' };
 
-// `open()` has to have finished before `capabilities` means anything — it is
+// `open()` has to have finished before `capabilities` means anything - it is
 // what discovers whether this account has Archive and Trash. The suite awaits
 // whatever the factory returns, so handing it the promise is enough.
 runConformance('kuverta', () => new KuvertaHost(fakeInvoke(), account).open());
@@ -34,7 +34,7 @@ test('kuverta: undo is queued, which is a different promise from compensating', 
 test('kuverta: filing a message is not queued, so undo does not reverse it', async () => {
   // A category lives in the store and never reaches a server, so there is no
   // round trip for the undo window to protect. Changing your mind is another
-  // correction — which is what the log wants anyway, an event and not an edit.
+  // correction - which is what the log wants anyway, an event and not an edit.
   const host = await new KuvertaHost(fakeInvoke(), account).open();
   const { rows } = await host.page({ scope: { kind: 'all' }, offset: 0, limit: 1 });
 
@@ -77,7 +77,7 @@ test('kuverta: dates cross the bridge in seconds and arrive in milliseconds', as
 
 test('kuverta: a refused change is called out in the sync line', async () => {
   // Refused means the server no longer matched what the change was recorded
-  // against — the §3.5 conflict check doing its job, and the one number in a
+  // against - the §3.5 conflict check doing its job, and the one number in a
   // sync summary that means something needs looking at.
   const invoke = fakeInvoke();
   const withRefusal = async (command, args) =>
@@ -95,7 +95,7 @@ test('kuverta: a refused change is called out in the sync line', async () => {
 test('kuverta: an unknown command is an error, not a silent null', async () => {
   // Guards the adapter against drifting from the commands core-rpc registers.
   // Tauri throws for a command that was never registered, so the fake must
-  // too — otherwise an adapter calling a command that does not exist would
+  // too - otherwise an adapter calling a command that does not exist would
   // look like a command that returned nothing.
   const invoke = fakeInvoke();
   await assert.rejects(() => invoke('set_flag', {}), /unknown command/);
@@ -227,7 +227,7 @@ test('kuverta: an address with no token is not offered', async () => {
 // -- explaining a verdict ----------------------------------------------------
 
 test('kuverta: an opened message carries the facts its verdict is explained from', async () => {
-  // Without them the reading pane can name a category but not say why — and
+  // Without them the reading pane can name a category but not say why - and
   // the explanation is the half of the rules layer that makes a wrong answer
   // arguable rather than annoying.
   const host = await new KuvertaHost(fakeInvoke(), account).open();

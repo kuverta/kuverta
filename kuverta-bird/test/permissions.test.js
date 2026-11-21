@@ -4,7 +4,7 @@
  * Written after four permissions were found missing by reading the docs rather
  * than by running anything: `messagesMove` (so archive and trash would have
  * failed), `messagesTagsList` (so creating the tags would have failed at the
- * first `tags.list`), `compose`, and `tabs` — which `tabs.query({url})` needs
+ * first `tags.list`), `compose`, and `tabs` - which `tabs.query({url})` needs
  * because it filters on a URL.
  *
  * None of the fakes could catch these: a fake answers whatever it is asked,
@@ -12,7 +12,7 @@
  * table like this one.
  *
  * The table is from the Manifest V2 API documentation, checked on 2026-09-11.
- * It is the assumption made explicit, not a second source of truth — if
+ * It is the assumption made explicit, not a second source of truth - if
  * Thunderbird disagrees, Thunderbird is right and this table is what gets
  * corrected.
  */
@@ -59,7 +59,7 @@ const REQUIRES = {
 
 /**
  * Reading `MessageHeader.folder` needs `accountsRead` even though no call
- * names it — an easy one to lose, because without the permission the property
+ * names it - an easy one to lose, because without the permission the property
  * is simply absent rather than an error, and the adapter needs it to know
  * where a message came from before moving it.
  */

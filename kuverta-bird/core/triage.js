@@ -2,7 +2,7 @@
  * The triage model.
  *
  * One keyboard-first list you act from, with the classifier's categories as
- * the primary axis rather than folders — brief §3.1. This file is that list's
+ * the primary axis rather than folders - brief §3.1. This file is that list's
  * behaviour with no DOM in it, because the behaviour is the part that is easy
  * to get wrong and the part worth testing.
  *
@@ -215,7 +215,7 @@ export class Triage {
       // which at least lets the list draw and scroll.
       this.#total = page.total >= 0 ? page.total : offset + page.rows.length;
     } catch (error) {
-      // A page that will not load is worth saying out loud — silently showing
+      // A page that will not load is worth saying out loud - silently showing
       // an empty list is the "mail going missing" failure again.
       this.#requested.delete(offset);
       this.#say(`could not load messages: ${error.message}`, 'error');
@@ -264,12 +264,12 @@ export class Triage {
     if (action === ACTIONS.ToggleRead && !can.setRead) return this.#cannot('change read state');
 
     // The host may be able to do it and this particular row still not allow
-    // it — post in a list of mail. Checked here so the answer is immediate and
+    // it - post in a list of mail. Checked here so the answer is immediate and
     // specific rather than a round trip that comes back refused.
     // Reading is not a change a row can refuse. Every row in a list can be
     // opened; only what it allows *done* to it is per-row. Checking Open here
-    // made every letter unreadable from the keyboard — a list entry allowing
-    // filing but not reading — and only a real browser noticed, because a
+    // made every letter unreadable from the keyboard - a list entry allowing
+    // filing but not reading - and only a real browser noticed, because a
     // click opens a row without going through `act`.
     if (action !== ACTIONS.Open && !allows(row, action)) return this.#refuses(row, action);
 

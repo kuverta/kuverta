@@ -2,7 +2,7 @@
  * The corrections log.
  *
  * §3.4 of the brief: the thing being kept is the correction *event*, not the
- * current state. These tests are mostly about that distinction — a store that
+ * current state. These tests are mostly about that distinction - a store that
  * quietly collapsed reversals into a final answer would pass a naive reading
  * of the feature and throw away the interesting half of the corpus.
  */

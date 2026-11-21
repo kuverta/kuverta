@@ -3,7 +3,7 @@
  *
  * There are two hosts: Thunderbird, where this runs as a MailExtension, and
  * `kuverta`, where it runs in the desktop app's webview. Everything above this
- * line — the classifier, the list, the cursor, the key map — is written once
+ * line - the classifier, the list, the cursor, the key map - is written once
  * and knows about neither. Everything below it is a few hundred lines per host.
  *
  * The rule that keeps that true: **the core never sees a host type.** Message
@@ -19,11 +19,11 @@
 
 /**
  * @typedef {object} Row  One line in the list. Everything needed to draw it and
- *   nothing more — bodies are fetched only when a message is opened.
+ *   nothing more - bodies are fetched only when a message is opened.
  * @property {string} id       Opaque to the core, and shorter-lived than it
  *   looks: a host may issue a new id for a message that has *moved*, which
  *   archiving and trashing both do. Thunderbird does exactly this. So an id is
- *   good until the message is acted on, and no longer — which is why the
+ *   good until the message is acted on, and no longer - which is why the
  *   triage model reloads the list after every action rather than patching the
  *   row it already has. Nothing may hold an id across an action and expect it
  *   to still resolve.
@@ -40,7 +40,7 @@
  *
  *   This exists because a list can hold more than one kind of thing. Post read
  *   from Paperless sits in the same list as mail and cannot be archived,
- *   trashed or marked read — Paperless owns those documents. Capabilities
+ *   trashed or marked read - Paperless owns those documents. Capabilities
  *   answer "what can this host do"; this answers "what can be done to this
  *   row", and a mixed list needs both.
  */
@@ -89,11 +89,11 @@
  * The two kinds of undo, which are not the same promise and must not look the
  * same to the user.
  *
- * `queued` — the change has not left the machine yet. Undo cancels it, and
+ * `queued` - the change has not left the machine yet. Undo cancels it, and
  *   nothing ever happened. This is what `kuverta` offers, per brief §3.5: "a
  *   change stays cancellable for as long as it is queued".
  *
- * `compensating` — the change has already happened and undo performs its
+ * `compensating` - the change has already happened and undo performs its
  *   inverse: the message moves back. Honest, and much weaker. Another client
  *   may have seen the intermediate state, the inverse can fail on its own, and
  *   for anything genuinely irreversible there is no inverse to perform. This is
@@ -115,7 +115,7 @@ export const ACTIONS = Object.freeze({
 /**
  * Base class, and the documentation of the contract.
  *
- * Subclassing is optional — anything with these methods will do — but
+ * Subclassing is optional - anything with these methods will do - but
  * inheriting gives you the "this host cannot do that" errors for free, which
  * is better than an adapter silently doing nothing.
  */
@@ -188,7 +188,7 @@ export class MailHost {
    * Files a message under a category, and records the correction.
    *
    * The host owns this rather than the core because where a correction is
-   * stored differs — extension storage in one, a table in the other — and
+   * stored differs - extension storage in one, a table in the other - and
    * because the host is what knows how to show the category on a message.
    *
    * @param {string} id
@@ -202,7 +202,7 @@ export class MailHost {
    * Reverses the last change.
    *
    * @returns {Promise<?{what: string}>} What was undone, or null if there was
-   *   nothing to undo. Never throws for an empty stack — an empty undo is a
+   *   nothing to undo. Never throws for an empty stack - an empty undo is a
    *   normal thing to ask for.
    */
   async undo() {

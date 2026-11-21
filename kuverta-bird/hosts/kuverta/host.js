@@ -1,7 +1,7 @@
 /**
  * `kuverta` as a mail host.
  *
- * Implements `core/host.js` over the standalone client's Tauri commands — the
+ * Implements `core/host.js` over the standalone client's Tauri commands - the
  * same `invoke(command, args)` its desktop UI already uses. So the triage
  * surface in this repository can run inside that app, and the two front ends
  * stop being two implementations of the same list.
@@ -15,11 +15,11 @@
  *   happened. That is a stronger promise than Thunderbird can make, and the
  *   surface says so in different words.
  * - **The store pages and sorts**, so nothing here has to materialise a scope
- *   to answer an offset — where the Thunderbird adapter does.
+ *   to answer an offset - where the Thunderbird adapter does.
  * - **Filing a message is not queued.** A category lives in the store and is
  *   never sent to a server, so there is no round trip to hold back and nothing
  *   for the undo window to protect. Changing your mind is another correction,
- *   which is what the log wants anyway — an event, not an edit.
+ *   which is what the log wants anyway - an event, not an edit.
  */
 
 import { ACTIONS, MailHost, Unsupported } from '../../core/host.js';
@@ -95,7 +95,7 @@ export class KuvertaHost extends MailHost {
       ...(folders ?? []).map((folder) => ({
         kind: 'folder',
         value: folder.id,
-        // `label` is the last path segment — what a sidebar shows — where
+        // `label` is the last path segment - what a sidebar shows - where
         // `name` is the full path IMAP commands take.
         label: folder.label || folder.name,
         count: folder.unread || null,
@@ -127,7 +127,7 @@ export class KuvertaHost extends MailHost {
       return this.#mailPage(scope, offset, limit);
     }
 
-    // Everything else — all mail, a category, a search — takes in post too.
+    // Everything else - all mail, a category, a search - takes in post too.
     // That is the point of filing both by the same rules: "everything you have
     // been sent that is transactional" should not care which of them carried
     // it.
@@ -169,7 +169,7 @@ export class KuvertaHost extends MailHost {
    *
    * `category` filters here rather than in Paperless, which knows nothing
    * about the classifier's six. That means a category scope over post is
-   * filtered after the fact and its total is the unfiltered one — honest, and
+   * filtered after the fact and its total is the unfiltered one - honest, and
    * the alternative is teaching Paperless a taxonomy that is not its.
    */
   async #paperPage(mailboxId, offset, limit, query, category = null) {
@@ -197,7 +197,7 @@ export class KuvertaHost extends MailHost {
         row: paperRow(detail.row, paper.mailboxId),
         body: detail.body_text ?? null,
         // What the rules read, so the reading pane can say why a letter was
-        // filed where it was — the same explanation mail gets.
+        // filed where it was - the same explanation mail gets.
         facts: detail.facts ?? null,
       };
     }
@@ -222,7 +222,7 @@ export class KuvertaHost extends MailHost {
         hasAttachments: false,
         category: null,
       },
-      // An HTML-only message yields no text here — the store says so rather
+      // An HTML-only message yields no text here - the store says so rather
       // than inventing a rendering.
       body: detail.body_text ?? null,
       // The facts the rules read, re-parsed from the stored message. Without
@@ -262,7 +262,7 @@ export class KuvertaHost extends MailHost {
     const paper = parsePaperId(id);
     if (paper) {
       // Post has its own corrections, pinned to the letter and learned from
-      // its sender — the correspondent, or the letterhead when Paperless has
+      // its sender - the correspondent, or the letterhead when Paperless has
       // none. The command asks Paperless rather than trusting the row this
       // list happens to hold.
       await this.#invoke('file_post', {
@@ -303,7 +303,7 @@ export class KuvertaHost extends MailHost {
  * of newest-first lists needs: an item at index `offset` of the result cannot
  * be further than `offset` into any one source. Deep scrolling therefore costs
  * more than shallow scrolling, which is worth knowing and has not mattered
- * yet — the list pages a hundred at a time.
+ * yet - the list pages a hundred at a time.
  */
 async function merge(offset, limit, sources) {
   const need = offset + limit;

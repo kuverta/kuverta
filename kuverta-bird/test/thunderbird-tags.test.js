@@ -3,7 +3,7 @@
  *
  * `messages.update` replaces a message's whole tag list, so every write here
  * is a chance to delete tagging the user did by hand. That is the §3.5 class
- * of mistake — quiet, and only noticed much later — which is why it is tested
+ * of mistake - quiet, and only noticed much later - which is why it is tested
  * against a fake rather than trusted to read correctly.
  */
 

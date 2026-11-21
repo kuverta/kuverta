@@ -2,7 +2,7 @@
  * Deterministic classifier.
  *
  * This is the baseline the model has to beat. It is cheap, offline, produces
- * the same answer twice, and — the part that matters most — it can say *why*,
+ * the same answer twice, and - the part that matters most - it can say *why*,
  * which is what makes a wrong answer correctable instead of infuriating.
  *
  * Signals are scored rather than matched first-to-win. Real mail carries
@@ -84,7 +84,7 @@ export class Learned {
    * The overrides, for display.
    *
    * Exposed so the options page can show what was learned without folding the
-   * corrections log a second time — two folds of the same log is two things to
+   * corrections log a second time - two folds of the same log is two things to
    * keep in step, and only one of them would be tested.
    *
    * @returns {{senders: Array<[string, string]>, lists: Array<[string, string]>}}
@@ -148,7 +148,7 @@ export class Classifier {
    */
   classify(facts) {
     // An explicit correction is not evidence to be weighed against
-    // heuristics — it is the answer.
+    // heuristics - it is the answer.
     const learned = this.#learned.lookup(facts);
     if (learned !== null) {
       return {

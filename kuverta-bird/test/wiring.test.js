@@ -3,7 +3,7 @@
  *
  * None of this would need testing if the add-on could be run here, because the
  * first load would say so. It cannot be, so a broken import or a manifest
- * pointing at a file that moved would otherwise be found by installing it —
+ * pointing at a file that moved would otherwise be found by installing it -
  * and this whole layout is one directory move away from that at all times.
  *
  * It is also what keeps the two hosts honest about the core: an import
@@ -141,7 +141,7 @@ test('every script and stylesheet an html page loads exists', () => {
   findPages(ROOT);
 
   // Scripts and stylesheets only. An `<a href>` is a navigation target, not a
-  // resource, and one may legitimately point outside this repository — the
+  // resource, and one may legitimately point outside this repository - the
   // kuverta mount links back to that app's own page, which exists only once
   // the surface has been installed into it.
   const RESOURCES = [/<link\b[^>]*\bhref="([^"]+)"/g, /\bsrc="([^"]+)"/g];

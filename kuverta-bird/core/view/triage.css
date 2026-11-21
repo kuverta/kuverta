@@ -4,7 +4,7 @@
   One stylesheet for both hosts. Colours come from the system where they can,
   because this runs inside Thunderbird's chrome in one host and inside a Tauri
   window in the other, and a surface that ignores the theme around it looks
-  like something bolted on — which it is, and which is exactly what it should
+  like something bolted on - which it is, and which is exactly what it should
   not look like.
 
   Every selector is prefixed `fb-`. In Thunderbird this is mounted in a tab
@@ -137,7 +137,7 @@
 }
 
 /*
-  The scope bar. Always there, saying what the list is showing and how many —
+  The scope bar. Always there, saying what the list is showing and how many -
   a list that only explains itself once it has been narrowed leaves you working
   out where you are from the rows. The way out appears only when there is
   something to get out of.
@@ -305,7 +305,7 @@
 /*
   Always on screen. A keyboard-first list is not the same thing as an
   undiscoverable one, and the first person to open this had no idea what they
-  were meant to do — which was a fair reading of a window that showed rows and
+  were meant to do - which was a fair reading of a window that showed rows and
   said nothing.
 */
 .fb-legend {

@@ -22,7 +22,7 @@ const MAX_BODY = 4000;
  * messages, and one unreadable message must not stop the rest.
  *
  * @param {object} messenger The `messenger` global.
- * @param {number} id A `MessageHeader.id` — a session id, not a stable one.
+ * @param {number} id A `MessageHeader.id` - a session id, not a stable one.
  */
 export async function factsForMessage(messenger, id) {
   let header;
@@ -51,7 +51,7 @@ export async function factsForMessage(messenger, id) {
  * Whether the message carries an attachment.
  *
  * Read off the part tree rather than by calling `listAttachments`, which would
- * be a second round trip per message for a signal worth 1.0 — and a backfill
+ * be a second round trip per message for a signal worth 1.0 - and a backfill
  * makes that trade thousands of times.
  */
 export function hasAttachments(part) {
@@ -64,7 +64,7 @@ export function hasAttachments(part) {
 
     // No disposition: a name is the remaining hint. Inline images carry one
     // too, so the content type has to rule out the parts that are the message
-    // rather than something attached to it — otherwise every marketing mail
+    // rather than something attached to it - otherwise every marketing mail
     // with a tracking pixel fires the attachment signal.
     if (!child.name) continue;
     const type = (child.contentType ?? '').toLowerCase();
@@ -100,7 +100,7 @@ export function bodyText(part) {
 /**
  * Tags out, entities in.
  *
- * Not a renderer and must not become one — the classifier reads this for
+ * Not a renderer and must not become one - the classifier reads this for
  * keywords, and "close enough to match `rabatt`" is the whole requirement.
  */
 function stripMarkup(html) {

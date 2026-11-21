@@ -1,6 +1,6 @@
 /*
   Cleanup, in the standalone client: the page around the shared surface, and
-  the Unsubscribe panel, which is this client's alone — only it can post a
+  the Unsubscribe panel, which is this client's alone - only it can post a
   one-click unsubscribe or send the mail one asks for.
 
   Selectors are prefixed `ku-` for the same reason the surface's are `fb-`.
@@ -22,8 +22,8 @@ body { display: grid; grid-template-rows: auto 1fr; }
 #bar .bar-hint { flex: 1; color: GrayText; font-size: 12px; }
 #root { min-height: 0; position: relative; }
 
-/* Over the list and the reading pane, leaving the sidebar — where the entry
-   that opened it is — in view. */
+/* Over the list and the reading pane, leaving the sidebar - where the entry
+   that opened it is - in view. */
 .ku-panel {
   grid-row: 1;
   grid-column: 2 / -1;

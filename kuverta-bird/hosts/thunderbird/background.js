@@ -5,8 +5,8 @@
  * classifier, and writes the verdict out as a tag. Every judgement lives in
  * `src/`, where it can be tested without Thunderbird.
  *
- * Stage 1 of the brief — the classifier as a MailExtension, categories shown
- * as tags, no fork — plus the corrections log of §3.4, which is recorded from
+ * Stage 1 of the brief - the classifier as a MailExtension, categories shown
+ * as tags, no fork - plus the corrections log of §3.4, which is recorded from
  * the first day because a corpus you did not start collecting is one you
  * cannot go back for.
  */
@@ -110,7 +110,7 @@ async function correct(messageId, category) {
     fromAddr: facts?.fromAddr ?? null,
     listId: facts?.listId ?? null,
     subject: header.subject ?? null,
-    // The filed tag if there is one, else what the rules say — an untagged
+    // The filed tag if there is one, else what the rules say - an untagged
     // message still disagreed with something.
     was: currentCategory(header) ?? verdict?.category ?? null,
     now: category,
@@ -215,7 +215,7 @@ messenger.runtime.onMessage.addListener((request) => {
  *
  * Recomputed rather than remembered. Message ids are session-scoped, so a
  * cache keyed on them would be wrong after a restart, and recomputing is
- * cheap — this is a `HashMap` lookup and some string matching.
+ * cheap - this is a `HashMap` lookup and some string matching.
  */
 async function explainDisplayed() {
   const [tab] = await messenger.tabs.query({ active: true, currentWindow: true });
@@ -243,7 +243,7 @@ async function start() {
 }
 
 // Once, here. The background page is loaded on install and on every startup,
-// so there is no second hook to add — adding one would just run this twice.
+// so there is no second hook to add - adding one would just run this twice.
 start().catch((error) => console.error('kuverta-bird: failed to start', error));
 
 async function notify(title, message) {

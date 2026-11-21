@@ -45,7 +45,7 @@ test('a mailing list is a newsletter', () => {
     recipientCount: 1,
   });
   // A newsletter from a two-word "name" to a single recipient must not be
-  // mistaken for personal mail — the bulk headers suppress that.
+  // mistaken for personal mail - the bulk headers suppress that.
   assert.equal(classify(f)[0], Category.Newsletter);
 });
 

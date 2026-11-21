@@ -4,8 +4,8 @@
  * The language follows the system unless someone says otherwise, and what is
  * translated is translated everywhere: the static chrome index.html carries,
  * the sidebar the window builds as it goes, and the settings sheet. Changing
- * it does not reload the page — a reload would lose the open message and
- * anything half typed — so these check that the text changes where it stands.
+ * it does not reload the page - a reload would lose the open message and
+ * anything half typed - so these check that the text changes where it stands.
  */
 
 import assert from 'node:assert/strict';

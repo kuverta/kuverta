@@ -90,7 +90,7 @@ body.busy {
   border-bottom: none;
 }
 
-/* An empty reason list is a real state — "unknown" has nothing to show. */
+/* An empty reason list is a real state - "unknown" has nothing to show. */
 .reasons:empty::after {
   content: 'No signal strong enough to guess.';
   color: var(--fb-muted);

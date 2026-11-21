@@ -5,7 +5,7 @@
  * A browser rather than jsdom because the whole question here is layout. The
  * card and the assistant are stacked in one flex column that only exists when
  * something is in it, and what has to hold is that neither ever squeezes the
- * other off the screen — which is a thing you can only ask an engine that
+ * other off the screen - which is a thing you can only ask an engine that
  * does layout. The card's contents are covered in `test/desktop-sender.test.js`.
  *
  * Kept out of `npm test` with the rest of `e2e/`: they need a browser.
@@ -230,7 +230,7 @@ test('the card follows the cursor once it has been asked for', async () => {
   assert.match(await card(page).innerText(), /Erika Mustermann/);
 
   // Having asked who one message is with, you are usually asking of the next
-  // one too — so it keeps up rather than making you click again.
+  // one too - so it keeps up rather than making you click again.
   await rows(page).nth(4).click();
   await page.waitForFunction(
     () => /Finanzamt/.test(document.getElementById('sender')?.innerText ?? ''),

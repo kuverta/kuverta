@@ -3,7 +3,7 @@
  * own window, in a real browser.
  *
  * The question these answer is the one that started them: "where is the eSIM
- * they sent me?" — the assistant finds the mail and shows it as a card, and
+ * they sent me?" - the assistant finds the mail and shows it as a card, and
  * the QR code in it opens on screen, where a phone can scan it. A browser is
  * needed for the part jsdom cannot do: decoding the picture.
  */
@@ -213,7 +213,7 @@ test('a message you pick is handed to the assistant, which drafts from it', asyn
   assert.match(await page.locator('#chat-log .chat-activity').last().innerText(), /about “Ihre neue e-SIM ist da”/);
   assert.match(await draft.locator('textarea').inputValue(), /1 message\(s\) read/);
 
-  // Picking a block with the keyboard hands all of it over — and clicking
+  // Picking a block with the keyboard hands all of it over - and clicking
   // back into the list takes the keys back from the chat input.
   await page.locator('#content .row', { hasText: 'Message 00' }).click();
   await page.keyboard.press('J');

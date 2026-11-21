@@ -4,7 +4,7 @@
  * Stage 1 of the brief: no fork, no new UI surface, the classifier's verdict
  * shown through something Thunderbird already has. Tags are the right carrier
  * because they are visible in the message list, they survive a restart, they
- * are searchable, and — the part that matters for stage 3 — the user can
+ * are searchable, and - the part that matters for stage 3 - the user can
  * already change them by hand.
  *
  * The tag is a *view* of the verdict, not the record of it. The record is the
@@ -24,7 +24,7 @@ export const TAG_PREFIX = 'kuverta-bird-';
 
 /**
  * Distinguishable at a glance and in both themes, and deliberately not a
- * traffic-light scheme — none of these categories is "bad".
+ * traffic-light scheme - none of these categories is "bad".
  */
 const TAG_COLOURS = {
   personal: '#3B7DD8',
@@ -65,7 +65,7 @@ export async function ensureTags(messenger) {
         TAG_COLOURS[category],
       );
     } catch (error) {
-      // Most likely the key exists under a different name, which is fine —
+      // Most likely the key exists under a different name, which is fine -
       // the user is allowed to rename our tags.
       console.warn(`kuverta-bird: could not create the tag ${key}`, error);
     }

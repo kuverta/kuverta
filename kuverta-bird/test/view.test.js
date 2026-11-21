@@ -2,7 +2,7 @@
  * The triage surface, in a DOM.
  *
  * Everything else in this directory tests the model, the adapters or the
- * classifier; this is the only file that exercises the view — the part a person
+ * classifier; this is the only file that exercises the view - the part a person
  * actually touches. It had no tests at all, and produced three real bugs before
  * it had any: keys that went nowhere a person could see, a teardown that would
  * have made every keystroke act twice after switching accounts, and an
@@ -11,7 +11,7 @@
  *
  * jsdom, not a browser, which means no layout and no CSS cascade. So these
  * tests can say "the element is hidden" and cannot say "the element is not on
- * screen" — the class of bug where `display: flex` beat the hidden attribute is
+ * screen" - the class of bug where `display: flex` beat the hidden attribute is
  * outside what they can see. That wants a real engine.
  */
 
@@ -175,7 +175,7 @@ test('a row that refuses an action says so on screen', async () => {
 
 test('unmounting lets go of the keyboard', async () => {
   // Switching accounts mounts the surface again. A mount that kept listening
-  // would act on every key twice — once on a list nobody can see, which with
+  // would act on every key twice - once on a list nobody can see, which with
   // `e` bound is a message archived that nobody looked at.
   const { unmount, press, triage } = await mounted();
   unmount();

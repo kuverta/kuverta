@@ -2,7 +2,7 @@
  * The corrections log, readable.
  *
  * Read-only on purpose. The log is append-only (a correction you reverse is
- * two events, not an edit), so there is nothing here to save — only something
+ * two events, not an edit), so there is nothing here to save - only something
  * to look at and to take away.
  */
 

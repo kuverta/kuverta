@@ -3,14 +3,14 @@
  *
  * Typing `cadus` and then clicking Sent showed the whole of Sent with `cadus`
  * still in the box, as though that were what had been asked for. Every reload
- * leaves a search behind — it clears `state.searching` — so a query left in
+ * leaves a search behind - it clears `state.searching` - so a query left in
  * the box describes a list that is not on screen.
  *
  * This is a structural check, not a behavioural one, and that is a real
  * limitation: the desktop window has no harness that boots it, so what is
  * pinned here is that the clearing is inside `reload` (one place, rather than
  * repeated in each of the dozen nav handlers that could forget it) and that
- * People is exempt. People is the subtle half — the box there is not a search
+ * People is exempt. People is the subtle half - the box there is not a search
  * but a filter `people.js` reads for itself, so clearing it would empty the
  * page somebody had just narrowed.
  */
@@ -28,7 +28,7 @@ const app = () => readFileSync(`${UI}/app.js`, 'utf8');
 function reloadBody(source) {
   const from = source.indexOf('async function reload(');
   assert.ok(from > 0, 'reload() moved');
-  // Past the parameter list, which is itself destructured with braces —
+  // Past the parameter list, which is itself destructured with braces -
   // starting at the first `{` counts `({ keepPosition = false } = {})` as the
   // whole body and finds nothing in it.
   const opens = source.indexOf(') {', from);

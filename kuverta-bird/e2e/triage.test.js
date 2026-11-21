@@ -3,9 +3,9 @@
  *
  * `test/view.test.js` drives the same surface in jsdom, which has no layout and
  * no CSS cascade: it can say an element is marked hidden and cannot say it is
- * off screen. These tests load the page `kuverta` actually mounts —
+ * off screen. These tests load the page `kuverta` actually mounts -
  * `hosts/kuverta/ui/triage.html`, over HTTP, since ES modules will not load
- * from a file — into Chromium, with a stand-in for the Tauri bridge, and ask
+ * from a file - into Chromium, with a stand-in for the Tauri bridge, and ask
  * what a person would see.
  *
  * Kept out of `npm test` on purpose: they need a browser download and take

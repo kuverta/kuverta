@@ -3,7 +3,7 @@
  *
  * Mail only ever arrived when someone pressed r, so an account nobody was
  * looking at sat still. It is now fetched when the window opens, on a timer
- * after that, and for one account from its row in the sidebar — where the
+ * after that, and for one account from its row in the sidebar - where the
  * button's tooltip is the one place the window says when mail last arrived.
  * The fake bridge counts syncs, which is what these watch.
  */
@@ -111,7 +111,7 @@ const syncs = (page) => page.evaluate(async () => (await window.__fakeBridge)('_
  * Waits for the window to have asked for `atLeast` syncs.
  *
  * Polled here rather than with `waitForFunction`, which takes the promise an
- * async callback returns as the answer — and a promise is truthy, so such a
+ * async callback returns as the answer - and a promise is truthy, so such a
  * wait ends at once and proves nothing.
  */
 async function untilSyncs(page, atLeast) {

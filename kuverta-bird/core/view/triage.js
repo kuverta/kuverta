@@ -27,12 +27,12 @@ const OVERSCAN = 6;
  * @param {HTMLElement} options.root   Where to build the surface.
  * @param {import('../triage.js').Triage} options.triage
  * @param {Function} [options.onCompose]  Host-specific; hidden when absent.
- * @param {string} [options.title]  What this mailbox is — an account address,
+ * @param {string} [options.title]  What this mailbox is - an account address,
  *   usually. The core has no idea which account it is looking at, and the
  *   person reading it very much needs to.
  * @param {() => Array<{label: string, count?: number, title?: string,
  *   active?: boolean, onClick: Function}>} [options.extras]  Entries a host adds
- *   below the categories — things it can do that are not a view of the list,
+ *   below the categories - things it can do that are not a view of the list,
  *   such as unsubscribing. Asked for each time the sidebar is drawn; redraw
  *   with `redrawSidebar` on what this returns.
  * @returns {Function & {redrawSidebar: Function}} Lets go of the document.
@@ -128,8 +128,8 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
   draw(true);
 
   // First launch: say what this is before anyone has to ask. This line was
-  // meant to exist from the start and did not — a patch that should have added
-  // it matched nothing, silently — so the person it was written for never saw
+  // meant to exist from the start and did not - a patch that should have added
+  // it matched nothing, silently - so the person it was written for never saw
   // the panel unless they pressed `?`. test/view.test.js now fails without it.
   if (!seenBefore()) help.hidden = false;
 
@@ -137,7 +137,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
    * Lets go of the document.
    *
    * A host that can switch mailboxes mounts this more than once. Without a
-   * teardown the old surface keeps listening, and every keystroke acts twice —
+   * teardown the old surface keeps listening, and every keystroke acts twice -
    * once on a list nobody can see, which with `e` and `#` bound means archiving
    * a message the user never looked at.
    */
@@ -401,7 +401,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
   /**
    * Why this message is where it is.
    *
-   * The explanation is the point of a rules layer — a verdict you cannot argue
+   * The explanation is the point of a rules layer - a verdict you cannot argue
    * with is one you learn to ignore. The reasons are recomputed here from the
    * facts the host hands over rather than stored, because they are a pure
    * function of those facts and a cached explanation can go stale against the
@@ -498,7 +498,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
    * Asked for by the first person to use it, who could work out that the keys
    * did things and not what the thing was. A list of shortcuts answers the
    * second question and silently assumes the first has been answered
-   * somewhere — and the only somewhere was a readme in a different repository.
+   * somewhere - and the only somewhere was a readme in a different repository.
    */
   function buildHelp() {
     const panel = document.createElement('div');
@@ -592,8 +592,8 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
   /**
    * How much of this mailbox was written by a person.
    *
-   * Null when the host cannot count cheaply — Thunderbird's scopes carry no
-   * totals — in which case the panel makes the point in words alone rather
+   * Null when the host cannot count cheaply - Thunderbird's scopes carry no
+   * totals - in which case the panel makes the point in words alone rather
    * than inventing a number.
    */
   function mailboxSplit() {
@@ -626,7 +626,7 @@ export function mountTriage({ root, triage, onCompose = null, title = '', extras
     // Remembered so it explains itself once and then gets out of the way.
     // Wrapped because storage can be unavailable or full, and failing to
     // record that the panel was dismissed is not worth taking the surface
-    // down for — it just means it opens again next time.
+    // down for - it just means it opens again next time.
     try {
       localStorage.setItem(SEEN_KEY, '1');
     } catch {

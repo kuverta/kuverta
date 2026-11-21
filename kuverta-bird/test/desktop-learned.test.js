@@ -11,7 +11,7 @@
  *
  * `setup.js` is a classic script with side effects at the top of it, so the
  * block that draws this is evaluated on its own with the globals the window
- * would have given it — the trick `desktop-sender.test.js` uses, with a
+ * would have given it - the trick `desktop-sender.test.js` uses, with a
  * narrower slice.
  */
 

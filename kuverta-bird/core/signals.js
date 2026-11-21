@@ -9,7 +9,7 @@
  * Keywords are German and English because that is what the mail is.
  *
  * Ported from `kuverta`'s `core-rules/src/signals.rs`. Keep the rule ids
- * identical to the Rust ones — they are what the corrections log and any later
+ * identical to the Rust ones - they are what the corrections log and any later
  * rules-vs-model comparison are keyed on.
  */
 
@@ -488,7 +488,7 @@ function isAutomatedAddress(local) {
 
 /**
  * A display name that is the sending domain's name is the organisation
- * speaking — unless the address is the person's own (Anna Weber at
+ * speaking - unless the address is the person's own (Anna Weber at
  * anna@weber.de), or the name says a platform relayed it.
  */
 function namesTheDomain(name, addr) {

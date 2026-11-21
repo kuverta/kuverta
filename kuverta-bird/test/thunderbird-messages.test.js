@@ -5,7 +5,7 @@
  * parser produced, so this is new code and it is where the body signals live
  * or die. HTML-only mail matters most: it is a large share of marketing, and
  * skipping it would disable the body keywords on exactly the mail they exist
- * for — silently, and in a way no test of the classifier would catch.
+ * for - silently, and in a way no test of the classifier would catch.
  */
 
 import assert from 'node:assert/strict';

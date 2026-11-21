@@ -3,7 +3,7 @@
  *
  * Two jobs. It is the double the triage model is tested against, and it is the
  * reference implementation that proves the conformance suite is satisfiable at
- * all — a contract no host can pass is a bug in the contract, and without this
+ * all - a contract no host can pass is a bug in the contract, and without this
  * there would be nothing to notice that with.
  *
  * It is deliberately the *most* capable host: everything declared true, so the
@@ -201,7 +201,7 @@ export function defaultSeed() {
  *
  * Every real adapter now declares every capability, which left the contract's
  * "a capability it does not have is refused, not quietly ignored" test running
- * against nothing at all — and the skip logic itself untested. This exists so
+ * against nothing at all - and the skip logic itself untested. This exists so
  * both keep being exercised: it declares almost nothing, and it refuses rather
  * than silently accepting what it declared it could not do.
  *

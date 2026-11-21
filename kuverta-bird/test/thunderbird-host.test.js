@@ -20,7 +20,7 @@ runConformance('Thunderbird', () => new ThunderbirdHost(fakeMessenger()));
 
 test('Thunderbird: Everything leaves out Archive and Trash', async () => {
   // Otherwise archiving a message leaves it exactly where it was, and on Gmail
-  // the list shows most mail twice — §3.6.
+  // the list shows most mail twice - §3.6.
   const messenger = fakeMessenger();
   const host = new ThunderbirdHost(messenger);
 

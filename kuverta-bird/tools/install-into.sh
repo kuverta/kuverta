@@ -9,12 +9,12 @@
 # copy is verbatim and verified with `diff -r`: if it has gone stale, this says
 # so rather than letting the app run against files nobody edited.
 #
-# The layout under the target mirrors this repository exactly —
+# The layout under the target mirrors this repository exactly -
 #
 #   <target>/kuverta-bird/core/...
 #   <target>/kuverta-bird/hosts/kuverta/...
 #
-# — for the same reason the Thunderbird manifest sits at the repository root:
+# - for the same reason the Thunderbird manifest sits at the repository root:
 # every relative import then resolves unchanged, so the files the app loads are
 # byte for byte the files the tests run. Rewriting paths on the way in would be
 # a build step, and a build step between the tested code and the shipped code
@@ -30,7 +30,7 @@ if [[ -z $TARGET ]]; then
 fi
 
 # Resolved against the caller's directory, before moving to this repository's
-# root — a relative target means what the caller meant by it, not what it would
+# root - a relative target means what the caller meant by it, not what it would
 # happen to mean from here.
 if [[ ! -d $TARGET ]]; then
     echo "no such directory: $TARGET" >&2

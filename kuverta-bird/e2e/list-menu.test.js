@@ -64,7 +64,7 @@ after(async () => {
   server?.close();
 });
 
-/** Three from one sender, three from three others — a run inside a mailbox. */
+/** Three from one sender, three from three others - a run inside a mailbox. */
 function runFromOneSender() {
   const base = Math.floor(Date.UTC(2026, 8, 11, 12, 0, 0) / 1000);
   const message = (i, from, subject) => ({
@@ -239,7 +239,7 @@ test('a smart mailbox made from picked messages takes them out of the Inbox into
   await rows(page).nth(1).click({ button: 'right' });
   await items(page).filter({ hasText: 'New smart mailbox from these 3…' }).click();
 
-  // New, it takes its mail out of the Inbox, into a folder named after it —
+  // New, it takes its mail out of the Inbox, into a folder named after it -
   // without the address, and without anything a server reads as a path.
   await page.locator('#smart-sheet').waitFor();
   assert.equal(await page.locator('#smart-form [name=take]').isChecked(), true);
@@ -280,8 +280,8 @@ test('a smart mailbox left a search moves nothing', async () => {
 
   const saved = await page.evaluate(async () => (await window.__fakeBridge)('smart_log', {}));
   assert.equal(saved[0].folder, null);
-  // The smart mailbox is shown, and the list — which the fake always draws
-  // as the Inbox — still has all of it.
+  // The smart mailbox is shown, and the list - which the fake always draws
+  // as the Inbox - still has all of it.
   await page.waitForFunction(() => document.querySelectorAll('#smart .nav-item').length === 1);
   assert.equal(await rows(page).count(), before);
 

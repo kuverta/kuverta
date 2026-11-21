@@ -97,7 +97,7 @@ export function firstHeader(headers, name) {
 
   // Looked up case-insensitively rather than assuming a spelling. Thunderbird
   // lowercases these keys in practice, but the API only promises "the header
-  // name as key" — and a header that is there under `List-Id` while this asks
+  // name as key" - and a header that is there under `List-Id` while this asks
   // for `list-id` does not fail loudly, it just silently turns off a signal.
   let value = headers[name];
   if (value === undefined) {
@@ -134,7 +134,7 @@ export function cleanListId(raw) {
  * `Anna Weber <anna@example.de>` -> `{name: 'Anna Weber', addr: 'anna@example.de'}`.
  *
  * Deliberately small. This is not a general RFC 5322 address parser and must
- * not grow into one — hand-rolled address parsing is how mail clients get
+ * not grow into one - hand-rolled address parsing is how mail clients get
  * bugs. It handles the two shapes Thunderbird actually hands back for
  * `author`: an addr-spec on its own, and a display name in front of an angle
  * address. Anything stranger falls through as an address with no name, which

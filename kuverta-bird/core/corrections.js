@@ -5,8 +5,8 @@
  * but the rules consumes it yet. By the time a model arrives there is a
  * labelled corpus of exactly the mail it will be asked about.
  *
- * What is stored is the *event*, not the current state — "on this date you
- * moved mail from this sender out of `newsletter` and into `transactional`" —
+ * What is stored is the *event*, not the current state - "on this date you
+ * moved mail from this sender out of `newsletter` and into `transactional`" -
  * because the current state is recoverable from the events and the events are
  * not recoverable from the state. Thunderbird's own tags hold the state; they
  * are not a substitute for this.

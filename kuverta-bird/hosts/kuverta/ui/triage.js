@@ -1,9 +1,9 @@
 /**
- * Cleanup — the triage surface — in the standalone client.
+ * Cleanup - the triage surface - in the standalone client.
  *
  * The mirror image of `hosts/thunderbird/ui/triage.js`: same surface, same
  * model, a different adapter underneath. What lives here and not in `core/` is
- * everything that is a `kuverta` idea rather than a mail idea — the Tauri
+ * everything that is a `kuverta` idea rather than a mail idea - the Tauri
  * bridge, which account is being looked at, and unsubscribing, which needs
  * this client's network and its outgoing mail.
  */
@@ -61,7 +61,7 @@ try {
 
 async function open(invoke, account) {
   try {
-    // The previous surface has to let go of the document first — two mounts
+    // The previous surface has to let go of the document first - two mounts
     // would both be listening for keys, and every keystroke would act twice.
     unmount?.();
 
@@ -76,7 +76,7 @@ async function open(invoke, account) {
       root,
       triage,
       // Which mailbox this is. The core cannot know, and the person reading it
-      // needs to — especially here, where the store may hold several.
+      // needs to - especially here, where the store may hold several.
       title: account.email,
       // The standalone client has its own compose pane; this surface does not
       // rebuild it, so the key is left to the app that mounts this.

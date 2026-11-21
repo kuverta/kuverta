@@ -1,7 +1,7 @@
 /**
  * Unsubscribe: every sender whose mail says how to stop it, and stopping it.
  *
- * The client does the unsubscribing — `unsubscribe` in core-rpc — the way
+ * The client does the unsubscribing - `unsubscribe` in core-rpc - the way
  * each sender allows: RFC 8058's one-click POST, or the mail its header asks
  * for. A sender that offers only a web page gets that page opened in the
  * browser for the person to finish, because what such a page asks for cannot

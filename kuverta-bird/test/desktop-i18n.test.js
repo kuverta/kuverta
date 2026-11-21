@@ -2,14 +2,14 @@
  * Every string the desktop window asks for has a German translation.
  *
  * The catalogue is keyed by the English text, so an untranslated string is
- * not an error anywhere — it simply shows in English, which is why nothing
+ * not an error anywhere - it simply shows in English, which is why nothing
  * else would notice. This does: it reads every `t("…")` in the window's own
  * files and asks the catalogue for each one.
  *
  * It lives here because this is the repository's JavaScript test runner; the
  * files it reads are the desktop app's.
  *
- * What it cannot see: a key handed to `t` as a variable — the urgency levels,
+ * What it cannot see: a key handed to `t` as a variable - the urgency levels,
  * a smart mailbox's fields and operators, which are table values. Those are
  * kept together in their own section of the catalogue, where they can be read
  * against the tables by eye.

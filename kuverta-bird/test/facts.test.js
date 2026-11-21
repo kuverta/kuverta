@@ -1,7 +1,7 @@
 /**
  * The header-to-facts mapping.
  *
- * This is the part with no Rust equivalent — `kuverta` got these fields from
+ * This is the part with no Rust equivalent - `kuverta` got these fields from
  * `mail-parser`, and here they come from Thunderbird's `MessageHeader` and
  * `MessagePart.headers`. So it is the part most likely to be wrong, and the
  * cases below are the ones §3.6 of the brief says real mail actually presents.

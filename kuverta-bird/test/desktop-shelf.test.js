@@ -3,7 +3,7 @@
  *
  * Each is a Paperless tag whose words go in its match field, and Paperless
  * keeps 256 characters of that. A suggestion longer than the limit is offered
- * cheerfully and then refused on save, which is the worst way to find out —
+ * cheerfully and then refused on save, which is the worst way to find out -
  * so the lengths are checked here rather than on a rig.
  *
  * It lives here because this is the repository's JavaScript test runner; the

@@ -64,7 +64,7 @@ function render(verdict) {
 
       const weight = document.createElement('span');
       weight.className = 'weight';
-      // A learned override has no meaningful weight — it is not evidence
+      // A learned override has no meaningful weight - it is not evidence
       // being weighed, it is the answer.
       weight.textContent = Number.isFinite(reason.weight)
         ? `+${reason.weight}`

@@ -136,7 +136,7 @@ test('undo puts the message back and says which kind of undo it was', async () =
   await triage.act(ACTIONS.Archive);
   assert.match(triage.notice.text, /archived/);
   // The memory host is compensating, so the wording is "put it back" rather
-  // than "cancel" — the change already happened.
+  // than "cancel" - the change already happened.
   assert.match(triage.notice.text, /put it back/);
 
   await triage.undo();

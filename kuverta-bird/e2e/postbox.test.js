@@ -3,7 +3,7 @@
  *
  * Each postal address is an inbox of its own: selecting it lists its post the
  * way mail is listed, opening a letter shows its text, and the things post does
- * not have — moving, deleting, replying — say so instead of reaching for the
+ * not have - moving, deleting, replying - say so instead of reaching for the
  * mail account behind the window. Driven by the same fake bridge as the
  * settings tests, whose default postbox is "Home" with two letters.
  */
@@ -195,7 +195,7 @@ test('an open letter says which folder on the shelf the paper is in', async () =
   await page.waitForSelector('#reading:not([hidden])');
 
   // The rig decided this while somebody was holding the paper, so it is a
-  // drawer you can go and open — which is the whole point of saying it.
+  // drawer you can go and open - which is the whole point of saying it.
   const shelf = page.locator('#reading-shelf');
   await shelf.waitFor();
   assert.match(await shelf.innerText(), /Lawstuff/);
