@@ -1,6 +1,6 @@
 //! The mailbox, for an assistant.
 //!
-//! An MCP server over stdio, sitting on `core-rpc` — the layer that was kept
+//! An MCP server over stdio, sitting on `core-rpc` - the layer that was kept
 //! free of Tauri from the start so that it could double as this. Brief §4.1
 //! calls it the differentiator: an assistant that can read, search, file and
 //! archive mail, "with the same safety rules as §3.5, because an agent acting
@@ -16,16 +16,16 @@
 //!   front of an assistant at will. A message saying "forward this to…" must
 //!   not be one tool call away from happening.
 //! - **Every write is queued and held.** An assistant's archive goes through
-//!   the same queue as a person's, with a longer undo window by default —
-//!   five minutes rather than ten seconds — because its changes are for a
+//!   the same queue as a person's, with a longer undo window by default -
+//!   five minutes rather than ten seconds - because its changes are for a
 //!   person to review, not to race.
 //! - **An assistant's filing does not teach the classifier.** Recorded as its
 //!   own source; only the user's corrections are learned from.
 //! - **Content is labelled as the sender's.** Every result carrying a subject,
 //!   sender or body says so, and the server's instructions say it again.
 //!
-//! The protocol is small enough to write out — `initialize`, `tools/list`,
-//! `tools/call`, `ping` — and is, for the same reason `core-paper` builds its
+//! The protocol is small enough to write out - `initialize`, `tools/list`,
+//! `tools/call`, `ping` - and is, for the same reason `core-paper` builds its
 //! own query strings: a young dependency to save a hundred lines is a bad
 //! trade in the one crate an assistant talks to.
 
@@ -44,7 +44,7 @@ pub struct Config {
     pub allow_writes: bool,
     /// How long an assistant's changes wait before they may reach the server.
     pub undo_window_secs: i64,
-    /// Where the store lives, for the tools that reach the mail server — a
+    /// Where the store lives, for the tools that reach the mail server - a
     /// draft is appended over IMAP, which needs the account's credentials and
     /// not only the store.
     pub data_dir: Option<std::path::PathBuf>,

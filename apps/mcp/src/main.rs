@@ -1,4 +1,4 @@
-//! `kuverta-mcp` — the mailbox over MCP, on stdio.
+//! `kuverta-mcp` - the mailbox over MCP, on stdio.
 //!
 //!     kuverta-mcp                   # read-only
 //!     kuverta-mcp --allow-writes    # also file, archive, trash, mark read

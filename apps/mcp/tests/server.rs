@@ -144,7 +144,7 @@ async fn initialize_answers_in_a_version_it_speaks() {
     assert!(reply["result"]["capabilities"]["tools"].is_object());
 
     // A version it does not know gets the newest it does, which the client may
-    // then decline — better than echoing a promise this server cannot keep.
+    // then decline - better than echoing a promise this server cannot keep.
     let reply = request(
         &server,
         "initialize",
@@ -199,7 +199,7 @@ async fn malformed_input_is_answered_with_the_right_error() {
 
 #[tokio::test]
 async fn read_only_unless_asked() {
-    // Not refused — not offered. An assistant should never be shown a
+    // Not refused - not offered. An assistant should never be shown a
     // capability it would then be told it cannot use.
     let (server, _, _dir) = server("readonly", 0, Config::default());
     let names = tool_names(&server).await;

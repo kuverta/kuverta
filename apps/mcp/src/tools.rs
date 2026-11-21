@@ -311,7 +311,7 @@ pub async fn run(tool: Tool, args: &Value, core: &Core, config: &Config) -> Resu
 
         Tool::UrgentMessages => {
             let account = int(args, "account")?;
-            // Mail that has no verdict yet gets the rules' — instant, and
+            // Mail that has no verdict yet gets the rules' - instant, and
             // what the window shows too until a model has looked.
             core.judge_by_rules(account)?;
             let min = args
@@ -553,7 +553,7 @@ fn offset(args: &Value) -> usize {
     args.get("offset").and_then(Value::as_u64).unwrap_or(0) as usize
 }
 
-/// A category argument, checked against the six rather than passed through —
+/// A category argument, checked against the six rather than passed through -
 /// a typo would otherwise return an empty list that reads as "nothing there".
 fn category(args: &Value) -> Result<Option<String>> {
     match args.get("category").and_then(Value::as_str) {
