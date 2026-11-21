@@ -2,8 +2,8 @@
 //
 // When is chosen from a few common answers, typed ("tomorrow 8pm", "monday
 // 9:00", "in 2 hours", "morgen 20 Uhr"), or picked on a calendar. Whatever
-// way it is chosen, it is read back in full — "Tuesday 22 September at 20:00"
-// — before anything is scheduled, because "8" meaning 08:00 when 20:00 was
+// way it is chosen, it is read back in full - "Tuesday 22 September at 20:00"
+// - before anything is scheduled, because "8" meaning 08:00 when 20:00 was
 // meant is exactly the mistake a person would not notice until too late.
 //
 // The core checks the message when it is scheduled and sends it from its own
@@ -72,12 +72,12 @@ const DAYPARTS = {
 };
 
 /// Reads a time a person typed, relative to `now`. Returns a Date, or null
-/// when it is not sure — a guess would be worse than asking again.
+/// when it is not sure - a guess would be worse than asking again.
 function parseWhen(input, now = new Date()) {
   let text = input.trim().toLowerCase().replace(/\s+/g, " ");
   if (!text) return null;
   // Words that only join the rest: "at 8", "um 8", "next monday". German
-  // "am" ("am Montag") too, but only before a word — "8 am" is a time.
+  // "am" ("am Montag") too, but only before a word - "8 am" is a time.
   text = text
     .replace(/[,]/g, " ")
     .replace(/(^|\s)am (?=[a-zäöü])/g, " ")
@@ -431,7 +431,7 @@ function outboxItem(entry) {
   return item;
 }
 
-/// Back into compose, and out of the outbox — sending it is then an ordinary
+/// Back into compose, and out of the outbox - sending it is then an ordinary
 /// send or a new schedule. From the account it was going to be sent from.
 async function editScheduled(entry) {
   try {

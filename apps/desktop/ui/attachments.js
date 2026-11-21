@@ -1,13 +1,13 @@
 // Attachments: what a message carries besides its text.
 //
 // The open message lists them under its header, one button each. A button
-// opens the viewer, which shows what the window can show itself — an image,
-// a PDF, plain text — and offers Save to Downloads and Open in another app
+// opens the viewer, which shows what the window can show itself - an image,
+// a PDF, plain text - and offers Save to Downloads and Open in another app
 // for everything. Pictures a message shows inside its text (logos, mostly)
 // are listed only on request.
 //
-// Opening in another app is refused for anything that could run something —
-// a program, a script, a web page — and the button says so rather than
+// Opening in another app is refused for anything that could run something -
+// a program, a script, a web page - and the button says so rather than
 // failing: those can be saved, and opening them is a step the person takes
 // themselves, knowing where the file came from.
 //
@@ -18,13 +18,13 @@
 // Opening a file in another app then leaves that protection, so it takes a
 // second, deliberate click.
 //
-// A PDF locked with a password — a bank statement, a payslip — is asked
+// A PDF locked with a password - a bank statement, a payslip - is asked
 // about here rather than refused: the password goes to the worker, which
 // unlocks the file inside its own process to draw it. It is held only while
 // the viewer is open and written nowhere.
 //
-// The same viewer shows the documents the assistant makes — a letter it
-// wrote, a PDF it signed — which have the same four commands under other
+// The same viewer shows the documents the assistant makes - a letter it
+// wrote, a PDF it signed - which have the same four commands under other
 // names (see `viewerCall`), and are drawn in safe preview too: a signed copy
 // of a stranger's PDF is mostly the stranger's PDF.
 
@@ -37,7 +37,7 @@ const viewer = {
   generation: 0,
   openArmed: false,
   // What was typed to unlock a locked PDF. Kept only while the viewer is
-  // open — paging through it needs it again — and never written anywhere.
+  // open - paging through it needs it again - and never written anywhere.
   password: null,
 };
 
@@ -50,7 +50,7 @@ function base64Bytes(data) {
 }
 
 /// The command that fetches, draws, saves or opens what the viewer shows:
-/// an attachment of a message, or — when `attachment.document` is set — a
+/// an attachment of a message, or - when `attachment.document` is set - a
 /// document the assistant made, which has the same four.
 function viewerCall(what, extra = {}) {
   const { account, messageId, attachment } = viewer;
@@ -121,7 +121,7 @@ function openDocument(doc) {
 }
 
 /// Opens the viewer on a file going out with a message: one dropped on
-/// compose, picked with Attach, or made here — the PDF the assistant signed,
+/// compose, picked with Attach, or made here - the PDF the assistant signed,
 /// which is the one you most want to look at before you send it.
 function openOutgoing(file) {
   const type = file.content_type || "";
@@ -188,7 +188,7 @@ function attachmentIcon(attachment) {
   return "📎";
 }
 
-/// A button for one attachment — icon, name, size — that opens the viewer.
+/// A button for one attachment - icon, name, size - that opens the viewer.
 function attachmentChip(account, messageId, attachment) {
   const chip = document.createElement("button");
   chip.type = "button";
@@ -364,7 +364,7 @@ async function openAttachment(account, messageId, attachment) {
   open.classList.remove("danger");
   const status = el("attachment-status");
   // Plain text is shown as text either way; everything else, in safe
-  // preview, goes to the worker — which reads Word and web pages too.
+  // preview, goes to the worker - which reads Word and web pages too.
   const safe = safePreview() && attachment.preview !== "text";
   status.textContent =
     attachment.preview === "none" && !safe

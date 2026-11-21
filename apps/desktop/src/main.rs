@@ -2,9 +2,9 @@
 //!
 //! Every command here is a thin wrapper over [`core_rpc::Core`]. That is the
 //! whole design: the shell decides what to draw and which key does what, and
-//! knows nothing else. Anything that looks like a decision — which copy of a
+//! knows nothing else. Anything that looks like a decision - which copy of a
 //! message to archive, what to show when a subject is missing, whether a
-//! change can still be undone — is answered in the core, where it can be
+//! change can still be undone - is answered in the core, where it can be
 //! tested without a window.
 //!
 //! The list fetches windows rather than the mailbox. The spike that retired
@@ -14,7 +14,7 @@
 //!
 //! Reads and queued changes go through the store and never touch a network,
 //! so the window never blocks on one. Syncing does, and runs on its own
-//! thread with its own connection — see [`sync`].
+//! thread with its own connection - see [`sync`].
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
@@ -50,7 +50,7 @@ struct App {
 /// Tauri needs a serialisable error; `RpcError` is not one.
 ///
 /// The string is the error's own message, which is written to be read by a
-/// person — so this loses the type and keeps the part the UI shows.
+/// person - so this loses the type and keeps the part the UI shows.
 fn fail(err: impl std::fmt::Display) -> String {
     err.to_string()
 }
@@ -84,8 +84,8 @@ fn messages(
     filter: ListQuery,
 ) -> Result<MessagePage, String> {
     let core = app.core.lock().unwrap();
-    // A smart mailbox is its rules, or — when it takes its mail out of the
-    // Inbox — its folder.
+    // A smart mailbox is its rules, or - when it takes its mail out of the
+    // Inbox - its folder.
     let (smart, smart_folder) = match filter.smart {
         Some(id) => {
             let shown = core.smart_filter(id).map_err(fail)?;
@@ -99,7 +99,7 @@ fn messages(
         unread_only: filter.unread_only,
         folder,
         oldest_first: filter.oldest_first,
-        // All mail — no folder, no smart mailbox — is mail that arrived: your
+        // All mail - no folder, no smart mailbox - is mail that arrived: your
         // own replies and what you threw away are in their folders, and in
         // search, but not in the list you read top to bottom. A smart mailbox
         // says for itself what it wants, and a folder listing is of that
@@ -111,7 +111,7 @@ fn messages(
 }
 
 /// All inboxes: one list over the accounts given, newest first across them.
-/// A smart mailbox here is its rules over every account — its folder, when it
+/// A smart mailbox here is its rules over every account - its folder, when it
 /// has one, is one account's, and the rules are what the others share.
 #[tauri::command]
 fn messages_in(
@@ -138,8 +138,8 @@ fn messages_in(
         .map_err(fail)
 }
 
-/// The account a command is about: the one named, or — from a list over
-/// several accounts, which names none — the one the message belongs to.
+/// The account a command is about: the one named, or - from a list over
+/// several accounts, which names none - the one the message belongs to.
 fn account_for(core: &core_rpc::Core, account: Option<i64>, id: i64) -> Result<i64, String> {
     match account {
         Some(account) => Ok(account),
@@ -172,7 +172,7 @@ fn attachment(
 }
 
 /// Safe preview: the attachment drawn, or its text read, in the locked-down
-/// worker (see core-rpc's preview.rs) — pages `first` to `first + count`.
+/// worker (see core-rpc's preview.rs) - pages `first` to `first + count`.
 /// The store is held only while the bytes are read, not while it draws.
 ///
 /// `password` is what the person typed when a locked PDF asked for one. It
@@ -331,7 +331,7 @@ fn set_read(
     core.set_read(account, id, read, window).map_err(fail)
 }
 
-/// Files a message under a category. Local only — never sent to a server.
+/// Files a message under a category. Local only - never sent to a server.
 #[tauri::command]
 fn set_category(
     app: State<'_, App>,
@@ -347,8 +347,8 @@ fn set_category(
 // -- postal addresses -------------------------------------------------------
 //
 // The reads are async and the store is behind a `Mutex`, so each one takes the
-// lock only long enough to build a session — the client, the selector and the
-// classifier — and releases it before touching the network. A guard held
+// lock only long enough to build a session - the client, the selector and the
+// classifier - and releases it before touching the network. A guard held
 // across an `await` is not `Send`, and would deadlock the window besides.
 
 #[tauri::command]
@@ -481,7 +481,7 @@ async fn paper_document(
     session.document(document_id).await.map_err(fail)
 }
 
-/// A letter's file — the scan itself — as raw bytes.
+/// A letter's file - the scan itself - as raw bytes.
 ///
 /// A binary response rather than JSON: a scan is megabytes, and as a JSON
 /// array of numbers it would be several times that across the bridge. Through
@@ -507,7 +507,7 @@ async fn paper_check(app: State<'_, App>, id: i64) -> Result<core_rpc::PaperRepo
 /// Files a piece of post by hand.
 ///
 /// Who sent it is Paperless's to say, so the document is fetched with no store
-/// lock held, and the lock is taken again only to record — the same shape as
+/// lock held, and the lock is taken again only to record - the same shape as
 /// every other paper command, for the same reason.
 #[tauri::command]
 async fn file_post(
@@ -638,7 +638,7 @@ fn queue(app: State<'_, App>, account: i64) -> Result<Vec<QueuedChange>, String>
 ///
 /// It runs on a thread of its own, which is not a performance choice. A sync
 /// holds its `Store` across every await, and `rusqlite`'s connection is `Send`
-/// but not `Sync`, so `&Store` is not `Send` and the future is not either —
+/// but not `Sync`, so `&Store` is not `Send` and the future is not either -
 /// which is what Tauri's async commands require, because they are spawned onto
 /// a work-stealing runtime that may move them mid-poll. Giving the future one
 /// thread it never leaves satisfies that without making the store something it
@@ -673,7 +673,7 @@ async fn sync(
                     break;
                 }
             }
-            // Mail the rules filed before they last changed, filed again —
+            // Mail the rules filed before they last changed, filed again -
             // once, after an update; nothing is behind on the syncs after.
             loop {
                 match session.reclassify(&email, 2_000, true) {
@@ -1372,7 +1372,7 @@ async fn check_for_update(manual: bool) -> Result<Option<core_rpc::update::Updat
 
 // -- folders ------------------------------------------------------------------
 
-/// Runs a future that holds a `Store` across awaits on a thread of its own —
+/// Runs a future that holds a `Store` across awaits on a thread of its own -
 /// see [`sync`] for why that is needed at all.
 async fn on_own_thread<T, F, Fut>(what: &'static str, work: F) -> Result<T, String>
 where
@@ -1626,7 +1626,7 @@ fn unsubscribe_opened(
         .map_err(fail)
 }
 
-/// Every message from a sender, to the Trash — each an ordinary queued move
+/// Every message from a sender, to the Trash - each an ordinary queued move
 /// with its own undo.
 #[tauri::command]
 fn trash_from_sender(app: State<'_, App>, account: i64, key: String) -> Result<usize, String> {
@@ -1677,7 +1677,7 @@ struct UrgencyPass {
 }
 
 /// Runs the urgency agent over recent Inbox mail: the rules first, for every
-/// message at once, then — with `use_model` — the model chosen for sorting
+/// message at once, then - with `use_model` - the model chosen for sorting
 /// mail, one message at a time and with no store lock held while it thinks.
 /// Stops after three failures in a row rather than grinding on against a
 /// model that is not there.
@@ -1820,7 +1820,7 @@ fn sender(
 }
 
 /// The same card for a scanned letter, which comes from Paperless rather than
-/// from the store — so the session is taken first and the lock let go, as
+/// from the store - so the session is taken first and the lock let go, as
 /// every other paper command does.
 #[tauri::command]
 async fn paper_sender(
@@ -2045,7 +2045,7 @@ fn document(app: State<'_, App>, id: i64) -> Result<tauri::ipc::Response, String
 // -- a file going out with a message ------------------------------------------
 //
 // The tray under compose holds files the person is about to send: dropped
-// there, picked with Attach, or made here — a PDF the assistant signed. The
+// there, picked with Attach, or made here - a PDF the assistant signed. The
 // window has their bytes already, so showing one needs no fetching; drawing
 // it safely, saving it and opening it do, and these are those three. They
 // take the file as a draft carries it, which is exactly what the tray holds.
@@ -2085,7 +2085,7 @@ fn save_outgoing(file: core_rpc::DraftAttachment) -> Result<String, String> {
     Ok(path.display().to_string())
 }
 
-/// Opens it in the program the system has for it — not one that could run
+/// Opens it in the program the system has for it - not one that could run
 /// something, the same refusal a received attachment gets.
 #[tauri::command]
 fn open_outgoing(file: core_rpc::DraftAttachment) -> Result<(), String> {
@@ -2624,7 +2624,7 @@ fn settle_proposal(
         .map_err(fail)
 }
 
-/// Cancels queued changes — the assistant's, by the ids it reported — while
+/// Cancels queued changes - the assistant's, by the ids it reported - while
 /// they are still waiting.
 #[tauri::command]
 fn cancel_changes(app: State<'_, App>, ids: Vec<i64>) -> Result<usize, String> {
@@ -2678,7 +2678,7 @@ fn take_draft(app: State<'_, App>, key: String) -> Option<serde_json::Value> {
     app.handoffs.lock().unwrap().remove(&key)
 }
 
-/// Something the window wants on the record — an error it showed, mostly —
+/// Something the window wants on the record - an error it showed, mostly -
 /// so a log sent with a report has both halves of what happened.
 #[tauri::command]
 fn log_ui(level: String, message: String) {
@@ -2728,7 +2728,7 @@ fn default_data_dir() -> PathBuf {
 
 fn main() {
     // The preview worker is this program again: it draws one attachment,
-    // locked down, and exits — before it opens a window, a store or a log.
+    // locked down, and exits - before it opens a window, a store or a log.
     if std::env::args_os().nth(1).as_deref()
         == Some(std::ffi::OsStr::new(core_rpc::preview::WORKER_FLAG))
     {
@@ -2742,8 +2742,8 @@ fn main() {
     }
 
     let data_dir = default_data_dir();
-    // One window per data directory. Two — the installed app and one built
-    // from source, say — would each sync the same store and each believe its
+    // One window per data directory. Two - the installed app and one built
+    // from source, say - would each sync the same store and each believe its
     // own list; the second is told where the first is instead.
     let _lock = match lock_data_dir(&data_dir) {
         Ok(lock) => lock,

@@ -140,7 +140,7 @@ const state = {
 };
 
 /// Which date post is listed and sorted by: the date on the letter, or when it
-/// was scanned. Kept across restarts — it is how someone reads their post.
+/// was scanned. Kept across restarts - it is how someone reads their post.
 let postOrder = (() => {
   try {
     return localStorage.getItem("postOrder") === "added" ? "added" : "created";
@@ -180,8 +180,8 @@ function setMailOrder(value) {
 // -- data ------------------------------------------------------------------
 
 /// Which list the pages being fetched are for. A reload starts a new one, and
-/// a page that answers an older list — a folder or a view left while it was on
-/// its way — is dropped rather than drawn into the new one.
+/// a page that answers an older list - a folder or a view left while it was on
+/// its way - is dropped rather than drawn into the new one.
 let listGeneration = 0;
 
 function loadPage(offset) {
@@ -264,7 +264,7 @@ async function fetchPage(offset) {
 /// `keepPosition` is what makes triage bearable: archive the message under the
 /// cursor and the next one slides into its place, rather than the list jumping
 /// back to the top and making you find your way again. A filter change is the
-/// other case — there the old position means nothing, so it resets.
+/// other case - there the old position means nothing, so it resets.
 /// The filter as the core takes it.
 function listQuery() {
   return {
@@ -284,7 +284,7 @@ async function reload({ keepPosition = false } = {}) {
   state.firstRendered = -1;
   state.searching = false;
   // The box and the list have to say the same thing. Every reload leaves a
-  // search behind — `state.searching` is false from here down — so a query
+  // search behind - `state.searching` is false from here down - so a query
   // still sitting in the box describes a list that is not on screen: typing
   // `cadus`, then clicking Sent, showed the whole of Sent with `cadus` in the
   // box, as though that were what had been asked for.
@@ -331,7 +331,7 @@ function navItem({ label, count, unread, active, className, onClick, title, icon
   const button = document.createElement("button");
   button.className = `nav-item${className ? ` ${className}` : ""}${active ? " active" : ""}`;
   // The badge shows one number, and its weight is the only thing saying which
-  // — too subtle to rely on alone, so the full answer is a hover away.
+  // - too subtle to rely on alone, so the full answer is a hover away.
   if (title) button.title = title;
   if (icon) button.append(iconSvg(icon));
 
@@ -406,7 +406,7 @@ function syncButton(account) {
 
 async function refreshSidebar() {
   // Accounts. Hidden when there is only one, because a list of one is a label
-  // pretending to be a choice — unless there is post beside it, when the
+  // pretending to be a choice - unless there is post beside it, when the
   // account is the way back to mail.
   renderProfileBar();
   sidebar.accounts.textContent = "";
@@ -564,7 +564,7 @@ function categoriesHeading() {
   return folder ? t("Categories in {where}", { where: folder.label }) : t("Categories");
 }
 
-/// The categories, with counts, as filters — for mail or for post.
+/// The categories, with counts, as filters - for mail or for post.
 function renderCategories(counts) {
   sidebar.categoriesHeading.textContent = categoriesHeading();
   sidebar.categories.textContent = "";
@@ -895,7 +895,7 @@ async function markPostRead(row, read) {
 const transcribing = new Set();
 const transcribeQueue = [];
 let transcribeRunning = false;
-/// Why the vision model could not be used, once it has failed — so new post
+/// Why the vision model could not be used, once it has failed - so new post
 /// stops asking, and the reading pane can say why.
 let visionFailed = null;
 
@@ -933,7 +933,7 @@ async function runTranscriptions() {
 }
 
 /// New post is read as it arrives, so the list says who it is from and what it
-/// is about — and sorts it — from text a person could read. Only letters
+/// is about - and sorts it - from text a person could read. Only letters
 /// nobody has opened yet.
 function autoTranscribe() {
   if (!state.postbox || visionFailed) return;
@@ -976,7 +976,7 @@ function showTranscriptNote(detail, row) {
 // -- post arriving -------------------------------------------------------------
 
 /// Post has no push: Paperless tells nobody when a letter arrives. So the window
-/// asks — the open postbox every so often, every postbox's count less often —
+/// asks - the open postbox every so often, every postbox's count less often -
 /// and a scanned letter appears on its own, the way mail does after a sync.
 /// A test page may shorten the wait.
 const POST_POLL_MS = window.__kuvertaPostPollMs ?? 20000;
@@ -1022,7 +1022,7 @@ async function checkForPost() {
 }
 
 /// Reloads the open postbox without losing the place: the letter that was
-/// selected stays selected — new post lands above it and moves it down — and
+/// selected stays selected - new post lands above it and moves it down - and
 /// stays open if it was being read.
 async function refreshPostbox() {
   const readingOpen = !reading.hidden;
@@ -1071,7 +1071,7 @@ async function selectAccount(account) {
 ///
 /// `towards` is which way the column grows as the pointer goes right: the
 /// right-hand column is dragged by its left edge, so it grows the other way.
-/// The limits are what the pane inside still works at — a list narrower than
+/// The limits are what the pane inside still works at - a list narrower than
 /// 240px cannot show a sender and a date on one line.
 const COLUMNS = {
   sidebar: { variable: "--sidebar-w", fallback: 236, least: 170, most: 460, towards: 1 },
@@ -1153,8 +1153,8 @@ function setColumnWidth(name, pixels) {
   return width;
 }
 
-/// The widths from last time. A width that no longer fits — a window dragged
-/// small, or a screen swapped — is left at its default rather than pushing
+/// The widths from last time. A width that no longer fits - a window dragged
+/// small, or a screen swapped - is left at its default rather than pushing
 /// the panes off the side.
 function restoreColumns() {
   for (const name of Object.keys(COLUMNS)) {
@@ -1217,7 +1217,7 @@ for (const grip of document.querySelectorAll(".col-grip")) {
 /// The right-hand column is there when anything in it is: the sender card,
 /// the assistant, or both. Called by whatever shows or hides one of them.
 ///
-/// Opening it takes width from the list, so the pool is rebuilt — but only
+/// Opening it takes width from the list, so the pool is rebuilt - but only
 /// when the column itself appeared or went, not when one of the two things
 /// inside it did.
 function syncAside() {
@@ -1285,7 +1285,7 @@ const withYear = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
 });
 
-/// Time today, weekday this week, date beyond — the resolution you actually
+/// Time today, weekday this week, date beyond - the resolution you actually
 /// want at each distance, and short enough not to crowd the sender.
 function listDate(seconds) {
   if (!seconds) return "";
@@ -1421,7 +1421,7 @@ async function openSelected() {
   const row = state.rows.get(state.selected);
   if (!row) return;
   // A reply or a forward belongs to the message it answers. Opening another
-  // one takes it away — asking first when something has been typed — and
+  // one takes it away - asking first when something has been typed - and
   // "keep writing" puts the cursor back where the reply is. A new message
   // is about nothing in particular and stays under whatever is read.
   const about = compose.replyTo ?? compose.forward;
@@ -1461,7 +1461,7 @@ async function openSelected() {
       ]);
       // Where the paper itself is. The rig decides this while somebody is
       // holding the letter and it never changes afterwards, so it is a place
-      // you can go and look — which is the whole point of saying it here.
+      // you can go and look - which is the whole point of saying it here.
       showShelf(detail.row.tags);
       // The OCR text is the body. It is missing while Paperless is still
       // reading a scan, which is not the same as a letter with nothing on it.
@@ -1486,13 +1486,13 @@ async function openSelected() {
     emptyPane.hidden = true;
     // A draft is the one message whose point is that it is not finished:
     // nothing to reply to, nothing to forward. It is still read here like
-    // any other, with a way to go on writing it — on request, never on its
+    // any other, with a way to go on writing it - on request, never on its
     // own. Opening a message is reading it, and a compose that appears
     // uninvited takes the message away to make room for itself.
     showDraftBar(detail, row, account);
     // Mail the account sent has nobody to answer. Reply follows it up, to
-    // the people it went to; the assistant's Answer — a reply to what the
-    // sender asked — makes no sense on your own words, so it is not offered.
+    // the people it went to; the assistant's Answer - a reply to what the
+    // sender asked - makes no sense on your own words, so it is not offered.
     showReadingActions({
       draft: detail.is_draft,
       mine: Boolean(row.to) || sameAddress(detail.from, emailOf(account)),
@@ -1515,7 +1515,7 @@ async function openSelected() {
       { to: [...detail.to, ...detail.cc] },
     );
     // HTML mail arrives already rendered to text, so an empty body really
-    // means an empty body — an attachment-only message, or one whose stored
+    // means an empty body - an attachment-only message, or one whose stored
     // copy has gone.
     el("reading-body").textContent = detail.body_text ?? "(no readable body)";
     showAttachments(detail, account);
@@ -1526,7 +1526,7 @@ async function openSelected() {
   }
 }
 
-/// Whether `from` — a header, `Name <addr>` or the address alone — is `email`.
+/// Whether `from` - a header, `Name <addr>` or the address alone - is `email`.
 function sameAddress(from, email) {
   if (!from || !email) return false;
   const address = (from.match(/<([^>]+)>/)?.[1] ?? from).trim().toLowerCase();
@@ -1534,7 +1534,7 @@ function sameAddress(from, email) {
 }
 
 /// Which of the buttons over a message apply to it. The bar is always there
-/// for mail — Archive and Delete apply to anything — and the ones that do
+/// for mail - Archive and Delete apply to anything - and the ones that do
 /// not fit go, rather than the whole row jumping about.
 function showReadingActions({ draft = false, mine = false } = {}) {
   const bar = el("reading-actions");
@@ -1590,7 +1590,7 @@ async function markOpenedRead(row, account) {
 /// Which folder on the shelf the paper went in, under the subject.
 ///
 /// A letter's tags are its folders and the people it is for; the address
-/// label is neither, and is left out — it is on every letter of a postbox and
+/// label is neither, and is left out - it is on every letter of a postbox and
 /// says nothing about where this one is.
 function showShelf(tags) {
     const shelf = el("reading-shelf");
@@ -1621,8 +1621,8 @@ function showShelf(tags) {
 /// How a person's tag is named in Paperless, as `core_paper` writes it.
 const PERSON_TAG = "Person: ";
 
-/// The line under a subject: who it is from — which opens the card for them
-/// — and then the facts about the message itself.
+/// The line under a subject: who it is from - which opens the card for them
+/// - and then the facts about the message itself.
 function fillMeta(into, from, about, rest, { to = [] } = {}) {
   into.textContent = "";
   if (from) into.append(senderName(from, about));
@@ -1645,7 +1645,7 @@ const NAMED_RECIPIENTS = 3;
 /// shown everywhere rather than only there, because "who else got this" is
 /// worth knowing in an inbox too.
 ///
-/// Each one opens the same card the sender does — they are people, and the
+/// Each one opens the same card the sender does - they are people, and the
 /// card is about a person rather than about a message.
 function recipientsLine(to) {
   const wrap = document.createElement("span");
@@ -1712,8 +1712,8 @@ function setReadingView(view) {
   if (!reading.hidden) showReadingView();
 }
 
-/// Fetches the letter's file through the app — the window may not reach
-/// Paperless itself, and the download needs the token — and shows it.
+/// Fetches the letter's file through the app - the window may not reach
+/// Paperless itself, and the download needs the token - and shows it.
 async function loadScan() {
   const row = state.rows.get(state.selected);
   if (!row || !state.postbox) return;
@@ -1760,7 +1760,7 @@ function clearScan() {
 }
 
 /// What the bytes are. The app hands over only bytes, and Paperless's download
-/// is a PDF when it archived the scan and the original — often a JPEG — when not.
+/// is a PDF when it archived the scan and the original - often a JPEG - when not.
 function sniff(bytes) {
   const starts = (...prefix) => prefix.every((value, i) => bytes[i] === value);
   if (starts(0x25, 0x50, 0x44, 0x46)) return "application/pdf";
@@ -1870,8 +1870,8 @@ function say(message, isError = false) {
 
 /// Applies a queued change and takes the row out of the list straight away.
 ///
-/// The change has not reached the server yet — it is sitting in the undo
-/// window — so this is the list agreeing with what was asked for rather than
+/// The change has not reached the server yet - it is sitting in the undo
+/// window - so this is the list agreeing with what was asked for rather than
 /// with the store. The next sync reconciles, and `undo` puts the row back.
 async function act(command, args, describe) {
   const indexes = actingOn();
@@ -1999,11 +1999,11 @@ const compose = {
   // The fields as they were filled in when it opened; see `composeTouched`.
   opened: null,
   // Which account writes it: the open one, or from All inboxes the account
-  // of the message answered — a reply goes from the address it came to.
+  // of the message answered - a reply goes from the address it came to.
   email: null,
   // The Drafts copy this was opened from, as {id, account, trash}. Once the
   // message has gone the copy is a stale duplicate of something already sent,
-  // so it is taken out — but only on the way out, never on the way in: a
+  // so it is taken out - but only on the way out, never on the way in: a
   // draft closed without sending is work the person still wants.
   draftOf: null,
   // While "discard what you are writing?" is on screen.
@@ -2043,7 +2043,7 @@ function composeFingerprint() {
   ]);
 }
 
-/// Whether anything has been typed since compose opened — as against the
+/// Whether anything has been typed since compose opened - as against the
 /// recipients and quoting it was filled in with, which cost nothing to lose.
 function composeTouched() {
   return !compose.pane.hidden && composeFingerprint() !== compose.opened;
@@ -2076,7 +2076,7 @@ async function leaveCompose() {
 }
 
 /// The addresses in a field: split at commas, but not at one inside a quoted
-/// name — "Mustermann, Erika" <erika@example.de> is one address.
+/// name - "Mustermann, Erika" <erika@example.de> is one address.
 function addresses(field) {
   const found = [];
   let current = "";
@@ -2141,7 +2141,7 @@ function closeCompose() {
 }
 
 /// Opens compose. With `replyAll`, the recipients and quoted body come from
-/// the core rather than being assembled here — reply-all has rules (drop
+/// the core rather than being assembled here - reply-all has rules (drop
 /// yourself, honour Reply-To) that belong in one place.
 ///
 /// A reply or a forward leaves what it is about on screen above it: #detail
@@ -2185,7 +2185,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
       compose.to.value = preview.recipients.join(", ");
     } catch (err) {
       // A forward has no recipients yet, which the core rejects. That is not
-      // an error here — it is the point of the empty To: field.
+      // an error here - it is the point of the empty To: field.
       compose.subject.value = forward ? `Fwd: ${row.subject}` : `Re: ${row.subject}`;
     }
   } else {
@@ -2207,7 +2207,7 @@ async function openCompose({ replyAll = null, forward = false } = {}) {
   await refreshEnvelope();
 }
 
-/// Fills compose from a draft the core kept — a scheduled message being
+/// Fills compose from a draft the core kept - a scheduled message being
 /// edited again, or, with `what` naming it, a message a link asked for.
 /// Replies keep what they reply to, so threading survives.
 ///
@@ -2345,7 +2345,7 @@ for (const pane of [compose.pane, reading]) {
 // message is sent or thrown away, and asks first when closed with something
 // typed in it.
 
-/// Opens a window on `handed` — a draft in compose's shape, with `what` it
+/// Opens a window on `handed` - a draft in compose's shape, with `what` it
 /// is, which account's `email` it goes from, the Drafts copy it came from,
 /// and whether its text counts as `typed`. True once the window is there.
 async function popOutDraft(handed) {
@@ -2438,7 +2438,7 @@ function closePopoutWindow() {
 /// Shows who would actually receive it, Bcc included.
 ///
 /// The envelope is the only place a blind recipient appears, and the one thing
-/// worth checking before committing — so it is on screen rather than implied.
+/// worth checking before committing - so it is on screen rather than implied.
 async function refreshEnvelope() {
   if (compose.pane.hidden) return;
   try {
@@ -2586,7 +2586,7 @@ async function sync(account = null, { background = false } = {}) {
     failedSyncs.delete(email);
     if (s.inserted) addressBookChanged();
     // When mail last arrived has just changed, and that is what the row's
-    // tooltip says — so the accounts are read again whichever one this was.
+    // tooltip says - so the accounts are read again whichever one this was.
     state.accounts = await invoke("accounts");
     // The list is showing another account or a postbox, so there is nothing
     // to redraw in it; the sidebar is showing this one either way.
@@ -2617,7 +2617,7 @@ const failedSyncs = new Set();
 
 /// How often mail is fetched without being asked. Post is polled every twenty
 /// seconds because Paperless tells nobody when a letter arrives; mail is the
-/// same problem at a slower pace — IMAP IDLE would tell us, and until there is
+/// same problem at a slower pace - IMAP IDLE would tell us, and until there is
 /// one, this is what keeps an account from sitting still for a day because
 /// nobody pressed r.
 const SYNC_EVERY_MS = window.__kuvertaSyncEveryMs ?? 5 * 60 * 1000;
@@ -2626,8 +2626,8 @@ const SYNC_EVERY_MS = window.__kuvertaSyncEveryMs ?? 5 * 60 * 1000;
 ///
 /// In turn rather than at once: two syncs writing to one store only wait on
 /// each other, and `sync` refuses a second anyway. Skipped while a sync is
-/// already running — a first sync downloads a whole mailbox and can outlast
-/// several of these — and while the computer says it has no network, where
+/// already running - a first sync downloads a whole mailbox and can outlast
+/// several of these - and while the computer says it has no network, where
 /// every account would fail in the same way for the same reason.
 async function syncEverything() {
   if (state.syncing || navigator.onLine === false) return;
@@ -2749,8 +2749,8 @@ const KEYS = {
 };
 
 /// Which side the pointer was last put down on: "list" or "detail". ⌘A
-/// reads it, because a click in a message is not focus the window can see —
-/// a paragraph cannot be focused — and the list is not either.
+/// reads it, because a click in a message is not focus the window can see -
+/// a paragraph cannot be focused - and the list is not either.
 let pointerIn = "list";
 el("list").addEventListener("mousedown", () => {
   pointerIn = "list";
@@ -2793,7 +2793,7 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
-  // While composing, the keys belong to the fields — otherwise typing "e"
+  // While composing, the keys belong to the fields - otherwise typing "e"
   // into a subject line would archive something. Only while it is open: after
   // Discard, focus can stay on the hidden button, and the keys with it.
   if (!compose.pane.hidden && compose.pane.contains(event.target)) {
@@ -2828,7 +2828,7 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
-  // Any other field — a sender card, a sheet without a dialog class — keeps
+  // Any other field - a sender card, a sheet without a dialog class - keeps
   // its letters; "e" typed into one is not archive.
   if (["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) || event.target.isContentEditable) return;
 
@@ -2848,7 +2848,7 @@ document.addEventListener("keydown", async (event) => {
     return;
   }
 
-  // ⌘A picks every message — unless the pointer was last put in the open
+  // ⌘A picks every message - unless the pointer was last put in the open
   // message, where it means the text of that message, as it does anywhere.
   if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "a") {
     if (pointerIn === "detail" && (!reading.hidden || !conversationPane.hidden)) return;
@@ -2886,7 +2886,7 @@ content.addEventListener("click", (event) => {
   if (index < 0) return;
   const at = state.firstRendered + index;
   // Shift takes the block between here and where the last one was picked;
-  // cmd or ctrl adds one on its own. Either way the message is not opened —
+  // cmd or ctrl adds one on its own. Either way the message is not opened -
   // picking several and reading one are different intentions.
   if (event.shiftKey) {
     selectRange(at);
@@ -2904,7 +2904,7 @@ content.addEventListener("click", (event) => {
 ///
 /// It acts on what is picked, the way every key does: right-clicking inside a
 /// block of picked messages keeps the block, right-clicking outside it takes
-/// the row under the pointer instead — which is what every list does, and the
+/// the row under the pointer instead - which is what every list does, and the
 /// only behaviour that cannot lose a selection by accident.
 content.addEventListener("contextmenu", (event) => {
   const index = state.pool.findIndex((node) => node.row === event.target.closest(".row"));
@@ -2963,12 +2963,12 @@ function showMessageMenu(event) {
 
 /// The second page of the same menu: which mailbox to move them to.
 ///
-/// A page rather than a submenu — the menu has none — and the whole path
+/// A page rather than a submenu - the menu has none - and the whole path
 /// rather than the leaf, because two accounts' worth of mailboxes called
 /// "2024" is a choice nobody can make from the label alone.
 async function showMoveMenu(event) {
   const items = [[t("← Back"), () => showMessageMenu(event)], null];
-  // From All inboxes the mailboxes are those of the rows' account — one
+  // From All inboxes the mailboxes are those of the rows' account - one
   // account's, because a folder is one account's, and rows of two cannot go
   // to the same one.
   let folders = state.folders;
@@ -3050,7 +3050,7 @@ function closeDialog(sheet) {
 ///
 /// In the window's own sheet, because window.confirm is no use here: the
 /// webview has no handler for it and answers "no" at once, without showing
-/// anything — which made every delete behind one quietly do nothing.
+/// anything - which made every delete behind one quietly do nothing.
 /// Escape and Cancel are no; Enter is yes. `yes` names what yes does.
 function ask(question, { yes = t("OK"), danger = false } = {}) {
   const sheet = el("ask-sheet");
@@ -3249,7 +3249,7 @@ function syncAuthFields() {
 }
 
 /// The buttons that open a new, empty form of each kind. Held here because
-/// the list is redrawn from scratch and they are moved into it each time —
+/// the list is redrawn from scratch and they are moved into it each time -
 /// moving keeps their handlers; recreating would lose them.
 const ADD_BUTTONS = {
   account: el("settings-add"),
@@ -3495,7 +3495,7 @@ settings.form.addEventListener("submit", async (event) => {
     const id = await invoke("save_account", { input });
 
     // After the row, so a password is never stored for an account that failed
-    // to save — which would leave a credential with nothing to use it.
+    // to save - which would leave a credential with nothing to use it.
     if (password) {
       await invoke("set_password", { email: input.email, password });
     }
@@ -3546,7 +3546,7 @@ el("settings-verify").onclick = async () => {
   settings.report.textContent = t("Connecting…");
 
   try {
-    // Saved first, because verifying asks the core to connect to an account —
+    // Saved first, because verifying asks the core to connect to an account -
     // and an account it cannot see is one it cannot test.
     const id = await invoke("save_account", { input });
     const password = formFields().password;
@@ -3644,7 +3644,7 @@ function fillPaper(address) {
   fillProfileSelect(f.profile, address.id === null ? activeProfile() : address.profile_id ?? null);
 
   // As with passwords: the field never shows the token, so it says whether
-  // there is one — and where to get one, since that is not obvious.
+  // there is one - and where to get one, since that is not obvious.
   paper.tokenState.textContent = address.has_token
     ? "A token is stored in the keychain. Sign in again below if Paperless stops accepting it."
     : "No token stored yet. The button below opens Paperless at its profile page, where the API token is; sign in there, copy it, and paste it above.";
@@ -3698,7 +3698,7 @@ async function savePaper() {
   const id = await invoke("save_paper_mailbox", { input: paperInput() });
   const token = paper.form.token.value;
   // After the row, so a token is never stored for an address that failed to
-  // save — a credential with nothing to use it.
+  // save - a credential with nothing to use it.
   if (token) await invoke("set_paper_token", { id, token });
   await invoke("set_postbox_profile", { postbox: id, profile: selectedProfile(paper.form.profile) });
   paper.addresses = await invoke("paper_mailboxes");
@@ -3719,7 +3719,7 @@ paper.form.addEventListener("submit", async (event) => {
 /// Paperless keeps the API token on the signed-in user's profile page, which
 /// is several clicks in and named differently from anything here. The link
 /// goes to the address in the form rather than the saved one, so it works
-/// while an address is still being typed — and through the login page, which
+/// while an address is still being typed - and through the login page, which
 /// comes back to the profile when it is done.
 el("paper-token-link").onclick = () => {
   const typed = paper.form.base_url.value.trim().replace(/\/+$/, "");
@@ -3862,7 +3862,7 @@ const PRESETS = {
   ollama: { kind: "ollama", label: "Ollama", base_url: "http://" },
 };
 
-/// One form at a time in the sheet — see the note in styles.css on why each
+/// One form at a time in the sheet - see the note in styles.css on why each
 /// form's hidden attribute needs a rule of its own.
 function hideSettingsForms() {
   settings.form.hidden = true;
@@ -4063,7 +4063,7 @@ models.form.addEventListener("submit", async (event) => {
   }
 });
 
-/// Each job once, on a sample rather than anyone's mail — the only way to know
+/// Each job once, on a sample rather than anyone's mail - the only way to know
 /// whether a service's model can see, since most services do not say.
 el("ai-try").onclick = async () => {
   if (!models.form.reportValidity()) return;
@@ -4224,7 +4224,7 @@ el("settings-add-provider").onclick = () => {
   fillProvider({ id: null, has_key: false, ...PRESETS.deepseek });
 };
 
-/// The Paperless preflight, as text — the same shape as the IMAP one above.
+/// The Paperless preflight, as text - the same shape as the IMAP one above.
 function describePaperReport(r) {
   const lines = [];
   lines.push("Paperless-ngx");

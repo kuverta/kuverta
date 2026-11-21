@@ -446,14 +446,14 @@ installForm.addEventListener("submit", async (event) => {
 
 /// What most households need, as somewhere to start. Each is a Paperless tag
 /// with words that only its letters carry; the words are deliberately narrow,
-/// because a word every official letter contains — "Datenschutz", say, which
-/// stands in the footer of all of them — would put every letter in that
+/// because a word every official letter contains - "Datenschutz", say, which
+/// stands in the footer of all of them - would put every letter in that
 /// folder.
 ///
 /// Longer lists than look necessary, on purpose: the words are matched
 /// against what a camera on a stalk and tesseract made of a letter, and that
 /// text is bad. A letter from the Wasserschutzpolizei came out with
-/// "Strafprozessordnung" as "Sraiomzessorsnung" three times over — and was
+/// "Strafprozessordnung" as "Sraiomzessorsnung" three times over - and was
 /// filed by "Staatsanwaltschaft", which happened to survive on page two. Each
 /// extra spelling of the same idea is another chance that one of them lands.
 const SHELF_SUGGESTIONS = [
@@ -660,7 +660,7 @@ el("household-add").onclick = () => addShelfRow(true);
 el("shelf-save").onclick = saveShelf;
 
 /// Writes the rows to Paperless. False when something was wrong with them, or
-/// Paperless would not take them — the page says what, and stays put.
+/// Paperless would not take them - the page says what, and stays put.
 async function saveShelf() {
   const address = await shelfAddress();
   if (!address || shelf === null) return true;
@@ -671,7 +671,7 @@ async function saveShelf() {
       person: Boolean(folder.person),
     }))
     .filter((folder) => folder.name);
-  // A folder and a person may share a name — they are two tags — so each list
+  // A folder and a person may share a name - they are two tags - so each list
   // is checked on its own.
   const names = folders.map((folder) => `${folder.person}:${folder.name.toLowerCase()}`);
   const twiceAt = names.findIndex((name, at) => names.indexOf(name) !== at);

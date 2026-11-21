@@ -1,13 +1,13 @@
 // Where the signature goes: the page, and the signature dragged onto its line.
 //
 // kuverta reads a contract for the line it rules for a signature and puts the
-// signature there. When it cannot — a form that rules no line, a page laid out
-// in a way nothing could read — the person says where instead of describing it
+// signature there. When it cannot - a form that rules no line, a page laid out
+// in a way nothing could read - the person says where instead of describing it
 // in words to a model that cannot see the page.
 //
 // So: the page as a picture, drawn by safe preview out of the *original*, with
 // the signature on top of it to drag and a slider for how wide. Saving signs
-// the original again at that place, into the same document — the same id, the
+// the original again at that place, into the same document - the same id, the
 // same name, so a chip already in a message being written still points at it.
 // Nothing is sent; what changes is the file on the card.
 

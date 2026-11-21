@@ -1,6 +1,6 @@
 // Mailboxes on the server: making new ones, and deleting empty ones.
 //
-// Creating goes straight to the server — a folder is not mail, and there is
+// Creating goes straight to the server - a folder is not mail, and there is
 // nothing to hold back. Deleting is refused by the core unless the folder is
 // empty on the server and is not one the account depends on; this file only
 // asks first, and says what the core said when it refuses.
@@ -17,7 +17,7 @@ function isEssential(folder) {
     return true;
   }
   if (folder.name === state.archive || folder.name === state.trash) return true;
-  // By name, for servers that mark nothing — the same names the core knows.
+  // By name, for servers that mark nothing - the same names the core knows.
   const leaf = folder.name.split("/").pop().toLowerCase();
   return ESSENTIAL_NAMES.includes(leaf);
 }

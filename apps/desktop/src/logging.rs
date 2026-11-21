@@ -2,8 +2,8 @@
 //!
 //! A bug report without a log is a description of a symptom. So everything
 //! the app logs also goes to `<data dir>/logs/kuverta.log`, and settings can
-//! turn on **detailed logging** — debug level for kuverta's own crates, live,
-//! without a restart — and **export** the log to Downloads to attach to a
+//! turn on **detailed logging** - debug level for kuverta's own crates, live,
+//! without a restart - and **export** the log to Downloads to attach to a
 //! report.
 //!
 //! Only kuverta's crates go to debug. The network libraries underneath log
@@ -28,7 +28,7 @@ const ROTATE_AT: u64 = 4 * 1024 * 1024;
 
 /// The certificate verifier logs every refusal at error level itself. A
 /// refusal is an answer, not a fault: whoever asked gets it back as an error
-/// and says what it means — a failed sync does, and a setup probe of an
+/// and says what it means - a failed sync does, and a setup probe of an
 /// `autoconfig.` host with somebody else's certificate rightly says nothing.
 const QUIET: &str = "rustls_platform_verifier=off";
 

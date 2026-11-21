@@ -6,7 +6,7 @@
 // reading two files to know what a line says, and a missing key would show as
 // `sidebar.folders.title` to whoever hit it; a missing translation here shows
 // the English, which is a sentence. The cost is that two English strings that
-// happen to match must mean the same thing — which, in one window, they do.
+// happen to match must mean the same thing - which, in one window, they do.
 //
 // Static text in index.html is translated by walking the document rather than
 // by marking every element up: the markup would be three hundred attributes to
@@ -1626,8 +1626,8 @@ const CATALOGUES = { de: GERMAN };
 
 /// What the window is being read in: a choice that was made, or the system's.
 ///
-/// The choice is kept where the other things the window remembers are kept —
-/// beside the sort order and whether the assistant was open — because it is
+/// The choice is kept where the other things the window remembers are kept -
+/// beside the sort order and whether the assistant was open - because it is
 /// the same kind of thing: how this person likes their window, not what is in
 /// their mail.
 function languageChoice() {
@@ -1662,7 +1662,7 @@ function t(text, vars = null) {
   // A key may carry a qualifier after a bar, for the few English words that
   // are two different things: `t("Archive|a folder's name")` is a folder,
   // `t("Archive")` is the button that puts mail in one. The qualifier is
-  // never shown — in English it is cut off, in German it picks the entry.
+  // never shown - in English it is cut off, in German it picks the entry.
   let out = (catalogue && catalogue[text]) || text.split("|")[0];
   if (vars) {
     for (const [name, value] of Object.entries(vars)) {
@@ -1674,8 +1674,8 @@ function t(text, vars = null) {
 
 /// Everything already on the page, translated in place.
 ///
-/// Walks text and the attributes people read — placeholder, title, the label
-/// a screen reader says — rather than asking index.html to carry a key on
+/// Walks text and the attributes people read - placeholder, title, the label
+/// a screen reader says - rather than asking index.html to carry a key on
 /// every element. Run once at startup and again when the language changes.
 function translateDom(root = document.body) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
@@ -1703,7 +1703,7 @@ function translateDom(root = document.body) {
 ///
 /// The page is not reloaded: a reload would lose the open message, the place
 /// in the list and anything half typed. What the window built itself is drawn
-/// again by whoever owns it — the sidebar and the list — and the rest is
+/// again by whoever owns it - the sidebar and the list - and the rest is
 /// static text this walks over.
 function setLanguageChoice(choice) {
   try {

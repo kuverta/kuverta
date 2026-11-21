@@ -1,4 +1,4 @@
-// The assistant, and the tasks it — or you — set up.
+// The assistant, and the tasks it - or you - set up.
 //
 // A conversation with a model that has tools on this account's mail: it looks
 // (search, list, read, urgency, conversations) and acts (move, archive, trash,
@@ -7,10 +7,10 @@
 // thing a person may want to take back or finish: an Undo for every change, a
 // reply to read and send, a task to check.
 //
-// A document it makes — a letter it wrote, a PDF it signed, a table of what
-// the person owes — is a card too: to show, save, attach to a message, or
-// delete. A question that fails —
-// the model's service is down, or out of credit — leaves a Retry. Every
+// A document it makes - a letter it wrote, a PDF it signed, a table of what
+// the person owes - is a card too: to show, save, attach to a message, or
+// delete. A question that fails -
+// the model's service is down, or out of credit - leaves a Retry. Every
 // conversation is kept as it goes, and Earlier chats opens one again.
 //
 // The Tasks tab lists the standing tasks and what they are waiting to be told
@@ -26,7 +26,7 @@ const assistant = {
   account: null,
   busy: false,
   // The messages this question is about: id and a line to show, in the order
-  // they were picked. Emptied once the question has been asked — from then on
+  // they were picked. Emptied once the question has been asked - from then on
   // they are part of the conversation.
   about: [],
   // The conversation as kept: its id in the store once it has been saved,
@@ -52,8 +52,8 @@ const SUGGESTIONS = [
   t("Write a letter cancelling my gym membership, signed, as a PDF."),
 ];
 
-/// A channel for a command to report on as it goes. Outside the app — in the
-/// browser tests — there is none, and an object with `onmessage` stands in.
+/// A channel for a command to report on as it goes. Outside the app - in the
+/// browser tests - there is none, and an object with `onmessage` stands in.
 function progressChannel(onmessage) {
   const Channel = window.__TAURI__?.core?.Channel;
   const channel = Channel ? new Channel() : {};
@@ -69,7 +69,7 @@ function assistantOpen() {
 
 /// The assistant works on a mail account. In the Post view there is nothing
 /// for it to read, so the box says so instead of taking a question it would
-/// only refuse — a disabled field that explains itself beats a live one that
+/// only refuse - a disabled field that explains itself beats a live one that
 /// swallows what you typed.
 function syncAssistantAvailability() {
   const usable = state.account !== null && !state.postbox;
@@ -240,7 +240,7 @@ function showSuggestions(suggestions) {
   if (assistant.log.querySelector(".chat-suggestions")) showSuggestionsInto(suggestions);
 }
 
-/// Which model answers, and — for a hosted one — that mail leaves the computer.
+/// Which model answers, and - for a hosted one - that mail leaves the computer.
 async function showAssistantModel(reply = null) {
   const note = el("chat-model");
   let model = reply?.model;
@@ -277,8 +277,8 @@ function appendChat(className, text) {
   return item;
 }
 
-/// The model's answer, with the Markdown it writes in — bold, italics, code,
-/// headings and lists — shown as such. Built from text nodes, never as HTML:
+/// The model's answer, with the Markdown it writes in - bold, italics, code,
+/// headings and lists - shown as such. Built from text nodes, never as HTML:
 /// the answer quotes mail, and mail is written by strangers.
 function markdown(text) {
   const out = document.createDocumentFragment();
@@ -338,7 +338,7 @@ function inline(text) {
   return nodes;
 }
 
-/// Asks what is in the box — or, on a Retry, the question that failed, with
+/// Asks what is in the box - or, on a Retry, the question that failed, with
 /// the messages it was about.
 async function sendToAssistant(again = null) {
   const text = again ? again.text : assistant.input.value.trim();
@@ -407,7 +407,7 @@ async function sendToAssistant(again = null) {
   } catch (err) {
     thinking.remove();
     // The question stays asked and the conversation as it was, so Retry
-    // sends exactly it again — after topping up a hosted service's credit,
+    // sends exactly it again - after topping up a hosted service's credit,
     // or once the model is back.
     const error = appendChat("chat-msg error", String(err));
     const retry = document.createElement("button");
@@ -642,7 +642,7 @@ function rememberedCard(event) {
 
 /// A skill the assistant fetched. It is instructions from somebody else, and
 /// it does nothing until the person has read it in the settings and accepted
-/// it there — which is where the one button takes them.
+/// it there - which is where the one button takes them.
 function skillCard(event) {
   const { box, actions } = card(
     t("Skill downloaded: {name}", { name: event.name }),
@@ -685,7 +685,7 @@ function draftCard(event) {
   const body = document.createElement("textarea");
   body.value = event.body;
   box.insertBefore(body, actions);
-  // What goes with it — documents the assistant made, and files out of
+  // What goes with it - documents the assistant made, and files out of
   // received mail: shown as chips, and sent or opened in compose with the
   // message.
   const documents = event.documents ?? [];
@@ -875,7 +875,7 @@ async function receivedAttachments(files, account) {
   return out;
 }
 
-/// A message the assistant found: open it, or go straight to an attachment —
+/// A message the assistant found: open it, or go straight to an attachment -
 /// the ticket, the QR code, the contract is often there rather than in the text.
 function messageCard(event) {
   const { box, actions } = card(
@@ -1018,7 +1018,7 @@ assistant.input.addEventListener("keydown", (event) => {
 // -- tasks -------------------------------------------------------------------------
 
 async function refreshAssistantBadge() {
-  // Nobody asked for this one, so it says nothing — but it must not leave the
+  // Nobody asked for this one, so it says nothing - but it must not leave the
   // last account's count sitting over an assistant that will not answer here.
   // It runs whenever the account changes, which is when the box has to catch up.
   syncAssistantAvailability();

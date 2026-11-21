@@ -1,6 +1,6 @@
 // What the models cost, in tokens: today, this month, since counting began,
 // by model and by job, and the last thirty days as bars. Only counts are
-// kept — never what was asked or answered.
+// kept - never what was asked or answered.
 
 const usagePage = SETTINGS_PAGES.usage;
 const tokenCount = new Intl.NumberFormat(undefined);
@@ -40,7 +40,7 @@ function usageLayout() {
   `;
   usagePage.querySelector("[data-el=refresh]").onclick = fillUsage;
   usagePage.querySelector("[data-el=clear]").onclick = async () => {
-    // The window's own question, as everywhere else — not the webview's
+    // The window's own question, as everywhere else - not the webview's
     // box, which looks like nothing else in it.
     if (!(await ask(t("Reset the token statistics? Counting starts again from nothing."), { yes: t("Reset"), danger: true }))) return;
     try {

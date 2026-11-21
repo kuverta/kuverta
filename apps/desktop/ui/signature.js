@@ -35,7 +35,7 @@
   }
 
   /// The line beneath the signature as it will be written: the place, a
-  /// comma, today's date — or the date alone.
+  /// comma, today's date - or the date alone.
   function showCaption() {
     const place = el("signature-place").value.trim();
     const now = new Date();

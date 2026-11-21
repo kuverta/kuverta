@@ -1,7 +1,7 @@
 // Address suggestions: who to write to, from the mail there already is.
 //
 // Typing in To, Cc or Bcc offers the people the account has written to and
-// heard from — written-to first, then by how often and how lately — whose
+// heard from - written-to first, then by how often and how lately - whose
 // name or address starts with what is typed at the caret: "eri", "muster",
 // "example.de" all find Erika Mustermann <erika@example.de>. ↓ and ↑ choose,
 // Enter or Tab takes one, Escape closes the list without discarding the

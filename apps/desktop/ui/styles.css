@@ -1,6 +1,6 @@
 /* Apple Mail is the reference for the layout: three panes side by side rather
    than stacked; a recessed sidebar with rounded selection pills and icons;
-   list rows of three lines — sender, subject, preview — rather than a dense
+   list rows of three lines - sender, subject, preview - rather than a dense
    table; separators inset from the left so they read as dividers between rows
    and not as a grid.
 
@@ -119,7 +119,7 @@ input[type="checkbox"] { accent-color: var(--accent); }
 
 /* Toolbar across the top; below it the three panes, side by side. Each pane
    scrolls on its own, so anything containing a scroller needs `min-height: 0`
-   — without it a long message stretches the row instead of scrolling. */
+ - without it a long message stretches the row instead of scrolling. */
 body {
   display: grid;
   grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0, 1fr);
@@ -521,7 +521,7 @@ footer .keys {
   cursor: default;
   /* Shift-click picks a block of messages, which is also how a browser is
      asked to drag text across one. Rows are for picking, not for reading out
-     of — the message itself is in the pane beside them, where selecting text
+     of - the message itself is in the pane beside them, where selecting text
      still works. */
   user-select: none;
   -webkit-user-select: none;
@@ -869,7 +869,7 @@ body.dragging-row #viewport, body.dragging-row #reading, body.dragging-row #comp
 
 /* Mail as the sender designed it: a frame that can do nothing, scrolling on
    its own since the window cannot see how tall it is. White, like the mail
-   is — a sender's page is their page, not the window's. */
+   is - a sender's page is their page, not the window's. */
 #reading-html {
   display: block;
   width: 100%;
@@ -1484,7 +1484,7 @@ label.check.hint { color: var(--muted); font-size: 11.5px; white-space: nowrap; 
   white-space: nowrap;
 }
 
-/* Offered but not available — the mailbox they are already in, an account
+/* Offered but not available - the mailbox they are already in, an account
    with no Archive. Still listed, so the menu does not change shape. */
 .context-menu button:disabled { color: var(--muted); }
 
@@ -1591,7 +1591,7 @@ label.check.hint { color: var(--muted); font-size: 11.5px; white-space: nowrap; 
 
 .settings-page .lead { margin: 0; color: var(--muted); }
 
-/* A group of settings, as a rounded box — the way System Settings groups them. */
+/* A group of settings, as a rounded box - the way System Settings groups them. */
 .card {
   display: flex;
   flex-direction: column;
@@ -1644,7 +1644,7 @@ label.check.hint { color: var(--muted); font-size: 11.5px; white-space: nowrap; 
 }
 
 /* One form at a time. `display: flex` above would beat the hidden
-   attribute's own `display: none` — leaving two forms on screen at once, with
+   attribute's own `display: none` - leaving two forms on screen at once, with
    nothing to say which a Save button belonged to. The same for the name field
    that "all documents" hides. */
 .settings-page[hidden],
@@ -2372,8 +2372,8 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 
    One card, drawn twice: pinned under the sidebar's navigation while a message
    is open, and floating beside a list row on hover. The floating copy takes no
-   pointer events — it must never come between the cursor and the row that
-   summoned it — so the parts that are there to be clicked are left out of it
+   pointer events - it must never come between the cursor and the row that
+   summoned it - so the parts that are there to be clicked are left out of it
    rather than shown dead. */
 
 .sender-card[hidden] { display: none !important; }
@@ -2385,7 +2385,7 @@ body.aside-open { grid-template-columns: var(--sidebar-w) var(--list-w) minmax(0
 }
 
 /* Sharing the column: the card keeps its natural height up to a point, and
-   the assistant — which is where the typing happens — keeps the rest. */
+   the assistant - which is where the typing happens - keeps the rest. */
 #aside.with-assistant #sender {
   max-height: 45%;
   border-bottom: 1px solid var(--line);

@@ -1,7 +1,7 @@
 // Files going out with a message: dropped on what is being written, or
 // picked with Attach.
 //
-// Two places write mail — compose, and the reply box under a conversation —
+// Two places write mail - compose, and the reply box under a conversation -
 // and each has a tray: a strip of chips, one per file, each with a × to take
 // it back. The bytes are read as soon as a file is dropped and kept here as
 // base64, which is what the core takes them as: a draft carries its files,
@@ -67,8 +67,8 @@ function fileTray(strip) {
       tray.render();
     },
 
-    /// Adds files the core made — a PDF the assistant signed to go out with
-    /// the message — as a draft carries them, bytes and all. One that no
+    /// Adds files the core made - a PDF the assistant signed to go out with
+    /// the message - as a draft carries them, bytes and all. One that no
     /// longer fits is refused by name, as a dropped one is.
     attach(attachments = []) {
       for (const file of attachments) {
@@ -113,7 +113,7 @@ function fileTray(strip) {
         chip.title = file.name;
         // The chip opens the file in the viewer, as a received attachment's
         // does: what is about to go out is the thing you most want to look
-        // at first — above all a PDF the assistant signed for you.
+        // at first - above all a PDF the assistant signed for you.
         const open = document.createElement("button");
         open.type = "button";
         open.className = "open";
@@ -160,7 +160,7 @@ function dragHasFiles(event) {
 }
 
 /// Lets files be dropped anywhere on `zone`, into `tray`. `ready` says
-/// whether the zone takes them now — a hidden pane does not.
+/// whether the zone takes them now - a hidden pane does not.
 function acceptDrops(zone, tray, ready = () => !zone.hidden) {
   const hint = zone.querySelector(".drop-hint");
   // dragenter and dragleave fire for every child crossed; counting them is

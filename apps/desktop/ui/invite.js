@@ -2,7 +2,7 @@
 //
 // A `text/calendar` part used to be a 📅 in the attachment row and nothing
 // else: to find out what the meeting was, you opened the .ics in another
-// program. The card says it here — what, when, where, who else — because
+// program. The card says it here - what, when, where, who else - because
 // that is the whole of what most invitation mail is for.
 //
 // Three things it will not do, each for a reason worth keeping:
@@ -15,14 +15,14 @@
 // showing a confident wrong hour is worse than one showing none.
 //
 // **It offers no buttons yet.** Answering means sending mail back as the
-// person, and placing the event means reaching outside the app — both have
+// person, and placing the event means reaching outside the app - both have
 // their own decisions still to make. The card says so, once, rather than
 // showing Accept and failing.
 //
 // **A stranger's invitation gets no answer.** Replying tells whoever sent it
 // that the address is read by somebody, which is what an unsolicited one is
-// fishing for. The core decides this — see core-rpc's offers.rs, where the
-// test is whether this mailbox has ever *written* to them — and the card
+// fishing for. The core decides this - see core-rpc's offers.rs, where the
+// test is whether this mailbox has ever *written* to them - and the card
 // explains it rather than leaving a dead space where the buttons would be.
 
 const inviteCard = el("reading-invite");

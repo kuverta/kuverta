@@ -1,9 +1,9 @@
-// After a delete: "this one came from a list — shall I take you off it?"
+// After a delete: "this one came from a list - shall I take you off it?"
 //
 // Deleting a newsletter is the moment somebody has decided they do not want
 // it. The Cleanup page can unsubscribe from everything at once, but it has to
 // be gone to; here the offer is made where the decision was taken, for the one
-// sender, with what it will do said plainly — one click, a mail sent, or a
+// sender, with what it will do said plainly - one click, a mail sent, or a
 // page to open.
 //
 // The offer is only made when there is something to act on: the message

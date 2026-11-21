@@ -1,4 +1,4 @@
-// Profiles: accounts and postal addresses kept apart by what they are for —
+// Profiles: accounts and postal addresses kept apart by what they are for -
 // private, one company, another.
 //
 // The window shows one profile at a time, or all of them; the choice is kept
@@ -109,8 +109,8 @@ function fillProfileSelect(select, current) {
   select.append(new Option(t("No profile"), ""));
   for (const profile of state.profiles) select.append(new Option(profile.name, String(profile.id)));
   select.value = current ? String(current) : "";
-  // A select not yet in its label — the setup assistant's account cards
-  // fill theirs before placing them — has nothing to hide.
+  // A select not yet in its label - the setup assistant's account cards
+  // fill theirs before placing them - has nothing to hide.
   const label = select.closest("label");
   if (label) label.hidden = state.profiles.length === 0;
 }

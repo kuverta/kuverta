@@ -1,6 +1,6 @@
 // The assistant on the web, and the skills it is taught: whether it may
 // search and read pages when asked, where its searches go, and every skill
-// — waiting to be read, or accepted — with the whole text in front of the
+// - waiting to be read, or accepted - with the whole text in front of the
 // person before the one button that accepts it.
 //
 // A skill is instructions from somebody else, so the rule here is the one a
@@ -167,7 +167,7 @@ function skillItem(skill) {
   return box;
 }
 
-/// The text, what stood out in it above, and — for one still waiting — the
+/// The text, what stood out in it above, and - for one still waiting - the
 /// Accept button beneath, past the whole text.
 function renderSkillReading(reading, skill, full) {
   reading.textContent = "";

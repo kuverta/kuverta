@@ -1,6 +1,6 @@
 //! HTML mail as a page in the reading pane: the app's own URL scheme.
 //!
-//! The window cannot put a sender's HTML into its own document — the
+//! The window cannot put a sender's HTML into its own document - the
 //! document runs the window. It goes into an `<iframe sandbox>` instead,
 //! loaded from `kuverta-mail://localhost/…`, which this file answers: a
 //! page made by `core_rpc::html_view` for a message, the pictures inside
@@ -8,7 +8,7 @@
 //!
 //! A scheme of its own rather than a `blob:` or `srcdoc` frame because a
 //! document from those inherits the window's Content-Security-Policy, and
-//! the window's forbids inline style — which is all a mail is. A document
+//! the window's forbids inline style - which is all a mail is. A document
 //! from a scheme is served with a policy of its own, written here: nothing
 //! may load but style and the pictures the policy names, and `sandbox`
 //! makes it an origin of nothing, with no scripts, forms or popups. The
@@ -18,8 +18,8 @@
 //!
 //! Every link in the page points at `/open/<secret>?to=…`. A click is a
 //! navigation of the frame to that address, which arrives here, is
-//! answered with `204 No Content` — a response that leaves the frame where
-//! it was — and is told to the window as an event, which asks the person
+//! answered with `204 No Content` - a response that leaves the frame where
+//! it was - and is told to the window as an event, which asks the person
 //! before anything is opened. The secret is made once a start, so a message
 //! cannot write that address into a picture and have it fetched without a
 //! click: a request without the secret is not a link.
@@ -168,7 +168,7 @@ fn message(app: &tauri::AppHandle, account: i64, id: i64, remote: bool) -> Reply
 }
 
 /// The picture kinds the window shows inline. The same four the safe
-/// preview draws, and none that is a document — SVG can carry script, and
+/// preview draws, and none that is a document - SVG can carry script, and
 /// a script in a picture is still a script.
 const PICTURES: [&str; 4] = ["image/png", "image/jpeg", "image/gif", "image/webp"];
 
@@ -194,8 +194,8 @@ fn picture(app: &tauri::AppHandle, account: i64, id: i64, index: usize) -> Reply
     }
 }
 
-/// A link was clicked. The frame stays where it is — a `204` is not a page
-/// — and the window is asked to ask.
+/// A link was clicked. The frame stays where it is - a `204` is not a page
+/// - and the window is asked to ask.
 fn open(app: &tauri::AppHandle, token: &str, query: &str) -> Reply {
     let state = app.state::<App>();
     if token != state.link_token {

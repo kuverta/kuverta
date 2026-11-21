@@ -250,7 +250,7 @@ function ruleRow(rule) {
   };
 
   // The comparison and the value depend on the field, and are rebuilt when it
-  // changes — keeping what was typed when the new field can take it.
+  // changes - keeping what was typed when the new field can take it.
   const fill = (wanted) => {
     const kind = SMART_FIELDS.find(([key]) => key === field.value)[2];
     op.textContent = "";

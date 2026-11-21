@@ -2,13 +2,13 @@
 //
 // One click from the open message (✨ Answer, or a) opens the reply and has
 // the assistant write it; in compose the same button writes whatever compose
-// holds — a reply, a forward's note, a new message. What is typed in the body
+// holds - a reply, a forward's note, a new message. What is typed in the body
 // first is its brief: "zusagen, aber erst ab Mittwoch" is followed, a started
-// reply is finished in its own words. Attached files are read too — the text
-// of a PDF, a Word file, a scan through the vision model — so the answer can
+// reply is finished in its own words. Attached files are read too - the text
+// of a PDF, a Word file, a scan through the vision model - so the answer can
 // say what it is sending along.
 //
-// A message that asks for something back signed — a contract, a form — is
+// A message that asks for something back signed - a contract, a form - is
 // answered with it: the assistant puts the person's stored signature on the
 // attachment and the signed copy joins the files going out, as a chip in the
 // tray with a × like any other. Nothing is sent; the person reads the text,

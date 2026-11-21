@@ -3,14 +3,14 @@
 //!
 //! The name is the sender's, already made safe by the core; here it only has
 //! to not overwrite anything. A copy opened is written to a folder of its own
-//! under the system's temporary directory, read-only — a change made in the
-//! viewer would otherwise look saved and be lost — and the system cleans it up
+//! under the system's temporary directory, read-only - a change made in the
+//! viewer would otherwise look saved and be lost - and the system cleans it up
 //! as it does the rest of that directory.
 //!
 //! Every file written here is marked as come from elsewhere, the way a
 //! browser marks a download: the quarantine attribute on macOS, the Mark of
 //! the Web on Windows. That is what makes Gatekeeper look at a program before
-//! it runs and Office open a document in Protected View — the system's own
+//! it runs and Office open a document in Protected View - the system's own
 //! checks, for a file that leaves kuverta's safe preview for another program.
 //! A file that cannot be marked is not left behind unmarked.
 
@@ -72,7 +72,7 @@ pub fn save_new(dir: &Path, name: &str, bytes: &[u8]) -> Result<PathBuf, String>
 pub fn mark_from_elsewhere(path: &Path) -> Result<(), String> {
     use std::os::unix::ffi::OsStrExt;
 
-    // flags;time;agent — 0081 is "quarantined, not yet opened", the same as
+    // flags;time;agent - 0081 is "quarantined, not yet opened", the same as
     // a browser writes. The time is hexadecimal seconds.
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -11,7 +11,7 @@
 //
 // - **Pictures from the internet** are not in the page until the person says
 //   so for this message. The app says how many were left out, and why that
-//   matters — showing them tells the sender the message was opened — and
+//   matters - showing them tells the sender the message was opened - and
 //   the choice lasts as long as the message is open.
 // - **Links** never go where they say. A click arrives as an event with the
 //   real address and what the link said, and a sheet shows both before
@@ -154,7 +154,7 @@ el("html-remote-show").onclick = () => {
 /// The link being asked about.
 let askedLink = null;
 
-/// What is odd about an address, each in a sentence — the things a link in
+/// What is odd about an address, each in a sentence - the things a link in
 /// a mail is made to hide. The sentences are the warning; the address is
 /// shown whole in any case.
 function linkWarnings(url, said) {

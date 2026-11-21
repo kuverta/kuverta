@@ -2,7 +2,7 @@
 //
 // A sender line says a name. It does not say whether this is the fortieth
 // letter from a shop you never answer or the first from somebody you have
-// been writing to for three years — and that is usually the thing that
+// been writing to for three years - and that is usually the thing that
 // decides what to do with the message. This asks the core for the little it
 // can know from the mail already in the store and draws it as one card:
 // how much mail there is each way, since when, who spoke last, what their
@@ -12,7 +12,7 @@
 // The same card is drawn in two places. In the right-hand column, above the
 // assistant, it belongs to the message that is open; floating beside a list
 // row it belongs to whatever the cursor is resting on, which is the cheaper
-// question — it answers "who is this?" without opening anything or marking
+// question - it answers "who is this?" without opening anything or marking
 // anything read.
 //
 // Post is the same card with a postal address where the e-mail address goes:
@@ -24,7 +24,7 @@ const senderPanel = el("sender");
 const senderHover = el("sender-hover");
 
 /// Whether the card has been asked for. It is not opened by reading a
-/// message — that took a quarter of the window away every time a message was
+/// message - that took a quarter of the window away every time a message was
 /// opened, for an answer nobody had asked for. It opens on the sender's name
 /// being clicked, and then follows the cursor until it is closed again: once
 /// you have asked who one message is with, you are usually asking of the
@@ -38,7 +38,7 @@ const HOVER_DELAY_MS = 450;
 
 /// Cards already fetched, by account or postbox and by whoever was asked
 /// about. The counts move whenever mail does, so this is thrown away on
-/// every reload rather than kept fresh — a card is a few small queries.
+/// every reload rather than kept fresh - a card is a few small queries.
 const senderCache = new Map();
 let hoverTimer = null;
 /// What the hover card is showing, so moving within one row does not refetch.
@@ -55,7 +55,7 @@ const sinceDate = new Intl.DateTimeFormat(undefined, { month: "long", year: "num
 /// Post goes to Paperless rather than to the store, and comes back in the
 /// same shape: the card itself never learns which it is looking at.
 async function senderSummary({ id = null, address = null, postbox = null, account = state.account }) {
-  // A message's card can do without an account — the core finds it from
+  // A message's card can do without an account - the core finds it from
   // the message, which a row from All inboxes relies on; an address's cannot.
   if (postbox === null && account === null && id === null) return null;
   const key = postbox
@@ -237,7 +237,7 @@ function senderCard(view, { interactive = false, recent = 6, open = openWholeMes
 }
 
 /// One message of the exchange: which way it went, what it was about, when
-/// — and, where it can be, a way to be rid of it.
+/// - and, where it can be, a way to be rid of it.
 ///
 /// The row and the bin cannot both be one button, so the row is a button
 /// inside a div and the bin sits beside it.
@@ -387,7 +387,7 @@ function senderName(label, about, { className = "sender-link" } = {}) {
 // -- the card on hover ---------------------------------------------------------
 
 /// What the row under the cursor is about, or `null` when it is something the
-/// core cannot summarise — a scanned letter, or a row still in flight.
+/// core cannot summarise - a scanned letter, or a row still in flight.
 function hoverTarget(element) {
   if (state.account === null && !state.postbox && !state.allInboxes) return null;
   const node = element?.closest?.(".row");

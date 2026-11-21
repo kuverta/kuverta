@@ -1,11 +1,11 @@
 // After a delete: "these look like the one you just deleted".
 //
-// Spam and bulk mail come in runs — the same sender with a new order number
+// Spam and bulk mail come in runs - the same sender with a new order number
 // in the subject, the same list, or the same text from a rotating cast of
 // senders. The core finds the run; this shows it, every message ticked and
 // listed so nothing goes that was not seen going, and offers the two useful
-// answers: delete them all now, or gather them in a smart mailbox — prefilled
-// with rules that would catch the next one — to deal with later.
+// answers: delete them all now, or gather them in a smart mailbox - prefilled
+// with rules that would catch the next one - to deal with later.
 
 const similarSheet = el("similar-sheet");
 const similarList = el("similar-list");

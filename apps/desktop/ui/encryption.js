@@ -1,7 +1,7 @@
 // OpenPGP: what an opened message's signature and encryption came to, the
 // Sign and Encrypt switches in compose, and the keys in settings.
 //
-// The core does the cryptography and decides what is possible — which
+// The core does the cryptography and decides what is possible - which
 // recipients have keys, whether the sender can sign. This says it, in words:
 // a padlock that means "encrypted to someone, maybe not the person you think"
 // is worse than no padlock.
