@@ -57,6 +57,19 @@ const SEED = [
   m(70, 'Stadtreinigung <info@stadtreinigung.example>', 'Ihre Abholung: Sperrmüll am 3. Dezember', 'Bitte stellen Sie den Sperrmüll ab 6 Uhr bereit. Sofas werden mitgenommen.', { category: 'notification' }),
 ];
 
+const P0 = Math.floor(Date.UTC(2026, 10, 19, 11, 0, 0) / 1000);
+const PAPER = {
+  paperMailboxes: [{ id: 1, label: 'Home', base_url: 'http://paperless.local:8000', selector_kind: 'everything', selector_value: null, has_token: true }],
+  documents: [
+    { id: 41, mailbox: 1, date_utc: P0, added_utc: P0 + 600, from: 'Finanzamt Hamburg', subject: 'Bescheid über Hundesteuer 2026', unread: true, has_attachments: true, category: 'transactional',
+      snippet: 'Sie haben keinen Hund gemeldet. Bitte teilen Sie uns bis zum 15. Dezember mit, ob das so bleibt.', tags: ['Steuer'], page_count: 2,
+      transcript: 'Finanzamt Hamburg-Altona\nSteuernummer 41/123/45678\n\nBescheid über Hundesteuer 2026\n\nSehr geehrte Frau Muster,\n\nnach unseren Unterlagen haben Sie keinen Hund gemeldet. Bitte teilen Sie uns bis zum 15. Dezember 2026 schriftlich mit, ob das so bleibt. Andernfalls setzen wir die Hundesteuer für einen mittelgroßen Hund fest (96,00 EUR jährlich).\n\nMit freundlichen Grüßen\nIm Auftrag', transcribed_by: 'qwen2.5vl:3b' },
+    { id: 40, mailbox: 1, date_utc: P0 - 86400 * 3, added_utc: P0 - 86400 * 2, from: 'Kleingartenverein Sonnenschein e.V.', subject: 'Mahnung: Gartenzwerg über der Parzellengrenze', unread: false, has_attachments: true, category: 'personal',
+      snippet: 'Ihr Zwerg Hubert steht seit dem 3. Oktober 11 cm auf Parzelle 14. Bitte zurücksetzen.', tags: ['Verein'], page_count: 1,
+      transcript: 'Kleingartenverein Sonnenschein e.V.\n\nMahnung\n\nIhr Gartenzwerg (Hubert, mit Schubkarre) steht seit dem 3. Oktober 11 cm auf Parzelle 14. Wir bitten um Rückversetzung bis zum Wochenende. Der Vorstand.', transcribed_by: 'qwen2.5vl:3b' },
+  ],
+};
+
 const browser = await chromium.launch();
 const server = await serve(ROOT);
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -69,12 +82,12 @@ const page = await context.newPage();
 page.on('pageerror', (e) => console.error('page error:', (e.stack ?? e.message).split('\n').slice(0, 3).join(' | ')));
 page.on('dialog', (d) => d.accept());
 
-await page.addInitScript(({ fake, seed }) => {
+await page.addInitScript(({ fake, seed, paper }) => {
   window.__kuvertaSyncEveryMs = 600000;
   let lastTrash = null;
   const ids = {};
   window.__fakeBridge = import(fake).then((mod) => {
-    const real = mod.fakeInvoke({ seed });
+    const real = mod.fakeInvoke({ seed, paper });
     // Ids follow seed order, starting at 1.
     seed.forEach((msg, i) => { ids[msg.subject] = i + 1; });
     const gnomeIds = seed.map((s, i) => (s.from.startsWith('Zwergenkönig') ? i + 1 : null)).filter(Boolean);
@@ -83,7 +96,10 @@ await page.addInitScript(({ fake, seed }) => {
       // -- setup assistant --
       ollama_status: async () => ({ local: true, installed: true, running: true, version: '0.40.16', base_url: 'http://127.0.0.1:11434',
         needed: [{ task: 'chat', model: 'qwen3:4b-instruct', present: true }, { task: 'vision', model: 'qwen2.5vl:3b', present: true }] }),
-      find_paperless: async () => [],
+      find_paperless: async () => [{ base_url: 'http://paperless.local:8000', answering: true, configured: true, installed_by_kuverta: false }],
+      paper_folders: async () => [],
+      set_paper_folders: async () => null,
+      paper_suggested_words: async () => [],
       docker_status: async () => ({ installed: false, running: false }),
       import_accounts: async () => ({ passwords_locked: false,
         sources: [{ name: 'Thunderbird', state: 'found', detail: '1 accounts' }, { name: 'Apple Mail', state: 'none', detail: 'nothing to import' }],
@@ -134,7 +150,7 @@ await page.addInitScript(({ fake, seed }) => {
     };
   });
   window.__TAURI__ = { core: { invoke: async (command, args) => (await window.__fakeBridge)(command, args), Channel: class { onmessage = null; } } };
-}, { fake: FAKE, seed: SEED });
+}, { fake: FAKE, seed: SEED, paper: PAPER });
 
 const wait = (ms) => page.waitForTimeout(ms);
 const caption = (text) => page.evaluate((text) => {
@@ -176,8 +192,13 @@ await caption('It checks Ollama and the two small models: a 4B model for sorting
 await page.waitForFunction(() => /ready/.test(document.getElementById('ollama-card')?.textContent ?? ''));
 await wait(5000);
 await page.click('#setup-next');
-await caption('Paper post through Paperless is optional. Skipped today.');
-await wait(3500);
+await caption('Paper post: a Paperless scanner at home is found and connected. Letters will arrive next to email.');
+await page.waitForFunction(() => /connected/.test(document.getElementById('paper-found')?.textContent ?? ''));
+await wait(4000);
+await page.click('#setup-next');
+await caption('Folders for the paper, suggested and editable: where a letter goes once it is read.');
+await page.waitForFunction(() => (document.querySelectorAll('#shelf input').length) > 0);
+await wait(4000);
 await page.click('#setup-next');
 await caption('Mail accounts: it finds what Thunderbird already knows, saved passwords included.');
 await page.waitForFunction(() => /mona@example.org/.test(document.getElementById('setup')?.textContent ?? ''));
@@ -222,6 +243,18 @@ await page.click('#smart-save');
 await page.waitForSelector('#smart-sheet', { state: 'hidden' });
 await wait(3000);
 
+// 4b. Paper post.
+await page.locator('#postboxes .nav-item', { hasText: 'Home' }).first().click();
+await caption('Post: letters from the Paperless scanner, or photographed with the laptop camera, in the same window as email.');
+await page.waitForFunction(() => document.querySelectorAll('#content .row:not([hidden])').length > 0);
+await wait(3500);
+await rowWith('Hundesteuer').click();
+await caption('Read by OCR and the small vision model, sorted like email, the sender read off the page. A reply goes back as a printed letter.');
+await wait(7000);
+await page.locator('#accounts .nav-item').first().click();
+await page.waitForFunction(() => document.querySelectorAll('#content .row:not([hidden])').length > 0);
+await wait(1000);
+
 // 5. The assistant.
 await caption('Ask the assistant. It searches your mail with the local model; the question never leaves the laptop.');
 await page.click('#assistant-toggle');
@@ -243,7 +276,7 @@ await wait(7000);
 
 // 6. End card.
 await caption('');
-await card('kuverta', 'Open source, AGPL-3.0 · kuverta.github.io/kuverta · Thunderbird extension and desktop app · built in Hamburg');
+await card('kuverta', 'Open source, AGPL-3.0 · kuverta.github.io/kuverta · desktop app and Thunderbird extension');
 await wait(5000);
 
 const video = page.video();
