@@ -2641,8 +2641,9 @@ if (!POPOUT) setInterval(syncEverything, SYNC_EVERY_MS);
 
 /// Shows where the sync is, or hides the bar when passed nothing.
 ///
-/// The folder is named rather than counted: "Archive" says more about a sync
-/// sitting still than "folder 7 of 19" does.
+/// The bar is the whole account, counted in folders. The line names the
+/// folder and says how far into it the sync is, so the two numbers on it
+/// describe the same thing.
 function showSyncProgress(at) {
   if (!at || at.fraction === null || at.fraction === undefined) {
     syncProgress.hidden = true;
@@ -2650,16 +2651,18 @@ function showSyncProgress(at) {
   }
   syncProgress.value = at.fraction;
   syncProgress.hidden = false;
-  const percent = Math.round(at.fraction * 100);
-  const within = at.messages_total
-    ? ` — ${at.messages_done} of ${at.messages_total}`
-    : "";
-  statusBar.textContent = t("{account} — syncing {percent}%: {folder}{within}", {
+  const vars = {
     account: state.email,
-    percent,
     folder: at.folder,
-    within,
-  });
+    nth: Math.min(at.folders_done + 1, at.folders_total),
+    folders: at.folders_total,
+    done: at.messages_done,
+    messages: at.messages_total,
+    percent: at.messages_total ? Math.floor((at.messages_done / at.messages_total) * 100) : 0,
+  };
+  statusBar.textContent = at.messages_total
+    ? t("{account} — syncing folder {nth} of {folders}, {folder}: {done} of {messages} ({percent}%)", vars)
+    : t("{account} — syncing folder {nth} of {folders}, {folder}", vars);
 }
 
 // -- search ----------------------------------------------------------------

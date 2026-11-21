@@ -409,8 +409,10 @@ const GERMAN = {
 
   // -- syncing -------------------------------------------------------------
   "{account} — syncing…": "{account} — wird abgerufen…",
-  "{account} — syncing {percent}%: {folder}{within}":
-    "{account} — wird abgerufen, {percent} %: {folder}{within}",
+  "{account} — syncing folder {nth} of {folders}, {folder}":
+    "{account} — wird abgerufen, Ordner {nth} von {folders}, {folder}",
+  "{account} — syncing folder {nth} of {folders}, {folder}: {done} of {messages} ({percent}%)":
+    "{account} — wird abgerufen, Ordner {nth} von {folders}, {folder}: {done} von {messages} ({percent} %)",
   "{account}: {count} new": "{account}: {count} neu",
   "{account}: {error}": "{account}: {error}",
   "Sync {account}": "{account} abrufen",
@@ -674,14 +676,14 @@ const GERMAN = {
     "Post für {email} wird heruntergeladen — Start…",
   "Downloading mail for {email} ({nth} of {total}) — starting…":
     "Post für {email} wird heruntergeladen ({nth} von {total}) — Start…",
-  "Downloading mail for {email} — {percent}%: {folder} ":
-    "Post für {email} wird heruntergeladen — {percent} %: {folder} ",
-  "Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder} ":
-    "Post für {email} wird heruntergeladen ({nth} von {total}) — {percent} %: {folder} ",
-  "Downloading mail for {email} — {percent}%: {folder}, {done} of {messages} ":
-    "Post für {email} wird heruntergeladen — {percent} %: {folder}, {done} von {messages} ",
-  "Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder}, {done} of {messages} ":
-    "Post für {email} wird heruntergeladen ({nth} von {total}) — {percent} %: {folder}, {done} von {messages} ",
+  "Downloading mail for {email} — folder {folderNth} of {folders}, {folder} ":
+    "Post für {email} wird heruntergeladen — Ordner {folderNth} von {folders}, {folder} ",
+  "Downloading mail for {email} ({nth} of {total}) — folder {folderNth} of {folders}, {folder} ":
+    "Post für {email} wird heruntergeladen ({nth} von {total}) — Ordner {folderNth} von {folders}, {folder} ",
+  "Downloading mail for {email} — folder {folderNth} of {folders}, {folder}: {done} of {messages} ({percent}%) ":
+    "Post für {email} wird heruntergeladen — Ordner {folderNth} von {folders}, {folder}: {done} von {messages} ({percent} %) ",
+  "Downloading mail for {email} ({nth} of {total}) — folder {folderNth} of {folders}, {folder}: {done} of {messages} ({percent}%) ":
+    "Post für {email} wird heruntergeladen ({nth} von {total}) — Ordner {folderNth} von {folders}, {folder}: {done} von {messages} ({percent} %) ",
   "{email}: {count} messages downloaded": "{email}: {count} Nachrichten heruntergeladen",
   "Mail for one account is downloaded.": "Die Post eines Kontos ist heruntergeladen.",
   "Mail for {count} accounts is downloaded.":

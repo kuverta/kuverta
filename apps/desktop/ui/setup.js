@@ -1197,18 +1197,24 @@ async function syncInTurn(emails) {
     channel.onmessage = (at) => {
       if (at.fraction === null || at.fraction === undefined) return;
       bar.value = at.fraction;
+      // The bar is the whole account, counted in folders; the line beside it
+      // says which folder and how far into that one, so "0 %" never stands
+      // next to "1201 of 24470".
       const vars = {
         email, nth, total: emails.length,
-        percent: Math.round(at.fraction * 100),
-        folder: at.folder, done: at.messages_done, messages: at.messages_total,
+        folder: at.folder,
+        folderNth: Math.min(at.folders_done + 1, at.folders_total),
+        folders: at.folders_total,
+        done: at.messages_done, messages: at.messages_total,
+        percent: at.messages_total ? Math.floor((at.messages_done / at.messages_total) * 100) : 0,
       };
       label.textContent = at.messages_total
         ? many
-          ? t("Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder}, {done} of {messages} ", vars)
-          : t("Downloading mail for {email} — {percent}%: {folder}, {done} of {messages} ", vars)
+          ? t("Downloading mail for {email} ({nth} of {total}) — folder {folderNth} of {folders}, {folder}: {done} of {messages} ({percent}%) ", vars)
+          : t("Downloading mail for {email} — folder {folderNth} of {folders}, {folder}: {done} of {messages} ({percent}%) ", vars)
         : many
-          ? t("Downloading mail for {email} ({nth} of {total}) — {percent}%: {folder} ", vars)
-          : t("Downloading mail for {email} — {percent}%: {folder} ", vars);
+          ? t("Downloading mail for {email} ({nth} of {total}) — folder {folderNth} of {folders}, {folder} ", vars)
+          : t("Downloading mail for {email} — folder {folderNth} of {folders}, {folder} ", vars);
     };
     try {
       const summary = await invoke("sync", { email, onProgress: channel });
