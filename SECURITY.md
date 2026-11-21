@@ -6,15 +6,14 @@ only you and the maintainers can see. Please do not open a public issue for
 something exploitable.
 
 There is no bounty and no service-level agreement. kuverta is one person's
-project; you will get a real answer, not necessarily a fast one.
+project. You will get a real answer, but it may not be fast.
 
 ## What kuverta reads that somebody else wrote
 
-Worth knowing before you go looking, because it is most of the attack
-surface:
+This is most of the attack surface:
 
 - **Mail, whole.** Raw MIME off an IMAP server, PGP packets inside it, and
-  the HTML a letter arrives in — read as text, and rebuilt as a page.
+  the HTML a letter arrives in, which is read as text and rebuilt as a page.
   `crates/core-proto`, `crates/core-pgp`, `crates/core-rpc/src/html.rs`,
   `crates/core-rpc/src/html_view.rs`.
 - **A model's replies.** Whatever the local Ollama sends back, treated as
@@ -24,38 +23,39 @@ surface:
 - **The scanner's own HTTP port.** `apps/scannerd` serves a setup page on the
   local network, behind a password. Anything on that network can reach it.
 - **Web pages and skill files, when the person switches them on.** The
-  assistant searches and reads pages as text, and fetches skills — files of
-  instructions — for the person to accept. `crates/core-rpc/src/web.rs` and
-  `skills.rs`: the fetcher reaches nothing on this computer or its network
-  and pins each request to the addresses it checked; the model may open
-  only addresses that were given, never one from inside a message; nothing
+  assistant searches and reads pages as text, and fetches skills (files of
+  instructions) for the person to accept. The code is in
+  `crates/core-rpc/src/web.rs` and `skills.rs`. The rules:
+  the fetcher reaches nothing on this computer or its network
+  and pins each request to the addresses it checked. The model may open
+  only addresses that were given, never one from inside a message. Nothing
   read from the web may lead to a change in that question, or to a note, a
-  task or a skill in that conversation; and a skill reaches no model until
+  task or a skill in that conversation. A skill reaches no model until
   the person has read it and accepted it in the settings.
 
-All of it is fuzzed — `make fuzz-list` — and the rule throughout is that a
-parser refuses rather than guesses. A half-read message reads exactly like a
-well-read one, which is the outcome worth avoiding.
+All of it is fuzzed (`make fuzz-list`). Throughout, a parser refuses input it
+cannot read and never guesses, because a half-read message looks exactly like
+a well-read one.
 
 ## What is out of scope
 
-- **The scanner's web page is not hardened against the local network.** It is
+- The scanner's web page is not hardened against the local network. It is
   a password over plain HTTP on a Raspberry Pi. Anyone who can watch that
-  network can read the password. It is meant for a home network, and it says
-  so in `apps/scannerd/readme.md`.
-- **`SCANNERD_UI_PASSWORD` and the Paperless token live in a file on the Pi.**
+  network can read the password. It is meant for a home network, and
+  `apps/scannerd/readme.md` says so.
+- `SCANNERD_UI_PASSWORD` and the Paperless token live in a file on the Pi.
   Anyone with a shell there has them.
-- **kuverta never runs scripts in mail, and shows pictures from the
-  internet only when asked to, per message.** The HTML tab is a page
+- kuverta never runs scripts in mail, and shows pictures from the
+  internet only when asked to, per message. The HTML tab is a page
   rebuilt from an allow-list (`crates/core-rpc/src/html_view.rs`) in a
   sandboxed frame under a Content-Security-Policy of its own
-  (`apps/desktop/src/page.rs`); every link in it leads back to the app,
-  which asks before opening. A report that a tracking pixel loads *after*
-  the person pressed "Show the pictures" is about the thing they asked for.
-  A page that loads anything before that, or that runs anything ever, is
-  what this is for.
-- **Findings from a scanner with no proof they can be reached.** A crash needs
-  an input; a dependency advisory needs a path from kuverta's own code to the
+  (`apps/desktop/src/page.rs`). Every link in it leads back to the app,
+  which asks before opening. A tracking pixel that loads after
+  the person pressed "Show the pictures" is what they asked for and is out
+  of scope. A page that loads anything before that, or that ever runs
+  anything, is in scope.
+- Findings from a scanner with no proof they can be reached. A crash needs
+  an input. A dependency advisory needs a path from kuverta's own code to the
   affected function.
 
 ## How this is checked
@@ -71,6 +71,6 @@ Every push and pull request, and again nightly, in
 | zizmor | the workflows: pinning, permissions, script injection, cache poisoning |
 | `cargo fuzz` | a minute a target on a push, ten a target nightly |
 
-Every GitHub Action is pinned to a commit, not a tag: a tag is a label its
-owner can move, and CI is where the signing keys are. The workflow that signs
+Every GitHub Action is pinned to a commit. A tag can be moved by its owner,
+and CI holds the signing keys. The workflow that signs
 and publishes the installers restores nothing from any cache.

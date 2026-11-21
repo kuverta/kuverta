@@ -2,12 +2,12 @@
 
 ## The mark
 
-An envelope with a stem rising from its left edge. That stem makes a lowercase
-**k**, and the envelope's flap forms the k's arm. The flap is split from the
-body by a narrow gap, like the crease of a folded flap. The envelope body
-is close to √2 : 1, the DIN A-series ratio used for German paper
-and envelopes. Every straight edge of the body sits on a 32 px grid of
-the 1024 canvas, so the icon stays sharp at 32×32.
+An envelope with a stem rising from its left edge. The stem and the envelope's
+flap together make a lowercase **k**: the flap is the k's arm. A narrow gap
+splits the flap from the body, like a crease. The body is close to √2 : 1,
+the DIN A-series ratio used for German paper and envelopes. Every straight
+edge of the body sits on a 32 px grid of the 1024 canvas, so the icon stays
+sharp at 32×32.
 
 ## Palette
 
@@ -18,7 +18,7 @@ the 1024 canvas, so the icon stays sharp at 32×32.
 | Amber  | `#E9A23B` | The flap only (gradient `#F2AE48` → `#E0922F`)   |
 | Ink    | `#16292B` | The wordmark on light                            |
 
-Amber appears only on the flap. Use it nowhere else in the mark.
+Use amber only on the flap.
 
 ## Files
 
@@ -30,18 +30,18 @@ Amber appears only on the flap. Use it nowhere else in the mark.
 | `kuverta-logo-dark.svg` | Horizontal lockup for dark backgrounds.                             |
 | `favicon.svg`           | Website favicon (full-bleed tile, 32 grid).                         |
 
-The wordmark is drawn as outlines, so it renders the same on every system and
-needs no font.
+The wordmark is drawn as outlines, so it needs no font and renders the same
+everywhere.
 
 ## Sizes and spacing
 
 - App icon: 16 px minimum. The flap gap disappears below 24 px, but the k still reads.
-- Glyph: 14 px minimum. It is built to sit at 16–20 px beside UI text.
+- Glyph: 14 px minimum. Built for 16 to 20 px beside UI text.
 - Lockup: 20 px tall minimum.
-- Clear space: leave at least ¼ of the tile's height empty on every side. For
-  the glyph, leave the width of its stem.
+- Clear space: at least ¼ of the tile's height on every side. For the glyph,
+  the width of its stem.
 - Do not recolour, rotate, outline or add effects to the mark. Do not set the
-  wordmark in a font as a substitute.
+  wordmark in a font.
 
 ## Regenerating the app icons
 
