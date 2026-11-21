@@ -762,7 +762,9 @@ fn closing_follows(blocks: &[Block<'_>], from: usize) -> bool {
         .is_some_and(|block| matches!(block, Block::Signature))
 }
 
-/// - beneath it; without `sign`, a marker leaves a gap to sign by hand.
+/// Writes `text` as a PDF. With `sign`, the signature is drawn at each
+/// signature marker with `caption` beneath it; without `sign`, a marker
+/// leaves a gap to sign by hand.
 /// With `window`, the first page is a letter's: the address sits where an
 /// envelope's window shows it, and the text starts below.
 pub fn write(

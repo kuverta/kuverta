@@ -194,8 +194,8 @@ fn picture(app: &tauri::AppHandle, account: i64, id: i64, index: usize) -> Reply
     }
 }
 
-/// A link was clicked. The frame stays where it is - a `204` is not a page
-/// - and the window is asked to ask.
+/// A link was clicked. The frame stays where it is - a `204` is not a page -
+/// and the window is asked to ask.
 fn open(app: &tauri::AppHandle, token: &str, query: &str) -> Reply {
     let state = app.state::<App>();
     if token != state.link_token {

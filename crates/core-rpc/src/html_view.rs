@@ -12,8 +12,8 @@
 //! ## What is kept and what is not
 //!
 //! Text, the elements that lay it out (tables, paragraphs, lists, headings,
-//! fonts), their presentation attributes, and style - inline and in `<style>`
-//! - with everything that could fetch or run taken out of the CSS. Scripts,
+//! fonts), their presentation attributes, and style - inline and in `<style>` -
+//! with everything that could fetch or run taken out of the CSS. Scripts,
 //! frames, objects, forms, inputs, `<meta>` (a refresh is a navigation),
 //! `<link>`, `<base>`, SVG and every `on…` attribute are not kept; the
 //! elements are dropped with their content where the content is not text,

@@ -17,11 +17,11 @@
 //!    those darknesses separates ink from grain, and the alpha ramps across
 //!    it, so edges stay soft.
 //! 3. **Specks go**: anything inked that is too small to be part of a stroke
-//! - grain, a hair, a dot of dust - is dropped, by connected component.
+//!    (grain, a hair, a dot of dust) is dropped, by connected component.
 //! 4. **The picture is cropped** to the strokes, with a little room.
 //!
-//! A picture that is already cut out - a PNG with a transparent background
-//! - is only cropped. Everything here is bounded by the picture's size,
+//! A picture that is already cut out - a PNG with a transparent background -
+//! is only cropped. Everything here is bounded by the picture's size,
 //! which was checked before.
 
 use image::{DynamicImage, Rgba, RgbaImage};

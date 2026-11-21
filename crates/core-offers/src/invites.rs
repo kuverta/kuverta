@@ -11,8 +11,8 @@
 //! the wild, and the entry loop is bounded rather than trusting the input
 //! to end.
 //!
-//! One thing it will not do is guess a time. A `DTSTART` that names a zone
-//! - `TZID=Europe/Berlin:20261104T140000` - is a wall-clock time whose
+//! One thing it will not do is guess a time. A `DTSTART` that names a zone -
+//! `TZID=Europe/Berlin:20261104T140000` - is a wall-clock time whose
 //! instant depends on a zone database, and an invite card showing the wrong
 //! hour is worse than one showing none. So [`When::at`] is filled only when
 //! the sender gave an instant that needs no lookup, and [`When::written`]

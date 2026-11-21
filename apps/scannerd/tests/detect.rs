@@ -405,8 +405,8 @@ fn steps_after_the_first(first: &[u8], frames: Vec<Vec<u8>>) -> (usize, usize) {
 #[test]
 fn a_hand_left_resting_on_a_page_is_taken_back_once_it_goes() {
     // On the rig: the back of a page photographed, then photographed again
-    // with a hand pressing it flat, then a third time once the hand had gone
-    // - the last differed from the hand's photograph as much as another page
+    // with a hand pressing it flat, then a third time once the hand had gone -
+    // the last differed from the hand's photograph as much as another page
     // does. The hand's photograph is taken back, and nothing new is taken.
     let front = page_at(40, 20, Some(0));
     let back = page_at(40, 20, Some(1));

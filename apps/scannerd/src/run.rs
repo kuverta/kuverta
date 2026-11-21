@@ -1139,8 +1139,8 @@ impl Scanner {
                                 None => "photographed a page".to_string(),
                             };
                             // Nothing on it: the table, photographed because
-                            // it no longer looks like the one that was learnt
-                            // - a page taken away, the light changed, the
+                            // it no longer looks like the one that was learnt -
+                            // a page taken away, the light changed, the
                             // paper under the camera moved. It is not a page
                             // of the letter, so it is not kept, and the view
                             // is learnt as the table so the next one is not

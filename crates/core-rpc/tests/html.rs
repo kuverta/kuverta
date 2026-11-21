@@ -313,8 +313,8 @@ fn the_words_either_side_of_a_tag_are_one_word() {
 
     // Which means the text can hold bytes the markup never had side by side.
     // A fuzzer found `Tom Fisher!vbscript<>:m`, whose text says `vbscript:`.
-    // Nothing is wrong with that - the alternative is refusing to join words
-    // - and it is written down here because it is the reason the fuzz target
+    // Nothing is wrong with that - the alternative is refusing to join words -
+    // and it is written down here because it is the reason the fuzz target
     // asserts nothing about executable content: it cannot tell this from a
     // parser carrying markup through, and neither can any input-only rule.
     let text = to_text("<p>Tom Fisher!vbscript<>:m</p>").unwrap();

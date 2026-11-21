@@ -1,12 +1,13 @@
 //! Tasks: standing jobs the assistant does to mail as it arrives.
 //!
-//! A task is a question and an answer. The question is a smart mailbox's rules
-//! - which mail it is about. The answer is what to do with each message: move
-//! it, archive it, file it, or have a model decide or draft a reply. The store
-//! keeps the task (its action as JSON, which core-rpc owns), which messages it
-//! has already dealt with, so each is dealt with once, and **proposals**: what
-//! a task - or the assistant in the chat - would do, waiting for a person to
-//! say yes, for tasks that ask first and for anything that would send mail.
+//! A task is a question and an answer. The question is a smart mailbox's
+//! rules: which mail it is about. The answer is what to do with each message:
+//! move it, archive it, file it, or have a model decide or draft a reply. The
+//! store keeps the task (its action as JSON, which core-rpc owns), which
+//! messages it has already dealt with, so each is dealt with once, and
+//! **proposals**: what a task or the assistant in the chat would do, waiting
+//! for a person to say yes, for tasks that ask first and for anything that
+//! would send mail.
 
 use std::collections::HashSet;
 

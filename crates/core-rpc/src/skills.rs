@@ -12,8 +12,8 @@
 //! A skill is also the most direct injection there is: it is instructions,
 //! on purpose, from somebody else. So the rule is the one a person already
 //! applies to a program: read it before you run it. The assistant, or the
-//! settings page, can *download* one - only from an address the person gave
-//! - and it lands as a file waiting to be read. Nothing in it reaches a
+//! settings page, can *download* one - only from an address the person gave -
+//! and it lands as a file waiting to be read. Nothing in it reaches a
 //! model until the person has had the whole text in front of them in the
 //! settings and pressed Accept, which no tool can do. Beside the text, the
 //! settings show the lines that stood out: addresses it names, words about

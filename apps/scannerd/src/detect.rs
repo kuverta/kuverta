@@ -506,8 +506,8 @@ const PAGES_KEPT: usize = 30;
 /// last second and a half.
 ///
 /// The test is asked of one frame at a time, and its answer wobbles. It
-/// compares each block with the table as it was learnt and takes no offset out
-/// - on purpose, because an offset is what let a shadow over half the table
+/// compares each block with the table as it was learnt and takes no offset out -
+/// on purpose, because an offset is what let a shadow over half the table
 /// make the other half look like paper - so a camera still choosing its
 /// exposure moves every block at once, and the lump the test finds is the
 /// whole frame on one frame and none of it on the next. On the rig a page lay
