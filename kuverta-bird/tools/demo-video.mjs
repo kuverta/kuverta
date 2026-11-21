@@ -39,34 +39,34 @@ const m = (hoursAgo, from, subject, body, extra = {}) => ({
   subject, from, date_utc: T0 - hoursAgo * 3600, unread: hoursAgo < 6, has_attachments: false,
   category: null, folder: 'INBOX', message_id: `${Math.random().toString(36).slice(2)}@example`, snippet: body.slice(0, 90), body, ...extra,
 });
-const GNOME = 'Zwergenkönig Gartenzwerge <news@zwergenkoenig.example>';
-const KEVIN = 'Kevin (Accounting) <kevin@buero.example>';
-const VEREIN = 'Verein für Angewandte Gemütlichkeit <vorstand@gemuetlichkeit.example>';
+const GNOME = 'Gnome King Garden Gnomes <news@gnomeking.example>';
+const KEVIN = 'Kevin (Accounting) <kevin@office.example>';
+const SOCIETY = 'Society for Applied Cosiness <board@cosiness.example>';
 const SEED = [
-  m(1, GNOME, 'Nur heute: 40% auf Gartenzwerge', 'Lieber Zwergenfreund, nur heute: 40% auf alle Zwerge mit Laterne. Der Rasen dankt.', { category: 'newsletter', list_id: 'news.zwergenkoenig.example' }),
-  m(2, KEVIN, 'Wer hat meine Hafermilch getrunken? (Teil 9)', 'Liebe Kolleginnen und Kollegen, der Pegel ist wieder um 400 ml gesunken. Zwischen 09:10 und 09:25. Ich sage nur: Stand-up.', { category: 'personal' }),
-  m(3, 'Oma <oma@example.de>', 'Dein Paket mit Socken ist unterwegs', 'Mein Junge, die Socken sind unterwegs. Die grünen sind für Sonntag. Ruf mal an.', { category: 'personal' }),
-  m(5, VEREIN, 'Einladung zur Jahreshauptversammlung', 'Liebe Mitglieder, die Jahreshauptversammlung findet am Donnerstag, 12. Dezember, um 19:00 im Vereinsheim Altona statt. Bitte bringt Kuchen mit. Einziger Tagesordnungspunkt: Bleibt das Sofa? Anmeldung bis 5. Dezember.', { category: 'personal' }),
-  m(9, 'Finanzamt Hamburg <poststelle@finanzamt.example>', 'Bescheid über Hundesteuer 2026', 'Sehr geehrte Damen und Herren, anbei der Bescheid über die Hundesteuer. Sollten Sie keinen Hund besitzen, teilen Sie uns dies bitte schriftlich mit.', { category: 'transactional' }),
-  m(14, KEVIN, 'Wer hat meine Hafermilch getrunken? (Teil 8)', 'Ich habe jetzt eine Strichliste am Kühlschrank angebracht.', { category: 'personal' }),
-  m(20, GNOME, 'Gnome of the week: Hubert', 'Hubert hält eine Schubkarre und ist seit 1987 im Sortiment. Jetzt mit Moos.', { category: 'newsletter', list_id: 'news.zwergenkoenig.example' }),
-  m(27, 'Dr. Schneider <praxis@schneider.example>', 'Rückfrage zum Angebot', 'Guten Tag, können Sie das Angebot für die Praxis-Website bis Freitag konkretisieren? Beste Grüße, Dr. Schneider', { category: 'personal' }),
-  m(31, KEVIN, 'Hafermilch-Update: der Kühlschrank schweigt', 'Keine neuen Erkenntnisse. Die Strichliste wurde entfernt. Von jemandem.', { category: 'personal' }),
-  m(44, GNOME, 'Letzte Chance: Zwerge im Dreierpack', 'Drei Zwerge, ein Preis. Solange der Vorrat reicht (er reicht).', { category: 'newsletter', list_id: 'news.zwergenkoenig.example' }),
-  m(52, KEVIN, 'Wer hat meine Hafermilch getrunken? (Teil 7)', 'Es war wieder jemand am Kühlschrank. Ich habe Beweise (ein Glas).', { category: 'personal' }),
-  m(70, 'Stadtreinigung <info@stadtreinigung.example>', 'Ihre Abholung: Sperrmüll am 3. Dezember', 'Bitte stellen Sie den Sperrmüll ab 6 Uhr bereit. Sofas werden mitgenommen.', { category: 'notification' }),
+  m(1, GNOME, 'Today only: 40% off garden gnomes', 'Dear gnome friend, today only: 40% off every gnome with a lantern. Your lawn says thank you.', { category: 'newsletter', list_id: 'news.gnomeking.example' }),
+  m(2, KEVIN, 'Who drank my oat milk? (Part 9)', 'Dear colleagues, the level dropped by another 400 ml. Between 09:10 and 09:25. I will just say: stand-up.', { category: 'personal' }),
+  m(3, 'Grandma <grandma@example.org>', 'Your parcel of socks is on its way', 'My boy, the socks are on their way. The green ones are for Sunday. Do call.', { category: 'personal' }),
+  m(5, SOCIETY, 'Invitation to the annual general meeting', 'Dear members, the annual general meeting is on Thursday 12 December at 19:00 in the clubhouse. Please bring cake. The only item on the agenda: does the sofa stay? Sign up by 5 December.', { category: 'personal' }),
+  m(9, 'City Tax Office <post@taxoffice.example>', 'Dog tax assessment 2026', 'Dear Sir or Madam, please find attached your dog tax assessment. If you do not own a dog, kindly let us know in writing.', { category: 'transactional' }),
+  m(14, KEVIN, 'Who drank my oat milk? (Part 8)', 'I have now put a tally sheet on the fridge.', { category: 'personal' }),
+  m(20, GNOME, 'Gnome of the week: Hubert', 'Hubert holds a wheelbarrow and has been in the range since 1987. Now with moss.', { category: 'newsletter', list_id: 'news.gnomeking.example' }),
+  m(27, 'Dr. Schneider <practice@schneider.example>', 'Question about the quote', 'Hello, could you firm up the quote for the practice website by Friday? Best regards, Dr. Schneider', { category: 'personal' }),
+  m(31, KEVIN, 'Oat milk update: the fridge is silent', 'No new findings. The tally sheet has been removed. By someone.', { category: 'personal' }),
+  m(44, GNOME, 'Last chance: gnomes in packs of three', 'Three gnomes, one price. While stocks last (they will).', { category: 'newsletter', list_id: 'news.gnomeking.example' }),
+  m(52, KEVIN, 'Who drank my oat milk? (Part 7)', 'Someone was at the fridge again. I have evidence (a glass).', { category: 'personal' }),
+  m(70, 'City Cleaning <info@citycleaning.example>', 'Your bulky waste collection: 3 December', 'Please put the bulky waste out from 6 am. Sofas will be taken.', { category: 'notification' }),
 ];
 
 const P0 = Math.floor(Date.UTC(2026, 10, 19, 11, 0, 0) / 1000);
 const PAPER = {
   paperMailboxes: [{ id: 1, label: 'Home', base_url: 'http://paperless.local:8000', selector_kind: 'everything', selector_value: null, has_token: true }],
   documents: [
-    { id: 41, mailbox: 1, date_utc: P0, added_utc: P0 + 600, from: 'Finanzamt Hamburg', subject: 'Bescheid über Hundesteuer 2026', unread: true, has_attachments: true, category: 'transactional',
-      snippet: 'Sie haben keinen Hund gemeldet. Bitte teilen Sie uns bis zum 15. Dezember mit, ob das so bleibt.', tags: ['Steuer'], page_count: 2,
-      transcript: 'Finanzamt Hamburg-Altona\nSteuernummer 41/123/45678\n\nBescheid über Hundesteuer 2026\n\nSehr geehrte Frau Muster,\n\nnach unseren Unterlagen haben Sie keinen Hund gemeldet. Bitte teilen Sie uns bis zum 15. Dezember 2026 schriftlich mit, ob das so bleibt. Andernfalls setzen wir die Hundesteuer für einen mittelgroßen Hund fest (96,00 EUR jährlich).\n\nMit freundlichen Grüßen\nIm Auftrag', transcribed_by: 'qwen2.5vl:3b' },
-    { id: 40, mailbox: 1, date_utc: P0 - 86400 * 3, added_utc: P0 - 86400 * 2, from: 'Kleingartenverein Sonnenschein e.V.', subject: 'Mahnung: Gartenzwerg über der Parzellengrenze', unread: false, has_attachments: true, category: 'personal',
-      snippet: 'Ihr Zwerg Hubert steht seit dem 3. Oktober 11 cm auf Parzelle 14. Bitte zurücksetzen.', tags: ['Verein'], page_count: 1,
-      transcript: 'Kleingartenverein Sonnenschein e.V.\n\nMahnung\n\nIhr Gartenzwerg (Hubert, mit Schubkarre) steht seit dem 3. Oktober 11 cm auf Parzelle 14. Wir bitten um Rückversetzung bis zum Wochenende. Der Vorstand.', transcribed_by: 'qwen2.5vl:3b' },
+    { id: 41, mailbox: 1, date_utc: P0, added_utc: P0 + 600, from: 'City Tax Office', subject: 'Dog tax assessment 2026', unread: true, has_attachments: true, category: 'transactional',
+      snippet: 'You have not registered a dog. Please let us know by 15 December whether that is still the case.', tags: ['Tax'], page_count: 2,
+      transcript: 'City Tax Office\nTax number 41/123/45678\n\nDog tax assessment 2026\n\nDear Ms Muster,\n\nAccording to our records you have not registered a dog. Please let us know in writing by 15 December 2026 whether that is still the case. Otherwise we will assess dog tax for a medium-sized dog (96.00 EUR per year).\n\nYours faithfully\npp.', transcribed_by: 'qwen2.5vl:3b' },
+    { id: 40, mailbox: 1, date_utc: P0 - 86400 * 3, added_utc: P0 - 86400 * 2, from: 'Sunshine Allotment Society', subject: 'Warning: garden gnome over the plot boundary', unread: false, has_attachments: true, category: 'personal',
+      snippet: 'Your gnome Hubert has been standing 11 cm into plot 14 since 3 October. Please move him back.', tags: ['Society'], page_count: 1,
+      transcript: 'Sunshine Allotment Society\n\nWarning\n\nYour garden gnome (Hubert, with wheelbarrow) has been standing 11 cm into plot 14 since 3 October. We ask you to move him back by the weekend. The committee.', transcribed_by: 'qwen2.5vl:3b' },
   ],
 };
 
@@ -90,7 +90,7 @@ await page.addInitScript(({ fake, seed, paper }) => {
     const real = mod.fakeInvoke({ seed, paper });
     // Ids follow seed order, starting at 1.
     seed.forEach((msg, i) => { ids[msg.subject] = i + 1; });
-    const gnomeIds = seed.map((s, i) => (s.from.startsWith('Zwergenkönig') ? i + 1 : null)).filter(Boolean);
+    const gnomeIds = seed.map((s, i) => (s.from.startsWith('Gnome King') ? i + 1 : null)).filter(Boolean);
     const kevinIds = seed.map((s, i) => (s.from.startsWith('Kevin') ? i + 1 : null)).filter(Boolean);
     const over = {
       // -- setup assistant --
@@ -112,7 +112,7 @@ await page.addInitScript(({ fake, seed, paper }) => {
       start_ollama: async () => null,
       // -- the newsletter --
       unsubscribe_for_message: async ({ id }) => gnomeIds.includes(Number(id))
-        ? { name: 'Zwergenkönig Gartenzwerge', key: 'zwergenkoenig', method: { kind: 'one_click' }, messages: gnomeIds.length }
+        ? { name: 'Gnome King Garden Gnomes', key: 'gnomeking', method: { kind: 'one_click' }, messages: gnomeIds.length }
         : null,
       unsubscribe: async () => [{ state: 'done' }],
       trash_from_sender: async ({ account }) => {
@@ -125,21 +125,21 @@ await page.addInitScript(({ fake, seed, paper }) => {
         if (!kevinIds.includes(Number(id))) return { matches: [], suggestion: { name: '', query: { match_all: true, rules: [] } } };
         const rest = kevinIds.filter((k) => k !== Number(id));
         const matches = [];
-        for (const k of rest) { const msg = await real('message', { id: k }).catch(() => null); if (msg) matches.push({ id: k, from: msg.from ?? 'Kevin (Accounting)', subject: msg.subject, date_utc: msg.date_utc, reason: /Teil/.test(msg.subject) ? 'same sender, numbered subject' : 'same sender' }); }
-        return { matches, suggestion: { name: "Kevin's oat-milk saga", query: { match_all: true, rules: [{ field: 'from', op: 'contains', value: 'kevin@buero.example' }] } } };
+        for (const k of rest) { const msg = await real('message', { id: k }).catch(() => null); if (msg) matches.push({ id: k, from: msg.from ?? 'Kevin (Accounting)', subject: msg.subject, date_utc: msg.date_utc, reason: /Part/.test(msg.subject) ? 'same sender, numbered subject' : 'same sender' }); }
+        return { matches, suggestion: { name: "Kevin's oat-milk saga", query: { match_all: true, rules: [{ field: 'from', op: 'contains', value: 'kevin@office.example' }] } } };
       },
       // -- the assistant --
       assistant_ask: async ({ turns, message, onEvent }) => {
-        const id = ids['Einladung zur Jahreshauptversammlung'];
+        const id = ids['Invitation to the annual general meeting'];
         const msg = await real('message', { id });
         const events = [
-          { kind: 'looked', what: 'searched the mailbox for “Gemütlichkeit”, “meeting”, “Versammlung” — 1 found' },
+          { kind: 'looked', what: 'searched the mailbox for “cosiness”, “meeting”, “bring” — 1 found' },
           { kind: 'message', id, subject: msg.subject, from: msg.from, date_utc: msg.date_utc, attachments: [], note: null },
         ];
         await new Promise((r) => setTimeout(r, 1200));
         for (const e of events) onEvent?.onmessage?.(e);
         await new Promise((r) => setTimeout(r, 900));
-        const reply = '**Thursday 12 December, 19:00**, Vereinsheim Altona — from “Einladung zur Jahreshauptversammlung”.\n\nBring a cake. The only item on the agenda is whether the sofa stays, and sign-up closes on **5 December**. Shall I draft the sign-up reply?';
+        const reply = '**Thursday 12 December, 19:00**, in the clubhouse — from “Invitation to the annual general meeting”.\n\nBring a cake. The only item on the agenda is whether the sofa stays, and sign-up closes on **5 December**. Shall I draft the sign-up reply?';
         return { turns: [...turns, { role: 'user', content: message }, { role: 'assistant', content: reply, calls: [] }], reply, events, model: 'qwen3:4b-instruct', local: true };
       },
     };
@@ -213,7 +213,7 @@ await page.waitForSelector('#setup', { state: 'hidden' });
 // 3. Inbox, newsletter, unsubscribe.
 await caption('The inbox, sorted on arrival: newsletters, personal mail, invoices, notifications.');
 await wait(4500);
-await rowWith('40% auf Gartenzwerge').click();
+await rowWith('40% off garden gnomes').click();
 await caption('A garden-gnome newsletter. Delete it with #…');
 await wait(3000);
 await page.keyboard.press('#');
@@ -227,7 +227,7 @@ await caption('Unsubscribed, and the other two gnome mails are gone too.');
 await wait(3500);
 
 // 4. Kevin, look-alikes, smart mailbox.
-await rowWith('Hafermilch getrunken? (Teil 9)').click();
+await rowWith('oat milk? (Part 9)').click();
 await caption('Kevin from accounting, episode 9. Delete it…');
 await wait(3000);
 await page.keyboard.press('#');
@@ -248,7 +248,7 @@ await page.locator('#postboxes .nav-item', { hasText: 'Home' }).first().click();
 await caption('Post: letters from the Paperless scanner, or photographed with the laptop camera, in the same window as email.');
 await page.waitForFunction(() => document.querySelectorAll('#content .row:not([hidden])').length > 0);
 await wait(3500);
-await rowWith('Hundesteuer').click();
+await rowWith('Dog tax').click();
 await caption('Read by OCR and the small vision model, sorted like email, the sender read off the page. A reply goes back as a printed letter.');
 await wait(7000);
 await page.locator('#accounts .nav-item').first().click();
@@ -260,7 +260,7 @@ await caption('Ask the assistant. It searches your mail with the local model; th
 await page.click('#assistant-toggle');
 await page.waitForSelector('#chat-input', { state: 'visible' });
 await wait(1500);
-await page.type('#chat-input', 'When is the Gemütlichkeitsverein meeting, and what do I bring?', { delay: 45 });
+await page.type('#chat-input', 'When is the Society for Applied Cosiness meeting, and what do I bring?', { delay: 45 });
 await wait(800);
 console.error('chat input disabled?', await page.evaluate(() => document.getElementById('chat-input')?.disabled), 'value:', await page.inputValue('#chat-input'));
 await page.keyboard.press('Enter');
