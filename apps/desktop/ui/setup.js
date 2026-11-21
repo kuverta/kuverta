@@ -741,14 +741,20 @@ async function scanAccounts() {
     sources.replaceChildren(checkLine("bad", String(err)));
     return;
   }
+  // What the scan found is worded by the backend, in English; a count is the
+  // one part of it that is not a fixed sentence.
+  const detailOf = (source) => {
+    const counted = /^(\d+) accounts$/.exec(source.detail);
+    return counted ? t("{count} accounts", { count: counted[1] }) : t(source.detail);
+  };
   const lines = scan.sources.map((source) => {
     const state = source.state === "found" ? "ok" : source.state === "not_permitted" || source.state === "failed" ? "bad" : "wait";
     const extra = [];
     if (source.action_url) extra.push(button(t("Open System Settings"), () => openLink(source.action_url)));
     if (source.state === "not_permitted") extra.push(button(t("Look again"), scanAccounts));
-    const line = checkLine(state, `${source.name}: ${source.state === "not_permitted" ? t("not allowed to look") : source.detail}`, ...extra);
+    const line = checkLine(state, `${source.name}: ${source.state === "not_permitted" ? t("not allowed to look") : detailOf(source)}`, ...extra);
     if (source.state === "not_permitted") {
-      return node("div", {}, line, node("p", { className: "hint", textContent: source.detail }));
+      return node("div", {}, line, node("p", { className: "hint", textContent: t(source.detail) }));
     }
     return line;
   });
@@ -851,7 +857,7 @@ function accountCard(entry) {
     updateMailFoot();
   };
   const who = account.full_name ? `${account.full_name} <${input.email}>` : input.email;
-  const from = account.already_added ? t("already in kuverta") : t("from {source}", { source: account.source });
+  const from = account.already_added ? t("already in kuverta") : t("from {source}", { source: t(account.source) });
   card.append(node("label", { className: "import-head" }, check,
     node("span", { className: "who", textContent: who }),
     node("span", { className: "from", textContent: from })));
@@ -916,7 +922,7 @@ function accountCard(entry) {
   card.append(fields);
 
   if (account.notes.length) {
-    card.append(node("div", { className: "notes", textContent: account.notes.join(" ") }));
+    card.append(node("div", { className: "notes", textContent: account.notes.map((note) => t(note)).join(" ") }));
   }
   card.append(node("div", {
     className: `status ${entry.status ? (entry.statusOk ? "ok" : "bad") : ""}`,

@@ -3235,7 +3235,7 @@ function fillForm(account) {
   el("settings-delete").hidden = account.id === null;
   el("settings-import").hidden = account.id !== null;
   settings.report.hidden = true;
-  setPageHead("account", account.id === null ? "New account" : account.email);
+  setPageHead("account", account.id === null ? t("New account") : account.email);
   syncAuthFields();
   renderSettingsList();
 }
@@ -3276,7 +3276,7 @@ const PAGE_HEADS = {
   account: ["Account", "Where mail comes from and goes out through. Passwords go to the system keychain and are never shown again."],
   paper: ["Postal address", "Scanned post from Paperless-ngx, read beside your mail."],
   models: ["Models", "Which model reads scans and sorts mail, and where it runs."],
-  provider: ["Model provider", "An Ollama elsewhere, or a hosted service with an OpenAI-compatible API."],
+  provider: ["Model provider", "Where a model runs: an Ollama, Claude, or a hosted service with an OpenAI-compatible API."],
   smart: ["Smart mailboxes", "Saved searches that live in the sidebar."],
   keys: ["Encryption", "OpenPGP keys for signing and encrypting mail."],
   memory: ["Assistant memory", "What the assistant remembers about each account."],
@@ -3288,8 +3288,10 @@ const PAGE_HEADS = {
 
 function setPageHead(mode, title) {
   const [defaultTitle, sub] = PAGE_HEADS[mode] ?? ["Settings", ""];
-  el("settings-page-title").textContent = title ?? defaultTitle;
-  el("settings-page-sub").textContent = sub;
+  // The heads are table values, so they are translated here rather than
+  // where they are written; a title passed in is a name or already translated.
+  el("settings-page-title").textContent = title ?? t(defaultTitle);
+  el("settings-page-sub").textContent = sub ? t(sub) : "";
 }
 
 /// A heading in the settings list, with its add button when it has one.
@@ -3369,7 +3371,7 @@ function renderSettingsList() {
   for (const provider of models.providers) {
     settings.list.append(
       navItem({
-        label: provider.label,
+        label: providerLabel(provider),
         active: settings.mode === "provider" && provider.id === models.editing,
         onClick: () => fillProvider(provider),
         title:
@@ -3666,7 +3668,7 @@ function fillPaper(address) {
   }
   hideSettingsForms();
   paper.form.hidden = false;
-  setPageHead("paper", address.id === null ? "New postal address" : address.label || address.base_url);
+  setPageHead("paper", address.id === null ? t("New postal address") : address.label || address.base_url);
   settings.report.hidden = true;
   syncSelectorField();
   renderSettingsList();
@@ -3875,9 +3877,16 @@ function formatSize(bytes) {
   return bytes >= 1e9 ? `${(bytes / 1e9).toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`;
 }
 
+/// A provider's name as the window shows it. The one kuverta sets up itself
+/// is named in the database in English; a name the user gave is left alone.
+function providerLabel(provider) {
+  if (!provider) return t("the provider");
+  return provider.label === "Ollama on this computer" ? t("Ollama on this computer") : provider.label;
+}
+
 /// "sees images · 3.2 GB": what choosing a model needs to know about it.
 function describeModel(model) {
-  const sees = model.vision === true ? "sees images" : model.vision === false ? "text only" : "";
+  const sees = model.vision === true ? t("sees images") : model.vision === false ? t("text only") : "";
   return [sees, model.size_bytes ? formatSize(model.size_bytes) : ""].filter(Boolean).join(" · ");
 }
 
@@ -3905,7 +3914,7 @@ async function showModels() {
     for (const task of tasks) {
       const select = models.form[`${task.task}_provider`];
       select.textContent = "";
-      for (const provider of providers) select.append(new Option(provider.label, String(provider.id)));
+      for (const provider of providers) select.append(new Option(providerLabel(provider), String(provider.id)));
       select.value = String(task.provider_id);
       models.form[`${task.task}_model`].value = task.model;
       models.manual.delete(task.task);
@@ -3984,28 +3993,29 @@ function noteFor(task, offered, failed) {
   const model = offered.find((m) => m.name === name);
   const notes = [];
 
+  const where = providerLabel(provider);
   if (failed) {
-    notes.push(`Could not list ${provider?.label ?? "the provider"}'s models: ${failed}`);
+    notes.push(t("Could not list the models of {provider}: {error}", { provider: where, error: failed }));
   } else if (name && !model) {
     notes.push(
       provider?.kind === "ollama"
-        ? `${name} is not on this Ollama yet — pull it with: ollama pull ${name}`
-        : `${provider?.label} does not list ${name}.`,
+        ? t("{model} is not on this Ollama yet — pull it with: ollama pull {model}", { model: name })
+        : t("{provider} does not list {model}.", { provider: where, model: name }),
     );
   }
   if (task === "vision" && model?.vision === false) {
-    notes.push(`${name} cannot see images, so it cannot read scans.`);
+    notes.push(t("{model} cannot see images, so it cannot read scans.", { model: name }));
   }
   if (task === "vision" && model && model.vision === null) {
-    notes.push(`${provider.label} does not say whether ${name} can see images — Try them to find out.`);
+    notes.push(t("{provider} does not say whether {model} can see images — Try them to find out.", { provider: where, model: name }));
   }
   if (provider && !provider.local) {
     notes.push(
       task === "vision"
-        ? `Scans of your letters will be sent to ${provider.label}.`
+        ? t("Scans of your letters will be sent to {provider}.", { provider: where })
         : task === "assistant"
-          ? `What the assistant reads of your mail — whatever it searches for and opens — will be sent to ${provider.label}.`
-          : `The sender, subject and start of each message will be sent to ${provider.label}.`,
+          ? t("What the assistant reads of your mail — whatever it searches for and opens — will be sent to {provider}.", { provider: where })
+          : t("The sender, subject and start of each message will be sent to {provider}.", { provider: where }),
     );
   }
 
@@ -4068,14 +4078,14 @@ el("ai-try").onclick = async () => {
     const providerId = Number(models.form[`${task}_provider`].value);
     const model = models.form[`${task}_model`].value.trim();
     const provider = models.providers.find((p) => p.id === providerId);
-    lines.push(`${TASK_NAMES[task]} — ${model} at ${provider?.label ?? providerId}`);
+    lines.push(t("{job} — {model} at {provider}", { job: t(TASK_NAMES[task]), model, provider: provider ? providerLabel(provider) : providerId }));
     try {
       const trial = await invoke("ai_try", { task, providerId, model });
       const seconds = (trial.latency_ms / 1000).toFixed(1);
-      lines.push(`      ${trial.passed ? "ok" : "NOT OK"}: ${trial.verdict}, in ${seconds} s`);
-      if (trial.reply) lines.push(`      it said: ${trial.reply}`);
+      lines.push(`      ${t(trial.passed ? "{verdict}, in {seconds} s" : "Not good enough: {verdict}, in {seconds} s", { verdict: trial.verdict, seconds })}`);
+      if (trial.reply) lines.push(`      ${t("it said: {reply}", { reply: trial.reply })}`);
     } catch (err) {
-      lines.push(`      FAILED — ${err}`);
+      lines.push(`      ${t("Failed: {error}", { error: err })}`);
     }
     lines.push("");
     settings.report.textContent = lines.join("\n");
@@ -4090,7 +4100,7 @@ function fillProvider(provider) {
   models.kind = provider.kind;
   hideSettingsForms();
   models.providerForm.hidden = false;
-  setPageHead("provider", provider.id === null ? "New model provider" : provider.label);
+  setPageHead("provider", provider.id === null ? t("New model provider") : providerLabel(provider));
 
   const f = models.providerForm;
   // The service is a starting point for a new provider; an existing one is
@@ -4102,7 +4112,7 @@ function fillProvider(provider) {
   syncProviderKind(provider);
   el("provider-delete").hidden = provider.id === null || provider.id === LOCAL_PROVIDER;
   el("provider-models").hidden = true;
-  el("provider-models-status").textContent = provider.id === null ? "Save to see them." : "";
+  el("provider-models-status").textContent = provider.id === null ? t("Save to see them.") : "";
   renderSettingsList();
   if (provider.id !== null) listProviderModels(provider.id);
 }
@@ -4112,12 +4122,12 @@ function syncProviderKind(provider) {
   const ollama = models.kind === "ollama";
   el("provider-key").hidden = ollama;
   el("provider-key-state").textContent = ollama
-    ? "Ollama needs no key."
+    ? t("Ollama needs no key.")
     : provider?.has_key
-      ? "A key is stored in the keychain. It is sent only to this address."
+      ? t("A key is stored in the keychain. It is sent only to this address.")
       : models.kind === "anthropic"
-        ? "No key stored yet. Create an API key at console.anthropic.com (a Claude.ai subscription is not an API key); it is kept in the keychain."
-        : "No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.";
+        ? t("No key stored yet. Create an API key at console.anthropic.com (a Claude.ai subscription is not an API key); it is kept in the keychain.")
+        : t("No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.");
 }
 
 async function listProviderModels(id) {
@@ -4133,21 +4143,21 @@ async function listProviderModels(id) {
       const row = body.insertRow();
       row.insertCell().textContent = model.name;
       row.insertCell().textContent = model.embedding
-        ? "embeddings only"
+        ? t("embeddings only")
         : model.vision === true
-          ? "yes"
+          ? t("yes")
           : model.vision === false
-            ? "no"
-            : "not said";
+            ? t("no")
+            : t("not said");
       row.insertCell().textContent = model.size_bytes ? formatSize(model.size_bytes) : "";
     }
     table.hidden = offered.length === 0;
     const provider = models.providers.find((p) => p.id === id);
     status.textContent = offered.length
-      ? `${offered.length} model${offered.length === 1 ? "" : "s"}`
+      ? offered.length === 1 ? t("1 model") : t("{count} models", { count: offered.length })
       : provider?.kind === "ollama"
-        ? "No models pulled yet. For reading scans: ollama pull qwen2.5vl:3b"
-        : "The service lists no models for this key.";
+        ? t("No models pulled yet. For reading scans: ollama pull qwen2.5vl:3b")
+        : t("The service lists no models for this key.");
   } catch (err) {
     if (settings.mode === "provider" && models.editing === id) {
       status.textContent = t("Could not list its models: {error}", { error: err });
@@ -4195,7 +4205,7 @@ models.providerForm.preset.addEventListener("change", () => {
 el("provider-delete").onclick = async () => {
   const provider = models.providers.find((p) => p.id === models.editing);
   if (!provider) return;
-  if (!(await ask(`Remove ${provider.label}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.`, { yes: t("Remove"), danger: true }))) {
+  if (!(await ask(t("Remove {provider}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.", { provider: providerLabel(provider) }), { yes: t("Remove"), danger: true }))) {
     return;
   }
   try {

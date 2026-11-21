@@ -124,6 +124,66 @@ const GERMAN = {
   "Model name": "Modellname",
   "Enter model name…": "Modellnamen eingeben…",
   "Add model provider": "Modellanbieter hinzufügen",
+  "Model provider": "Modellanbieter",
+  "New model provider": "Neuer Modellanbieter",
+  "New postal address": "Neue Postadresse",
+  "the provider": "der Anbieter",
+  "Ollama on this computer": "Ollama auf diesem Rechner",
+  "sees images": "sieht Bilder",
+  "text only": "nur Text",
+  "Could not list the models of {provider}: {error}":
+    "Die Modelle von {provider} ließen sich nicht abrufen: {error}",
+  "{model} is not on this Ollama yet — pull it with: ollama pull {model}":
+    "{model} ist auf diesem Ollama noch nicht vorhanden — laden mit: ollama pull {model}",
+  "{provider} does not list {model}.": "{provider} führt {model} nicht.",
+  "{model} cannot see images, so it cannot read scans.":
+    "{model} sieht keine Bilder und kann deshalb keine Scans lesen.",
+  "{provider} does not say whether {model} can see images — Try them to find out.":
+    "{provider} sagt nicht, ob {model} Bilder sieht — mit „Ausprobieren“ lässt es sich feststellen.",
+  "Scans of your letters will be sent to {provider}.": "Scans Ihrer Briefe gehen an {provider}.",
+  "What the assistant reads of your mail — whatever it searches for and opens — will be sent to {provider}.":
+    "Was der Assistent von Ihren E-Mails liest — alles, was er sucht und öffnet — geht an {provider}.",
+  "The sender, subject and start of each message will be sent to {provider}.":
+    "Absender, Betreff und Anfang jeder Nachricht gehen an {provider}.",
+  "{job} — {model} at {provider}": "{job} — {model} bei {provider}",
+  "reading scans": "Scans lesen",
+  "the assistant": "der Assistent",
+  "{verdict}, in {seconds} s": "{verdict}, in {seconds} s",
+  "Not good enough: {verdict}, in {seconds} s": "Reicht nicht: {verdict}, in {seconds} s",
+  "it said: {reply}": "Antwort: {reply}",
+  "Failed: {error}": "Fehlgeschlagen: {error}",
+  "Save to see them.": "Zum Anzeigen erst speichern.",
+  "Ollama needs no key.": "Ollama braucht keinen Schlüssel.",
+  "A key is stored in the keychain. It is sent only to this address.":
+    "Ein Schlüssel liegt im Schlüsselbund. Er wird nur an diese Adresse gesendet.",
+  "No key stored yet. Create an API key at console.anthropic.com (a Claude.ai subscription is not an API key); it is kept in the keychain.":
+    "Noch kein Schlüssel hinterlegt. Erstellen Sie einen API-Schlüssel unter console.anthropic.com (ein Claude.ai-Abo ist kein API-Schlüssel); er wird im Schlüsselbund aufbewahrt.",
+  "No key stored yet. Paste the API key from the service's dashboard; it is kept in the keychain.":
+    "Noch kein Schlüssel hinterlegt. Fügen Sie den API-Schlüssel aus dem Dashboard des Dienstes ein; er wird im Schlüsselbund aufbewahrt.",
+  "embeddings only": "nur Embeddings",
+  "not said": "keine Angabe",
+  "1 model": "1 Modell",
+  "{count} models": "{count} Modelle",
+  "No models pulled yet. For reading scans: ollama pull qwen2.5vl:3b":
+    "Noch keine Modelle geladen. Zum Lesen von Scans: ollama pull qwen2.5vl:3b",
+  "The service lists no models for this key.": "Der Dienst führt für diesen Schlüssel keine Modelle.",
+  "Remove {provider}? Its key is removed from the keychain, and any job using it goes back to the model on this computer.":
+    "{provider} entfernen? Der Schlüssel wird aus dem Schlüsselbund gelöscht, und jede Aufgabe, die den Anbieter nutzt, geht zurück an das Modell auf diesem Rechner.",
+
+  // What stands at the top of each settings page. Table values in app.js
+  // (PAGE_HEADS), so the test that reads `t("…")` calls cannot see them.
+  "Private, one company, another — kept apart.": "Privat, eine Firma, eine andere — getrennt gehalten.",
+  "Where mail comes from and goes out through. Passwords go to the system keychain and are never shown again.":
+    "Woher E-Mails kommen und worüber sie hinausgehen. Passwörter liegen im Schlüsselbund des Systems und werden nie wieder angezeigt.",
+  "Scanned post from Paperless-ngx, read beside your mail.":
+    "Gescannte Post aus Paperless-ngx, neben Ihren E-Mails zu lesen.",
+  "Which model reads scans and sorts mail, and where it runs.":
+    "Welches Modell Scans liest und E-Mails sortiert, und wo es läuft.",
+  "Where a model runs: an Ollama, Claude, or a hosted service with an OpenAI-compatible API.":
+    "Wo ein Modell läuft: ein Ollama, Claude oder ein gehosteter Dienst mit OpenAI-kompatibler API.",
+  "Saved searches that live in the sidebar.": "Gespeicherte Suchen, die in der Seitenleiste stehen.",
+  "OpenPGP keys for signing and encrypting mail.": "OpenPGP-Schlüssel zum Signieren und Verschlüsseln von E-Mails.",
+  "A log to attach when something goes wrong.": "Ein Protokoll zum Anhängen, wenn etwas schiefgeht.",
   Profiles: "Profile",
   Keys: "Schlüssel",
   General: "Allgemein",
@@ -637,6 +697,25 @@ const GERMAN = {
   "{imap}, sends via {host}:{port}": "{imap}, sendet über {host}:{port}",
   "{imap}, cannot send (no outgoing server)": "{imap}, kann nicht senden (kein Postausgangsserver)",
   "from {source}": "aus {source}",
+  // What the backend says about where settings came from (core-rpc's setup
+  // module). Passed to `t` as values, so they are kept together here.
+  "a guess": "einer Vermutung",
+  "kuverta's list of providers": "kuvertas Anbieterliste",
+  "the provider's own settings": "den Einstellungen des Anbieters",
+  "Mozilla's directory of providers": "Mozillas Anbieterverzeichnis",
+  "not used on this computer": "auf diesem Rechner nicht in Gebrauch",
+  "no IMAP accounts": "keine IMAP-Konten",
+  "no accounts set up": "keine Konten eingerichtet",
+  "macOS keeps Mail's accounts private until kuverta has Full Disk Access. Turn it on for kuverta (or the terminal it runs from), then look again.":
+    "macOS hält die Konten von Mail unter Verschluss, bis kuverta Festplattenvollzugriff hat. Schalten Sie ihn für kuverta ein (oder für das Terminal, aus dem es läuft) und sehen Sie dann noch einmal nach.",
+  "Signs in with OAuth2, which needs a client id and `kuverta login` in a terminal. Switch it to an app password if the provider offers one.":
+    "Meldet sich mit OAuth2 an; das braucht eine Client-ID und `kuverta login` im Terminal. Stellen Sie auf ein App-Passwort um, wenn der Anbieter eines anbietet.",
+  "1 account": "1 Konto",
+  "{count} accounts": "{count} Konten",
+  "Nobody publishes settings for this address. Your provider's help pages name the IMAP and SMTP servers.":
+    "Für diese Adresse veröffentlicht niemand Einstellungen. Die Hilfeseiten Ihres Anbieters nennen den IMAP- und den SMTP-Server.",
+  "Thunderbird connects to this server without encryption; kuverta will use STARTTLS.":
+    "Thunderbird verbindet sich mit diesem Server unverschlüsselt; kuverta nimmt STARTTLS.",
   "Use the password saved in {source}": "Das in {source} gespeicherte Passwort verwenden",
   "Password (only if you switch to a password below)":
     "Passwort (nur wenn Sie unten auf Passwort umstellen)",
