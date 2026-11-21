@@ -3,117 +3,92 @@
 Watches a surface through a camera. When a page is put down and stops moving,
 photographs it and hands it to Paperless-ngx.
 
-That is all it does, and the restraint is the design. Paperless already does
-OCR, deskew, rotation, tagging, archiving and search; this does the one thing it
-cannot, which is noticing that a letter has arrived. The brief budgets ~600
-lines for the capture daemon and that is about what it costs.
+Paperless already does OCR, deskew, rotation, tagging, archiving and search.
+scannerd only notices that a letter has arrived. The brief budgets ~600 lines
+for the capture daemon and that is about what it costs.
 
 ## What it does not do
 
-**No deskew.** A photograph of a letter on a desk is never square, and
-straightening it is `ocrmypdf`'s job — Paperless does it on every document, and
+No deskew. That is `ocrmypdf`'s job. Paperless does it on every document, and
 the dev stack sets `PAPERLESS_OCR_DESKEW` explicitly so the dependency is
-visible rather than inherited.
+visible.
 
-**No page-finding.** The camera is bolted above a fixed spot, so the page is
-always in the same part of the frame. `--roi x,y,w,h` crops on the sensor —
-for the frames it watches as well as the photograph, so "half the frame changed"
-means half the page area and not half the desk — which makes cropping a line of
-configuration instead of a page of geometry —
-and geometry that cannot be tested against real photographs is geometry that is
-guessed at.
+No page-finding. The camera is fixed above one spot, so the page is always in
+the same part of the frame. `--roi x,y,w,h` crops on the sensor, for the
+watched frames as well as the photograph, so "half the frame changed" means
+half the page area. Cropping is one line of configuration and needs no geometry
+code.
 
-**No image library at all.** `rpicam-still --encoding yuv420` hands back raw
-YUV, and the first plane *is* the greyscale image. Detection is arithmetic over
-a byte slice, which is why it can be tested on a laptop with no camera.
+No image library. `rpicam-still --encoding yuv420` returns raw YUV, and the
+first plane is the greyscale image. Detection is arithmetic over a byte slice,
+so it is testable on a laptop with no camera.
 
 ## How it decides
 
-Two questions, both answered by comparing frames against a baseline of the
-empty surface:
+Frames are compared against a baseline of the empty surface:
 
-- **Is something there?** A sheet of paper is large and pale, so it changes a
-  great many pixels. A shadow changes them slightly.
-- **Does it look like paper?** How much changed is not enough on its own: an
-  evening moves the light over the whole table, and the rig photographed a few
-  sunsets as letters. So the frame is also read in 16×16 blocks against the
-  table's own level: paper is **paler than the table it lies on** — thirty-five
-  counts above it, at least — and it is **one lump** rather than a wash, so the
-  blocks that look like paper must fill nearly half the box they span. A shadow
-  is neither: it darkens, and it is spread over everything. Both numbers are on
-  the setup page beside the change, so a rig that will not see a page shows why.
-- **Has it stopped?** A hand is still in shot for a moment after the page is,
-  and capturing then gets a photograph of a thumb.
+- Is something there? Paper is large and pale and changes many pixels. A
+  shadow changes them slightly.
+- Does it look like paper? Evening light moves over the whole table, and the
+  rig photographed a few sunsets as letters. So the frame is also read in
+  16×16 blocks against the table's own level. Paper is at least thirty-five
+  counts paler than the table, and it is one lump: the paper-like blocks must
+  fill nearly half the box they span. A shadow darkens and is spread over
+  everything. Both numbers are on the setup page beside the change.
+- Has it stopped? A hand stays in shot briefly after the page lands.
 
-The paper test is asked of one frame at a time, and its answer wobbles, so it
-is the last eight frames that count and not the frame in hand. It compares each
-block with the table and takes no offset out — on purpose, because an offset is
-what let a shadow over half the table make the other half look like paper — so
-a camera still choosing its exposure moves every block at once and the lump the
-test finds is the whole frame on one frame and none of it on the next. On the
-rig a page lay still on the table and read a share of between 0.0 and 0.21 of
-the frame from one frame to the next, of one page, not moving at all. Asked
-afresh of every frame, it was never photographed: the wait for it to settle was
-begun on a frame that saw it and abandoned on the next frame that did not, four
-times in four seconds, and the still frames a photograph needs were never in a
-row. So one frame that sees a page is enough to start waiting for it, and it
-takes a second and a half with no paper in any frame to give up on one. A page
-that flickers is a page.
+The paper test wobbles from frame to frame, so the last eight frames count. It
+takes no offset out of the block comparison, because an offset let a shadow
+over half the table make the other half look like paper. A camera still
+choosing its exposure therefore moves every block at once. On the rig a page
+lying still read a share of between 0.0 and 0.21 of the frame from one frame to
+the next, and with a per-frame test the wait for it to settle was abandoned
+four times in four seconds, so it was never photographed. Now one frame that
+sees a page starts the wait, and giving up takes a second and a half with no
+paper in any frame.
 
-The same window is what keeps the table from being learnt with a page lying on
-it. That is the worst way for this to fail — a page inside the baseline is a
-page that can never be seen again, however long it lies there — and the guard
-used to ask the frame in hand, which the same wobble defeats: on the rig the
-table was learnt again on a frame that read a share of 0.013 while a page lay
-on it. Nothing is learnt as the table now unless no frame in the window saw
-paper. If it has happened anyway, taking the page off the table is enough: the
-empty table is learnt again the moment it is seen.
+The same window stops the table being learnt with a page on it. A page inside
+the baseline can never be seen again. The guard used to test only the current
+frame, and on the rig the table was learnt again on a frame that read a share
+of 0.013 while a page lay on it. Now the table is learnt only if no frame in
+the window saw paper. If it happens anyway, take the page off: the empty table
+is learnt again as soon as it is seen.
 
-A rig that can see something and never photographs it now says so, every ten
-seconds, with the numbers: *something that could be paper is lying there, but
-never enough of it to be a page*. That branch used to be silent, which from
-the outside is a rig that has simply stopped working.
+A rig that sees something and never photographs it logs that every ten seconds,
+with the numbers: *something that could be paper is lying there, but
+never enough of it to be a page*.
 
-Then a third rule, which is the one that stops a letter becoming forty: after a
-capture it will not arm again until the surface has been seen empty — or until
-a hand has been over the page and what lies there, once still, is another page.
-A letter's pages are often laid one on top of the other, or turned over where
-they lie, and the table is never clear between them. The page is compared with
-the one photographed in 8×8 blocks, allowing a shift of up to eight pixels, so
-a page nudged or turned a few degrees is the same page: on the rig a nudge
-changed at most 17% of the blocks, the blank back of a page 31%, another letter
-34%, and 22% is the line. That also
-re-learns the baseline, so daylight moving across a desk over an afternoon does
-not slowly read as a page — and when the light changes while nothing is lying
-there at all, the table is learnt again after a few seconds of it, so the rig
-settles into the new light instead of watching an empty table it no longer
-recognises.
+After a capture it will not arm again until the surface has been seen empty,
+or until a hand has been over the page and what lies there, once still, is
+another page. Pages are often stacked or turned over in place, so the table is
+never clear between them. The page is compared with the one photographed in
+8×8 blocks, allowing a shift of up to eight pixels, so a page nudged or turned
+a few degrees is the same page. On the rig a nudge changed at most 17% of the
+blocks, the blank back of a page 31%, another letter 34%, and 22% is the line.
+This also re-learns the baseline, so daylight moving across the desk does not
+read as a page. When the light changes on an empty table, the table is learnt
+again after a few seconds.
 
-An envelope is told from a page by being smaller — DL about 0.4 of an A4 page,
-C5 about 0.6 — and an envelope means a new letter, so the one being collected
-is finished and sent. That decision is asked twice now, with a different bar
-each time, because its two errors do not cost the same: an envelope taken for a
-page becomes page one of the letter it holds, which is where it belongs anyway,
-while a page taken for an envelope ends the letter it was part of and starts
-another. On the rig a six-page SCHUFA letter was filed as two three-page
-letters that way. What is measured is where the straightener found the paper's
-edge, and that moves with the exposure — the photograph that did it had just
-been taken again darker — so marginal is not good enough to end a letter: it
-has to be unmistakably smaller. A DL envelope still finishes the letter before
-it; a C5 is still called an envelope, but is now page one of the letter it came
-with rather than the end of the one before. Both numbers are in the log on
-every photograph, which they were not when this had to be worked out.
+An envelope is told from a page by being smaller (DL about 0.4 of an A4 page,
+C5 about 0.6). It means a new letter, so the one being collected is finished
+and sent. The decision is made twice with different bars, because the errors
+cost differently. An envelope taken for a page just becomes page one of its
+letter. A page taken for an envelope splits a letter: on the rig a six-page
+SCHUFA letter was filed as two three-page letters. The measurement is where the
+straightener found the paper's edge, which moves with the exposure (that
+photograph had just been retaken darker). So only paper that is unmistakably
+smaller ends a letter. A DL envelope still finishes the letter before it. A C5
+is still called an envelope, but becomes page one of the letter it came with
+and does not end the one before. Both numbers are logged for every photograph.
 
 ## Letters of more than one page
 
-With `--button`, pages are not sent as they are photographed. They collect in
-the spool's `open/` directory until the button is pressed, and the letter goes
-to Paperless as one PDF — the photographs embedded as they are, a page each, so
-nothing is re-encoded before the OCR. A press while the last page is still
-settling waits for that page. A letter nobody closes is closed
-`--letter-idle-secs` (five minutes) after its last page, so a forgotten press
-delays post but never keeps it. Without `--button`, every page is its own
-document.
+With `--button`, pages collect in the spool's `open/` directory until the
+button is pressed, and the letter goes to Paperless as one PDF. The photographs
+are embedded unchanged, a page each, so nothing is re-encoded before the OCR. A
+press while the last page is still settling waits for that page. An unclosed
+letter is closed `--letter-idle-secs` (five minutes) after its last page.
+Without `--button`, every page is its own document.
 
 The button is a push button between GPIO 27 and ground (pins 13 and 14), made
 into a key by the kernel with one line in `/boot/firmware/config.txt`:
@@ -126,35 +101,33 @@ to the underside of the Pi.
 
 After a reboot it is a keyboard with one key: `ls /dev/input/by-path/` shows
 the device, and `SCANNERD_BUTTON` points at it. The kernel debounces it and
-`scannerd` reads key events from the device, so there is no GPIO library, and a
-USB keypad works as well (`--button-key` for a key other than Enter). On a
-laptop, `--button stdin` makes Enter in the terminal the button.
+`scannerd` reads key events, so there is no GPIO library, and a USB keypad
+works too (`--button-key` for a key other than Enter). On a laptop,
+`--button stdin` makes Enter in the terminal the button.
 
 ## The display
 
 `--display epaper` (or `SCANNERD_DISPLAY=epaper`) drives a Waveshare 2.13″ e-paper HAT
-(V3 or V4, 250×122, an SSD1680 controller) on the Pi's header, so the rig says
-what it is doing without a phone:
+(V3 or V4, 250×122, an SSD1680 controller) on the Pi's header. It shows:
 
-- **Ready** — put a page down; **Hold still** while it settles; **Scanned** —
-  take the page away; **No camera**; **Sending letter** after the button.
-- Under that, whether the photograph can be read: a tick and *Page 2: good to
-  read*, or white on black *Page 2: too bright*. It stays up for ten minutes, so
-  it is still there when the next page goes down.
+- The state: **Ready** (put a page down), **Hold still** while it settles,
+  **Scanned** (take the page away), **No camera**, and **Sending letter** after
+  the button.
+- Whether the photograph can be read: a tick and *Page 2: good to
+  read*, or white on black *Page 2: too bright*. It stays up for ten minutes.
 - Along the bottom, the pages in the open letter and what is waiting to send.
 
-The check runs on every photograph, display or not, and a page that fails it
-is also in the setup page's activity list. It looks at the middle of the
-photograph, where the page lies: *no page / too dark* (the middle is not bright
-enough to be paper), *too bright* (the paper clipped to white and the text
-pale — every page of the first letters from the rig looked like this),
-*blurry*, and *no text found* (a blank page, or a pale ceiling). A page that
-fails is kept and sent all the same; delete it on the setup page and put it
+The check runs on every photograph, display or not, and a failed page is also
+in the setup page's activity list. It looks at the middle of the photograph:
+*no page / too dark* (not bright enough to be paper), *too bright* (paper
+clipped to white and the text pale, as on every page of the rig's first
+letters), *blurry*, and *no text found* (a blank page, or a pale ceiling). A
+failed page is kept and sent anyway. Delete it on the setup page and put it
 down again if it matters. On a Pi Zero W the check costs about half a second a
 page.
 
 Between letters, once Paperless has read the last one, it says which folder
-on the shelf that letter goes in — see below.
+on the shelf that letter goes in (see below).
 
 The panel needs SPI, which is off by default, and the `spi` and `gpio` groups,
 which the unit file asks for:
@@ -162,44 +135,41 @@ which the unit file asks for:
     dtparam=spi=on          # in /boot/firmware/config.txt, then reboot
     sudo usermod -aG spi,gpio scannerd
 
-It is refreshed only when what it says changes, mostly with a partial refresh
-(about a third of a second, no flashing) and every twentieth time with a full
-one, which flashes for two seconds and clears the ghosts partial refreshes
-leave. `SCANNERD_DISPLAY_FLIP=true` turns the picture round for a HAT mounted
-upside down. A display that does not answer is logged and done without.
+It is refreshed only when its content changes, mostly with a partial refresh
+(about a third of a second, no flashing). Every twentieth refresh is a full
+one, which flashes for two seconds and clears ghosting.
+`SCANNERD_DISPLAY_FLIP=true` turns the picture for a HAT mounted upside down. A
+display that does not answer is logged and skipped.
 
 ### The 3.5″ LCD
 
-`SCANNERD_DISPLAY=/dev/fb0` draws the same words in colour on a framebuffer
-instead: on the rig, a 3.5″ SPI panel (ILI9486, 480×320, with an XPT2046
-resistive touch controller — the Waveshare 3.5″ (A) layout), which the kernel
+`SCANNERD_DISPLAY=/dev/fb0` draws the same words in colour on a framebuffer.
+On the rig that is a 3.5″ SPI panel (ILI9486, 480×320, with an XPT2046
+resistive touch controller, the Waveshare 3.5″ (A) layout), which the kernel
 drives with one line in `/boot/firmware/config.txt`:
 
     dtoverlay=piscreen,speed=24000000,rotate=90
 
-The screen is painted rather than drawn in blocks ([`paint`](src/paint.rs):
-`tiny-skia` for shapes, Inter — SIL Open Font License, in `assets/fonts` —
-rasterised by `fontdue`), because a panel of hard edges and a bitmap font looks
-like a cash register. A card holds the headline with an icon in the colour of
-the news: green ready, amber working, teal done, red look, blue a folder, grey
-the bin. The buttons are pills, the one thing to do in colour. The picture is
-dithered on its way into the panel's 16-bit colour, so gradients do not band. Add
-`fbcon=map:9` to `/boot/firmware/cmdline.txt` so the login console does not
-draw over it.
+The screen is painted by [`paint`](src/paint.rs): `tiny-skia` for shapes, and
+Inter (SIL Open Font License, in `assets/fonts`) rasterised by `fontdue`. A
+card holds the headline with an icon coloured by state: green ready, amber
+working, teal done, red look, blue a folder, grey the bin. Buttons are pills,
+with the main action in colour. The picture is dithered into the panel's 16-bit
+colour, so gradients do not band. Add `fbcon=map:9` to
+`/boot/firmware/cmdline.txt` so the login console does not draw over it.
 
-With `SCANNERD_TOUCH=/dev/spidev0.1` the screen is also how scanning starts
-and stops. Between letters it shows the last letter's folder over two buttons,
-**Start scanning** and **Learn empty table**; the camera is not watched at all
-until Start, so nothing is photographed by accident. Scanning, it shows what
-the camera sees beside the page it photographed last, with that page's verdict,
-over **Finish letter** and **Stop scanning**. A finished letter ends the scan.
-The setup page has the same Start and Stop.
+With `SCANNERD_TOUCH=/dev/spidev0.1` the screen also starts and stops scanning.
+Between letters it shows the last letter's folder over **Start scanning** and
+**Learn empty table**. The camera is not watched until Start. While scanning,
+it shows the camera view beside the last page photographed, with that page's
+verdict, over **Finish letter** and **Stop scanning**. A finished letter ends
+the scan. The setup page has the same Start and Stop.
 
-The rig's touch film reports only how far down a finger is — its other axis
-reads the same everywhere — and its pen interrupt is not wired, so the kernel's
-driver never sees a touch. scannerd asks the controller itself thirty times a
-second, and every button is a band the width of the screen. The kernel's driver
-has to be kept off the controller:
+The rig's touch film reports only how far down a finger is (its other axis
+reads the same everywhere), and its pen interrupt is not wired, so the kernel's
+driver never sees a touch. scannerd polls the controller thirty times a second,
+and every button is a band the width of the screen. The kernel's driver has to
+be kept off the controller:
 
     # /etc/modprobe.d/scannerd-touch.conf
     blacklist ads7846
@@ -207,313 +177,296 @@ has to be kept off the controller:
     ACTION=="add", SUBSYSTEM=="spi", KERNEL=="spi0.1", ATTR{driver_override}="spidev", RUN+="/sbin/modprobe spidev", RUN+="/bin/sh -c 'echo spi0.1 > /sys/bus/spi/drivers/spidev/bind || true'"
 
 `SCANNERD_TOUCH_ROWS` (`x:204:4000`, channel, reading at the top, reading at
-the bottom) is for a panel that differs — or one mounted the other way up: with
+the bottom) is for a different panel, or one mounted the other way up. With
 `rotate=270` in the overlay line instead of `rotate=90`, the rig's is
 `x:4000:204`.
 
 ### Envelopes
 
-An envelope put down is photographed like a page, and told from one by its
-size: paper covering less than about seven tenths of what a page covers (DL is
-about 0.4 of an A4 page, C5 about 0.6) is an envelope. The letter being
-collected is finished and sent at once, and the envelope is the first page of
-the next — which is not finished for the table being empty while it is opened.
-The folders themselves are **Paperless's**, read from it every few minutes.
-They are set up in the desktop app's assistant, which writes each one as a
-Paperless tag with its words; the scanner reads them back and shows them. It
-keeps no list of its own, because a second list could only ever disagree with
-the one doing the filing — and did, until the two `Lawstuff` lists had three
-words in common. The one thing the scanner still decides is which folder is
-the bin, since a Paperless tag cannot say that: `--bin-folder`, the `-Name` in
-the env file's list, or the one ticked on the setup page.
+An envelope is photographed like a page and told from one by size: paper
+covering less than about seven tenths of what a page covers (DL is about 0.4 of
+an A4 page, C5 about 0.6). The letter being collected is finished and sent at
+once, and the envelope is the first page of the next. That letter is not
+finished by the empty table while the envelope is opened.
 
-A letter goes in **one** folder, because it is a piece of paper. Where its
-text fits more than one, the folder with the most of its words on the page
-wins — a letter carrying five of Taxes' words and one of Rechnungen's is a tax
-letter — and the others are said under it rather than beside it.
+The folders are Paperless's, read from it every few minutes. They are set up in
+the desktop app's assistant, which writes each as a Paperless tag with its
+words. The scanner keeps no list of its own, because a second list drifts: the
+two `Lawstuff` lists ended up with three words in common. The scanner only
+decides which folder is the bin, since a tag cannot say that: `--bin-folder`,
+the `-Name` in the env file's list, or the one ticked on the setup page.
 
-That decision is made **once, on the rig, while the paper is in your hand**,
-and does not change afterwards. It is written beside the letter in the spool
-as it is queued, so it survives a restart, and put on the document as it is
-uploaded. Paperless does not match folder tags itself — they are saved with
-its matching switched off — because a second opinion arriving a minute later,
-from better OCR but after the paper is already in a drawer, could only make
-the record and the drawer disagree. The words stay on the tags: they are what
-the rig reads a page against, and where they are edited.
+A letter goes in one folder. Where its text fits more than one, the folder with
+the most of its words on the page wins (five of Taxes' words and one of
+Rechnungen's is a tax letter), and the others are shown under it.
 
-That is what makes kuverta useful for finding the paper again. An open letter
-says which folder it is in, and that folder is the drawer you actually put it
-in.
+That decision is made once, on the rig, while the paper is in your hand. It is
+written beside the letter in the spool as it is queued, so it survives a
+restart, and put on the document at upload. Folder tags are saved with
+Paperless's matching switched off, because a later match from better OCR, after
+the paper is in a drawer, would make the record and the drawer disagree. The
+words stay on the tags: the rig reads pages against them, and they are edited
+there.
 
-The words are matched against what tesseract made of a photograph, which is
-bad text: a letter from the Wasserschutzpolizei came out with
-"Strafprozessordnung" spelled three different wrong ways, and was filed by
-"Staatsanwaltschaft" surviving on its second page. So the word lists the
-setup assistant offers are longer than they look as if they need to be —
-every extra spelling of the same idea is another chance that one of them
-lands. Each list has to fit the 256 characters Paperless keeps of a tag's
-match, which `kuverta-bird/test/desktop-shelf.test.js` checks, and
-`cargo run --example match_check` runs a list against a real page's text.
+So the folder kuverta shows for a letter is the drawer the paper is in.
 
-What a page covers is learnt from the pages, so corners set generously round
-where letters land still tell the two apart.
+The words are matched against tesseract's reading of a photograph, which is
+poor: a letter from the Wasserschutzpolizei came out with "Strafprozessordnung"
+spelled three different wrong ways, and was filed by "Staatsanwaltschaft"
+surviving on its second page. So the setup assistant's word lists are long, to
+give more spellings a chance. Each list has to fit the 256 characters Paperless
+keeps of a tag's match, which `kuverta-bird/test/desktop-shelf.test.js` checks,
+and `cargo run --example match_check` runs a list against a real page's text.
+
+What a page covers is learnt from the pages, so generously set corners still
+tell the two apart.
 
 ### Taking pages and letters back
 
-While a letter is being scanned the display offers **Undo last page** — a
-hand, the table, a page twice — and **Cancel letter**, which asks for a second
-tap. For ten minutes after a letter is finished, **Undo last letter** takes it
-back: out of the queue if it has not gone, or deleted from Paperless (into its
-trash) if it has — as soon as Paperless has read it, if it has not yet. The
-setup page has the same three. Nothing taken back is deleted on the Pi: it goes
-to the spool's `discarded/`, and is deleted from there after a week.
+While a letter is being scanned the display offers **Undo last page** (a hand,
+the table, a page twice) and **Cancel letter**, which asks for a second tap.
+For ten minutes after a letter is finished, **Undo last letter** takes it back:
+out of the queue if it has not gone, or deleted from Paperless (into its trash)
+if it has, as soon as Paperless has read it. The setup page has the same three.
+Nothing taken back is deleted on the Pi: it goes to the spool's `discarded/`,
+and is deleted from there after a week.
 
 ### What is waiting to be sent
 
-When letters are waiting — Paperless off, the network down — the display
-offers **n waiting to send** between letters. That opens a list, a letter a row
-with when it was photographed and how often sending has been tried; tapping one
-asks for a second tap and then throws it away, into `discarded/`. **Back**
-closes the list. The setup page lists the same with a **Remove** on each.
+When letters are waiting (Paperless off, the network down), the display offers
+**n waiting to send** between letters. That opens a list, a letter a row, with
+when it was photographed and how often sending was tried. Tapping one asks for
+a second tap and then moves it to `discarded/`. **Back** closes the list. The
+setup page lists the same with a **Remove** on each.
 
 ### Scanning from the start
 
-The camera is watched from the moment scannerd starts: a page put down after a
-boot is photographed without a button. **Stop scanning** on the display or the
-page stops it; finishing a letter does not. While scanning, the display keeps
-the last letter's folder in a strip under the top line.
+The camera is watched from the moment scannerd starts, so a page put down after
+a boot is photographed without a button. **Stop scanning** on the display or
+the page stops it. Finishing a letter does not. While scanning, the display
+keeps the last letter's folder in a strip under the top line.
 
-The frames it watches come from a video stream (`rpicam-vid`, five a second,
-`SCANNERD_PREVIEW_FPS`) rather than a still each: on the Pi 4 a still took half
-a second to start the camera for every frame, and a page lay still for three or
-four seconds before it was photographed; with the stream, one. The stream stops
-for the photograph and starts again after it.
+The watched frames come from a video stream (`rpicam-vid`, five a second,
+`SCANNERD_PREVIEW_FPS`). With a still per frame, the Pi 4 took half a second to
+start the camera each time, and a page lay still for three or four seconds
+before it was photographed. With the stream it is one. The stream stops for the
+photograph and starts again after it.
 
 ### Finishing a letter by clearing the table
 
 A letter is also finished when its last page has been taken away and the table
 stays empty for eight seconds (`SCANNERD_FINISH_WHEN_CLEAR_SECS`, 0 turns it
-off) — the next page is laid down sooner than that, or on top of the last one,
-or the last one turned over. The display counts the seconds down.
+off). The next page normally arrives sooner, or goes on top of the last one, or
+the last one is turned over. The display counts the seconds down.
 
 ## Exposure
 
-White paper fools a camera: it exposes for a grey world, and the rig's OV5647
-made the paper pure white and the text pale grey — ink at 197 of 255 — until it
-was told two stops less, when the paper came out at 210 and the ink at 84. So
-the check above does not only report. A photograph that is too bright is taken
-again a stop darker while the page is still lying there, up to twice, and the
-best of them is kept; one too dark but with text in it, a stop brighter. The
+A camera exposes white paper as grey. The rig's OV5647 made the paper pure
+white and the text pale grey (ink at 197 of 255). Told two stops less, the
+paper came out at 210 and the ink at 84. So a photograph that is too bright is
+retaken a stop darker while the page is still there, up to twice, and the best
+is kept. One too dark but with text in it is retaken a stop brighter. The
 exposure that worked is where the next page starts, nudged half a stop when the
 paper comes out near clipping or dim, and is kept in `settings.toml` across
-restarts. `SCANNERD_EV` gives the first guess (the rig's is `-2`); the setup
-page shows the exposure in force and starts it again from the camera's own.
+restarts. `SCANNERD_EV` gives the first guess (the rig's is `-2`). The setup
+page shows the exposure in force and can restart it from the camera's own.
 
 ## Which folder
 
-The paper still has to go somewhere. With folders set up — `SCANNERD_FOLDERS=Car,House,Work,Taxes,-Throw away`
-in the env file, or **Folders on the shelf** on the setup page, which wins —
-the display says, for each letter, which one it goes in, or **Throw away** for
-the folder marked as the bin (a `-` in the env file).
+With folders set up, the display says for each letter which one it goes in, or
+**Throw away** for the folder marked as the bin (a `-` in the env file). Set
+them with `SCANNERD_FOLDERS=Car,House,Work,Taxes,-Throw away` in the env file,
+or with **Folders on the shelf** on the setup page, which wins.
 
 ### Filing it yourself
 
-Paperless reads the words; it cannot know that a letter is worth keeping but
-belongs on no shelf, or that the paper can go in the bin. While the display
-shows where the last letter goes — and on the setup page — two buttons say so
-instead:
+Paperless cannot know that a letter is worth keeping but belongs on no shelf,
+or that the paper can go in the bin. While the display shows where the last
+letter goes, and on the setup page, there are two buttons for that:
 
 - **No folder** takes the folders' tags off it. The letter stays in Paperless;
   the display says *No folder*.
 - **Throw away** puts the bin's tag on it instead. The letter stays in
   Paperless too; only the paper goes.
 
-Either works the moment the letter is sent, before Paperless has read it: the
-answer is remembered and applied as soon as it has. Tags that are not folders —
-the address, who the post is for — are left alone, and "Undo last letter" still
-deletes the whole thing for ten minutes.
+Either works as soon as the letter is sent: the answer is remembered and
+applied once Paperless has read it. Tags that are not folders (the address, who
+the post is for) are left alone, and "Undo last letter" still deletes the whole
+thing for ten minutes.
 
 ## Who the letter is for
 
-More than one person in a household gets post — a partner, a child, someone
-whose papers are being kept. `SCANNERD_PEOPLE=Erika Mustermann,Max Mustermann`
-(or **Person** on a row of the setup page) makes each of them a Paperless tag
-of their own, `Person: Erika Mustermann`, matched on their name — which is what
-stands on the letter. The display then says both: **Taxes**, and under it *For
+`SCANNERD_PEOPLE=Erika Mustermann,Max Mustermann` (or **Person** on a row of
+the setup page) gives each person in the household a Paperless tag,
+`Person: Erika Mustermann`, matched on their name as written on the letter.
+The display then says both: **Taxes**, and under it *For
 Erika Mustermann*, or *For Erika Mustermann and Max Mustermann* when a letter
-carries both names. Somebody written to in more than one way can be given the
-other spellings as words, like a folder.
+carries both names. Other spellings of a name can be added as words, like a
+folder.
 
-The mark on the tag is what keeps the two apart, so a folder and a person of
-the same name are two tags and neither is the other, and a shelf read back out
-of Paperless still knows which is which. Nobody can be the bin.
+The mark on the tag keeps a folder and a person of the same name as two tags,
+and a shelf read back from Paperless still knows which is which. Nobody can be
+the bin.
 
-Told neither way, scannerd takes the shelf from Paperless: every tag that
-matches letters by itself is a folder, with the words it matches on. That is
-what the kuverta app's setup assistant writes, so a shelf named there needs no
-second naming here; it is asked for again every five minutes until Paperless
-answers. Which of them is the bin is the one thing a tag cannot say —
-`SCANNERD_BIN_FOLDER=Werbung` names it.
+With neither set, scannerd takes the shelf from Paperless: every tag that
+matches letters by itself is a folder, with the words it matches on. The
+kuverta app's setup assistant writes those, so a shelf named there needs no
+naming here. It is asked for again every five minutes until Paperless answers.
+A tag cannot say which folder is the bin, so `SCANNERD_BIN_FOLDER=Werbung`
+names it.
 
-The Pi cannot read a letter; OCR on a Zero W takes minutes a page. Paperless
-reads every one, and deciding what a document is is what its tags already do.
-So each folder is a Paperless tag of the same name, which scannerd creates, or
-updates, before the next letter is sent:
+OCR on a Zero W takes minutes a page, so Paperless reads every letter and its
+tags classify it. Each folder is a Paperless tag of the same name, which
+scannerd creates or updates before the next letter is sent:
 
-- A folder with **words** — a number plate, an insurer, "Finanzamt" — matches
-  any letter with one of them in it (Paperless's "any word"). That works from
-  the first letter.
-- A folder without words uses Paperless's **auto** matching, which learns from
-  the documents tagged with it. Until some are, it matches nothing, and the
-  display asks *Which folder?* — tag the letter in Paperless, and the next one
-  like it is known.
+- A folder with words (a number plate, an insurer, "Finanzamt") matches any
+  letter containing one of them (Paperless's "any word"). That works from the
+  first letter.
+- A folder without words uses Paperless's auto matching, which learns from the
+  documents tagged with it. Until some are, it matches nothing, and the display
+  asks *Which folder?*. Tag the letter in Paperless, and the next one like it
+  is known.
 
 scannerd owns these tags' matching: the words set here replace whatever the
 tag had. After an upload it asks Paperless every five seconds whether the
-letter is done, then reads its tags: **Car** — *Put the letter in this folder*;
-*Car / House* when it fits more than one; *Already filed* for a letter
-Paperless had before. Paperless 2 and 3 are both understood; 3 reports its tasks differently. That stays up until the next letter is started, when it
-moves to the bottom line; after fifteen minutes without an answer it is given
-up on. The setup page's activity list has the same, a line a letter.
+letter is done, then reads its tags: **Car** with *Put the letter in this folder*,
+*Car / House* when it fits more than one, *Already filed* for a letter
+Paperless had before. Paperless 2 and 3 are both understood; 3 reports its
+tasks differently. That stays up until the next letter is started, then moves
+to the bottom line. After fifteen minutes without an answer it gives up. The
+setup page's activity list has the same, a line a letter.
 
 ## Preview mode
 
 The setup page has a second layout, **Preview** (the button at the top right,
-or <kbd>p</kbd>), for working through a pile of post with a keyboard instead of
-a phone:
+or <kbd>p</kbd>), for working through a pile of post with a keyboard:
 
-- the page just photographed, large, with a tab for each page of the letter;
-- **what it says** — scannerd reads every page itself with `tesseract`, badly
-  and in a few seconds, so there is something to look at long before Paperless
-  has the letter. What Paperless makes of it is still what the letter is filed
-  under;
-- **where it goes** — every folder on the shelf as a chip, the ones the text
-  looks like marked, and who the letter is for. Press <kbd>1</kbd>…<kbd>9</kbd>
-  or tap a chip to file the letter there; <kbd>0</kbd> is no folder and
-  <kbd>b</kbd> the bin;
-- **a new folder**, named from here: it is added to the shelf with the longest
-  words of this letter as its words — the telling ones, in German post — and
-  the letter goes in it. The words can be edited under Setup afterwards;
-- every key that does anything, written along the bottom: finish, undo the
-  page, undo the letter, cancel, start and stop, learn the table.
+- The page just photographed, large, with a tab for each page of the letter.
+- What it says. scannerd reads every page with `tesseract`, badly and in a few
+  seconds, so there is text long before Paperless has the letter. Paperless's
+  reading still decides the filing.
+- Where it goes. Every folder on the shelf is a chip, with the ones the text
+  looks like marked, and who the letter is for. Press
+  <kbd>1</kbd>…<kbd>9</kbd> or tap a chip to file the letter there;
+  <kbd>0</kbd> is no folder and <kbd>b</kbd> the bin.
+- A new folder, named from here. It is added to the shelf with the longest
+  words of this letter as its words (the telling ones, in German post), and the
+  letter goes in it. The words can be edited under Setup afterwards.
+- Every key that does anything, along the bottom: finish, undo the page, undo
+  the letter, cancel, start and stop, learn the table.
 
 Reading is `SCANNERD_READER=tesseract` (`apt install tesseract-ocr
-tesseract-ocr-deu`) and `SCANNERD_READER_LANGUAGES=deu+eng`. Without it
-everything works as before, with no text in the preview and the folder known
-once Paperless has read the letter.
+tesseract-ocr-deu`) and `SCANNERD_READER_LANGUAGES=deu+eng`. Without it there
+is no text in the preview and the folder is known once Paperless has read the
+letter.
 
-The reading is also the last word on whether a photograph was a page at all.
-A page in which tesseract finds not one word — three letters or digits in a
-row — is the table, and is taken out of the letter into `discarded/` and the
-table learnt again, as the quality check does with a photograph that has no
-ink in it. The check alone was not enough on the rig: its table is creased
-paper with the corners drawn on in marker, which has as much contrast as ink,
-and when the light over it changed the bare table went to Paperless as a
-blank letter. A blank back of a sheet goes the same way. A read that failed
-keeps the page, and so does a letter of single pages, which is sent before it
-is read.
+The reading also decides whether a photograph was a page at all. A page in
+which tesseract finds no word (three letters or digits in a row) is the table.
+It is moved out of the letter into `discarded/` and the table is learnt again,
+as the quality check does with a photograph that has no ink in it. The check
+alone was not enough: the rig's table is creased paper with the corners drawn
+on in marker, which has as much contrast as ink, and when the light changed the
+bare table went to Paperless as a blank letter. A blank back of a sheet is
+discarded the same way. A read that failed keeps the page, and so does a letter
+of single pages, which is sent before it is read.
 
 ## The setup page
 
 `--ui 0.0.0.0:8080` (or `SCANNERD_UI`) serves a page from scannerd itself, so a
-headless Pi needs no screen, no desktop and no second program: open
+headless Pi needs no screen, desktop or second program: open
 `http://<pi>.local:8080` on a phone. It shows:
 
-- what the camera sees, refreshed every second or two, and what scannerd makes
-  of it — *Ready — put a page down*, *Hold still…*, *Photographed — take the
-  page away*;
-- the pages of the letter so far, with **Finish letter** — the same as the
-  button, so a hardware button is optional. Tap a page to see it large and
-  delete it if it was photographed by mistake (a hand, the empty table, a page
-  taken twice); a letter already sent is Paperless's to change;
-- what was sent and what is waiting, with **Retry uploads now**;
-- **Where it is going, from the first page.** The Pi reads each page itself
-  and matches the shelf's words, so the panel names the folder while you are
-  still holding the letter — minutes before Paperless has it. The headline
-  says *reading page 1...* while it reads, about ten seconds a page, and then
-  leads with the folder: *Taxes - next page?*, or *No folder yet* when no
-  folder's words are on it. That is the folder the letter is closed with
-  unless a later page says otherwise, so there is no need to wait for the
-  letter to finish to know. While a further page is still being read, what
-  the earlier ones said is an outline pill in the corner — an outline
-  because it is a guess. The corner goes back to the last letter's folder
-  once this one is sent.
-- **Learn empty table**, and setup. For the crop: put a page where letters will
-  lie and press **Take a picture** — scannerd photographs the whole view in
-  colour, finds the page (the largest bright area) and puts a box around it;
-  move the box, drag its corners, or draw a new one, then **Save this area**.
+- What the camera sees, refreshed every second or two, and the state:
+  `Ready — put a page down`, *Hold still…*,
+  `Photographed — take the page away`.
+- The pages of the letter so far, with **Finish letter**, which does the same
+  as the button, so a hardware button is optional. Tap a page to see it large
+  and delete it if it was a mistake (a hand, the empty table, a page taken
+  twice). A letter already sent can only be changed in Paperless.
+- What was sent and what is waiting, with **Retry uploads now**.
+- Where the letter is going, from the first page. The Pi reads each page and
+  matches the shelf's words, so the panel names the folder minutes before
+  Paperless has the letter. The headline says *reading page 1...* while it
+  reads, about ten seconds a page, then leads with the folder:
+  *Taxes - next page?*, or *No folder yet* when no folder's words are on it.
+  The letter is closed with that folder unless a later page says otherwise.
+  While a further page is being read, the earlier pages' result is an outline
+  pill in the corner, outlined because it is a guess. The corner returns to the
+  last letter's folder once this one is sent.
+- **Learn empty table**, and setup. For the crop, put a page where letters will
+  lie and press **Take a picture**. scannerd photographs the whole view in
+  colour, finds the page (the largest bright area) and puts a box around it.
+  Move the box, drag its corners, or draw a new one, then **Save this area**.
   The crop may be any shape: the photograph is taken at the crop's own share
-  of the sensor, so a page-shaped crop is not stretched to 4:3. How many
-  pixels the sensor has is asked of the camera when scannerd starts
-  (`rpicam-still --list-cameras`, and the log says which it found), so
-  another camera on the rig is photographed at its own; `--sensor-width` and
-  `--sensor-height` say it instead, and a camera that cannot be asked is
-  taken for a Pi camera v1. A camera that answered is also told which of its
-  modes to read in (`--mode`): the one of half the sensor each way for the
-  live view and the picture of the whole view, the full one for photographs.
-  Left to choose for a small picture, `rpicam-still` takes the sensor's
-  smallest mode, and a v2's 640×480 is only the middle two fifths of what it
-  sees — the live view showed the middle of a letter, two and a half times
-  too big. Also the Paperless address, token and tags, and **Check
+  of the sensor, so a page-shaped crop is not stretched to 4:3. The sensor's
+  pixel count is asked of the camera at start
+  (`rpicam-still --list-cameras`, and the log says which it found), so another
+  camera is photographed at its own size. `--sensor-width` and
+  `--sensor-height` override it, and a camera that cannot be asked is taken
+  for a Pi camera v1. A camera that answered is also told which mode to read
+  in (`--mode`): half the sensor each way for the live view and the picture of
+  the whole view, the full one for photographs. Left to choose for a small
+  picture, `rpicam-still` takes the sensor's smallest mode, and a v2's 640×480
+  is only the middle two fifths of what it sees, so the live view showed the
+  middle of a letter, two and a half times too big. Also the Paperless
+  address, token and tags, and **Check
   connection**.
 - **The camera looks at the table at an angle**, for a camera that cannot be
   mounted straight above the table, where a page shows as a trapezium. Instead
   of a box there are four corners to drag onto the corners of a page lying
-  where letters go — **Take a picture** finds them, a hair outside the page's
-  edges — and dashed lines show where the page's edges and middle will fall.
-  A letter never lies exactly there, so after straightening each photograph
-  is straightened once more onto the page it actually shows, cutting away the
-  strips and wedges of table beside it; when no clear page covering at least
-  half the picture is found, the photograph is kept as it is, and a side with
-  paper still beyond it is never cut — a sheet's far edge falls off under a
-  camera on a stalk and is found short, which used to take the right-hand
-  column off letters. Every photograph is then warped so those corners become
-  a rectangle's, before it joins the letter. The crop is the area the corners
-  span **with 8% of it left round them**, so a letter put down further along,
-  or a sheet bigger than the one set up with, is still photographed: what the
-  sensor leaves out is gone for good, and the part of a page that overhangs
-  is usually the letterhead, which is where the sender is read from. The room
-  costs no sharpness — the photograph is taken at the crop's own share of the
-  sensor, so a wider crop is a bigger picture rather than a coarser one. On a Pi Zero W this
-  adds about five seconds a page (a 5-megapixel photograph: decoding, warping
-  and encoding take a third each), and a page that cannot be straightened is
-  kept as it was taken. `SCANNERD_CORNERS` sets the same from the env file.
+  where letters go. **Take a picture** finds them, a hair outside the page's
+  edges, and dashed lines show where the page's edges and middle will fall.
+  Every photograph is warped so those corners become a rectangle's before it
+  joins the letter. A letter never lies exactly there, so each photograph is
+  then straightened again onto the page it shows, cutting away the strips and
+  wedges of table beside it. If no clear page covering at least half the
+  picture is found, the photograph is kept as it is. A side with paper still
+  beyond it is never cut: a sheet's far edge falls off under a camera on a
+  stalk and is found short, which used to cut the right-hand column off
+  letters. The crop is the area the corners span with 8% of it left round
+  them, so a letter put down further along, or a bigger sheet, is still
+  photographed. What the sensor leaves out is lost, and the overhanging part
+  is usually the letterhead, where the sender is read from. The margin costs
+  no sharpness, because the photograph is taken at the crop's own share of the
+  sensor. On a Pi Zero W this adds about five seconds a page (a 5-megapixel
+  photograph: decoding, warping and encoding take a third each), and a page
+  that cannot be straightened is kept as taken. `SCANNERD_CORNERS` sets the
+  same from the env file.
 - **Which way up**: **Turn left** and **Turn right** turn every photograph a
   quarter turn, for a camera mounted so that letters do not read upright. The
   live view turns with it; the picture for setting the area stays as the
-  camera sees it. Turning goes through the same warp as straightening, so it
-  costs the same five seconds a page on a Pi Zero W, with or without corners.
+  camera sees it. Turning uses the same warp as straightening, so it costs the
+  same five seconds a page on a Pi Zero W, with or without corners.
   `SCANNERD_ROTATE` (0, 90, 180 or 270, clockwise) sets it from the env file.
 
 Settings saved on the page go to `settings.toml` in the spool directory
 (owner-only, it holds the token) and win over the env file. The learnt empty
-table is kept there too (`empty-table.gray`), so a restart with a letter lying
-on the table sees the letter instead of taking it for the table.
+table is kept there too (`empty-table.gray`), so a restart with a letter on the
+table sees the letter and does not take it for the table.
 
 The page shows photographs of post, so anything but a loopback address needs
 `SCANNERD_UI_PASSWORD` (any user name). Its buttons also require a header that
 another site open in the same browser cannot send. The page never touches the
-camera or the queue itself: it reads the status the capture loop publishes and
-leaves commands for it, so a button pressed mid-photograph waits a moment
-instead of starting a second `rpicam-still`.
+camera or the queue: it reads the status the capture loop publishes and leaves
+commands for it, so a button pressed mid-photograph waits a moment and does not
+start a second `rpicam-still`.
 
 ## Nothing is lost
 
-A capture is written to the spool *before* any upload is attempted and removed
-only once Paperless has confirmed it. A crash, a flat battery or a Wi-Fi drop in
-between means a retry, not a letter nobody has. The spool is a directory of
-files rather than a database, so a Pi that was unplugged mid-write is
-recoverable with `ls`; a half-written photograph keeps a `.partial` extension
-and is never uploaded.
+A capture is written to the spool before any upload is attempted and removed
+only once Paperless has confirmed it. After a crash, a flat battery or a Wi-Fi
+drop, the upload is retried. The spool is a directory of files, so a Pi
+unplugged mid-write is recoverable with `ls`. A half-written photograph keeps a
+`.partial` extension and is never uploaded.
 
-Waiting uploads are retried on a timer (`--drain-every-secs`, 30 by default) as
-well as straight after each capture, and whether or not the camera is working —
-so a letter photographed while the network was down is sent once it is back, not
-when the next letter arrives. Each capture backs off from its last failed attempt
-to a five-minute ceiling rather than growing without bound: a Pi that has been
-offline overnight tries again within minutes once the network returns. An upload
-that has not finished in two minutes fails and is kept, rather than holding up
-the loop that watches for the next page.
+Waiting uploads are retried on a timer (`--drain-every-secs`, 30 by default)
+and straight after each capture, whether or not the camera is working. A letter
+photographed while the network was down is sent once it is back, without
+waiting for the next letter. Each capture backs off from its last failed
+attempt to a five-minute ceiling, so a Pi that was offline overnight retries
+within minutes of the network returning. An upload that has not finished in two
+minutes fails and is kept, so it does not block the loop that watches for the
+next page.
 
 ## Running it
 
@@ -525,12 +478,12 @@ PAPERLESS_TOKEN=... scannerd --drain-only --url http://localhost:8000
 PAPERLESS_TOKEN=... scannerd --tag post --tag home --roi 0.15,0.10,0.70,0.80
 ```
 
-`--drain-only` is for a cron job, and for checking the upload half works before
-there is a camera to test the other half with.
+`--drain-only` is for a cron job, and for checking uploads before there is a
+camera.
 
 Tags are given by name and must exist in Paperless first. Its upload endpoint
-only takes tag ids, so `scannerd` looks each name up once and sends the id; a
-name Paperless does not know fails the upload by name and keeps the capture.
+only takes tag ids, so `scannerd` looks each name up once and sends the id. An
+unknown name fails the upload by name and keeps the capture.
 
 ## On the Pi
 
@@ -546,18 +499,18 @@ make scannerd-to-pi PI_HOST=pi@raspberrypi.local  # copies it to ~/scannerd, ins
 ```
 
 A Pi Zero W is ARMv6 and runs neither 64-bit Raspberry Pi OS nor an aarch64
-binary; a Zero 2 W, 3, 4 or 5 on the 64-bit OS wants
+binary. A Zero 2 W, 3, 4 or 5 on the 64-bit OS wants
 `PI_TARGET=aarch64-unknown-linux-gnu.2.36` (after `rustup target add
 aarch64-unknown-linux-gnu`). The `.2.36` pins glibc to bookworm's. On a Zero W
-(checked on a Rev 1.1 with the OV5647 camera), a 320×240 preview frame takes 1.1–1.7
-seconds because `rpicam-still` starts the camera every time, and a full capture
-about 3.7 — so a page is photographed eight or nine seconds after it is put
-down.
+(checked on a Rev 1.1 with the OV5647 camera), a 320×240 preview frame takes
+1.1 to 1.7 seconds because `rpicam-still` starts the camera every time, and a
+full capture about 3.7, so a page is photographed eight or nine seconds after
+it is put down.
 
-Then `scannerd.service` and `scannerd.env.example` in this directory. It runs as
-its own user with the `video` group and nothing else: a daemon that can reach
-the camera and holds a Paperless token should not also be able to read the `pi`
-user's home directory. That user has to exist first:
+Then install `scannerd.service` and `scannerd.env.example` from this directory.
+It runs as its own user with the `video` group and nothing else, so a daemon
+that reaches the camera and holds a Paperless token cannot read the `pi` user's
+home directory. That user has to exist first:
 
 ```sh
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin --groups video,input scannerd
@@ -568,14 +521,14 @@ sudo systemctl enable --now scannerd
 journalctl -u scannerd -f
 ```
 
-The rig itself — a Pi 4 with the LCD, and Paperless on the same Pi — is set up
-from [`rig/`](rig/readme.md) with `make rig-setup` instead, and nothing on it
-but its data and secrets is kept anywhere else.
+The rig itself (a Pi 4 with the LCD, and Paperless on the same Pi) is set up
+from [`rig/`](rig/readme.md) with `make rig-setup` instead. Only its data and
+secrets are kept outside the repository.
 
 ## Without a Pi
 
 `tools/rpicam-still-ffmpeg` answers the two `rpicam-still` calls `scannerd`
-makes using ffmpeg, so the whole daemon — detection, capture, spool, upload —
+makes using ffmpeg, so the whole daemon (detection, capture, spool, upload)
 runs on a laptop against the dev stack:
 
 ```sh
@@ -593,9 +546,8 @@ SCANNERD_FAKE_INPUT=0 PAPERLESS_TOKEN=... \
 Add `--button stdin` to collect pages into letters, and press Enter to finish
 one.
 
-It stands in for the program, not the sensor: how long `rpicam-still` takes to
-start on a Pi, and how its exposure copes with a desk lamp, are still for the
-device to answer.
+It replaces the program only. How long `rpicam-still` takes to start on a Pi,
+and how its exposure copes with a desk lamp, can only be checked on the device.
 
 ## Tests
 
@@ -603,13 +555,13 @@ device to answer.
 cargo test -p scannerd
 ```
 
-Over a hundred of them, none needing a camera or a display: the detector against synthetic
-frames, the spool against a real directory, the uploader against a server on
-loopback, the loop itself (`tests/run.rs`) turned by hand with a scripted
+Over a hundred tests, none needing a camera or a display: the detector against
+synthetic frames, the spool against a real directory, the uploader against a
+server on loopback, the loop (`tests/run.rs`) turned by hand with a scripted
 camera and a Paperless that fails when told to, letters and the button
-(`tests/letters.rs`, `tests/button.rs`) the same way, and the PDF writer
+(`tests/letters.rs`, `tests/button.rs`) the same way, the PDF writer
 (`tests/pdf.rs`) read back through its own cross-reference table, the
-photograph check (`tests/quality.rs`) against synthetic pages and blurred copies
-of them, and the display (`tests/display.rs`) by what it draws and how often it
-touches the panel. What they cannot check is whether `rpicam-still` behaves as
-documented — that is what `--drain-only` and a first run on the device are for.
+photograph check (`tests/quality.rs`) against synthetic pages and blurred
+copies of them, and the display (`tests/display.rs`) by what it draws and how
+often it touches the panel. They cannot check whether `rpicam-still` behaves as
+documented. Use `--drain-only` and a first run on the device for that.

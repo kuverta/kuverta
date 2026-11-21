@@ -1,32 +1,30 @@
 # The rig
 
-The scanner on the shelf: a Raspberry Pi 4 on 64-bit Raspberry Pi OS Lite,
-a Pi camera v2 (IMX219; an OV5647 before it), a 3.5″ SPI LCD with touch, and
-Paperless-ngx running beside scannerd so the letters it photographs are read
-on the same Pi.
+The scanner is a Raspberry Pi 4 on 64-bit Raspberry Pi OS Lite with a Pi camera
+v2 (IMX219; an OV5647 before it) and a 3.5″ SPI LCD with touch. Paperless-ngx
+runs beside scannerd, so the letters it photographs are read on the same Pi.
 
-scannerd asks the camera which sensor it is when it starts, so a different
-camera needs nothing set here. What it does need is on the setup page: a lens
-with another angle of view puts the page somewhere else in the frame, so the
-crop or the corners are set again, and the empty table learnt again.
+scannerd detects the sensor at start, so a different camera needs no setting
+here. A lens with another angle of view moves the page in the frame: set the
+crop or the corners again on the setup page and learn the empty table again.
 
-Everything on it comes from this directory except three things:
+Everything on the Pi comes from this directory except three things:
 
 - **the secrets**: `/etc/scannerd.secrets` (Paperless token, setup page
   password) and `/opt/kuverta-paperless/paperless.secrets.env` (Paperless's
   secret key). `setup.sh` creates them and never overwrites them;
-- **the data**: the spool in `/var/lib/scannerd` (letters not yet sent, what
-  the setup page saved — crop, corners, tags, the folders' words) and
+- **the data**: the spool in `/var/lib/scannerd` (letters not yet sent, and
+  what the setup page saved: crop, corners, tags, the folders' words) and
   Paperless's documents;
 - **the logs**.
 
 `make rig-backup` copies the data and the logs to `~/Backups/kuverta-rig` on
-the Mac. Nothing else on the Pi needs keeping: a new SD card and
+the Mac. Nothing else on the Pi needs keeping. A new SD card and
 `make rig-setup` make the same rig.
 
 ## A new card
 
-1. Raspberry Pi Imager: Raspberry Pi OS Lite (64-bit). In its settings, the
+1. Raspberry Pi Imager: Raspberry Pi OS Lite (64-bit). In its settings, set the
    hostname `scannerpi`, the user `pi`, an SSH key and the Wi-Fi.
 2. From the workspace root:
 
@@ -40,16 +38,16 @@ the Mac. Nothing else on the Pi needs keeping: a new SD card and
    packages and Docker, the LCD and touch lines in the boot config, Paperless
    in `/opt/kuverta-paperless`, and scannerd as its own service. It says when
    a reboot is due.
-3. A token for scannerd: in Paperless (`http://scannerpi.local:8010`), or
-   `sudo docker compose --project-directory /opt/kuverta-paperless exec
+3. Create a token for scannerd in Paperless (`http://scannerpi.local:8010`), or
+   with `sudo docker compose --project-directory /opt/kuverta-paperless exec
    -u paperless webserver python3 manage.py drf_create_token <user>`. Put it in
    `/etc/scannerd.secrets`, then `sudo systemctl restart scannerd`.
-4. The data back, from the last `make rig-backup`: the spool into
+4. Restore the data from the last `make rig-backup`: the spool into
    `/var/lib/scannerd` (owned by `scannerd`), and Paperless's export with
    `document_importer`. The export has to be from the same Paperless version
    as `paperless/compose.yml` pins.
 
-`make rig-setup` again after changing anything here puts it on the Pi.
+After changing anything here, run `make rig-setup` again.
 
 ## What is here
 
@@ -64,8 +62,7 @@ the Mac. Nothing else on the Pi needs keeping: a new SD card and
 `setup.sh` also adds `fbcon=map:9` to `cmdline.txt`, so the login console
 does not draw over the LCD.
 
-Anything run inside Paperless's container — `manage.py`, the exporter, the
-importer — is run with `-u paperless`. `docker compose exec` is root by
-default, and files root leaves in Paperless's data, such as its search
-index, are files its worker cannot open: every letter then fails after it
-has been read.
+Run anything inside Paperless's container (`manage.py`, the exporter, the
+importer) with `-u paperless`. `docker compose exec` defaults to root, and
+the worker cannot open root-owned files in its data, such as the search index.
+Every letter then fails after it has been read.
