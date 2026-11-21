@@ -1,7 +1,7 @@
 # The `kuverta` host
 
-Runs the shared triage surface inside the standalone client, against the same
-Tauri commands its own UI already uses.
+Runs the shared triage surface inside the standalone client, on the Tauri
+commands its own UI already uses.
 
 ## Mounting it
 
@@ -12,31 +12,28 @@ make triage-ui
 ```
 
 That copies `kuverta-bird/core/` and this directory into
-`apps/desktop/ui/kuverta-bird/`, where the desktop app can serve them. Then open
-the app and click **triage** in the header.
+`apps/desktop/ui/kuverta-bird/`. Then open the app and click **triage** in the
+header.
 
-The copy exists because Tauri serves one directory as the web root, and files
-outside `apps/desktop/ui/` are not reachable from the page. It is not a build
-step: the layout under the target mirrors this directory exactly —
+Tauri serves one directory as the web root, so the page cannot reach files
+outside `apps/desktop/ui/`. The copy mirrors this directory exactly:
 
 ```
 apps/desktop/ui/kuverta-bird/core/...
 apps/desktop/ui/kuverta-bird/hosts/kuverta/...
 ```
 
-— so every relative import resolves unchanged and the files the app loads are
-byte for byte the files the tests run, which the install verifies with
-`diff -r` rather than assuming. Rewriting paths on the way in *would* be a
-build step, and a build step between the tested code and the running code is
-the seam worth not having. It is the same reason the Thunderbird manifest sits
-at `kuverta-bird/manifest.json` rather than one directory further in.
+Relative imports resolve unchanged and the app loads the same files the tests
+run. The install checks this with `diff -r`. Paths are not rewritten, because
+that would be a build step between tested and running code. The Thunderbird
+manifest sits at `kuverta-bird/manifest.json` for the same reason.
 
 The copy is gitignored. Re-run `make triage-ui` after changing anything under
 `kuverta-bird/core/`.
 
 ## What this host can and cannot do
 
-Declared in `capabilities`, and the surface reads it rather than assuming:
+Declared in `capabilities`, which the surface reads:
 
 | | |
 |---|---|
@@ -44,48 +41,43 @@ Declared in `capabilities`, and the surface reads it rather than assuming:
 | read state | yes |
 | search | yes |
 | sync | yes, and it reports refused changes |
-| undo | **`queued`** — a change waits in the undo window, so undoing cancels something that never happened |
+| undo | **`queued`**: a change waits in the undo window, so undoing cancels something that never happened |
 | file by category | yes, since `set_category` |
 
-Filing is the one change that is *not* queued, and deliberately: a category
-lives in the store and never reaches a server, so there is no round trip to
-hold back and nothing for the undo window to protect. Changing your mind is
-another correction — an event, not an edit, which is what the log wants anyway.
+Filing is the one change that is not queued. A category lives in the store and
+never reaches a server, so the undo window has nothing to hold back. To change
+your mind, file again: the log records it as another correction.
 
 ### How filing got here
 
-`kuverta` had the whole of stage 3 built and unreachable. The `correction`
-table, `record_correction`, `learned_categories`, and the `Learned` →
-`Classifier` loop at the top of every sync had all been there since early on,
-with end-to-end tests — and `record_correction` was called by nothing but those
-tests. There was no CLI command, no RPC method and no UI path to it.
+`kuverta` already had all of stage 3, unreachable. The `correction` table,
+`record_correction`, `learned_categories`, and the `Learned` → `Classifier`
+loop at the top of every sync existed with end-to-end tests, but only the tests
+called `record_correction`. There was no CLI command, RPC method or UI path.
 
-What was added is the exposure, plus one thing the exposure needed:
+Added:
 
 - `ClassifierSource::User`, so a correction is not recorded as a rules verdict.
-  Filing it as `rules` would have been a line shorter and would have put the
-  user's answers into the baseline the model of brief §3.3 is supposed to be
-  measured against.
-- `CURRENT_CATEGORY_JOIN` in `core-store`, one definition of "the category a
-  message is shown under" — a user verdict if there is one, else the most
-  recent rules verdict — shared by the three queries that need to agree, while
-  `disagreements` deliberately still reads `rules` only.
+  Recording it as `rules` would put the user's answers into the baseline the
+  model of brief §3.3 is measured against.
+- `CURRENT_CATEGORY_JOIN` in `core-store`, the single definition of "the
+  category a message is shown under": a user verdict if there is one, else the
+  latest rules verdict. Three queries share it. `disagreements` still reads
+  `rules` only, on purpose.
 - `Core::set_category`, which validates against `core-rules`, records the
-  correction and the verdict, and does nothing at all if the message is already
-  filed there.
+  correction and the verdict, and does nothing if the message is already filed
+  there.
 - The `set_category` Tauri command.
 
-That join also fixed a counting bug on the way past: `category_counts` joined
-every classification row, so a message reclassified between syncs was counted
-under every category it had ever been given, and the sidebar added up to more
-messages than the mailbox held.
+The join also fixed a counting bug. `category_counts` joined every
+classification row, so a message reclassified between syncs was counted under
+every category it ever had, and the sidebar total exceeded the mailbox.
 
 ## Keeping the adapter honest
 
 `test/kuverta-host.test.js` runs the host contract against a fake `invoke`
-whose shapes are taken from `core-rpc`: `date_utc` in seconds, snake_case keys,
-`category_counts` answering with pairs rather than an object, `messages` taking
-a folder id rather than a name, and an unknown command throwing rather than
-returning null. A command that drifts in `core-rpc` will not be caught by that
-fake — only by running it — so the fake is a guard against this adapter
-drifting, not against the client changing underneath it.
+shaped like `core-rpc`: `date_utc` in seconds, snake_case keys,
+`category_counts` answering with pairs instead of an object, `messages` taking
+a folder id instead of a name, and an unknown command throwing instead of
+returning null. The fake catches drift in this adapter. Drift in `core-rpc`
+only shows when the client is run.
