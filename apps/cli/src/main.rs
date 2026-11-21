@@ -1,6 +1,6 @@
 //! Development driver for the kuverta core.
 //!
-//! Not the product — the product is the triage UI. This exists so the sync
+//! Not the product - the product is the triage UI. This exists so the sync
 //! path can be exercised end to end before any UI exists, and so the store can
 //! be inspected without a SQLite client.
 
@@ -45,7 +45,7 @@ enum Command {
     },
     /// Authorise an OAuth2 account.
     ///
-    /// Microsoft takes the device flow — a short code and a URL to enter it at.
+    /// Microsoft takes the device flow - a short code and a URL to enter it at.
     /// Google cannot: it does not issue the mail scope to that grant, so it
     /// gets a browser redirect back to this process instead. Either way only
     /// the refresh token is kept, in the keychain.
@@ -111,7 +111,7 @@ enum Command {
     ///
     /// Run this before the first sync of a real account: it says which
     /// extensions are available, where sent, archived and deleted mail will
-    /// go, and — with --measure — how much a first sync will download.
+    /// go, and - with --measure - how much a first sync will download.
     Check {
         #[arg(long)]
         email: Option<String>,
@@ -141,8 +141,8 @@ enum Command {
     },
     /// Create a folder on the server.
     ///
-    /// Needed on servers that ship without an Archive folder — plain Dovecot
-    /// setups usually do — where `archive` has nowhere to file to.
+    /// Needed on servers that ship without an Archive folder - plain Dovecot
+    /// setups usually do - where `archive` has nowhere to file to.
     CreateFolder {
         /// Folder name, as the server should see it.
         name: String,
@@ -159,7 +159,7 @@ enum Command {
     Archive(Mutation),
     /// Move a message to the Trash folder.
     ///
-    /// Nothing here deletes mail permanently — see `docs/implementation-plan.md`
+    /// Nothing here deletes mail permanently - see `docs/implementation-plan.md`
     /// section 1a.
     Delete(Mutation),
     /// Move a message to a named folder.
@@ -226,7 +226,7 @@ enum Command {
     },
     /// Senders whose mail can be unsubscribed from, and how.
     ///
-    /// Read-only: it lists, and unsubscribes from nothing — that is done in
+    /// Read-only: it lists, and unsubscribes from nothing - that is done in
     /// the window's Cleanup, where each sender is chosen. Mail synced before
     /// the store kept `List-Unsubscribe` has it read back from disk first.
     Unsubscribable {
@@ -234,7 +234,7 @@ enum Command {
         email: Option<String>,
     },
     /// Ask the assistant something about an account's mail, or to do something
-    /// with it — the same assistant as the window's, with the same tools.
+    /// with it - the same assistant as the window's, with the same tools.
     Ask {
         #[arg(long)]
         email: Option<String>,
@@ -294,7 +294,7 @@ enum Command {
         #[arg(long)]
         out: Option<PathBuf>,
     },
-    /// Messages that look like one — what the window offers to delete with it.
+    /// Messages that look like one - what the window offers to delete with it.
     ///
     /// Read-only, for seeing what the likeness rules make of real mail.
     Similar {
@@ -321,7 +321,7 @@ enum Command {
         #[arg(long, default_value_t = 5)]
         k: usize,
         /// Hold out every other message, or every other sender within each
-        /// category — the second scores only senders never filed before.
+        /// category - the second scores only senders never filed before.
         #[arg(long, value_enum, default_value_t = Split::Alternate)]
         split: Split,
         /// List every message a method got wrong, with its sender and subject.
@@ -539,7 +539,7 @@ struct Paper {
     #[arg(long, env = "PAPERLESS_TOKEN")]
     token: String,
 
-    /// Only post carrying this tag — one address of several in one instance.
+    /// Only post carrying this tag - one address of several in one instance.
     #[arg(long, group = "selector")]
     tag: Option<String>,
 
@@ -1290,7 +1290,7 @@ async fn create_folder(
 /// Queues a mailbox mutation.
 ///
 /// Nothing is sent here. The change is recorded, the undo window starts, and
-/// the next `sync` is what puts it on the server — which is also what makes
+/// the next `sync` is what puts it on the server - which is also what makes
 /// `undo` meaningful rather than a race.
 fn mutate(store: &Store, args: Mutation, intent: Intent) -> Result<()> {
     let account = resolve_account(store, args.email.as_deref())?;
@@ -1416,7 +1416,7 @@ fn folder_pairs(folders: &[core_store::model::Folder]) -> Vec<(&str, Option<&str
 
 /// Chooses which copy of a message to act on.
 ///
-/// One message can be in several folders — that is the whole point of the
+/// One message can be in several folders - that is the whole point of the
 /// dedup design, and on Gmail it is routine. Archiving means getting it out of
 /// the inbox, so INBOX wins when there is a choice; a copy already sitting in
 /// the destination is never the one to move.
@@ -2149,8 +2149,8 @@ fn list_unsubscribable(
 
 /// Scores the rules, a prompted model and embeddings on the same labelled mail.
 ///
-/// The gate for brief stage 5 — "you can say whether it beats the rules, with
-/// numbers" — and the embeddings-against-prompting spike plan §4 asks for before
+/// The gate for brief stage 5 - "you can say whether it beats the rules, with
+/// numbers" - and the embeddings-against-prompting spike plan §4 asks for before
 /// either is committed to.
 async fn evaluate_models(
     path: &std::path::Path,
@@ -2189,7 +2189,7 @@ async fn evaluate_models(
     // matters, and neither answer is the whole truth:
     //
     // - alternate: every other message. Most scored messages then have a
-    //   sibling from the same sender among the filings — which is what a mailbox
+    //   sibling from the same sender among the filings - which is what a mailbox
     //   looks like once it has been used for a while, and on a generated corpus
     //   whose senders repeat templates, an upper bound for anything that learns
     //   from filings.
@@ -2470,7 +2470,7 @@ fn score(
 /// A count says how often a method is wrong; this says whether it is wrong in a
 /// way that matters. Three misses on invoices and three on a message that sits
 /// on the line between two categories are the same number and not the same
-/// result — brief §3.3's "record where they disagree and which was right".
+/// result - brief §3.3's "record where they disagree and which was right".
 fn print_wrong(
     test: &[&(LabelledFacts, core_rules::Category)],
     predicted: &[Option<core_rules::Category>],
