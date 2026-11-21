@@ -1,11 +1,11 @@
 ---
-description: How a kuverta release is made — tags, the release workflow, signing, and what a release does not include yet.
+description: How a kuverta release is made, tags, the release workflow, signing, and what a release does not include yet.
 ---
 
 # Releasing
 
 A release is a tag. Pushing `vX.Y.Z` runs `.github/workflows/release.yml`, which
-makes a **draft** release and builds into it:
+makes a draft release and builds into it:
 
 | System | Built on | Installers |
 | --- | --- | --- |
@@ -14,8 +14,8 @@ makes a **draft** release and builds into it:
 | Linux (64-bit ARM) | ubuntu-22.04-arm | `.AppImage`, `.deb`, `.rpm` |
 | Windows 10+ (x86-64) | windows-latest | `-setup.exe`, `.msi` |
 
-Nothing is public until the draft is published. The four builds are separate:
-if one fails the others still upload, and building the same tag again fills the
+Nothing is public until the draft is published. The four builds are separate.
+If one fails the others still upload, and building the same tag again fills the
 same draft.
 
 ## Each release
@@ -30,52 +30,52 @@ git push origin main v0.2.0     # starts the build
 Then, on GitHub → Releases, read the draft (about fifteen minutes the first
 time, less with a warm cache), write what changed, and **Publish**. Within
 twelve hours every running kuverta shows "kuverta 0.2.0 is available" in its
-header; Settings → *Check for updates* asks at once.
+header. Settings → *Check for updates* asks at once.
 
 Publishing also runs `.github/workflows/pages.yml`, which puts the new `.deb`
 into the [apt repository](#the-apt-repository) a few minutes later.
 
-The workflow refuses a tag that does not match the version in `Cargo.toml`: the
-app compares its own version with the latest tag, and a mismatch would offer the
-release to itself forever.
+The workflow refuses a tag that does not match the version in `Cargo.toml`. The
+app compares its own version with the latest tag, so a mismatch would make it
+offer the release to itself forever.
 
-To try the bundle locally first: `make bundle` (needs
-`cargo install tauri-cli --version "^2" --locked`) leaves `kuverta.app` and a
+To try the bundle locally first, run `make bundle` (needs
+`cargo install tauri-cli --version "^2" --locked`). It leaves `kuverta.app` and a
 `.dmg` for this Mac in `target/release/bundle/`.
 
 ## Once, before the first release
 
-1. **Make the repository public.** Releases of a private repository cannot be
+1. Make the repository public. Releases of a private repository cannot be
    downloaded without signing in, and the app's update check asks GitHub
    anonymously.
-2. **Allow the workflow to create releases**: Settings → Actions → General →
+2. Allow the workflow to create releases: Settings → Actions → General →
    Workflow permissions → *Read and write permissions*.
-3. **Decide about signing.**
-    - **Unsigned (free).** The app is signed *ad hoc*, which Apple Silicon needs
-      to run it at all; macOS then says "cannot be verified" the first time, and
+3. Decide about signing.
+    - Unsigned (free). The app is signed *ad hoc*, which Apple Silicon needs
+      to run it at all. macOS says "cannot be verified" the first time, and
       each person allows it once.
-    - **Signed and notarised.** Needs the Apple Developer Program. Add a
+    - Signed and notarised. Needs the Apple Developer Program. Add a
       *Developer ID Application* certificate and the Apple ID details as the
       repository secrets `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`,
-      `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID`,
-      and the next release is signed and notarised. `docs/releasing.md` has the
+      `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID`.
+      The next release is then signed and notarised. `docs/releasing.md` has the
       details.
 
 ## The apt repository
 
 Debian and Ubuntu install kuverta from an apt repository at
 <https://kuverta.github.io/kuverta/apt>, published with this website. It is
-static files: `tools/apt-repo.sh` makes them from the `.deb` of the last five
+static files. `tools/apt-repo.sh` makes them from the `.deb` of the last five
 published releases and signs them, and the workflow's `apt` job runs it on
 every deployment. A deployment replaces the whole site, so the repository is
-made again each time and nothing is kept between runs. The job that runs
+rebuilt each time and nothing is kept between runs. The job that runs
 MkDocs never holds the signing key.
 
-Without the key the site is still published, only without `/apt`.
+Without the key the site is still published, but without `/apt`.
 
 ### Once, to set it up
 
-1. **Make a signing key** that does nothing else, on a machine you trust:
+1. Make a signing key that does nothing else, on a machine you trust:
 
     ```sh
     export GNUPGHOME=$(mktemp -d)
@@ -84,43 +84,43 @@ Without the key the site is still published, only without `/apt`.
     gpg --armor --export > kuverta-apt-public.asc
     ```
 
-2. **Add the private key as a secret**: Settings → Secrets and variables →
+2. Add the private key as a secret: Settings → Secrets and variables →
    Actions → *New repository secret*, named `APT_SIGNING_KEY`, with the whole
    of `kuverta-apt-private.asc`. A key with a passphrase also needs
    `APT_SIGNING_PASSPHRASE`.
-3. **Keep `kuverta-apt-private.asc` somewhere safe and offline**, then delete
+3. Keep `kuverta-apt-private.asc` somewhere safe and offline, then delete
    the copy and `$GNUPGHOME`. Everyone who added the repository trusts this
-   key; a new one means each of them fetching `kuverta.gpg` again.
-4. **Run the workflow once** (Actions → Website → *Run workflow*) so the
+   key. With a new key, each of them has to fetch `kuverta.gpg` again.
+4. Run the workflow once (Actions → Website → *Run workflow*) so the
    repository exists before the next release.
 
-Publishing a release needs nothing more: its run of the workflow starts
-another on `main`, which is the one that builds and deploys. The
-`github-pages` environment accepts `main` only, and a release's own run has
-its tag as the ref.
+Publishing a release needs nothing more. Its run of the workflow starts
+another on `main`, and that one builds and deploys. The `github-pages`
+environment accepts `main` only, and a release's own run has its tag as the
+ref.
 
 To check it from any Debian or Ubuntu machine, follow the steps on the
-[install page](../install.md#linux): `apt policy kuverta` should list the
+[install page](../install.md#linux). `apt policy kuverta` should list the
 latest release.
 
 ## What each system still lacks
 
-- **Windows and Linux are unsigned.** SmartScreen warns (*More info → Run
-  anyway*); signing needs a code-signing certificate. The Linux packages are
+- Windows and Linux are unsigned. SmartScreen warns (*More info → Run
+  anyway*). Signing needs a code-signing certificate. The Linux packages are
   unsigned too, but the apt repository is signed, and apt checks each package
   against its checksum there.
-- **32-bit ARM Linux** (`armhf`) is not built: GitHub has no runner for it,
-  and cross-compiling WebKitGTK is its own project. If it ever is, adding its
-  `.deb` to the release is enough for apt: `tools/apt-repo.sh` makes an index
-  for every architecture it is given.
+- 32-bit ARM Linux (`armhf`) is not built. GitHub has no runner for it,
+  and cross-compiling WebKitGTK is a project of its own. If it is built later,
+  adding its `.deb` to the release is enough for apt, because
+  `tools/apt-repo.sh` makes an index for every architecture it is given.
 
 ## What a release does not include yet
 
-- **The `kuverta` command-line tool.** OAuth2 sign-in still needs it, from
+- The `kuverta` command-line tool. OAuth2 sign-in still needs it, from
   `cargo install --path apps/cli`.
-- **Automatic updates.** The app says a release exists and links to it;
-  installing is replacing the app. Tauri's updater would need an update signing
-  key and a manifest per release.
+- Automatic updates. The app says a release exists and links to it. To install,
+  replace the app. Tauri's updater would need an update signing key and a
+  manifest per release.
 
 ## This website
 
@@ -135,5 +135,5 @@ python3 -m venv .venv
 ```
 
 The brand files the site uses are copies in `website/docs/assets/brand/`, so the
-build never reaches outside `website/`; copy them again when the logo changes.
+build never reaches outside `website/`. Copy them again when the logo changes.
 In the repository's settings, **Pages → Source** has to be *GitHub Actions*.

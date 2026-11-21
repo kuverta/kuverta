@@ -4,8 +4,8 @@ description: Installing kuverta on macOS, Linux and Windows, the first run, upda
 
 # Install
 
-Every installer is on the **[latest release](https://github.com/kuverta/kuverta/releases/latest)**.
-kuverta is usable but not finished; the [FAQ](user-guide/faq.md#what-is-not-there-yet)
+Every installer is on the [latest release](https://github.com/kuverta/kuverta/releases/latest).
+kuverta is usable but not finished. The [FAQ](user-guide/faq.md#what-is-not-there-yet)
 lists what is still missing.
 
 | System | Installers |
@@ -19,23 +19,23 @@ lists what is still missing.
 1. Download the `.dmg`, open it, and drag **kuverta** into **Applications**.
 2. Open kuverta from Applications.
 
-Releases are not notarised by Apple yet, so the first time macOS says that
-kuverta "cannot be verified" and will not open it. Allow it once:
+Releases are not notarised by Apple yet. The first time, macOS says that
+kuverta "cannot be verified" and will not open it. Allow it once, either way:
 
-- open **System Settings → Privacy & Security**, scroll down, and press
-  **Open Anyway** next to the note about kuverta; or
-- in Terminal:
+- Open **System Settings → Privacy & Security**, scroll down, and press
+  **Open Anyway** next to the note about kuverta.
+- In Terminal:
 
     ```sh
     xattr -dr com.apple.quarantine /Applications/kuverta.app
     ```
 
-After that it opens normally. Passwords are kept in your **login keychain**.
+After that it opens normally. Passwords are kept in your login keychain.
 
 !!! tip "Apple Mail accounts and smart mailboxes"
     macOS only shows Apple Mail's accounts and smart mailboxes to programs with
-    **Full Disk Access**. If you want the setup assistant to find them, give it
-    to kuverta in **System Settings → Privacy & Security → Full Disk Access**.
+    **Full Disk Access**. For the setup assistant to find them, grant it to
+    kuverta in **System Settings → Privacy & Security → Full Disk Access**.
     Everything else works without it.
 
 ## Linux
@@ -53,8 +53,8 @@ Pick one:
 
 === "Debian, Ubuntu"
 
-    Add kuverta's apt repository once, and `apt` keeps kuverta up to date
-    with the rest of the system:
+    Add kuverta's apt repository once. `apt` then updates kuverta with the
+    rest of the system:
 
     ```sh
     sudo curl -fsSLo /usr/share/keyrings/kuverta.gpg https://kuverta.github.io/kuverta/apt/kuverta.gpg
@@ -75,76 +75,76 @@ Pick one:
     sudo dnf install ./kuverta-*.rpm
     ```
 
-**A keyring has to be running.** kuverta keeps passwords in the Secret Service,
-which is what GNOME Keyring and KWallet provide. On GNOME and KDE desktops it
-already runs; on a minimal window manager, start `gnome-keyring-daemon` (or
-another Secret Service provider) first, or kuverta cannot store a password.
+A keyring has to be running. kuverta keeps passwords in the Secret Service,
+which GNOME Keyring and KWallet provide. On GNOME and KDE desktops it already
+runs. On a minimal window manager, start `gnome-keyring-daemon` (or another
+Secret Service provider) first, or kuverta cannot store a password.
 
-The packages themselves are not signed; the apt repository is, so `apt`
-checks every package it downloads against it.
+The packages are not signed. The apt repository is, so `apt` checks every
+package it downloads against it.
 
 Each package comes for x86-64 (`amd64`, `x86_64` in the name) and for 64-bit
-ARM (`arm64`, `aarch64`), such as a Raspberry Pi 4 or 5 with a 64-bit system;
-the apt repository picks the right one by itself. There is no build for 32-bit
-ARM (`armhf`).
+ARM (`arm64`, `aarch64`), such as a Raspberry Pi 4 or 5 with a 64-bit system.
+The apt repository picks the right one. There is no build for 32-bit ARM
+(`armhf`).
 
 ## Windows
 
 Run the `-setup.exe` (or the `.msi`). The Windows build is compiled on every
-change but has not been tried by anyone yet — reports are welcome.
+change but nobody has tried it yet. Reports are welcome.
 
-SmartScreen warns about programs that are not signed: choose **More info →
-Run anyway**. Passwords are kept in the **Windows Credential Manager**.
+SmartScreen warns about unsigned programs. Choose **More info → Run anyway**.
+Passwords are kept in the Windows Credential Manager.
 
 ## The first run
 
-On a new installation kuverta opens a **setup assistant** instead of an empty
-window. Every step can be skipped and done later; it can be opened again from
+On a new installation kuverta opens a setup assistant. Every step can be
+skipped and done later. Open it again from
 **Settings → General → Open the setup assistant**.
 
-1. **Profiles.** How you want to keep your mail apart — private, one company,
-   another. Add a row per profile, or none to keep everything together; the
-   later steps ask which profile each account and address goes in. See
-   [Profiles](user-guide/profiles.md).
+1. **Profiles.** How you keep your mail apart, for example private, one
+   company, another. Add a row per profile, or none to keep everything
+   together. The later steps ask which profile each account and address goes
+   in. See [Profiles](user-guide/profiles.md).
 2. **Local models.** Checks whether [Ollama](https://ollama.com) is installed and
-   running, offers the download link or install command if it is not, starts it
-   if it is installed but stopped, and downloads the models kuverta uses, with
-   progress. See [Models](user-guide/models.md).
+   running. If it is not installed, it offers the download link or install
+   command. If it is stopped, it starts it. Then it downloads the models
+   kuverta uses, with progress. See [Models](user-guide/models.md).
 3. **Paper mail.** Looks for a Paperless-ngx at `localhost:8000` and
-   `paperless.local:8000`. Connect to one you have — with your Paperless user
-   name and password, which are exchanged for an API token, or with a token you
-   paste — or let kuverta **install one with Docker**: it writes a compose file
+   `paperless.local:8000`. Connect to one you have, with your Paperless user
+   name and password (exchanged for an API token) or with a token you paste.
+   Or let kuverta **install one with Docker**: it writes a compose file
    and an owner-only settings file into `paperless/` in its data directory and
-   starts it. Docker itself is yours to install; the assistant says where. See
-   [Paper post](user-guide/paper.md).
+   starts it. You install Docker yourself, and the assistant says where to get
+   it. See [Paper post](user-guide/paper.md).
 4. **Mail accounts.** Reads the accounts Thunderbird and Apple Mail know. For
-   any other address it finds the servers from a built-in list of common
-   providers, the provider's own autoconfig file, or Mozilla's directory — the
-   way Thunderbird does. Thunderbird's saved passwords come across with its
-   accounts (with a primary password set, kuverta asks for that one password);
+   any other address it finds the servers the way Thunderbird does: from a
+   built-in list of common providers, the provider's own autoconfig file, or
+   Mozilla's directory. Thunderbird's saved passwords come across with its
+   accounts (with a primary password set, kuverta asks for that one password).
    Apple Mail's stay in its keychain, so you type each one once. Every account
    is signed in to before the assistant moves on, and new accounts start
    syncing when it finishes.
 
-The first sync downloads the whole mailbox and can take a while; the header
-shows how far it has got.
+The first sync downloads the whole mailbox and can take a while. The header
+shows progress.
 
 ## Updating
 
 kuverta asks GitHub for the latest release twice a day. When there is a newer
 one, the header says **"kuverta X.Y.Z is available"** with **Download**,
 **What's new** and **Later**. **Settings → General → Check for updates** asks
-straight away.
+at once.
 
-Updating is installing the new release over the old one — drag the new app
+To update, install the new release over the old one: drag the new app
 into Applications, install the new package, or run the new setup. With the apt
 repository, `sudo apt update && sudo apt upgrade` does it. Your mail, settings
-and passwords stay where they are.
+and passwords are kept.
 
 ## Uninstalling
 
-Removing kuverta completely is three things: the app, its data directory, and
-its entries in the system keychain.
+To remove kuverta completely, remove the app, its data directory, and its
+entries in the system keychain.
 
 ### 1. Remove the app
 
@@ -174,7 +174,7 @@ its entries in the system keychain.
 ### 2. Remove the data directory
 
 This holds the local copy of your mail, search index, settings, smart
-mailboxes, scheduled mail, logs, and your OpenPGP keys (in `pgp/` — keep a copy
+mailboxes, scheduled mail, logs, and your OpenPGP keys (in `pgp/`, keep a copy
 if you still need them). Your mail itself stays on your mail servers.
 
 | System | Data directory |
@@ -208,14 +208,14 @@ build uses `kuverta-dev` instead of `kuverta`.)
     docker compose down        # stops it and keeps your documents
     ```
 
-    `docker compose down -v` also deletes the volumes — **every scanned
-    document** in that Paperless. Only do that if you have exported what you
-    want to keep.
+    `docker compose down -v` also deletes the volumes, and with them **every
+    scanned document** in that Paperless. Only do that if you have exported
+    what you want to keep.
 
 ### 3. Remove the keychain entries
 
-kuverta files every secret in the system keychain under the service name
-**`kuverta`**, and OAuth2 sign-ins under **`kuverta-oauth`**. The account names
+kuverta stores every secret in the system keychain under the service name
+`kuverta`, and OAuth2 sign-ins under `kuverta-oauth`. The account names
 of the entries are:
 
 | Entry | What it holds |
@@ -257,7 +257,7 @@ remove everything that is left:
 
     Open **Control Panel → Credential Manager → Windows Credentials**. Under
     *Generic Credentials*, kuverta's entries are named
-    `<account>.kuverta` and `<account>.kuverta-oauth` — for example
+    `<account>.kuverta` and `<account>.kuverta-oauth`, for example
     `erika@example.de.kuverta`. Remove each. From a command prompt:
 
     ```bat
@@ -265,5 +265,5 @@ remove everything that is left:
     cmdkey /delete:erika@example.de.kuverta
     ```
 
-The development instance uses `kuverta-dev` and `kuverta-oauth-dev` instead;
-see [dev and installed side by side](developers/index.md#dev-and-installed-side-by-side).
+The development instance uses `kuverta-dev` and `kuverta-oauth-dev` instead.
+See [dev and installed side by side](developers/index.md#dev-and-installed-side-by-side).

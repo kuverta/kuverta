@@ -1,27 +1,27 @@
 ---
-description: Building kuverta from source — toolchain, system libraries, make targets, run.sh, tests, and keeping a development build apart from an installed one.
+description: Building kuverta from source, toolchain, system libraries, make targets, run.sh, tests, and keeping a development build apart from an installed one.
 ---
 
 # Building from source
 
-kuverta is a Rust workspace with a Tauri desktop app, plus a JavaScript triage
-surface in `kuverta-bird/` that runs both inside the app and as a Thunderbird
-extension. The repository is
-[github.com/kuverta/kuverta](https://github.com/kuverta/kuverta); it is licensed
-under the **AGPL-3.0-or-later**.
+kuverta is a Rust workspace with a Tauri desktop app. The JavaScript triage
+surface in `kuverta-bird/` runs inside the app and as a Thunderbird extension.
+The repository is
+[github.com/kuverta/kuverta](https://github.com/kuverta/kuverta), licensed
+under the AGPL-3.0-or-later.
 
 ## What you need
 
 | | |
 | --- | --- |
-| **Rust 1.90** | pinned in `rust-toolchain.toml`, with rustfmt, clippy and rust-analyzer. With [rustup](https://rustup.rs) installed, the right toolchain is fetched on the first `cargo` command. |
-| **Node.js 18 or later** | for the triage surface's tests (`make test-js`); its only dependencies are jsdom and, for browser tests, Playwright. |
+| **Rust 1.90** | pinned in `rust-toolchain.toml`, with rustfmt, clippy and rust-analyzer. [rustup](https://rustup.rs) fetches it on the first `cargo` command. |
+| **Node.js 18 or later** | for the triage surface's tests (`make test-js`). The only dependencies are jsdom and, for browser tests, Playwright. |
 | **Docker** with Compose | for the [dev stack](dev-stack.md): an IMAP server, an SMTP sink and Paperless-ngx. |
 | **Python 3** | for `docker/fill-mailbox.py`, which generates test mail. |
 | **Tauri CLI 2** | only to build installers: `cargo install tauri-cli --version "^2" --locked`. |
 
-On **Linux**, the app links against WebKitGTK and D-Bus. On Debian or Ubuntu —
-the list CI installs:
+On Linux, the app links against WebKitGTK and D-Bus. On Debian or Ubuntu,
+install what CI installs:
 
 ```sh
 sudo apt-get install -y --no-install-recommends \
@@ -30,8 +30,8 @@ sudo apt-get install -y --no-install-recommends \
   libjavascriptcoregtk-4.1-dev librsvg2-dev libayatana-appindicator3-dev libxdo-dev
 ```
 
-On **Windows**, building the TLS library needs [NASM](https://www.nasm.us/) on
-the `PATH`. On **macOS**, the Xcode command line tools are enough.
+On Windows, building the TLS library needs [NASM](https://www.nasm.us/) on
+the `PATH`. On macOS, the Xcode command line tools are enough.
 
 ## First build
 
@@ -43,22 +43,22 @@ make e2e        # register the dev account in a scratch store, sync it, send one
 make triage     # copy the triage surface into the app, build, open the window
 ```
 
-Expected after `make e2e`: **9 fixtures, 8 messages, 9 locations.** The
+Expected after `make e2e`: 9 fixtures, 8 messages, 9 locations. The
 newsletter fixture is in both INBOX and Archive under one Message-ID and must
-collapse into a single message; if the count is 9, deduplication has regressed.
+collapse into a single message. A count of 9 means deduplication has regressed.
 
-Nine messages prove that sync works but do not feel like a mailbox. For that:
+For a mailbox of realistic size:
 
 ```sh
 make fill-dev   # ~250 varied messages in a second dev account, demo@kuverta.test
 ```
 
-Both languages, every category, HTML-only marketing, attachments, a thread, and
-dates spread over seven months.
+It covers both languages, every category, HTML-only marketing, attachments, a
+thread, and dates spread over seven months.
 
 ## make targets
 
-`make help` lists them. The ones you will use:
+`make help` lists them all. The common ones:
 
 | Target | |
 | --- | --- |
@@ -72,20 +72,19 @@ dates spread over seven months.
 | `make triage` | `triage-ui`, then open the window on the scratch store |
 | `make app` / `make app-real` | open the window on the scratch store / on the real data directory |
 | `make build` | build the whole workspace |
-| `make test` | Rust tests, then the triage surface's tests; integration tests skip if the dev stack is down |
-| `make test-all` | Rust tests with the dev stack **required**, as CI runs them |
+| `make test` | Rust tests, then the triage surface's tests. Integration tests skip if the dev stack is down |
+| `make test-all` | Rust tests with the dev stack required, as CI runs them |
 | `make test-js` | the triage surface's tests, in Node, no mail client needed |
 | `make test-e2e` | browser tests of the triage page and settings, in Chromium via Playwright |
-| `make fmt`, `make lint` | rustfmt; Clippy with warnings as errors |
+| `make fmt`, `make lint` | rustfmt, and Clippy with warnings as errors |
 | `make check` | what CI runs: format check, Clippy, `test-all` |
 | `make bundle` | build `kuverta.app` and a `.dmg` for this Mac into `target/release/bundle` |
-| `make release VERSION=x.y.z` | set the version, commit and tag — see [Releasing](releasing.md) |
+| `make release VERSION=x.y.z` | set the version, commit and tag, see [Releasing](releasing.md) |
 | `make scannerd-pi`, `make scannerd-to-pi PI_HOST=…` | cross-compile the [scanner](scanner.md) and copy it to a Pi |
 | `make clean` | remove build output and the scratch store |
 
-Builds run with `-j 2` on purpose: a full-parallelism build of this workspace
-can run out of memory on a laptop, and an OOM-killed build looks like a mystery
-rather than like running out of memory.
+Builds run with `-j 2`. A fully parallel build of this workspace can run out of
+memory on a laptop, and an OOM-killed build does not say that is why it failed.
 
 ## run.sh
 
@@ -99,13 +98,13 @@ rather than like running out of memory.
 ./run.sh --data-dir ~/somewhere
 ```
 
-Release is the default because the list needs it: a debug build roughly triples
-the cost of moving rows across the Rust–JavaScript bridge, which decides whether
-scrolling holds 60 fps. Use `--debug` when the change is markup.
+Release is the default because the list needs it. A debug build roughly triples
+the cost of moving rows across the bridge between Rust and JavaScript, which
+decides whether scrolling holds 60 fps. Use `--debug` when the change is markup.
 
 ## Dev and installed side by side
 
-A development build and an installed kuverta share nothing they should not:
+A development build and an installed kuverta are kept apart:
 
 | | Installed app, `./run.sh` | Dev: `./run.sh --dev`, `make e2e`, … |
 | --- | --- | --- |
@@ -115,16 +114,16 @@ A development build and an installed kuverta share nothing they should not:
 | Update check | twice a day | off (Settings → Check for updates still asks) |
 | Paperless | the one the setup assistant installs: port 8010 or above, compose project `kuverta-paperless` | the dev stack's, port 8000, project `kuverta-dev` |
 
-Two environment variables decide it:
+Two environment variables control this:
 
-- `KUVERTA_INSTANCE=dev` makes a process the dev instance: its own keychain
+- `KUVERTA_INSTANCE=dev` makes a process the dev instance, with its own keychain
   entries and, without `KUVERTA_DATA_DIR`, its own data directory,
   `~/.local/share/kuverta-dev`. The dev targets set it.
 - `KUVERTA_DATA_DIR` puts the data directory anywhere.
 
-One window per data directory: `./run.sh` without `--dev` opens the installed
-app's store and refuses to start while the installed app has it open, and the
-other way round.
+Only one window can open a data directory. `./run.sh` without `--dev` opens the
+installed app's store and refuses to start while the installed app has it open,
+and the other way round.
 
 ## Tests
 
@@ -141,13 +140,13 @@ Linux against the dev stack, and builds the app and CLI on Windows.
 
 ## Where things are decided
 
-- The **readme** has the design rules worth knowing before changing anything —
-  nothing destroys mail, no UID is trusted on its own, Bcc never reaches the
-  message, dedup is per account, a quiet sync must be cheap.
-- **`docs/decisions.md`** is the decisions log: why the classifier is ported to
+- The readme has the design rules to know before changing anything: nothing
+  destroys mail, no UID is trusted on its own, Bcc never reaches the message,
+  dedup is per account, a quiet sync must be cheap.
+- `docs/decisions.md` is the decisions log: why the classifier is ported to
   JavaScript, why one surface has two hosts, how the models were measured, how
-  post is filed, and more — each with what it cost.
-- **`docs/implementation-plan.md`** and the briefs in `docs/` are the plan the
+  post is filed, and more, each with what it cost.
+- `docs/implementation-plan.md` and the briefs in `docs/` are the plan the
   project was built against.
 
 Next: [the dev stack](dev-stack.md), [the command line](cli.md),

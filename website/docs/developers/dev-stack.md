@@ -1,12 +1,11 @@
 ---
-description: kuverta's Docker development stack — Dovecot with fixtures, a Gmail-shaped Dovecot, Mailpit, Paperless-ngx and Ollama.
+description: kuverta's Docker development stack, Dovecot with fixtures, a Gmail-shaped Dovecot, Mailpit, Paperless-ngx and Ollama.
 ---
 
 # The dev stack
 
-Everything in `docker/` is for local development, so none of the work needs a
-real mailbox. Nothing there is hardened; nothing should be exposed beyond
-localhost.
+Everything in `docker/` is for local development, so no work needs a real
+mailbox. Nothing there is hardened. Do not expose it beyond localhost.
 
 ```sh
 make dev-up      # Dovecot + fixtures, a Gmail-shaped Dovecot, Mailpit, Paperless-ngx
@@ -35,30 +34,29 @@ Nine `.eml` files are loaded into Dovecot on first start, over IMAP `APPEND`
 | `03-html-tracking` | HTML with a tracking pixel and a `<script>` |
 | `04-attachment` | `multipart/mixed` with a real PDF |
 | `05-utf8-subject` | RFC 2047 German subject, ISO-8859-1 quoted-printable body |
-| `06-no-messageid` | **no `Message-ID`** — forces the synthetic dedup key |
+| `06-no-messageid` | **no `Message-ID`**, forces the synthetic dedup key |
 | `07-invoice-de` | a realistic German invoice, a classification target |
-| `archive/02-newsletter-relabelled` | **the same `Message-ID` as 02, in another folder** — Gmail's labels |
+| `archive/02-newsletter-relabelled` | **the same `Message-ID` as 02, in another folder**, like Gmail's labels |
 | `archive/08-old-thread` | `In-Reply-To` / `References` |
 
-The two in bold catch the expensive regressions. Seeding is idempotent; a
+The two in bold catch the expensive regressions. Seeding is idempotent: a
 mailbox that already holds mail is left alone.
 
 ## Paperless-ngx
 
-Paperless is in the default stack rather than behind a profile: post is half of
-what kuverta is for, and a dev environment with only mail in it makes the paper
-half something you remember to test rather than something you use. The first
+Paperless is in the default stack, with no profile needed, because post is half
+of what kuverta does and should be in use during development. The first
 start is slow while it builds its index. OCR is set up for German and English,
 with deskew and page rotation on for the scanner's photographs.
 
-An API token:
+Get an API token:
 
 ```sh
 curl -X POST http://localhost:8000/api/token/ -d username=admin -d password=admin
 ```
 
-Then `PAPERLESS_TOKEN=… kuverta paper --check`. Drop PDFs or images into
-`docker/paperless/consume/` and Paperless files them, or send them the way the
+Then run `PAPERLESS_TOKEN=… kuverta paper --check`. Drop PDFs or images into
+`docker/paperless/consume/` and Paperless files them. Or send them the way the
 Pi does, without a camera:
 
 ```sh
@@ -66,13 +64,13 @@ Pi does, without a camera:
 scannerd --drain-only --spool <dir> --tag "<address>"
 ```
 
-A postal address is usually a tag: create it in Paperless first, then add the
+A postal address is usually a tag. Create it in Paperless first, then add the
 address in the app's settings with that tag and paste the token there.
 
 ## Ollama
 
-On Apple Silicon the container has no GPU access, so it is much slower than a
-native Ollama; use it for CI and parity, and run Ollama natively for real work.
-Both listen on 11434, so run one or the other. `make ai-model` pulls the chat
+On Apple Silicon the container has no GPU access and is much slower than a
+native Ollama. Use it for CI and parity, and run Ollama natively for real work.
+Both listen on 11434, so run only one. `make ai-model` pulls the chat
 model and `nomic-embed-text`, the embedding model `kuverta eval` compares
 prompting against.
