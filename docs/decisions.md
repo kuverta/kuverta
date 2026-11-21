@@ -1096,30 +1096,38 @@ not yet been run against one.
 
 ## 19. The default model: `qwen3:4b-instruct`
 
-**2026-09-14.** Resolves the loose end §15 left.
+**2026-09-14, default changed 2026-11-21.** Resolves the loose end §15 left.
 
 §15 measured an 8B model and left the default pointing at it, with the Makefile
 pulling a different and unmeasured one — `qwen3:8b`, a thinking model that may
 never get past its reasoning inside a twelve-token answer. Asked for a small,
-good default, three small instruct models were measured the same way, on both
-splits, with nothing else on the CPU:
+good default, small instruct models were measured the same way, on both splits,
+with nothing else on the CPU. The default has to be under an open licence
+(Apache-2.0 or MIT), because the application's promise is an open model on the
+user's own machine; a model whose licence the vendor can revoke or that bars
+some users is not that. Measured on 2026-11-21 (Apple M2, 24 GB, Ollama
+0.40), 250 generated messages, 125 scored:
 
-| model | size | every other message | senders never seen | p50 |
-|---|---|---|---|---|
-| Dolphin3 | 8.0B | 100% | 100% | ~620 ms |
-| **`qwen3:4b-instruct`** | **3.2B** | **97.6%** | **100%** | **~267 ms** |
-| `qwen2.5:3b` | 3.1B | 87.2% | 97.3% | ~285 ms |
-| `gemma3:4b` | 4.3B | 87.2% | 76.8% | ~850 ms |
+| model | licence | size | every other message | senders never seen | p50 |
+|---|---|---|---|---|---|
+| **`qwen3:4b-instruct`** | **Apache-2.0** | **4.0B** | **92.0%** | **100%** | **~360 ms** |
+| `phi4-mini` | MIT | 3.8B | 93.6% | 100% | ~273 ms |
+| `granite3.3:2b` | Apache-2.0 | 2.5B | 76.0% | — | ~273 ms |
+| `qwen3:4b` (thinking) | Apache-2.0 | 4.0B | 0%, no usable answer | — | ~740 ms |
+| `qwen2.5:3b` | Qwen research licence | 3.1B | 87.2% | 97.3% | ~285 ms |
+| `gemma3:4b` | Gemma licence | 4.3B | 87.2% | 76.8% | ~850 ms |
+| Dolphin3 | — | 8.0B | 100% | 100% | ~620 ms |
 
-`gemma3:4b`, the largest candidate, finished downloading after the default was
-set, and would only have changed it by being perfect on both splits and no
-slower. It was the worst of the three and the slowest: it read every DHL "Ihre
-Sendung wurde zugestellt" as transactional although the taxonomy names delivery
-notices as notification, and filed people asking about a quote as transactional
-too. That first mistake is the one embeddings made on senders they had never
-filed — a no-reply address and a number pulled toward receipts — which suggests
-it is a property of the message rather than of either method, and a good first
-case for a correction to settle.
+`gemma3:4b` read every DHL "Ihre Sendung wurde zugestellt" as transactional
+although the taxonomy names delivery notices as notification, and filed people
+asking about a quote as transactional too. That first mistake is the one
+embeddings made on senders they had never filed — a no-reply address and a
+number pulled toward receipts — which suggests it is a property of the message
+rather than of either method, and a good first case for a correction to settle.
+`granite3.3:2b` made the same mistake the other way round, reading two thirds
+of the notifications as transactional. `qwen3:4b` with thinking on spends the
+whole twelve-token answer thinking; the `-instruct` build of the same model
+does not think and is the one measured.
 
 **The rule stated in advance was wrong, and is corrected here.** It was "the
 smallest model that holds 100% on senders never seen", on the reasoning that that
@@ -1128,18 +1136,28 @@ filings. A prompted model learns nothing from filings, so both splits test it
 equally, and a miss on either is a miss.
 
 **What decided it was which messages were missed, not how many.** `eval
---show-wrong` now lists them. All three of `qwen3:4b-instruct`'s are one template —
-the Sparkasse's "Kontoauszug verfügbar", a portal notice that a statement is
+--show-wrong` lists them. Every miss of `qwen3:4b-instruct` and of `phi4-mini`
+is one of two templates — the Sparkasse's "Kontoauszug verfügbar" and the
+Finanzamt's "Bescheid über Einkommensteuer", portal notices that a document is
 ready — read as notification where the label says transactional. The taxonomy
 files statements under transactional and machine-generated status under
-notification, and this message is both. It misfiled no invoice, newsletter,
-advert or person. `qwen2.5:3b`'s twelve were transactional mail it simply got
-wrong, and it also missed on senders it had never seen.
+notification, and these messages are both. Neither model misfiled an invoice,
+newsletter, advert or person, and both were perfect on senders never seen.
+`qwen2.5:3b`'s twelve were transactional mail it simply got wrong, and it also
+missed on senders it had never seen.
 
-So the default is the model under half the size and more than twice as fast as
-the one measured first, whose only misses are on a message a careful person could
-file either way. `make ai-model` pulls it, and `--model` still overrides it.
+Between the two open candidates, `phi4-mini` is 1.6 points better and a third
+faster on sorting alone. `qwen3:4b-instruct` was chosen anyway, because the
+same default drives the assistant (§25) — a tool-calling job in German as often
+as English — and Qwen3 is the stronger model there, with a licence that is
+plainly Apache-2.0. Sorting is a one-word answer; the assistant is where the
+model's quality shows. In the app, sorting is also not the model alone: nearest
+filings answer first when they agree (§15), and on this set that combination
+was 100% with either model.
 
+So the default is an open 4B model whose only misses are on messages a careful
+person could file either way. `make ai-model` pulls it, and `--model` still
+overrides it.
 
 ---
 

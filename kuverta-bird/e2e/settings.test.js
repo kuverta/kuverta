@@ -332,7 +332,7 @@ test('the models page says which model each job uses and what the provider has',
   assert.deepEqual(
     offered,
     [
-      ['qwen3:4b-instruct', 'qwen3:4b-instruct · text only · 2.0 GB'],
+      ['qwen3:4b-instruct', 'qwen3:4b-instruct · text only · 2.5 GB'],
       ['qwen2.5vl:3b', 'qwen2.5vl:3b · sees images · 3.2 GB'],
       ['', 'Enter model name…'],
     ],

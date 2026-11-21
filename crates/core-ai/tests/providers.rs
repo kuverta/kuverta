@@ -235,7 +235,7 @@ async fn ollama_lists_its_models_with_what_each_can_do() {
             json!({ "models": [
                 { "name": "qwen2.5vl:3b", "size": 3200000000u64 },
                 { "name": "nomic-embed-text:latest", "size": 274000000 },
-                { "name": "qwen3:4b-instruct", "size": 2000000000u64 },
+                { "name": "qwen3:4b-instruct", "size": 2497000000u64 },
             ]}),
         ),
         ("POST", "/api/show") => match body["model"].as_str() {
@@ -255,14 +255,14 @@ async fn ollama_lists_its_models_with_what_each_can_do() {
     let names: Vec<&str> = models.iter().map(|model| model.name.as_str()).collect();
     assert_eq!(
         names,
-        ["qwen3:4b-instruct", "nomic-embed-text:latest", "qwen2.5vl:3b"]
+        ["nomic-embed-text:latest", "qwen2.5vl:3b", "qwen3:4b-instruct"]
     );
-    assert_eq!(models[0].vision, None, "show failed: unknown, not no");
-    assert!(!models[0].embedding);
-    assert!(models[1].embedding);
-    assert_eq!(models[1].vision, Some(false));
-    assert_eq!(models[2].vision, Some(true));
-    assert_eq!(models[2].size_bytes, Some(3_200_000_000));
+    assert!(models[0].embedding);
+    assert_eq!(models[0].vision, Some(false));
+    assert_eq!(models[1].vision, Some(true));
+    assert_eq!(models[1].size_bytes, Some(3_200_000_000));
+    assert_eq!(models[2].vision, None, "show failed: unknown, not no");
+    assert!(!models[2].embedding);
 }
 
 #[test]

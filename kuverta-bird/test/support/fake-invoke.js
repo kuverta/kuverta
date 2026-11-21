@@ -109,7 +109,7 @@ export function fakeInvoke({ seed = defaultSeed(), paper = defaultPaper(), conta
   const aiTasks = new Map();
   const AI_DEFAULTS = { vision: 'qwen2.5vl:3b', chat: 'qwen3:4b-instruct', assistant: 'qwen3:4b-instruct' };
   const OLLAMA_MODELS = [
-    { name: 'qwen3:4b-instruct', size_bytes: 2019393189, vision: false, embedding: false },
+    { name: 'qwen3:4b-instruct', size_bytes: 2497000000, vision: false, embedding: false },
     { name: 'nomic-embed-text:latest', size_bytes: 274302450, vision: false, embedding: true },
     { name: 'qwen2.5vl:3b', size_bytes: 3200000000, vision: true, embedding: false },
   ];

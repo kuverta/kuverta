@@ -194,8 +194,8 @@ fn model_size(model: &str) -> Option<&'static str> {
     match model {
         "qwen2.5vl:3b" => Some("3.2 GB"),
         "qwen2.5vl:7b" => Some("6.0 GB"),
-        "qwen3:4b-instruct" => Some("2.0 GB"),
-        "qwen3:1.7b" => Some("1.3 GB"),
+        "qwen3:4b-instruct" => Some("2.5 GB"),
+        "qwen3:1.7b" => Some("1.4 GB"),
         _ => None,
     }
 }

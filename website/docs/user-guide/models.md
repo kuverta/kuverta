@@ -41,6 +41,50 @@ under it says what matters:
 **Try them** runs each job once on a built-in sample — not on your mail — and
 reports whether it worked and how long it took. **Save** keeps the choice.
 
+## How the sorting models were measured
+
+The default for sorting was chosen by measurement, not by reputation, and you
+can rerun the measurement on any model Ollama can pull. Nobody's real mail is
+involved: the test set is generated, so every message has a known right answer.
+
+```sh
+python3 docker/fill-mailbox.py --dump 250 | node kuverta-bird/tools/dump-facts.js > labelled.jsonl
+kuverta eval labelled.jsonl --model qwen3:4b-instruct --show-wrong
+kuverta eval labelled.jsonl --model qwen3:4b-instruct --split sender
+```
+
+`eval` holds out half of the messages and scores the rules, the prompted model
+and the nearest-filings classifier on the same half. `--split sender` holds out
+whole senders, so the model is scored only on addresses it has never seen;
+`--show-wrong` lists every message a method got wrong, which is what the choice
+was made on.
+
+Measured 21 November 2026 on an Apple M2 with 24 GB, Ollama 0.40, 250 generated
+messages in German and English, 125 scored:
+
+| model | licence | size | every other message | senders never seen | per message |
+|---|---|---|---|---|---|
+| **`qwen3:4b-instruct`** (default) | Apache-2.0 | 4.0B | 92.0% | 100% | ~360 ms |
+| `phi4-mini` | MIT | 3.8B | 93.6% | 100% | ~270 ms |
+| `granite3.3:2b` | Apache-2.0 | 2.5B | 76.0% | — | ~270 ms |
+| `qwen3:4b` (thinking on) | Apache-2.0 | 4.0B | no usable answer | — | ~740 ms |
+| `qwen2.5:3b` | Qwen research licence | 3.1B | 87.2% | 97.3% | ~285 ms |
+| `gemma3:4b` | Gemma licence | 4.3B | 87.2% | 76.8% | ~850 ms |
+
+Every miss of the two best models is one of two templates — a bank's "your
+statement is ready" and the tax office's "your assessment is ready" — filed as
+notification where the test set says transactional, which a careful person
+could file either way. On senders they had never seen both were perfect. The
+default is the Qwen model rather than the slightly more accurate `phi4-mini`
+because the same default also runs the assistant, where tool calling and German
+matter more than a tenth of a second. In the app the model is not alone anyway:
+when your own earlier filings agree on where a message goes, they decide first,
+and with that the combination scored 100% with either model.
+
+Thinking models (`qwen3:4b` without `-instruct`, `deepseek-r1`, …) spend the
+short answer budget on reasoning and return nothing usable for sorting; pick a
+non-thinking build.
+
 ## Providers
 
 Press **+ Add** beside *Models* in settings to add a provider:
