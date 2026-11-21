@@ -476,9 +476,56 @@ pub(crate) fn ai_error(base_url: &str, err: core_ai::AiError) -> RpcError {
             status: 401 | 403,
             body,
         } => RpcError::Auth(format!("{base_url} refused the key: {body}")),
+        // Anthropic's answer to a key made for the whole organisation, which
+        // names no workspace to work in. The server's own sentence asks for a
+        // header nobody using kuverta can set; what they can do is make
+        // another key.
+        AiError::Status { status: 400, body }
+            if body.contains("not scoped to a workspace")
+                || body.contains("anthropic-workspace-id") =>
+        {
+            RpcError::Auth(
+                "this API key belongs to the whole organisation, and Claude needs one that \
+                 belongs to a workspace. Create a key for a workspace (\"Default\" will do) at \
+                 console.anthropic.com and store that one here"
+                    .into(),
+            )
+        }
         AiError::Status { status: 404, body } => RpcError::Rejected(format!(
             "{base_url} answered 404, for a model it does not have or an address missing its /v1: {body}"
         )),
         other => RpcError::Rejected(other.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_organisation_key_is_answered_with_what_to_do_about_it() {
+        let err = ai_error(
+            "https://api.anthropic.com/v1",
+            core_ai::AiError::Status {
+                status: 400,
+                body: r#"{"type":"error","error":{"type":"invalid_request_error","message":"This API key is not scoped to a workspace, so this request must include the anthropic-workspace-id header with the ID of the workspace to use."}}"#.into(),
+            },
+        );
+        let said = err.to_string();
+        assert!(matches!(err, RpcError::Auth(_)), "{said}");
+        assert!(said.contains("key for a workspace"), "{said}");
+        assert!(!said.contains("anthropic-workspace-id"), "{said}");
+    }
+
+    #[test]
+    fn any_other_400_still_says_what_the_server_said() {
+        let err = ai_error(
+            "https://api.anthropic.com/v1",
+            core_ai::AiError::Status {
+                status: 400,
+                body: "max_tokens: field required".into(),
+            },
+        );
+        assert!(err.to_string().contains("max_tokens"), "{err}");
     }
 }
