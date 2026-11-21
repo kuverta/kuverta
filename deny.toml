@@ -31,6 +31,10 @@ ignore = [
     # it yet. As with Marvin: the keys are used locally, once per message, with
     # no one timing it.
     { id = "RUSTSEC-2026-0387", reason = "no fixed crypto-bigint 0.5 release; rPGP's curves pin it; local-only key use is no timing oracle" },
+    # chrono was declared unmaintained. No vulnerability is named. Our own
+    # uses could move to jiff or time, but async-imap and calcard need chrono
+    # too, so it stays in the tree until they move.
+    { id = "RUSTSEC-2026-0543", reason = "unmaintained, no vulnerability; async-imap and calcard still depend on chrono" },
 ]
 
 [licenses]
