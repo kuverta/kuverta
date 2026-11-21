@@ -22,7 +22,7 @@ unmaintained = "workspace"
 ignore = [
     # Marvin: RSA decryption in `rsa` leaks timing. It reaches us through rPGP,
     # and no release of `rsa` fixes it yet. Decryption here runs locally, once
-    # per message opened, with no one on the other end timing it — the attack
+    # per message opened, with no one on the other end timing it - the attack
     # needs a decryption oracle queried many times over.
     { id = "RUSTSEC-2023-0071", reason = "no fixed rsa release; local-only decryption is no timing oracle" },
     # crypto-bigint 0.5 branches on secrets in a few operations. It reaches us

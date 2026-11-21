@@ -43,7 +43,7 @@ if DUMP:
     COUNT = int(ARGV[1]) if len(ARGV) > 1 else 250
 elif len(ARGV) >= 3:
     # `host` may carry a port: the dev Dovecot is on 10143 without TLS, and
-    # without this the script could only ever talk to a real provider — which
+    # without this the script could only ever talk to a real provider - which
     # made "works against any IMAP server" untrue in the one case that matters
     # during development.
     HOST, _, port = ARGV[0].partition(":")
@@ -137,7 +137,7 @@ TOPICS = [
 
 # The true category of each generated message, for scoring classifiers against.
 #
-# Mostly the bucket a fixture was drawn from — with one exception, where the
+# Mostly the bucket a fixture was drawn from - with one exception, where the
 # bucket and the taxonomy disagree and the taxonomy wins. A parcel-delivered
 # message sits in the transactional list above because it arrives from a
 # carrier's no-reply address like a receipt does, but the taxonomy defines
@@ -281,12 +281,12 @@ def generate():
     """Yields (when, raw, seen, label) for each message, in the seeded order.
 
     Both modes consume this, so `--dump` sees exactly the mail `fill` appends.
-    Every draw below is part of that sequence — moving one changes the whole
+    Every draw below is part of that sequence - moving one changes the whole
     corpus, which is the point of seeding it.
     """
     now = datetime.now(timezone.utc)
     for n in range(COUNT):
-        # Spread over roughly seven months, densest recently — which is what a
+        # Spread over roughly seven months, densest recently - which is what a
         # real inbox looks like and what makes the relative dates worth having.
         days_ago = int(abs(random.gauss(0, 70))) % 210
         when = now - timedelta(days=days_ago,

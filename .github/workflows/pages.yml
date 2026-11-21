@@ -7,12 +7,12 @@ name: Website
 # repository's signing key.
 #
 # One more setting it needs, found unset on 2026-10-31: `APT_SIGNING_KEY`, or
-# the apt job warns and the site goes up without /apt — which is the only
+# the apt job warns and the site goes up without /apt - which is the only
 # thing the release trigger is for.
 #
 # A run triggered by a published release has the tag as its ref, and the
 # `github-pages` environment allows the default branch only, so `deploy` was
-# refused before its first step — two seconds, no log, nothing red but the
+# refused before its first step - two seconds, no log, nothing red but the
 # job. Every release-triggered run from v0.5.36 to v0.5.60 failed that way,
 # while every push to main deployed fine. Such a run now builds nothing
 # itself: `handover` starts this workflow again on main, which is allowed to
@@ -146,8 +146,8 @@ jobs:
       - name: Install MkDocs
         run: pip install -r website/requirements.txt
 
-      # --strict turns every warning — a broken link, a missing page, an
-      # unknown anchor — into a failed build rather than a quietly broken site.
+      # --strict turns every warning - a broken link, a missing page, an
+      # unknown anchor - into a failed build rather than a quietly broken site.
       - name: Build
         run: mkdocs build --strict -f website/mkdocs.yml -d "$RUNNER_TEMP/site"
 

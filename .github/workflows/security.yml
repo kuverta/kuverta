@@ -211,7 +211,7 @@ jobs:
       #
       # Downloading an artifact, or reading a job's log, needs admin on the
       # repository; listing the artifacts does not. So the name carries what
-      # can be learnt without the file — libFuzzer's own prefix, which says
+      # can be learnt without the file - libFuzzer's own prefix, which says
       # whether the target panicked (`crash-`), ran out of memory (`oom-`) or
       # hung (`timeout-`), and how big the input was. Those are different
       # problems with different fixes, and a run that fails with neither the
@@ -233,7 +233,7 @@ jobs:
           # Reading a job's log or downloading an artifact both need admin on
           # the repository; listing the artifacts needs nothing. So a small
           # input is carried in the names, where anyone who can see the repo
-          # can read it — including whoever has to fix it and cannot fetch the
+          # can read it - including whoever has to fix it and cannot fetch the
           # file. Only for inputs small enough to be worth it; a big one is in
           # the artifact and nowhere else.
           if [ "$size" -le 400 ]; then

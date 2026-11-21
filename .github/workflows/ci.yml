@@ -42,10 +42,10 @@ jobs:
       # The runner has about 14 GB free and this job wants more: a restored
       # `target` for the whole workspace, every test binary clippy and
       # `cargo test` build, and four containers. On 2026-10-30 it ran out
-      # during `cargo test` and the runner died writing its own log — which
+      # during `cargo test` and the runner died writing its own log - which
       # fails the job with no step marked red, and without the `if: failure()`
       # dump at the end ever running. Nothing deleted here is used by this
-      # workspace — the hosted tool cache is deliberately left alone, because
+      # workspace - the hosted tool cache is deliberately left alone, because
       # the node that `make test-js` runs under may live in it.
       - name: Make room on the runner
         run: |

@@ -9,7 +9,7 @@ on:
     tags: ["v*"]
 
 # Read-only by default, and each job that publishes says so for itself. Both
-# of them do today — one drafts the release, the other uploads to it — but a
+# of them do today - one drafts the release, the other uploads to it - but a
 # job added later should have to ask rather than inherit the right to write
 # to the repository.
 permissions:
@@ -81,7 +81,7 @@ jobs:
           # One app for both kinds of Mac. Pinned, like the Ubuntu runners
           # below: `macos-latest` moves on its own, and which SDK the app is
           # linked against is not something a release should decide by itself.
-          # Bump it when GitHub retires the image — it retired macos-14 on
+          # Bump it when GitHub retires the image - it retired macos-14 on
           # 2 November 2026, and a retired label is not refused but *cancelled*,
           # so the other three builds upload and the Mac one quietly does not.
           - os: macos-15
@@ -92,8 +92,8 @@ jobs:
           - os: ubuntu-22.04
             targets: ""
             args: ""
-          # The same for 64-bit ARM — a Raspberry Pi with a 64-bit system, ARM
-          # laptops and servers — built natively on GitHub's ARM runner, so
+          # The same for 64-bit ARM - a Raspberry Pi with a 64-bit system, ARM
+          # laptops and servers - built natively on GitHub's ARM runner, so
           # nothing is cross-compiled.
           - os: ubuntu-22.04-arm
             targets: ""
@@ -141,7 +141,7 @@ jobs:
       # handed to people, so everything that goes into it has to come from
       # this run. `target/` was cached here once: compiled objects, checked
       # against nothing, linked into the installer and then signed. Caching
-      # only the registry does not fix it either — Cargo verifies a `.crate`
+      # only the registry does not fix it either - Cargo verifies a `.crate`
       # archive against Cargo.lock when it unpacks it, but it does not hash
       # `registry/src/` again on a later build, and that is what the cache
       # would restore.
@@ -169,7 +169,7 @@ jobs:
       # to run it at all, and macOS asks once before opening it (see
       # docs/releasing.md). A secret that is not set arrives as an empty
       # string, and Tauri takes an empty APPLE_CERTIFICATE for a certificate
-      # and fails to import it — so only the ones that are set are passed on.
+      # and fails to import it - so only the ones that are set are passed on.
       - name: Apple signing, if configured
         if: runner.os == 'macOS'
         env:
