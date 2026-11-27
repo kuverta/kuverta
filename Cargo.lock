@@ -631,9 +631,9 @@ dependencies = [
  "ahash",
  "chrono",
  "chrono-tz",
- "hashify",
+ "hashify 0.2.9",
  "mail-builder 1.0.0",
- "mail-parser",
+ "mail-parser 0.11.9",
 ]
 
 [[package]]
@@ -1121,7 +1121,7 @@ version = "0.5.64"
 dependencies = [
  "core-accounts",
  "core-smtp",
- "mail-parser",
+ "mail-parser 1.0.2",
  "pgp",
  "rand 0.8.8",
  "serde",
@@ -1139,7 +1139,7 @@ dependencies = [
  "core-rules",
  "core-store",
  "futures",
- "mail-parser",
+ "mail-parser 1.0.2",
  "rustls",
  "rustls-platform-verifier",
  "thiserror 2.0.21",
@@ -1173,7 +1173,7 @@ dependencies = [
  "image",
  "libc",
  "lopdf",
- "mail-parser",
+ "mail-parser 1.0.2",
  "pbkdf2",
  "pdf-extract",
  "plist",
@@ -1207,7 +1207,7 @@ dependencies = [
  "core-accounts",
  "core-store",
  "mail-builder 1.0.0",
- "mail-parser",
+ "mail-parser 1.0.2",
  "mail-send",
  "reqwest",
  "rustls",
@@ -1971,6 +1971,16 @@ checksum = "95743bef3ff70fcba3930246c4e6872882bbea0dcc6da2ca860112e0cd4bd09f"
 dependencies = [
  "az",
  "byteorder",
+]
+
+[[package]]
+name = "encodify"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab7f638cb35e10aa08efd439d11ddcbeef7d52dd987c4956a6ff2cc1061020f3"
+dependencies = [
+ "memchr",
+ "simdutf8",
 ]
 
 [[package]]
@@ -2744,6 +2754,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "hashify"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04a037b1848eada162d6534c206770180e6bfc0eaa97292250c3e7179d8b1f73"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
 ]
 
 [[package]]
@@ -3785,7 +3806,19 @@ version = "0.11.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ec00bda90c6e645a54506c630c2820cd6b1890cfd2b0a169b50f74b2b8c7c86"
 dependencies = [
- "hashify",
+ "hashify 0.2.9",
+]
+
+[[package]]
+name = "mail-parser"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e57f7caaeb0071026b4be388c81e9c253853d9ed072a3061d425ef1c1b1b569"
+dependencies = [
+ "encodify",
+ "hashify 0.3.2",
+ "memchr",
+ "simdutf8",
 ]
 
 [[package]]
