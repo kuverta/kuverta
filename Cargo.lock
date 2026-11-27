@@ -1206,7 +1206,7 @@ dependencies = [
  "chrono",
  "core-accounts",
  "core-store",
- "mail-builder 1.0.0",
+ "mail-builder 2.0.1",
  "mail-parser",
  "mail-send",
  "reqwest",
@@ -1971,6 +1971,16 @@ checksum = "95743bef3ff70fcba3930246c4e6872882bbea0dcc6da2ca860112e0cd4bd09f"
 dependencies = [
  "az",
  "byteorder",
+]
+
+[[package]]
+name = "encodify"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab7f638cb35e10aa08efd439d11ddcbeef7d52dd987c4956a6ff2cc1061020f3"
+dependencies = [
+ "memchr",
+ "simdutf8",
 ]
 
 [[package]]
@@ -3775,8 +3785,16 @@ name = "mail-builder"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccbc27cb02a58a311a404769a22f5abf63fe3173b290d80be7c534f9c7023151"
+
+[[package]]
+name = "mail-builder"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aca3ad941e4c466402151719d6b4cea4bdfcb212b11e5970afa75e7d28c6502a"
 dependencies = [
+ "encodify",
  "gethostname",
+ "web-time",
 ]
 
 [[package]]
