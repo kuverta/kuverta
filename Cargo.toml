@@ -53,7 +53,7 @@ clap = { version = "4.6.6", features = ["derive", "env"] }
 rusqlite = { version = "0.41", features = ["bundled", "functions"] }
 async-imap = { version = "0.12.0", default-features = false, features = ["runtime-tokio"] }
 mail-parser = "0.11.9"
-mail-builder = "1.0.0"
+mail-builder = "2.0.1"
 # OpenPGP, in pure Rust. Without bzip2: it is the one compression GnuPG never
 # picks by default, and leaving it out keeps any chance of a C library out of
 # the build.
